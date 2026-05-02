@@ -70,6 +70,132 @@
     });
   });
 
+  // ---------- Hero slider ----------
+  const heroSlider = document.querySelector('[data-hero-slider]');
+  if (heroSlider) {
+    const track = heroSlider.querySelector('.hero-track');
+    const slides = Array.from(track.children);
+    const dotsWrap = heroSlider.querySelector('.hero-dots');
+    const prev = heroSlider.querySelector('[data-hero-prev]');
+    const next = heroSlider.querySelector('[data-hero-next]');
+    const counterCurrent = heroSlider.querySelector('.hero-counter .current');
+    const counterTotal = heroSlider.querySelector('.hero-counter .total');
+    const progressBar = heroSlider.querySelector('.hero-progress-bar');
+    const interval = parseInt(heroSlider.dataset.heroSlider, 10) || 6000;
+    let i = 0, timer = null, progressTimer = null, paused = false;
+
+    if (counterTotal) counterTotal.textContent = String(slides.length).padStart(2, '0');
+
+    // build dots
+    if (dotsWrap) {
+      slides.forEach((_, idx) => {
+        const b = document.createElement('button');
+        b.setAttribute('aria-label', `Slide ${idx + 1}`);
+        b.addEventListener('click', () => go(idx, true));
+        dotsWrap.appendChild(b);
+      });
+    }
+    const dots = dotsWrap ? Array.from(dotsWrap.children) : [];
+
+    const go = (idx, manual) => {
+      i = (idx + slides.length) % slides.length;
+      track.style.transform = `translateX(-${i * 100}%)`;
+      dots.forEach((d, k) => d.classList.toggle('active', k === i));
+      if (counterCurrent) counterCurrent.textContent = String(i + 1).padStart(2, '0');
+      if (manual) restart();
+      else resetProgress();
+    };
+    const resetProgress = () => {
+      if (!progressBar) return;
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0%';
+      requestAnimationFrame(() => {
+        progressBar.style.transition = `width ${interval}ms linear`;
+        progressBar.style.width = '100%';
+      });
+    };
+    const restart = () => {
+      clearTimeout(timer);
+      resetProgress();
+      timer = setTimeout(() => go(i + 1), interval);
+    };
+    const start = () => { resetProgress(); timer = setTimeout(() => go(i + 1), interval); };
+
+    prev && prev.addEventListener('click', () => go(i - 1, true));
+    next && next.addEventListener('click', () => go(i + 1, true));
+
+    heroSlider.addEventListener('mouseenter', () => { paused = true; clearTimeout(timer); progressBar && (progressBar.style.transition = 'none'); });
+    heroSlider.addEventListener('mouseleave', () => { paused = false; restart(); });
+
+    // Touch swipe
+    let sx = 0;
+    heroSlider.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
+    heroSlider.addEventListener('touchend', (e) => {
+      const dx = e.changedTouches[0].clientX - sx;
+      if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1), true);
+    });
+
+    go(0);
+    start();
+  }
+
+  // ---------- Generic slider (testimonials / cards) ----------
+  document.querySelectorAll('[data-slider]').forEach((root) => {
+    const track = root.querySelector('.slider-track');
+    if (!track) return;
+    const items = Array.from(track.children);
+    if (items.length === 0) return;
+    const prevBtn = root.querySelector('[data-slider-prev]');
+    const nextBtn = root.querySelector('[data-slider-next]');
+    const dotsWrap = root.querySelector('.slider-dots');
+    let i = 0;
+
+    const desktopPer = parseInt(root.dataset.sliderPer, 10) || 2;
+    const perView = () => {
+      if (window.matchMedia('(max-width: 720px)').matches) return 1;
+      if (window.matchMedia('(max-width: 1024px)').matches) return Math.min(2, desktopPer);
+      return desktopPer;
+    };
+    const pages = () => Math.max(1, Math.ceil(items.length / perView()));
+
+    if (dotsWrap) {
+      const rebuild = () => {
+        dotsWrap.innerHTML = '';
+        for (let k = 0; k < pages(); k++) {
+          const b = document.createElement('button');
+          b.setAttribute('aria-label', `Page ${k + 1}`);
+          b.addEventListener('click', () => go(k));
+          dotsWrap.appendChild(b);
+        }
+        update();
+      };
+      rebuild();
+      window.addEventListener('resize', rebuild);
+    }
+
+    const go = (idx) => {
+      i = Math.max(0, Math.min(pages() - 1, idx));
+      const offset = (100 / perView()) * (perView() * i);
+      track.style.transform = `translateX(-${offset}%)`;
+      update();
+    };
+    const update = () => {
+      if (!dotsWrap) return;
+      Array.from(dotsWrap.children).forEach((d, k) => d.classList.toggle('active', k === i));
+    };
+    prevBtn && prevBtn.addEventListener('click', () => go(i - 1));
+    nextBtn && nextBtn.addEventListener('click', () => go(i + 1));
+
+    let sx = 0;
+    track.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
+    track.addEventListener('touchend', (e) => {
+      const dx = e.changedTouches[0].clientX - sx;
+      if (Math.abs(dx) > 40) go(i + (dx < 0 ? 1 : -1));
+    });
+
+    go(0);
+  });
+
   // Form prevent + simple feedback (no backend in this static demo)
   const form = document.querySelector('.contact-form');
   if (form) {

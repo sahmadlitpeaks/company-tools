@@ -50,23 +50,51 @@ SERVICE_LINKS = [
     ('statutory-audit.html', 'Statutory Audit'),
     ('internal-audit.html',  'Internal Audit'),
     ('forensic-audit.html',  'Forensic Audit'),
+    ('free-zone.html',       'Free Zone Audit'),
     ('due-diligence.html',   'Due Diligence'),
     ('corporate-tax.html',   'Corporate Tax'),
     ('vat.html',             'VAT Services'),
     ('excise-tax.html',      'Excise Tax'),
+    ('accounting.html',      'Accounting &amp; Bookkeeping'),
+    ('aml-compliance.html',  'AML/CFT Compliance'),
+    ('esr.html',             'ESR Compliance'),
+]
+
+SERVICE_GROUPS = [
+    ('Audit &amp; Assurance', [
+        ('statutory-audit.html', 'Statutory Audit'),
+        ('internal-audit.html',  'Internal Audit'),
+        ('forensic-audit.html',  'Forensic Audit'),
+        ('free-zone.html',       'Free Zone Audit'),
+    ]),
+    ('Tax, Advisory &amp; Compliance', [
+        ('corporate-tax.html',   'Corporate Tax'),
+        ('vat.html',             'VAT Services'),
+        ('excise-tax.html',      'Excise Tax'),
+        ('due-diligence.html',   'Due Diligence'),
+        ('accounting.html',      'Accounting &amp; Bookkeeping'),
+        ('aml-compliance.html',  'AML/CFT Compliance'),
+        ('esr.html',             'ESR Compliance'),
+    ]),
 ]
 
 def header(active='home'):
     nav_html = ''
     for key, href, label in NAV_ITEMS:
         if key == 'services':
-            sub = '\n'.join(f'          <a href="{h}">{l}</a>' for h, l in SERVICE_LINKS)
+            groups_html = ''
+            for title, links in SERVICE_GROUPS:
+                links_html = '\n'.join(f'            <a href="{h}">{l}</a>' for h, l in links)
+                groups_html += f'''          <div class="dropdown-group">
+            <span class="dropdown-title">{title}</span>
+{links_html}
+          </div>
+'''
             cls = ' class="active"' if active in ('services', 'service-detail') else ''
             nav_html += f'''      <div class="has-menu">
         <a href="services.html"{cls}>Services <span aria-hidden="true">⌄</span></a>
         <div class="dropdown" role="menu">
-{sub}
-        </div>
+{groups_html}        </div>
       </div>
 '''
         else:
@@ -188,15 +216,24 @@ def footer():
         </div>
       </div>
       <div>
-        <h5>Services</h5>
+        <h5>Audit &amp; Assurance</h5>
         <div class="footer-links">
           <a href="statutory-audit.html">Statutory Audit</a>
           <a href="internal-audit.html">Internal Audit</a>
           <a href="forensic-audit.html">Forensic Audit</a>
+          <a href="free-zone.html">Free Zone Audit</a>
           <a href="due-diligence.html">Due Diligence</a>
+        </div>
+      </div>
+      <div>
+        <h5>Tax &amp; Compliance</h5>
+        <div class="footer-links">
           <a href="corporate-tax.html">Corporate Tax</a>
-          <a href="vat.html">VAT</a>
+          <a href="vat.html">VAT Services</a>
           <a href="excise-tax.html">Excise Tax</a>
+          <a href="accounting.html">Accounting</a>
+          <a href="aml-compliance.html">AML/CFT</a>
+          <a href="esr.html">ESR</a>
         </div>
       </div>
       <div>
@@ -229,16 +266,19 @@ def footer():
 </html>
 '''
 
-def related_services_card(exclude_slug=''):
+def related_services_card(exclude_slug='', limit=6):
     rows = []
     for h, l in SERVICE_LINKS:
         if h == exclude_slug:
             continue
         rows.append(f'        <a href="{h}">{l} <span class="arrow">→</span></a>')
+        if len(rows) >= limit:
+            break
     rows_html = '\n'.join(rows)
     return f'''<div class="related-services">
         <h4>Other services</h4>
 {rows_html}
+        <a href="services.html" style="margin-top:6px;color:var(--gold-700);font-weight:600">View all services <span class="arrow">→</span></a>
       </div>'''
 
 def aside_consult():

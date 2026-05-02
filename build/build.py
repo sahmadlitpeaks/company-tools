@@ -155,8 +155,8 @@ write('about.html', shell(
 # --------------------------------------------------------------- Services overview
 services_body = page_header(
     "Our services",
-    "Audit, tax and advisory — under one trusted Dubai roof.",
-    "From statutory audit to forensic investigations, corporate tax to VAT, every Kingston service is designed around one promise: rigorous work, clear counsel, on time.",
+    "Audit, tax, advisory &amp; compliance — under one trusted Dubai roof.",
+    "From statutory audit to forensic investigations, corporate tax to ESR, every Kingston service is designed around one promise: rigorous work, clear counsel, on time.",
     "Services"
 ) + '''
 <section class="bg-bone">
@@ -187,11 +187,25 @@ services_body = page_header(
         <p>Fraud investigations, asset tracing and litigation support — with court-ready evidence and discreet handling.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
       </a>
-      <a href="due-diligence.html" class="service-card reveal">
+      <a href="free-zone.html" class="service-card reveal">
         <span class="num">04</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4 8 4v14"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/></svg></div>
+        <h3>Free Zone Audit</h3>
+        <p>Approved auditors across DMCC, JAFZA, DAFZA, ADGM, DIFC, RAKEZ &amp; more — licence-renewal aligned.</p>
+        <span class="read">Learn more <span class="arrow">→</span></span>
+      </a>
+      <a href="due-diligence.html" class="service-card reveal">
+        <span class="num">05</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="8"/></svg></div>
         <h3>Due Diligence</h3>
         <p>Financial, tax and operational due diligence for buyers, sellers and lenders. Surface the truth before signing.</p>
+        <span class="read">Learn more <span class="arrow">→</span></span>
+      </a>
+      <a href="accounting.html" class="service-card reveal">
+        <span class="num">06</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v18H2z"/><path d="M2 9h20"/><path d="M9 21V9"/></svg></div>
+        <h3>Accounting &amp; Bookkeeping</h3>
+        <p>Cloud-first outsourced accounting — IFRS-compliant, audit-ready monthly management accounts by WD5.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
       </a>
     </div>
@@ -201,26 +215,26 @@ services_body = page_header(
 <section>
   <div class="container">
     <div class="section-head reveal">
-      <span class="eyebrow center">Tax &amp; Compliance</span>
+      <span class="eyebrow center">Tax</span>
       <h2>End-to-end UAE tax — from registration to FTA representation.</h2>
     </div>
     <div class="service-grid">
       <a href="corporate-tax.html" class="service-card reveal">
-        <span class="num">05</span>
+        <span class="num">07</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
         <h3>Corporate Tax</h3>
         <p>Registration, structuring, returns and advisory for UAE&rsquo;s 9% corporate tax — with optimisation planning.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
       </a>
       <a href="vat.html" class="service-card reveal">
-        <span class="num">06</span>
+        <span class="num">08</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3l-3 18"/><path d="M18 3l-3 18"/></svg></div>
         <h3>VAT Services</h3>
         <p>VAT registration, return preparation, refund recovery, audits and FTA representation.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
       </a>
       <a href="excise-tax.html" class="service-card reveal">
-        <span class="num">07</span>
+        <span class="num">09</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v4H3z"/><path d="M5 7v14h14V7"/><path d="M9 11h6"/></svg></div>
         <h3>Excise Tax</h3>
         <p>Registration, calculation, filing and advisory for businesses dealing in excisable goods.</p>
@@ -231,6 +245,31 @@ services_body = page_header(
 </section>
 
 <section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Compliance</span>
+      <h2>Stay ahead of UAE regulators — quietly, and in writing.</h2>
+    </div>
+    <div class="service-grid">
+      <a href="aml-compliance.html" class="service-card reveal">
+        <span class="num">10</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>AML/CFT Compliance</h3>
+        <p>Risk assessment, policies, goAML registration, training and independent AML audits for DNFBPs and financial businesses.</p>
+        <span class="read">Learn more <span class="arrow">→</span></span>
+      </a>
+      <a href="esr.html" class="service-card reveal">
+        <span class="num">11</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+        <h3>ESR Compliance</h3>
+        <p>Economic Substance Regulations — scoping, notification, annual report and regulator response support.</p>
+        <span class="read">Learn more <span class="arrow">→</span></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section>
   <div class="container">
     <div class="section-head reveal">
       <span class="eyebrow center">How we work</span>
@@ -611,6 +650,174 @@ write('excise-tax.html', shell(
             ("Do I need to register if I only stockpile?", "Yes — stockpilers above defined thresholds must register and may have liability on stocks held at rate change events."),
             ("How often are excise returns filed?", "Excise returns are filed monthly, typically within 15 days of the end of the tax period, with payment due alongside."),
             ("Can you handle imports through designated zones?", "Yes — including bonded warehouse setup, intra-zone movements and the excise consequences of release for consumption."),
+        ]
+    )
+))
+
+# --- Free Zone
+write('free-zone.html', shell(
+    "Free Zone Audit Services in Dubai, UAE — Kingston Chartered Auditing &amp; Advisory",
+    "Approved free zone auditors in Dubai. Kingston is registered with all major UAE Free Zones — DMCC, JAFZA, DAFZA, ADGM, DIFC, DWC, RAKEZ, SHAMS — for statutory free zone audits.",
+    "service-detail",
+    service_page(
+        slug="free-zone",
+        name="Free Zone Audit",
+        eyebrow="Audit &amp; Assurance",
+        hero_title="Approved free zone auditors. Across every major UAE zone.",
+        hero_sub="Kingston is registered with all major UAE Free Zones and government authorities — so your annual audit is signed by a firm your zone authority will actually accept, first time.",
+        intro='''<p>Operating in a UAE Free Zone gives you tax efficiency, foreign ownership and a streamlined regulatory regime — but it also means an annual audit, on the zone authority's timetable, by an auditor on the zone authority's approved list. Submit a report from an unapproved firm and the file gets rejected. Miss the licence-renewal cut-off and your trade licence is at risk.</p>
+        <p>Kingston is a UAE-licensed chartered audit firm registered across all major UAE Free Zones. We audit Free Zone companies under IFRS, in the format each zone authority expects, with the licence-renewal deadline tracked from day one.</p>''',
+        features=[
+            ("Zone-approved auditors", "Registered across DMCC, JAFZA, DAFZA, ADGM, DIFC, DWC, RAKEZ, SHAMS, IFZA, Meydan, JLT, KIZAD &amp; more."),
+            ("Licence-renewal aligned", "We work backwards from your licence-renewal date — no last-minute panic, no licence at risk."),
+            ("Zone-specific reporting", "Each Free Zone has its own format, cover-page and submission portal. We handle every one of them."),
+            ("IFRS-compliant audit", "Every Free Zone audit is delivered under International Financial Reporting Standards — and our reports are accepted by banks, investors and the FTA."),
+            ("Qualifying Free Zone Person testing", "For UAE corporate tax, we assess and document QFZP status alongside the audit — joined-up, not bolted on."),
+            ("Direct portal submission", "Where the zone authority allows it, we file the signed report directly on your behalf."),
+        ],
+        why_us=[
+            ("All major zones, one firm", "Group with entities in three different Free Zones? One Kingston engagement letter, one team, one timeline."),
+            ("Real zone fluency", "We know each zone's quirks — DMCC's eAudit portal, DIFC's regulator expectations, ADGM's filing windows."),
+            ("On-time, every time", "98% of Free Zone audits issued on or ahead of the agreed deadline — protecting your licence renewal."),
+            ("Free Zone &amp; corporate-tax under one roof", "Audit, QFZP analysis and corporate-tax filings handled together — no gaps, no duplication."),
+        ],
+        process_steps=[
+            ("Zone &amp; deadline mapping", "We confirm your Free Zone authority, licence-renewal date and required reporting format up-front."),
+            ("Planning &amp; risk assessment", "Risk-based audit plan tailored to your zone's expectations and your business activities."),
+            ("Fieldwork &amp; testing", "Senior-led examination of financial records, internal controls and supporting evidence under IFRS."),
+            ("Report &amp; submission", "Signed report in the zone-approved format — submitted to the zone portal where authorised."),
+        ],
+        faqs=[
+            ("Which Free Zones is Kingston registered with?", "All major UAE Free Zones — DMCC, JAFZA, DAFZA, ADGM, DIFC, DWC, RAKEZ, SHAMS, IFZA, Meydan, JLT, KIZAD and others. We confirm your specific zone's approval at engagement."),
+            ("Is a Free Zone audit mandatory?", "Most Free Zones require annual audited financial statements as a condition of licence renewal. Even where it is not technically mandatory, banks, investors and Qualifying Free Zone Person testing typically require one."),
+            ("How long does a Free Zone audit take?", "For a typical SME, fieldwork runs 2–3 weeks. We always work backwards from your licence-renewal date so the signed report is ready in time."),
+            ("Do you handle the QFZP analysis at the same time?", "Yes — for UAE corporate tax, we assess and document Qualifying Free Zone Person status alongside the audit. Same data, same team, same engagement."),
+        ]
+    )
+))
+
+# --- Accounting & Bookkeeping
+write('accounting.html', shell(
+    "Accounting &amp; Bookkeeping Services in Dubai, UAE — Kingston",
+    "Outsourced accounting and bookkeeping services in Dubai. Cloud-first, audit-ready, IFRS-compliant — monthly management accounts your CFO can actually use.",
+    "service-detail",
+    service_page(
+        slug="accounting",
+        name="Accounting &amp; Bookkeeping",
+        eyebrow="Outsourced Finance",
+        hero_title="Books that close on time. Numbers your board can trust.",
+        hero_sub="Cloud-first outsourced accounting and bookkeeping for UAE businesses — IFRS-compliant, VAT-ready, audit-ready, and delivered as monthly management accounts your CFO can actually use to run the business.",
+        intro='''<p>Most UAE finance teams do not have a bookkeeping problem. They have a closing-cycle problem. Invoices booked late, reconciliations done quarterly, and management accounts that arrive a month after they could have changed a decision.</p>
+        <p>Kingston runs the books for ambitious UAE SMEs and family offices — cloud-first, IFRS-compliant, with a hard-locked closing calendar and monthly management accounts in your inbox by working day five.</p>''',
+        features=[
+            ("Day-to-day bookkeeping", "Sales, purchases, banking, expenses, payroll journals — recorded daily or weekly in your cloud accounting system."),
+            ("Monthly closing", "Hard-locked monthly close with reconciliations, accruals and prepayments — by working day five, every month."),
+            ("Management accounts", "Board-ready monthly P&amp;L, balance sheet and cash-flow with variance commentary your CFO can present."),
+            ("VAT-ready chart of accounts", "Tax codes, supplier and customer master data set up so VAT returns prepare themselves."),
+            ("Audit-ready files", "Workpapers, supporting documents and reconciliations kept in audit-ready order — your statutory audit gets faster and cheaper."),
+            ("Cloud accounting setup", "Implementation and migration onto Zoho Books, QuickBooks, Xero or Tally — including data clean-up and training."),
+        ],
+        why_us=[
+            ("Senior eyes monthly", "Every month-end pack is reviewed by a chartered accountant before it lands with you."),
+            ("Audit-ready by design", "Books kept the way an auditor wants to find them — saving you days of audit fieldwork."),
+            ("Fixed monthly fee", "Predictable monthly subscription, no surprise bills, transparent scope."),
+            ("Joined-up with audit &amp; tax", "Same firm signs your statutory audit and files your VAT — no hand-offs, no re-explaining."),
+        ],
+        process_steps=[
+            ("Onboarding &amp; cleanup", "We review your current accounting state, agree the chart of accounts, and clean up the opening balances."),
+            ("Cloud setup", "Migrate or stand up your cloud accounting system, configure VAT codes, banks, customers and suppliers."),
+            ("Monthly close", "Daily/weekly bookkeeping, hard-locked month-end close by WD5, reconciliations and management accounts pack."),
+            ("Quarterly review", "Quarterly review with a senior accountant — controls, KPIs, cash forecast and finance-function maturity plan."),
+        ],
+        faqs=[
+            ("Which accounting software do you support?", "We work in Zoho Books, QuickBooks Online, Xero, Tally and Sage. If you already use one, we work in it. If not, we recommend the right fit and migrate you on."),
+            ("Can you handle payroll and WPS?", "Yes — monthly payroll preparation, WPS file generation and gratuity accruals are included in most engagements."),
+            ("Is this just for small businesses?", "No. Many of our outsourced accounting engagements are with mid-market groups (multi-entity, multi-currency) where outsourcing is faster and cheaper than building an in-house team."),
+            ("How quickly do you close the month?", "Working day five is our standard. For larger or multi-entity groups, we agree a tailored closing calendar — and stick to it."),
+        ]
+    )
+))
+
+# --- AML / CFT Compliance
+write('aml-compliance.html', shell(
+    "AML/CFT Compliance Services in Dubai, UAE — Kingston Chartered Auditing &amp; Advisory",
+    "Anti-Money Laundering and Counter-Terrorism Financing compliance in the UAE. Risk assessment, policies, goAML registration, training and independent AML audits.",
+    "service-detail",
+    service_page(
+        slug="aml-compliance",
+        name="AML/CFT Compliance",
+        eyebrow="Compliance",
+        hero_title="AML/CFT — registered, documented, defensible.",
+        hero_sub="UAE Anti-Money Laundering and Counter-Terrorism Financing compliance for DNFBPs and regulated financial businesses — from goAML registration to independent AML audits.",
+        intro='''<p>UAE AML/CFT enforcement has tightened dramatically. DNFBPs (real estate brokers, dealers in precious metals, auditors, lawyers, corporate service providers) and financial businesses are now expected to maintain a fully documented AML programme — risk assessment, policies, customer due diligence, suspicious-transaction reporting via goAML, training, and an annual independent review.</p>
+        <p>Kingston designs, implements and audits AML/CFT programmes for UAE businesses. We turn a regulatory headache into a documented, defensible compliance position — and an annual report for your senior management.</p>''',
+        features=[
+            ("Enterprise-wide risk assessment", "A documented risk assessment of your business, customers, products, channels and geographies — the foundation of every AML programme."),
+            ("Policies, procedures &amp; controls", "Tailored AML/CFT manual, customer onboarding, screening, EDD and ongoing monitoring procedures."),
+            ("goAML registration &amp; reporting", "Registration on the UAE FIU's goAML portal and ongoing support for STR/SAR filing."),
+            ("Training programmes", "Annual board, senior-management and front-line training — recorded, signed-off and audit-ready."),
+            ("Sanctions &amp; PEP screening", "Vendor selection and configuration of screening tools — UN, OFAC, UK, EU, UAE local terrorist lists, PEPs."),
+            ("Independent AML audit", "Annual independent audit of your AML programme — design and operating effectiveness, with management report."),
+        ],
+        why_us=[
+            ("UAE-specific, not generic", "We work to the UAE Federal AML/CFT framework — Cabinet Decision 10/2019, Federal Decree-Law 20/2018, and the latest EOCN guidance."),
+            ("Audit-grade documentation", "Every step documented to a standard that survives a Ministry of Economy or Central Bank inspection."),
+            ("Practical, not academic", "Programmes calibrated to the real risk in your business — not 200-page templates that no one will follow."),
+            ("Independence", "We audit programmes we have not designed — and design programmes we will not later audit. No conflicts."),
+        ],
+        process_steps=[
+            ("Diagnostic", "Where are you today? Risk assessment, gaps, immediate exposures, regulatory deadlines."),
+            ("Programme build", "Risk assessment, policies, procedures, screening setup, goAML registration."),
+            ("Operate &amp; train", "Compliance officer support, board and staff training, STR support."),
+            ("Independent review", "Annual independent AML audit with senior-management report — keeping you ahead of inspections."),
+        ],
+        faqs=[
+            ("Does my business need an AML/CFT programme?", "If you are a DNFBP (real estate broker, dealer in precious metals/stones, auditor, lawyer, corporate service provider) or a financial business in the UAE, yes. Kingston confirms your obligation in the diagnostic call."),
+            ("What is goAML?", "goAML is the UAE Financial Intelligence Unit's secure portal for filing Suspicious Transaction Reports (STRs) and Suspicious Activity Reports (SARs). DNFBPs and financial businesses are required to register."),
+            ("Is the annual independent AML audit mandatory?", "Most UAE supervisory authorities expect or require an annual independent review of the AML/CFT programme. Even where not strictly required, it is a strong defence in any inspection."),
+            ("Can you act as our outsourced compliance officer?", "We provide compliance officer support and review services. The named MLRO must be an employee of your business — but we make sure they have the templates, training and senior cover to do the role properly."),
+        ]
+    )
+))
+
+# --- ESR
+write('esr.html', shell(
+    "Economic Substance Regulations (ESR) Services in Dubai, UAE — Kingston",
+    "ESR notification and reporting in the UAE. Kingston advises UAE entities on Economic Substance Regulations — assessment, notification, reporting and audit defence.",
+    "service-detail",
+    service_page(
+        slug="esr",
+        name="ESR Compliance",
+        eyebrow="Compliance",
+        hero_title="Economic Substance — assessed, notified, reported.",
+        hero_sub="End-to-end Economic Substance Regulations (ESR) services for UAE entities — from initial scoping and notification, to annual ESR reports, to defending your position before the regulator.",
+        intro='''<p>The UAE's Economic Substance Regulations (ESR) require entities carrying out one or more &quot;Relevant Activities&quot; to demonstrate adequate economic substance in the UAE — the right people, premises and decisions, in the country. The penalties for non-compliance — financial penalties, exchange-of-information with foreign authorities and licence-related consequences — are material.</p>
+        <p>Kingston advises UAE entities across the full ESR lifecycle: scoping which activities are caught, filing the annual notification, preparing the ESR report where required, and defending the position if the Regulatory Authority asks questions.</p>''',
+        features=[
+            ("ESR scoping", "Activity-by-activity assessment of which entities in your group fall within ESR — and which Relevant Activities apply."),
+            ("Annual ESR notification", "Preparation and filing of the annual ESR notification on the Ministry of Finance portal — for every in-scope entity."),
+            ("ESR report preparation", "Where required, preparation of the annual ESR report — including the directed-and-managed test, CIGA, adequate people and adequate premises evidence."),
+            ("Substance design", "Where existing substance falls short, practical recommendations on board composition, meetings, premises and operating-expense alignment."),
+            ("Group structuring advisory", "ESR-aware advice on holding-company structures and intra-group activity allocation — before structuring decisions are made."),
+            ("Regulator response support", "Full support responding to Regulatory Authority enquiries, including documentary evidence, board minutes and substance walkthroughs."),
+        ],
+        why_us=[
+            ("Joined-up with corporate tax", "ESR analysis sits alongside our UAE corporate tax and Free Zone work — same data, same team, no contradictions."),
+            ("Year-round access", "ESR is annual — but the structuring decisions that drive it happen all year. You have access to your engagement partner whenever those decisions arise."),
+            ("Audit-grade evidence files", "Every ESR position documented to a standard that survives Regulatory Authority enquiry."),
+            ("No surprises", "We file in good time, with you fully briefed — no late-night-before-deadline scrambles."),
+        ],
+        process_steps=[
+            ("Scoping", "Group-wide review of activities to identify entities in-scope of ESR and the applicable Relevant Activities."),
+            ("Notification", "Annual ESR notification filed on the Ministry of Finance portal for each in-scope entity."),
+            ("Reporting", "Where required, full ESR report preparation — substance test, CIGA, people, premises, expenditure."),
+            ("Defence &amp; advisory", "Year-round access for regulator responses, structuring questions and next-year planning."),
+        ],
+        faqs=[
+            ("Who is in-scope of ESR?", "Any UAE licensee — Mainland or Free Zone — that carries on one or more Relevant Activities (e.g. holding company, distribution, service centre, IP, headquarters, financing, leasing, insurance, banking, fund management, shipping). Kingston scopes this entity-by-entity."),
+            ("What is the difference between the notification and the report?", "The notification is filed annually by every in-scope entity to declare which Relevant Activities it carries on. The report — required only by entities that earned income from a Relevant Activity in the period — demonstrates the substance test was met."),
+            ("What if we missed a previous year's filing?", "Late filings are possible but typically attract penalties. Kingston works with you to file outstanding submissions and remediate the position — and where appropriate, requests review of penalties."),
+            ("How does ESR interact with UAE corporate tax?", "ESR substance and Qualifying Free Zone Person tests overlap meaningfully — but they are not identical. We assess and document both consistently and in one engagement."),
         ]
     )
 ))
