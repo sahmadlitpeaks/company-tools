@@ -1036,6 +1036,128 @@ section { padding: var(--section-y) 0; position: relative; }
 .footer-social a:hover { background: var(--gold-600); color: var(--navy-900); }
 
 /* ============================================================
+   PLACEHOLDER IMAGES
+   ------------------------------------------------------------
+   These styles support the SVG placeholder system in
+   /assets/img/. Developers can swap the SVG files with real
+   photos (jpg / webp) — keep filenames the same and the layout
+   stays intact.
+   ============================================================ */
+
+.img-frame {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--navy-900);
+  box-shadow: var(--shadow-sm);
+}
+.img-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .6s ease;
+}
+.img-frame:hover img { transform: scale(1.04); }
+
+/* Aspect-ratio variants */
+.img-frame.ar-16x9 { aspect-ratio: 16/9; }
+.img-frame.ar-4x3  { aspect-ratio: 4/3;  }
+.img-frame.ar-3x2  { aspect-ratio: 3/2;  }
+.img-frame.ar-1x1  { aspect-ratio: 1/1;  }
+.img-frame.ar-4x5  { aspect-ratio: 4/5;  }
+
+/* Service card with image at top */
+.service-card.has-image { padding: 0; }
+.service-card.has-image .img-frame {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+}
+.service-card.has-image .card-body {
+  padding: 26px 28px 32px;
+}
+.service-card.has-image .num {
+  top: auto; bottom: 26px; right: 28px;
+}
+
+/* Free zone card with image */
+.fz-card.has-image { padding: 0; }
+.fz-card.has-image .img-frame {
+  aspect-ratio: 16/9;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.fz-card.has-image .card-body {
+  padding: 22px 26px 24px;
+}
+
+/* Service detail hero banner */
+.detail-banner {
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--container);
+  padding: 0 var(--gutter);
+}
+.detail-banner .img-frame {
+  margin-top: -56px;
+  aspect-ratio: 21/8;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+@media (max-width: 720px) {
+  .detail-banner .img-frame { aspect-ratio: 16/9; margin-top: -36px; }
+}
+
+/* About section image */
+.about-image .img-frame {
+  aspect-ratio: 4/5;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+.about-image .img-frame .badge {
+  position: absolute; right: -28px; bottom: 64px;
+  width: 220px; padding: 22px 24px;
+  background: var(--gold-500);
+  color: var(--navy-900);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 2;
+}
+.about-image .img-frame .badge .big {
+  font-family: var(--font-serif);
+  font-size: 2.4rem; line-height: 1; font-weight: 600;
+}
+.about-image .img-frame .badge .lbl {
+  font-size: .78rem; letter-spacing: .12em;
+  text-transform: uppercase; margin-top: 6px;
+}
+@media (max-width: 540px) {
+  .about-image .img-frame .badge { right: 16px; }
+}
+
+/* Hero slider — optional background image */
+.hero-slide-visual.has-image {
+  background: var(--navy-900);
+}
+.hero-slide-visual.has-image > img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.hero-slide-visual.has-image::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(160deg, rgba(10,31,61,.45), rgba(20,53,105,.25) 60%, rgba(212,175,55,.15));
+  z-index: 1;
+}
+.hero-slide-visual.has-image .emblem,
+.hero-slide-visual.has-image .hero-card {
+  z-index: 2;
+}
+
+/* ============================================================
    WhatsApp floating chat
    ============================================================ */
 .wa-float {

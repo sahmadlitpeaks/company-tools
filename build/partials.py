@@ -208,7 +208,17 @@ def mobile_menu():
 </aside>
 '''
 
-def page_header(eyebrow, title, subtitle, crumb_label):
+def page_header(eyebrow, title, subtitle, crumb_label, banner_image=None, banner_alt=''):
+    """Page header. If banner_image is provided, a banner photo placeholder is
+    injected directly under the header (overlapping into the next section)."""
+    banner_html = ''
+    if banner_image:
+        banner_html = f'''
+<div class="detail-banner">
+  <!-- IMAGE PLACEHOLDER · replace assets/img/{banner_image} with banner photo -->
+  <div class="img-frame"><img src="assets/img/{banner_image}" alt="{banner_alt}" loading="lazy"/></div>
+</div>
+'''
     return f'''
 <section class="page-header">
   <div class="container">
@@ -219,8 +229,7 @@ def page_header(eyebrow, title, subtitle, crumb_label):
     <h1 class="mt-2">{title}</h1>
     <p>{subtitle}</p>
   </div>
-</section>
-'''
+</section>{banner_html}'''
 
 def cta_banner():
     return '''

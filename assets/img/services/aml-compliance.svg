@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid slice" role="img" aria-label="AML / CFT · placeholder image">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#0a1f3d"/>
+      <stop offset="55%" stop-color="#143569"/>
+      <stop offset="100%" stop-color="#1d4480"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="80%" cy="0%" r="80%">
+      <stop offset="0%"  stop-color="#d4af37" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#d4af37" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0%" cy="100%" r="80%">
+      <stop offset="0%"  stop-color="#1d4480" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#1d4480" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M60 0 L0 0 0 60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+    </pattern>
+    <pattern id="dots" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="rgba(212,175,55,0.18)"/>
+    </pattern>
+  </defs>
+
+  <!-- background -->
+  <rect width="100%" height="100%" fill="url(#bg)"/>
+  <rect width="100%" height="100%" fill="url(#warm)"/>
+  <rect width="100%" height="100%" fill="url(#cool)"/>
+  <rect width="100%" height="100%" fill="url(#grid)" opacity="0.6"/>
+  <rect width="100%" height="100%" fill="url(#dots)" opacity="0.5"/>
+
+  <!-- decorative circles -->
+  <circle cx="96" cy="90" r="50" fill="#d4af37" fill-opacity="0.08"/>
+  <circle cx="704" cy="430" r="80" fill="#e5c25a" fill-opacity="0.06"/>
+
+  <text x="624" y="460" text-anchor="end" font-family="&quot;Cormorant Garamond&quot;, Georgia, serif" font-size="525" font-weight="500" fill="#d4af37" fill-opacity="0.10" letter-spacing="-0.04em">AML</text>
+
+  <!-- icon plate -->
+  <g transform="translate(368, 206)">
+    <rect x="0" y="0" width="64" height="64" rx="16" fill="rgba(255,255,255,0.08)" stroke="rgba(212,175,55,0.35)" stroke-width="1"/>
+    <g transform="translate(20,20)" fill="none" stroke="#d4af37" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </g>
+  </g>
+
+  <!-- eyebrow -->
+  <text x="50%" y="300" text-anchor="middle"
+        font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="600"
+        fill="#d4af37" letter-spacing="3.2">SERVICE · PLACEHOLDER</text>
+
+  <!-- title (serif) -->
+  <text x="50%" y="332" text-anchor="middle"
+        font-family="&quot;Cormorant Garamond&quot;, Georgia, serif" font-size="24" font-weight="600"
+        fill="rgba(255,255,255,0.92)">AML / CFT</text>
+
+  <!-- subtitle / replace hint -->
+  <text x="50%" y="356" text-anchor="middle"
+        font-family="Inter, system-ui, sans-serif" font-size="11"
+        fill="rgba(255,255,255,0.55)" letter-spacing="0.5">Replace with relevant service photo</text>
+
+  <!-- corner: PLACEHOLDER badge -->
+  <g transform="translate(18, 18)">
+    <rect x="0" y="0" width="118" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(212,175,55,0.4)" stroke-width="1"/>
+    <circle cx="12" cy="11" r="3.5" fill="#d4af37"/>
+    <text x="22" y="15" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="600" fill="rgba(255,255,255,0.85)" letter-spacing="2">PLACEHOLDER</text>
+  </g>
+
+  <!-- subtle border -->
+  <rect x="0.5" y="0.5" width="799" height="499" fill="none" stroke="rgba(212,175,55,0.18)" stroke-width="1"/>
+</svg>

@@ -166,47 +166,71 @@ services_body = page_header(
       <h2>Independent assurance the market trusts.</h2>
     </div>
     <div class="service-grid">
-      <a href="statutory-audit.html" class="service-card reveal">
+      <a href="statutory-audit.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/statutory-audit.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/statutory-audit.svg" alt="Statutory Audit" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">01</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
         <h3>Statutory Audit</h3>
         <p>IFRS-aligned external audits that satisfy UAE corporate law and Free Zone authority requirements.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="internal-audit.html" class="service-card reveal">
+      <a href="internal-audit.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/internal-audit.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/internal-audit.svg" alt="Internal Audit" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">02</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
         <h3>Internal Audit</h3>
         <p>Risk-based internal audit, controls assurance and operational efficiency reviews — co-source or full outsource.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="forensic-audit.html" class="service-card reveal">
+      <a href="forensic-audit.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/forensic-audit.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/forensic-audit.svg" alt="Forensic Audit" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">03</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
         <h3>Forensic Audit</h3>
         <p>Fraud investigations, asset tracing and litigation support — with court-ready evidence and discreet handling.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="free-zone.html" class="service-card reveal">
+      <a href="free-zone.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/free-zone.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/free-zone.svg" alt="Free Zone" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">04</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4 8 4v14"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/></svg></div>
         <h3>Free Zone Audit</h3>
         <p>Approved auditors across DMCC, JAFZA, DAFZA, ADGM, DIFC, RAKEZ &amp; more — licence-renewal aligned.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="due-diligence.html" class="service-card reveal">
+      <a href="due-diligence.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/due-diligence.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/due-diligence.svg" alt="Due Diligence" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">05</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="8"/></svg></div>
         <h3>Due Diligence</h3>
         <p>Financial, tax and operational due diligence for buyers, sellers and lenders. Surface the truth before signing.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="accounting.html" class="service-card reveal">
+      <a href="accounting.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/accounting.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/accounting.svg" alt="Accounting" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">06</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v18H2z"/><path d="M2 9h20"/><path d="M9 21V9"/></svg></div>
         <h3>Accounting &amp; Bookkeeping</h3>
         <p>Cloud-first outsourced accounting — IFRS-compliant, audit-ready monthly management accounts by WD5.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
     </div>
   </div>
@@ -219,26 +243,38 @@ services_body = page_header(
       <h2>End-to-end UAE tax — from registration to FTA representation.</h2>
     </div>
     <div class="service-grid">
-      <a href="corporate-tax.html" class="service-card reveal">
+      <a href="corporate-tax.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/corporate-tax.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/corporate-tax.svg" alt="Corporate Tax" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">07</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
         <h3>Corporate Tax</h3>
         <p>Registration, structuring, returns and advisory for UAE&rsquo;s 9% corporate tax — with optimisation planning.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="vat.html" class="service-card reveal">
+      <a href="vat.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/vat.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/vat.svg" alt="Vat" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">08</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3l-3 18"/><path d="M18 3l-3 18"/></svg></div>
         <h3>VAT Services</h3>
         <p>VAT registration, return preparation, refund recovery, audits and FTA representation.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="excise-tax.html" class="service-card reveal">
+      <a href="excise-tax.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/excise-tax.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/excise-tax.svg" alt="Excise Tax" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">09</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v4H3z"/><path d="M5 7v14h14V7"/><path d="M9 11h6"/></svg></div>
         <h3>Excise Tax</h3>
         <p>Registration, calculation, filing and advisory for businesses dealing in excisable goods.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
     </div>
   </div>
@@ -251,19 +287,27 @@ services_body = page_header(
       <h2>Stay ahead of UAE regulators — quietly, and in writing.</h2>
     </div>
     <div class="service-grid">
-      <a href="aml-compliance.html" class="service-card reveal">
+      <a href="aml-compliance.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/aml-compliance.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/aml-compliance.svg" alt="Aml Compliance" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">10</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
         <h3>AML/CFT Compliance</h3>
         <p>Risk assessment, policies, goAML registration, training and independent AML audits for DNFBPs and financial businesses.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="esr.html" class="service-card reveal">
+      <a href="esr.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/esr.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/esr.svg" alt="Esr" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">11</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
         <h3>ESR Compliance</h3>
         <p>Economic Substance Regulations — scoping, notification, annual report and regulator response support.</p>
         <span class="read">Learn more <span class="arrow">→</span></span>
+        </div>
       </a>
     </div>
   </div>
@@ -291,6 +335,26 @@ write('services.html', shell(
 ))
 
 # --------------------------------------------------------------- Service detail page builder
+# Map service slug to its placeholder image (in assets/img/services/SLUG.svg)
+SERVICE_IMG = {
+    'statutory-audit':    'services/statutory-audit.svg',
+    'internal-audit':     'services/internal-audit.svg',
+    'forensic-audit':     'services/forensic-audit.svg',
+    'free-zone':          'services/free-zone.svg',
+    'due-diligence':      'services/due-diligence.svg',
+    'corporate-tax':      'services/corporate-tax.svg',
+    'vat':                'services/vat.svg',
+    'excise-tax':         'services/excise-tax.svg',
+    'accounting':         'services/accounting.svg',
+    'aml-compliance':     'services/aml-compliance.svg',
+    'esr':                'services/esr.svg',
+    'feasibility-studies':'services/feasibility.svg',
+    'business-setup':     'services/business-setup.svg',
+    'mainland-setup':     'services/mainland-setup.svg',
+    'offshore-setup':     'services/offshore-setup.svg',
+    'pro-services':       'services/pro-services.svg',
+}
+
 def service_page(slug, name, eyebrow, hero_title, hero_sub, intro, features, process_steps, faqs, why_us):
     feat_html = '\n'.join(
         f'''        <li>
@@ -313,7 +377,9 @@ def service_page(slug, name, eyebrow, hero_title, hero_sub, intro, features, pro
         </li>''' for t, d in why_us
     )
 
-    body = page_header(eyebrow, hero_title, hero_sub, name) + f'''
+    banner = SERVICE_IMG.get(slug)
+    body = page_header(eyebrow, hero_title, hero_sub, name,
+                       banner_image=banner, banner_alt=f"{name} — Kingston") + f'''
 <section>
   <div class="container service-layout">
     <div class="service-content reveal">
@@ -1175,13 +1241,17 @@ FREE_ZONES = [
 
 def fz_card(z):
     tags_html = ''.join(f'<span class="fz-tag">{t}</span>' for t in z['tags'])
-    return f'''<a class="fz-card reveal" href="free-zone-{z['slug']}.html">
-        <div class="fz-emirate">{z['emirate']} · est. {z['established']}</div>
-        <h3>{z['name']}</h3>
-        <div class="fz-fullname">{z['full']}</div>
-        <p class="fz-tagline">{z['tagline']}</p>
-        <div class="fz-tags">{tags_html}</div>
-        <span class="read">Setup details <span class="arrow">→</span></span>
+    return f'''<a class="fz-card has-image reveal" href="free-zone-{z['slug']}.html">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/freezones/{z['slug']}.svg with photo -->
+        <div class="img-frame ar-16x9"><img src="assets/img/freezones/{z['slug']}.svg" alt="{z['name']} Free Zone" loading="lazy"/></div>
+        <div class="card-body">
+          <div class="fz-emirate">{z['emirate']} · est. {z['established']}</div>
+          <h3>{z['name']}</h3>
+          <div class="fz-fullname">{z['full']}</div>
+          <p class="fz-tagline">{z['tagline']}</p>
+          <div class="fz-tags">{tags_html}</div>
+          <span class="read">Setup details <span class="arrow">→</span></span>
+        </div>
       </a>'''
 
 # --- Free Zone hub page (renamed: was free-zone.html for audit, now we keep that as audit page,
@@ -1275,7 +1345,9 @@ def free_zone_page(z):
         f"{z['name']} · {z['emirate']}",
         f"Set up your business in {z['name']} — {z['full']}.",
         z['tagline'],
-        f"Free Zones · {z['name']}"
+        f"Free Zones · {z['name']}",
+        banner_image=f"freezones/{z['slug']}.svg",
+        banner_alt=f"{z['name']} Free Zone"
     ) + f'''
 <section>
   <div class="container service-layout">
@@ -1363,26 +1435,38 @@ business_setup_body = page_header(
       <p>The right answer depends on what you sell, who you sell it to, and where your customers are. We will recommend in writing — not just sell you the highest-margin licence.</p>
     </div>
     <div class="service-grid" style="grid-template-columns:repeat(3,1fr)">
-      <a href="mainland-setup.html" class="service-card reveal">
+      <a href="mainland-setup.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/mainland-setup.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/mainland-setup.svg" alt="Mainland Setup" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">01</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V11l7-7 7 7v10"/><path d="M9 21V12h6v9"/></svg></div>
         <h3>Mainland Setup</h3>
         <p>The choice when you need to operate freely across the UAE, sell to government, or open multiple physical locations.</p>
         <span class="read">Mainland details <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="freezones.html" class="service-card reveal">
+      <a href="freezones.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/free-zone.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/free-zone.svg" alt="Freezones" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">02</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
         <h3>Free Zone Setup</h3>
         <p>100% foreign ownership, full repatriation, sector-focused regulators — across DMCC, JAFZA, DIFC, ADGM and more.</p>
         <span class="read">Browse Free Zones <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="offshore-setup.html" class="service-card reveal">
+      <a href="offshore-setup.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/offshore-setup.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/offshore-setup.svg" alt="Offshore Setup" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">03</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c0-5 4-9 9-9s9 4 9 9-4 9-9 9-9-4-9-9z"/><path d="M12 3v18"/></svg></div>
         <h3>Offshore Setup</h3>
         <p>JAFZA Offshore, RAK ICC and Ajman Offshore — for holding structures, asset protection and international trading.</p>
         <span class="read">Offshore details <span class="arrow">→</span></span>
+        </div>
       </a>
     </div>
   </div>
@@ -1395,26 +1479,38 @@ business_setup_body = page_header(
       <h2>Setup is the start, not the finish.</h2>
     </div>
     <div class="service-grid">
-      <a href="pro-services.html" class="service-card reveal">
+      <a href="pro-services.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/pro-services.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/pro-services.svg" alt="Pro Services" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">04</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg></div>
         <h3>PRO &amp; Visa Services</h3>
         <p>Investor, employee and family visas; Emirates ID; medicals; attestations and ongoing PRO support.</p>
         <span class="read">PRO details <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="feasibility-studies.html" class="service-card reveal">
+      <a href="feasibility-studies.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/feasibility.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/feasibility.svg" alt="Feasibility Studies" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">05</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
         <h3>Feasibility Studies</h3>
         <p>Market sizing, financial modelling and viability analysis — done before you commit capital, not after.</p>
         <span class="read">Feasibility details <span class="arrow">→</span></span>
+        </div>
       </a>
-      <a href="accounting.html" class="service-card reveal">
+      <a href="accounting.html" class="service-card has-image reveal">
+        <!-- IMAGE PLACEHOLDER · replace assets/img/services/accounting.svg with photo -->
+        <div class="img-frame ar-3x2"><img src="assets/img/services/accounting.svg" alt="Accounting" loading="lazy"/></div>
+        <div class="card-body">
         <span class="num">06</span>
         <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v18H2z"/><path d="M2 9h20"/><path d="M9 21V9"/></svg></div>
         <h3>Accounting &amp; Bookkeeping</h3>
         <p>Day-one cloud accounting, monthly close by working day five, and audit-ready books from your first invoice.</p>
         <span class="read">Accounting details <span class="arrow">→</span></span>
+        </div>
       </a>
     </div>
   </div>
