@@ -218,7 +218,7 @@ section { padding: var(--section-y) 0; position: relative; }
 .nav-links .has-menu { position: relative; }
 .dropdown {
   position: absolute; top: 100%; left: 0;
-  min-width: 560px;
+  min-width: 780px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -228,9 +228,12 @@ section { padding: var(--section-y) 0; position: relative; }
   transform: translateY(8px);
   transition: opacity .22s ease, transform .22s ease, visibility .22s;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 4px 18px;
 }
+.has-menu:hover .dropdown { transform: translateY(0); }
+.has-menu .dropdown { right: auto; }
+.has-menu:nth-last-child(-n+2) .dropdown { right: 0; left: auto; }
 .dropdown-group {
   display: flex; flex-direction: column;
 }
@@ -1022,8 +1025,241 @@ section { padding: var(--section-y) 0; position: relative; }
 .footer-social a:hover { background: var(--gold-600); color: var(--navy-900); }
 
 /* ============================================================
-   SLIDERS
+   WhatsApp floating chat
    ============================================================ */
+.wa-float {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 90;
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 12px;
+}
+.wa-bubble {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  color: var(--ink-700);
+  padding: 12px 18px 12px 14px;
+  border-radius: 999px 999px 4px 999px;
+  box-shadow: 0 18px 40px -16px rgba(10,31,61,.35), 0 2px 8px rgba(10,31,61,.12);
+  font-size: .92rem; font-weight: 500;
+  max-width: 320px;
+  border: 1px solid var(--line);
+  animation: wa-pop .35s ease;
+  line-height: 1.35;
+}
+.wa-bubble.is-visible { display: inline-flex; }
+.wa-bubble strong { color: var(--navy-900); display: block; font-weight: 600; }
+.wa-bubble small { font-size: .78rem; color: var(--ink-300); }
+.wa-bubble .wa-close {
+  position: absolute;
+  top: -8px; right: -8px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--line);
+  display: grid; place-items: center;
+  font-size: 14px; line-height: 1;
+  color: var(--ink-500);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.wa-bubble-wrap { position: relative; }
+
+@keyframes wa-pop {
+  from { opacity: 0; transform: translateY(8px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.wa-btn {
+  position: relative;
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: #25d366;
+  color: #fff;
+  display: grid; place-items: center;
+  box-shadow: 0 18px 40px -10px rgba(37,211,102,.55), 0 4px 14px rgba(10,31,61,.18);
+  transition: transform .25s, box-shadow .25s;
+  cursor: pointer;
+}
+.wa-btn:hover { transform: scale(1.06); color: #fff; }
+.wa-btn::before {
+  content: ""; position: absolute; inset: 0;
+  border-radius: 50%;
+  background: #25d366;
+  z-index: -1;
+  animation: wa-pulse 2s ease-out infinite;
+}
+@keyframes wa-pulse {
+  0%   { transform: scale(1);   opacity: .55; }
+  80%  { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.wa-btn svg { width: 30px; height: 30px; }
+
+@media (max-width: 540px) {
+  .wa-float { right: 16px; bottom: 16px; }
+  .wa-btn { width: 54px; height: 54px; }
+  .wa-btn svg { width: 26px; height: 26px; }
+  .wa-bubble { font-size: .86rem; padding: 10px 14px 10px 12px; }
+}
+
+/* ============================================================
+   Free Zone hub
+   ============================================================ */
+.fz-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+@media (max-width: 960px) { .fz-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 540px) { .fz-grid { grid-template-columns: 1fr; } }
+
+.fz-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 28px 28px 26px;
+  display: block;
+  transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
+  overflow: hidden;
+}
+.fz-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold-600), var(--gold-400));
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .35s ease;
+}
+.fz-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: transparent; }
+.fz-card:hover::before { transform: scaleX(1); }
+.fz-card .fz-emirate {
+  font-size: .72rem; letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--gold-700); font-weight: 600;
+  margin-bottom: 8px;
+}
+.fz-card h3 {
+  font-size: 1.4rem;
+  margin-bottom: 6px;
+}
+.fz-card .fz-fullname {
+  font-size: .82rem; color: var(--ink-300);
+  margin-bottom: 16px;
+}
+.fz-card .fz-tagline {
+  font-size: .94rem;
+  color: var(--ink-500);
+  margin-bottom: 18px;
+  min-height: 60px;
+}
+.fz-card .fz-tags {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 18px;
+}
+.fz-card .fz-tag {
+  font-size: .72rem; font-weight: 500;
+  padding: 4px 10px;
+  background: var(--navy-50);
+  color: var(--navy-700);
+  border-radius: 999px;
+}
+.fz-card .read {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .85rem; font-weight: 600;
+  color: var(--navy-900); letter-spacing: .04em;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.fz-card .arrow { transition: transform .25s; }
+.fz-card:hover .arrow { transform: translateX(4px); }
+
+/* Free-zone detail key facts */
+.fz-facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin: 24px 0 0;
+}
+@media (max-width: 720px) { .fz-facts { grid-template-columns: repeat(2, 1fr); } }
+.fz-fact {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+}
+.fz-fact .lbl {
+  font-size: .72rem; letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--ink-300); font-weight: 600;
+  margin-bottom: 6px;
+}
+.fz-fact .val {
+  font-family: var(--font-serif);
+  font-size: 1.35rem; color: var(--navy-900);
+  font-weight: 600; line-height: 1.15;
+}
+
+/* Pricing tiers */
+.tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+@media (max-width: 960px) { .tiers { grid-template-columns: 1fr; } }
+.tier {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  position: relative;
+  transition: transform .25s, box-shadow .25s, border-color .25s;
+}
+.tier:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+.tier.featured {
+  background: linear-gradient(160deg, var(--navy-900), var(--navy-700));
+  color: #fff;
+  border-color: transparent;
+}
+.tier.featured h3, .tier.featured .price { color: #fff; }
+.tier.featured .feats li { color: #d8dee9; border-bottom-color: rgba(255,255,255,.08); }
+.tier.featured .feats svg { stroke: var(--gold-400); }
+.tier.featured .ribbon {
+  position: absolute; top: 18px; right: 18px;
+  font-size: .72rem; letter-spacing: .14em;
+  text-transform: uppercase; font-weight: 600;
+  background: var(--gold-500); color: var(--navy-900);
+  padding: 5px 10px; border-radius: 999px;
+}
+.tier .lbl {
+  font-size: .72rem; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--gold-700);
+  font-weight: 600;
+}
+.tier.featured .lbl { color: var(--gold-400); }
+.tier h3 { margin: 8px 0 6px; }
+.tier .price {
+  font-family: var(--font-serif);
+  font-size: 2.4rem; font-weight: 600;
+  color: var(--navy-900); margin: 8px 0;
+}
+.tier .price small { font-size: .55em; font-weight: 500; color: var(--ink-300); }
+.tier.featured .price small { color: rgba(255,255,255,.55); }
+.tier .from { font-size: .8rem; color: var(--ink-300); }
+.tier.featured .from { color: rgba(255,255,255,.55); }
+.tier .feats { margin: 22px 0; }
+.tier .feats li {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: .9rem;
+}
+.tier .feats li:last-child { border-bottom: 0; }
+.tier .feats svg { width: 16px; height: 16px; stroke: var(--gold-600); flex-shrink: 0; margin-top: 4px; }
+.tier .btn { width: 100%; }
 
 /* ---------- Hero slider ---------- */
 .hero-slider {

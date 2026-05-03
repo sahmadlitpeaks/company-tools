@@ -2,6 +2,43 @@
 (function () {
   'use strict';
 
+  // ---------- WhatsApp floating chat (auto-injected on every page) ----------
+  (function injectWhatsApp() {
+    if (document.querySelector('.wa-float')) return;
+    const phone = '971508747098';
+    const msg = encodeURIComponent('Hi Kingston, I would like to enquire about your services.');
+    const wrap = document.createElement('div');
+    wrap.className = 'wa-float';
+    wrap.innerHTML = `
+      <div class="wa-bubble-wrap">
+        <div class="wa-bubble" role="status">
+          <span>
+            <strong>Need a hand?</strong>
+            <small>Chat with a Kingston advisor on WhatsApp</small>
+          </span>
+          <button class="wa-close" aria-label="Dismiss">×</button>
+        </div>
+      </div>
+      <a class="wa-btn" href="https://wa.me/${phone}?text=${msg}" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp">
+        <svg viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+          <path d="M19.11 17.205c-.372 0-1.088 1.39-1.518 1.39-.156 0-.382-.144-.806-.402-1.197-.726-2.16-1.578-2.973-2.83-.146-.224-.376-.488-.376-.776 0-.484.652-.74.916-1.226.236-.434.07-.808-.122-1.198-.196-.396-.838-2.022-1.146-2.638-.282-.566-.572-.494-.812-.494-.226 0-.484-.026-.74-.026s-.66.084-1.014.404c-.36.328-1.342 1.246-1.342 3.024 0 1.78 1.298 3.5 1.49 3.74.196.244 2.522 4.014 6.252 5.466 3.094 1.204 3.728.984 4.402.92.674-.062 2.182-.876 2.494-1.728.314-.852.314-1.582.218-1.728-.092-.142-.336-.226-.706-.412-.37-.184-2.18-1.072-2.518-1.196-.336-.124-.578-.184-.82.182zM16.026 32c-2.788 0-5.476-.83-7.78-2.402L0 32l2.494-7.39A14.02 14.02 0 0 1 0 16C0 7.178 7.18 0 16.024 0c8.85 0 16.01 7.178 16.01 16.026 0 8.844-7.16 16.024-16.01 16.024zm.024-29.418c-7.4 0-13.4 6-13.4 13.4 0 2.93.95 5.706 2.74 8.026l-1.46 4.32 4.474-1.42c2.247 1.674 4.93 2.46 7.65 2.46 7.4 0 13.4-6 13.4-13.4S23.45 2.582 16.05 2.582z"/>
+        </svg>
+      </a>
+    `;
+    document.body.appendChild(wrap);
+
+    const bubble = wrap.querySelector('.wa-bubble');
+    const close  = wrap.querySelector('.wa-close');
+    const STORAGE_KEY = 'wa-bubble-dismissed';
+    if (sessionStorage.getItem(STORAGE_KEY) !== '1') {
+      setTimeout(() => bubble.classList.add('is-visible'), 1800);
+    }
+    close && close.addEventListener('click', () => {
+      bubble.classList.remove('is-visible');
+      sessionStorage.setItem(STORAGE_KEY, '1');
+    });
+  })();
+
   // Sticky header shadow
   const header = document.querySelector('.site-header');
   if (header) {

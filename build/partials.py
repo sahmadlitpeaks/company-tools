@@ -58,6 +58,12 @@ SERVICE_LINKS = [
     ('accounting.html',      'Accounting &amp; Bookkeeping'),
     ('aml-compliance.html',  'AML/CFT Compliance'),
     ('esr.html',             'ESR Compliance'),
+    ('feasibility-studies.html', 'Feasibility Studies'),
+    ('business-setup.html',  'Business Setup'),
+    ('mainland-setup.html',  'Mainland Setup'),
+    ('freezones.html',       'Free Zone Setup'),
+    ('offshore-setup.html',  'Offshore Setup'),
+    ('pro-services.html',    'PRO &amp; Visa Services'),
 ]
 
 SERVICE_GROUPS = [
@@ -66,15 +72,23 @@ SERVICE_GROUPS = [
         ('internal-audit.html',  'Internal Audit'),
         ('forensic-audit.html',  'Forensic Audit'),
         ('free-zone.html',       'Free Zone Audit'),
+        ('due-diligence.html',   'Due Diligence'),
     ]),
     ('Tax, Advisory &amp; Compliance', [
         ('corporate-tax.html',   'Corporate Tax'),
         ('vat.html',             'VAT Services'),
         ('excise-tax.html',      'Excise Tax'),
-        ('due-diligence.html',   'Due Diligence'),
         ('accounting.html',      'Accounting &amp; Bookkeeping'),
         ('aml-compliance.html',  'AML/CFT Compliance'),
         ('esr.html',             'ESR Compliance'),
+        ('feasibility-studies.html', 'Feasibility Studies'),
+    ]),
+    ('Business Setup', [
+        ('business-setup.html',  'All Setup Options'),
+        ('mainland-setup.html',  'Mainland Setup'),
+        ('freezones.html',       'Free Zone Setup'),
+        ('offshore-setup.html',  'Offshore Setup'),
+        ('pro-services.html',    'PRO &amp; Visa Services'),
     ]),
 ]
 
@@ -216,24 +230,30 @@ def footer():
         </div>
       </div>
       <div>
-        <h5>Audit &amp; Assurance</h5>
+        <h5>Audit &amp; Tax</h5>
         <div class="footer-links">
           <a href="statutory-audit.html">Statutory Audit</a>
           <a href="internal-audit.html">Internal Audit</a>
           <a href="forensic-audit.html">Forensic Audit</a>
           <a href="free-zone.html">Free Zone Audit</a>
           <a href="due-diligence.html">Due Diligence</a>
-        </div>
-      </div>
-      <div>
-        <h5>Tax &amp; Compliance</h5>
-        <div class="footer-links">
           <a href="corporate-tax.html">Corporate Tax</a>
           <a href="vat.html">VAT Services</a>
           <a href="excise-tax.html">Excise Tax</a>
+        </div>
+      </div>
+      <div>
+        <h5>Advisory &amp; Setup</h5>
+        <div class="footer-links">
+          <a href="business-setup.html">Business Setup</a>
+          <a href="mainland-setup.html">Mainland Setup</a>
+          <a href="freezones.html">Free Zone Setup</a>
+          <a href="offshore-setup.html">Offshore Setup</a>
+          <a href="pro-services.html">PRO &amp; Visa</a>
           <a href="accounting.html">Accounting</a>
           <a href="aml-compliance.html">AML/CFT</a>
           <a href="esr.html">ESR</a>
+          <a href="feasibility-studies.html">Feasibility Studies</a>
         </div>
       </div>
       <div>

@@ -950,4 +950,678 @@ write('contact.html', shell(
     "contact", contact_body
 ))
 
+# =====================================================================
+# FREE ZONES — hub + per-zone pages
+# =====================================================================
+
+FREE_ZONES = [
+    {
+        "slug": "dmcc", "name": "DMCC", "full": "Dubai Multi Commodities Centre",
+        "emirate": "Dubai", "established": "2002",
+        "tagline": "The world's #1 free zone — Dubai's powerhouse for trading, commodities, crypto, fintech and family business.",
+        "tags": ["Trading", "Commodities", "Crypto", "Family Office"],
+        "fact_focus": "Trading &amp; Commodities", "fact_setup": "From 1–2 weeks",
+        "fact_visas": "Up to 6 (Flexi)", "fact_office": "Flexi-desk to HQ",
+        "intro": '''<p>DMCC consistently tops the Financial Times' Global Free Zones of the Year ranking — and for good reason. Twenty-something years on, it has scaled from a commodities cluster into a 25,000-business community housing trading houses, crypto exchanges, family offices, fintech firms, professional services and beyond. If you are scaling a UAE business with international ambition, DMCC is on the shortlist.</p>
+        <p>Kingston is registered with DMCC as an approved auditor. We handle the full setup — entity structuring, licence, visa quotas, office, opening bank account — and stay on as your auditor and tax advisor for the years that follow.</p>''',
+        "benefits": [
+            ("100% foreign ownership", "Full ownership of your DMCC entity — no UAE national shareholder required."),
+            ("0% personal &amp; 9% corporate tax", "Qualifying Free Zone Persons can access the 0% corporate tax rate on qualifying income."),
+            ("World-class infrastructure", "JLT business district with metro, hotels, restaurants and a thriving tenant community."),
+            ("Easy visa quotas", "Visas tied to your office size — Flexi-desk supports up to 6 visas, full offices scale further."),
+            ("Wide activity list", "Over 600 permitted business activities — pick multiple under one licence."),
+            ("Strong banking relationships", "Most UAE banks have streamlined onboarding for DMCC-licensed companies."),
+        ],
+        "faqs": [
+            ("How long does DMCC company setup take?", "For a clean profile, typical timeline is 1–2 weeks from name approval to trade licence. Bank account opening adds another 2–4 weeks."),
+            ("What is the minimum share capital for DMCC?", "DMCC has no mandatory paid-up share capital for most activities. We will confirm any activity-specific capital at engagement."),
+            ("Can I get residency through a DMCC company?", "Yes — investor and employee residence visas are issued via DMCC and tied to your office size."),
+            ("Does DMCC require an annual audit?", "Yes — every DMCC company must submit annual audited financial statements via the DMCC eAudit portal. Kingston is an approved DMCC auditor."),
+        ]
+    },
+    {
+        "slug": "jafza", "name": "JAFZA", "full": "Jebel Ali Free Zone Authority",
+        "emirate": "Dubai", "established": "1985",
+        "tagline": "The Middle East's largest free zone — purpose-built for logistics, manufacturing and re-export at scale.",
+        "tags": ["Logistics", "Manufacturing", "Warehousing", "Trade"],
+        "fact_focus": "Logistics &amp; Industrial", "fact_setup": "2–4 weeks",
+        "fact_visas": "Office-based", "fact_office": "Warehouses, plots, offices",
+        "intro": '''<p>JAFZA sits next to Jebel Ali Port — the world's ninth-busiest container port — and Al Maktoum International, giving it unrivalled multi-modal connectivity. For businesses that move physical goods, JAFZA is rarely just a free zone choice. It is the free zone choice.</p>
+        <p>Kingston handles JAFZA setup for trading, logistics, light manufacturing and warehousing businesses, and stays on as your audit and tax partner.</p>''',
+        "benefits": [
+            ("Adjacent to Jebel Ali Port", "Direct connectivity to the world's ninth-busiest container port — minutes to ship from your warehouse."),
+            ("Flexible facilities", "From offices and plug-and-play warehouses to land-lease industrial plots up to 1m sq ft."),
+            ("100% repatriation", "100% repatriation of capital and profits, with no foreign exchange controls."),
+            ("Public listing route", "JAFZA Offshore companies have a route to listing on UAE exchanges — useful for groups eyeing IPO."),
+            ("Logistics-grade utilities", "Industrial-grade power, water, gas and waste handling built for production-scale operations."),
+            ("Long-term lease security", "25-year leases on industrial land, renewable — supports decade-plus capex commitments."),
+        ],
+        "faqs": [
+            ("Is JAFZA a good fit for an e-commerce business?", "Yes — JAFZA hosts many e-commerce and 3PL operations because of its warehousing, last-mile and re-export advantages. We will advise on the right structure."),
+            ("What licences does JAFZA issue?", "Trading, service, industrial, e-commerce, logistics and national industrial licences. Each maps to permitted activities and facility types."),
+            ("Can I lease industrial land?", "Yes — JAFZA offers industrial plot leases, typically 25 years, with build-to-suit and pre-built warehouse options."),
+            ("Does JAFZA require an annual audit?", "Yes — JAFZA companies must submit annual audited financial statements. Kingston is a JAFZA-approved auditor."),
+        ]
+    },
+    {
+        "slug": "difc", "name": "DIFC", "full": "Dubai International Financial Centre",
+        "emirate": "Dubai", "established": "2004",
+        "tagline": "The Middle East's leading financial hub — common law, English-language regulator, and the place to be for funds, banks, fintech and law firms.",
+        "tags": ["Financial Services", "Fintech", "Funds", "Wealth"],
+        "fact_focus": "Financial &amp; Professional Services", "fact_setup": "6–12 weeks",
+        "fact_visas": "Tied to substance", "fact_office": "Fitted &amp; serviced",
+        "intro": '''<p>DIFC is a different animal. An independent common-law jurisdiction inside Dubai, regulated by the Dubai Financial Services Authority (DFSA), with its own court system and English-language commercial law. If you are running a regulated financial business — a fund manager, family office, bank, insurer, fintech, law firm — this is typically the right address.</p>
+        <p>Kingston advises on DIFC entity structuring, regulatory licensing strategy, ongoing audit (under IFRS) and corporate tax for DIFC entities — including Qualifying Free Zone Person testing.</p>''',
+        "benefits": [
+            ("Common-law jurisdiction", "Independent civil and commercial laws based on international standards — predictable for global investors."),
+            ("DFSA regulation", "An internationally respected regulator — your DIFC licence carries weight with global counterparties."),
+            ("100% foreign ownership", "No UAE national shareholder required — full control of your entity."),
+            ("Family Wealth Centre", "Bespoke regime for single-family offices, holding structures and prescribed companies."),
+            ("World-class talent pool", "DIFC's tenant community gives you access to a deep network of bankers, advisors, lawyers and operators."),
+            ("Innovation Hub", "Dedicated fintech accelerator and licence regime for fintech startups and innovation-stage businesses."),
+        ],
+        "faqs": [
+            ("Is DIFC the right zone for a fund manager?", "If you are running a regulated investment business, yes. DIFC offers fund manager, fund management, advisory and wealth-management licences under the DFSA."),
+            ("How long does a DIFC licence take?", "For non-regulated entities, 4–8 weeks. For regulated financial entities, 12–24 weeks depending on the licence category and your readiness."),
+            ("Are DIFC entities subject to UAE corporate tax?", "Yes — DIFC entities are within the scope of UAE corporate tax, but most can qualify for the 0% rate as a Qualifying Free Zone Person if substance and qualifying-income tests are met. Kingston handles this analysis."),
+            ("Does DIFC require an audit?", "Yes — DIFC requires annual audited financial statements under IFRS. DFSA-regulated entities also have additional regulatory reporting requirements."),
+        ]
+    },
+    {
+        "slug": "adgm", "name": "ADGM", "full": "Abu Dhabi Global Market",
+        "emirate": "Abu Dhabi", "established": "2015",
+        "tagline": "Abu Dhabi's international financial centre — an English common-law jurisdiction on Al Maryah Island.",
+        "tags": ["Financial Services", "Family Offices", "Fintech", "Holding"],
+        "fact_focus": "Finance &amp; Family Wealth", "fact_setup": "4–10 weeks",
+        "fact_visas": "Tied to substance", "fact_office": "Fitted",
+        "intro": '''<p>ADGM is to Abu Dhabi what DIFC is to Dubai — a self-contained common-law financial centre with its own regulator (the FSRA), its own court system, and English-language commercial law. For groups that want a Big Four city's regulatory depth with Abu Dhabi's stability, ADGM is increasingly the choice.</p>
+        <p>Kingston supports ADGM entity formation, FSRA licensing strategy, audit under IFRS and corporate-tax compliance for ADGM-licensed entities.</p>''',
+        "benefits": [
+            ("Common-law jurisdiction", "English common law applies directly — a precedent-rich, internationally familiar legal regime."),
+            ("FSRA regulation", "Internationally respected financial regulator with category-based licensing across the financial services spectrum."),
+            ("Strong holding-company regime", "ADGM's holding-company and SPV regimes are popular with UAE-anchored regional groups."),
+            ("Family Office regime", "Tailored single and multi-family office regimes recognised by the FSRA."),
+            ("Foundations regime", "Common-law foundations — useful for succession, asset protection and philanthropy."),
+            ("Tech &amp; innovation focus", "Dedicated regimes for fintech (RegLab), DLT, virtual assets and AI/data businesses."),
+        ],
+        "faqs": [
+            ("ADGM or DIFC — which one is right for me?", "Both are common-law financial centres. DIFC is more central to Dubai's financial market; ADGM is the natural choice for Abu Dhabi-anchored groups, family offices and certain holding structures. We will advise based on activity, regulator preference and substance."),
+            ("Does ADGM offer a holding-company licence?", "Yes — ADGM is a popular jurisdiction for holding companies and SPVs, with a regime that accommodates regional and global structures."),
+            ("Is an ADGM licence subject to UAE corporate tax?", "Yes — ADGM entities fall within UAE corporate tax scope, with most able to qualify as Qualifying Free Zone Persons if the conditions are met."),
+            ("Does ADGM require an annual audit?", "Yes — annual audited financial statements under IFRS. FSRA-regulated entities have additional regulatory return requirements."),
+        ]
+    },
+    {
+        "slug": "dafza", "name": "DAFZA", "full": "Dubai Airport Free Zone",
+        "emirate": "Dubai", "established": "1996",
+        "tagline": "The hub for fast-moving, high-value goods — co-located with Dubai International Airport.",
+        "tags": ["Aviation", "Pharma", "Tech", "FMCG"],
+        "fact_focus": "Aviation &amp; High-value goods", "fact_setup": "2–4 weeks",
+        "fact_visas": "Office-based", "fact_office": "Warehouse &amp; office",
+        "intro": '''<p>DAFZA sits inside the Dubai International Airport perimeter — which means goods can be off-loaded from a freighter and into your warehouse without crossing customs into the country. For high-value, time-sensitive products — pharma, electronics, luxury goods — that matters.</p>
+        <p>Kingston handles DAFZA entity formation, audit under IFRS, and ongoing tax compliance.</p>''',
+        "benefits": [
+            ("Adjacent to Dubai International Airport", "Direct cargo access — ideal for time-sensitive, high-value or regulated goods."),
+            ("100% foreign ownership", "Full ownership without a UAE national partner."),
+            ("Customs-bonded zone", "Goods can move into and out of the zone without UAE customs duties — only on release into the local market."),
+            ("Fast incorporation", "Streamlined process — typical setup completes in 2–4 weeks."),
+            ("Strong pharma &amp; healthcare cluster", "Regulated pharma and life-science companies are common DAFZA tenants."),
+            ("Onsite government services", "Immigration, customs and other government services available within the zone."),
+        ],
+        "faqs": [
+            ("Why pick DAFZA over JAFZA for trading?", "DAFZA is built around airport cargo — better for high-value, low-volume, time-sensitive flow. JAFZA is built around sea-port and industrial scale. The right answer depends on your product."),
+            ("What licences does DAFZA issue?", "Trade, service, industrial and e-commerce licences — with activity lists tailored to airport-cluster businesses."),
+            ("Can I store goods in DAFZA without UAE customs duties?", "Yes — DAFZA is customs-bonded. Customs apply only when goods are released into the UAE local market."),
+            ("Is annual audit mandatory in DAFZA?", "Yes — DAFZA requires annual audited financial statements. Kingston is an approved auditor."),
+        ]
+    },
+    {
+        "slug": "rakez", "name": "RAKEZ", "full": "Ras Al Khaimah Economic Zone",
+        "emirate": "Ras Al Khaimah", "established": "2017",
+        "tagline": "The cost-effective free zone with industrial scale and emerging-business agility.",
+        "tags": ["Industrial", "Cost-effective", "SME", "E-commerce"],
+        "fact_focus": "Industry &amp; SMEs", "fact_setup": "1–3 weeks",
+        "fact_visas": "Office-based", "fact_office": "Co-working to plots",
+        "intro": '''<p>RAKEZ pulls together Ras Al Khaimah's economic zones into one platform that competes hard on cost and flexibility. For SMEs, e-commerce operations and industrial businesses that do not need a Dubai-postcode prestige play, RAKEZ frequently wins on total cost of ownership.</p>
+        <p>Kingston handles RAKEZ company formation, audits and tax compliance for businesses across the SME and industrial spectrum.</p>''',
+        "benefits": [
+            ("Cost-competitive packages", "Setup and renewal costs typically come in well below Dubai-based zones — material for early-stage businesses."),
+            ("Flexible facility options", "From co-working desks to industrial plots — the same zone scales with your business."),
+            ("Activity breadth", "Over 1,000 permitted activities — commercial, professional, industrial, educational, media."),
+            ("Quick incorporation", "Streamlined process — typical setup under 2 weeks."),
+            ("Strong industrial cluster", "Established manufacturing tenant base — building materials, chemicals, food, packaging."),
+            ("Easy renewal", "Renewals are typically straightforward and cheaper than Dubai zones."),
+        ],
+        "faqs": [
+            ("Can a RAKEZ company operate in Dubai?", "A RAKEZ company can do business with Dubai, but to physically operate in Dubai (lease an office, hire staff there) typically requires a branch or distributor arrangement."),
+            ("What types of licences does RAKEZ issue?", "Commercial, professional, service, industrial, educational, media and e-commerce licences."),
+            ("Is RAKEZ a good fit for industrial setup?", "Yes — RAKEZ has a strong industrial estate offering, with land, warehousing and pre-built facilities."),
+            ("Is annual audit mandatory in RAKEZ?", "Yes — annual audited financial statements are required. Kingston supports RAKEZ audit submissions."),
+        ]
+    },
+    {
+        "slug": "ifza", "name": "IFZA", "full": "International Free Zone Authority",
+        "emirate": "Dubai", "established": "2018",
+        "tagline": "Dubai's modern, fast and entrepreneur-friendly free zone — strong for service, consultancy and trading SMEs.",
+        "tags": ["SME", "Service", "Consultancy", "Trading"],
+        "fact_focus": "Service &amp; Consultancy", "fact_setup": "3–7 days",
+        "fact_visas": "1–6 typical", "fact_office": "Flexi-desk to office",
+        "intro": '''<p>IFZA has become a go-to for founders and consultants who want a Dubai-issued licence without the cost or complexity of larger zones. Setup is fast (often under a week), the activity list is broad, and the package economics work for solo founders and small teams.</p>
+        <p>Kingston runs IFZA company formation alongside the audit, tax and accounting work most IFZA clients also need.</p>''',
+        "benefits": [
+            ("Fast setup", "Trade licence often issued within 3–7 days of name approval."),
+            ("Cost-effective", "Packages start lower than DMCC, JAFZA and DIFC — designed for SME budgets."),
+            ("Up to 7 activities", "Most IFZA licences allow multiple business activities under one licence."),
+            ("Up to 6 visas", "Visa quotas scale with package — supports founders bringing family on dependent visas."),
+            ("Modern administrative system", "Fully digital portal — registrations, renewals and amendments handled online."),
+            ("Strong consultant ecosystem", "IFZA's tenant base is heavily service-oriented — useful network for B2B founders."),
+        ],
+        "faqs": [
+            ("How fast can I get an IFZA licence?", "From name approval to issued trade licence, often 3–7 working days for clean profiles."),
+            ("Does IFZA require physical office space?", "Most IFZA packages include a flexi-desk in their administrative office — sufficient for licence and visa purposes."),
+            ("Can I add visas later?", "Yes — visa quotas can typically be upgraded by changing package and (where required) physical space."),
+            ("Is annual audit mandatory in IFZA?", "Yes — IFZA requires annual audited financial statements for licensed entities. Kingston supports IFZA audit submissions."),
+        ]
+    },
+    {
+        "slug": "meydan", "name": "Meydan", "full": "Meydan Free Zone",
+        "emirate": "Dubai", "established": "2019",
+        "tagline": "A premium Dubai address — strong for founders, consultancies and crypto-adjacent businesses.",
+        "tags": ["Premium", "Founders", "Consultancy", "Crypto-friendly"],
+        "fact_focus": "Founders &amp; Consultancy", "fact_setup": "1–2 weeks",
+        "fact_visas": "Up to 6+", "fact_office": "Virtual to physical",
+        "intro": '''<p>Meydan Free Zone offers a Dubai-prestige licence with a relatively light operational footprint — virtual office options, broad activity lists, and a lean digital onboarding process. It has become popular with founders, consultancies and digital-asset adjacent businesses who want the Meydan / Dubai brand on their letterhead.</p>
+        <p>Kingston handles Meydan setup alongside the ongoing audit, tax and bookkeeping work that follows.</p>''',
+        "benefits": [
+            ("Premium Dubai address", "A &quot;Meydan, Dubai, UAE&quot; postcode that lifts perceived brand."),
+            ("Virtual office options", "Cost-effective virtual-office package with full registered address — fits remote-first businesses."),
+            ("Broad activity list", "Multiple activities permitted under a single licence — including consultancy, trading, e-commerce."),
+            ("Strong digital onboarding", "Quick, mostly-digital incorporation — limited document chase."),
+            ("Crypto-friendly mindset", "Open to virtual-asset adjacent activities (subject to licence type and approvals)."),
+            ("Founder-friendly visa packages", "Investor visa with dependent options — common founder set-up."),
+        ],
+        "faqs": [
+            ("Is Meydan suitable for crypto activities?", "Meydan can support some crypto-adjacent activities, but regulated virtual-asset business in the UAE is licensed by VARA (Virtual Assets Regulatory Authority) or other relevant bodies. Kingston helps map activity to the right authority."),
+            ("Can I get a residency visa with Meydan?", "Yes — Meydan supports investor visas and dependent visas, with quotas tied to package."),
+            ("How long does Meydan setup take?", "Typically 1–2 weeks for clean applications — straightforward, mostly digital."),
+            ("Is annual audit mandatory in Meydan?", "Yes — Meydan requires annual audited financial statements."),
+        ]
+    },
+    {
+        "slug": "shams", "name": "SHAMS", "full": "Sharjah Media City",
+        "emirate": "Sharjah", "established": "2017",
+        "tagline": "Sharjah's media-and-creative free zone — affordable, fast and friendly to digital creators.",
+        "tags": ["Media", "Creative", "Digital", "Affordable"],
+        "fact_focus": "Media &amp; Creative", "fact_setup": "1–2 weeks",
+        "fact_visas": "Office-based", "fact_office": "Co-working to office",
+        "intro": '''<p>SHAMS — Sharjah Media City — is a media-and-creative-focused free zone with one of the most accessible price points in the UAE. It is the natural home for digital creators, content studios, marketing agencies, e-commerce founders and creative consultants who want a UAE-licensed entity without DMCC-level cost.</p>
+        <p>Kingston handles SHAMS company formation alongside ongoing audit and tax compliance.</p>''',
+        "benefits": [
+            ("Affordable packages", "Among the most cost-effective free zone setup options in the UAE."),
+            ("Media-friendly activity list", "Specifically built for media production, content, marketing, digital, e-sports and creative services."),
+            ("100% foreign ownership", "Full ownership of your SHAMS entity."),
+            ("Quick incorporation", "Typical setup completes in 1–2 weeks."),
+            ("Sharjah location advantages", "20 minutes from Dubai, with lower operating costs."),
+            ("Up to 6 visas in starter packages", "Visa allocations scale with package — sufficient for typical creator and agency teams."),
+        ],
+        "faqs": [
+            ("Can a SHAMS company invoice Dubai clients?", "Yes — SHAMS-licensed companies can invoice and serve clients across the UAE and globally. Operating physical premises in Dubai requires a branch or distributor arrangement."),
+            ("What activities are permitted under SHAMS?", "A wide media and creative list — production, post-production, content, advertising, digital marketing, e-sports, broadcasting and more, plus general trading where permitted."),
+            ("How long does SHAMS setup take?", "1–2 weeks for clean profiles."),
+            ("Is annual audit mandatory in SHAMS?", "Yes — SHAMS requires annual audited financial statements. Kingston is set up to support SHAMS clients."),
+        ]
+    },
+]
+
+def fz_card(z):
+    tags_html = ''.join(f'<span class="fz-tag">{t}</span>' for t in z['tags'])
+    return f'''<a class="fz-card reveal" href="free-zone-{z['slug']}.html">
+        <div class="fz-emirate">{z['emirate']} · est. {z['established']}</div>
+        <h3>{z['name']}</h3>
+        <div class="fz-fullname">{z['full']}</div>
+        <p class="fz-tagline">{z['tagline']}</p>
+        <div class="fz-tags">{tags_html}</div>
+        <span class="read">Setup details <span class="arrow">→</span></span>
+      </a>'''
+
+# --- Free Zone hub page (renamed: was free-zone.html for audit, now we keep that as audit page,
+#     and create freezones.html as the SETUP hub linking to per-zone pages)
+freezones_body = page_header(
+    "Free Zone Setup",
+    "Pick your UAE Free Zone. We will handle the rest.",
+    "Kingston is registered with all major UAE Free Zones — and we set up, audit and run tax for businesses inside them. Compare zones below, then pick the page that fits your business.",
+    "Free Zones"
+) + '''
+<section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Choose your zone</span>
+      <h2>Nine UAE Free Zones. One trusted partner.</h2>
+      <p>Each zone has its own regulator, activity list, cost profile and renewal regime. We help you pick the one that actually fits your business — not just the one we earn the most on.</p>
+    </div>
+    <div class="fz-grid">
+''' + '\n'.join(fz_card(z) for z in FREE_ZONES) + '''
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">How to choose</span>
+      <h2>The 60-second decision tree.</h2>
+    </div>
+    <div class="values" style="grid-template-columns:repeat(2,1fr);max-width:980px;margin:0 auto">
+      <div class="value reveal" style="padding:32px">
+        <h4 style="color:var(--navy-900);margin-bottom:8px">Trading or commodities?</h4>
+        <p>If you are trading commodities or running a multi-activity trading house — start with <a href="free-zone-dmcc.html" style="color:var(--gold-700);font-weight:600">DMCC</a>. If you move physical goods at scale or need warehousing, look at <a href="free-zone-jafza.html" style="color:var(--gold-700);font-weight:600">JAFZA</a>.</p>
+      </div>
+      <div class="value reveal" style="padding:32px">
+        <h4 style="color:var(--navy-900);margin-bottom:8px">Financial services?</h4>
+        <p>Regulated finance, fund management, fintech or law — common-law jurisdictions are typically right. Pick <a href="free-zone-difc.html" style="color:var(--gold-700);font-weight:600">DIFC</a> in Dubai or <a href="free-zone-adgm.html" style="color:var(--gold-700);font-weight:600">ADGM</a> in Abu Dhabi.</p>
+      </div>
+      <div class="value reveal" style="padding:32px">
+        <h4 style="color:var(--navy-900);margin-bottom:8px">High-value cargo or pharma?</h4>
+        <p>Time-sensitive, regulated or high-value goods that move by air — <a href="free-zone-dafza.html" style="color:var(--gold-700);font-weight:600">DAFZA</a>. The customs-bonded zone is built for this profile.</p>
+      </div>
+      <div class="value reveal" style="padding:32px">
+        <h4 style="color:var(--navy-900);margin-bottom:8px">Cost-conscious SME or solo founder?</h4>
+        <p><a href="free-zone-ifza.html" style="color:var(--gold-700);font-weight:600">IFZA</a>, <a href="free-zone-meydan.html" style="color:var(--gold-700);font-weight:600">Meydan</a> and <a href="free-zone-shams.html" style="color:var(--gold-700);font-weight:600">SHAMS</a> compete hard on price and speed. <a href="free-zone-rakez.html" style="color:var(--gold-700);font-weight:600">RAKEZ</a> is the natural pick for industrial setups.</p>
+      </div>
+    </div>
+    <p class="text-center mt-4" style="color:var(--ink-500)">Still not sure? <a href="contact.html" style="color:var(--gold-700);font-weight:600">Book a free 30-minute call</a> — we will recommend in writing.</p>
+  </div>
+</section>
+
+<section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">What you get</span>
+      <h2>End-to-end Free Zone setup, with audit and tax built in.</h2>
+    </div>
+    <div class="process">
+      <div class="step reveal"><span class="step-num">01</span><h4>Zone selection</h4><p>We map your activity, customer base and budget to the right Free Zone — and document the trade-offs in writing.</p></div>
+      <div class="step reveal"><span class="step-num">02</span><h4>Incorporation</h4><p>Name reservation, MoA/AoA, licence, immigration card, establishment card — everything filed and tracked.</p></div>
+      <div class="step reveal"><span class="step-num">03</span><h4>Visas &amp; banking</h4><p>Investor and employee visas, plus introductions and onboarding support with UAE banks.</p></div>
+      <div class="step reveal"><span class="step-num">04</span><h4>Audit &amp; tax</h4><p>Year-one accounting setup, audit-ready bookkeeping, and corporate-tax / QFZP planning from day one.</p></div>
+    </div>
+  </div>
+</section>
+'''
+write('freezones.html', shell(
+    "Free Zone Company Setup in UAE — Kingston Chartered Auditing &amp; Advisory",
+    "Compare and choose the right UAE Free Zone — DMCC, JAFZA, DIFC, ADGM, DAFZA, RAKEZ, IFZA, Meydan, SHAMS. Kingston handles end-to-end setup plus ongoing audit and tax.",
+    "service-detail", freezones_body
+))
+
+# --- per-Free-Zone setup pages
+def free_zone_page(z):
+    benefits_html = '\n'.join(
+        f'''        <li>
+          <span class="check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div><strong>{t}</strong><span>{d}</span></div>
+        </li>''' for t, d in z['benefits']
+    )
+    faq_html = '\n'.join(
+        f'''      <details class="faq reveal"><summary>{q}</summary><p>{a}</p></details>'''
+        for q, a in z['faqs']
+    )
+    other_zones = '\n'.join(
+        f'        <a href="free-zone-{o["slug"]}.html">{o["name"]} <span class="arrow">→</span></a>'
+        for o in FREE_ZONES if o['slug'] != z['slug']
+    )
+
+    body = page_header(
+        f"{z['name']} · {z['emirate']}",
+        f"Set up your business in {z['name']} — {z['full']}.",
+        z['tagline'],
+        f"Free Zones · {z['name']}"
+    ) + f'''
+<section>
+  <div class="container service-layout">
+    <div class="service-content reveal">
+      <span class="eyebrow">{z['name']} · {z['emirate']}</span>
+      <h2 style="margin-top:14px">{z['full']}</h2>
+      {z['intro']}
+
+      <div class="fz-facts">
+        <div class="fz-fact"><div class="lbl">Sector focus</div><div class="val">{z['fact_focus']}</div></div>
+        <div class="fz-fact"><div class="lbl">Setup time</div><div class="val">{z['fact_setup']}</div></div>
+        <div class="fz-fact"><div class="lbl">Visas</div><div class="val">{z['fact_visas']}</div></div>
+        <div class="fz-fact"><div class="lbl">Office options</div><div class="val">{z['fact_office']}</div></div>
+      </div>
+
+      <h3 style="margin-top:36px">Why founders choose {z['name']}</h3>
+      <ul class="feat">
+{benefits_html}
+      </ul>
+
+      <h3>Why Kingston for {z['name']} setup</h3>
+      <p>Kingston is registered with {z['name']} as an approved auditor and corporate-services partner. We handle setup end-to-end — entity, licence, visa, office, banking — and stay on as your auditor and tax partner. No hand-offs, no &quot;we will introduce you to a third party&quot;.</p>
+    </div>
+    <aside style="display:flex;flex-direction:column;gap:18px">
+      {aside_consult()}
+      <div class="related-services">
+        <h4>Other UAE Free Zones</h4>
+{other_zones}
+        <a href="freezones.html" style="margin-top:6px;color:var(--gold-700);font-weight:600">All Free Zones <span class="arrow">→</span></a>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Process</span>
+      <h2>Your {z['name']} setup, step by step.</h2>
+    </div>
+    <div class="process">
+      <div class="step reveal"><span class="step-num">01</span><h4>Activity &amp; licence</h4><p>Confirm activities, licence type, share capital and shareholder structure — documented in writing before filing.</p></div>
+      <div class="step reveal"><span class="step-num">02</span><h4>Incorporation</h4><p>Name approval, MoA/AoA, trade licence, establishment and immigration cards.</p></div>
+      <div class="step reveal"><span class="step-num">03</span><h4>Visas &amp; office</h4><p>Investor visa, employee visas, dependent visas and physical or flexi-office allocation.</p></div>
+      <div class="step reveal"><span class="step-num">04</span><h4>Banking &amp; tax</h4><p>UAE corporate bank account, FTA registration, accounting setup and audit pre-readiness.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container" style="max-width:880px">
+    <div class="section-head reveal">
+      <span class="eyebrow center">FAQ</span>
+      <h2>{z['name']} — common questions answered.</h2>
+    </div>
+{faq_html}
+  </div>
+</section>
+'''
+    return body
+
+for z in FREE_ZONES:
+    write(f"free-zone-{z['slug']}.html", shell(
+        f"{z['name']} Company Setup — Kingston Chartered Auditing &amp; Advisory, Dubai",
+        f"Set up your business in {z['name']} ({z['full']}). Kingston handles licence, visa, office, banking, audit and tax — end to end.",
+        "service-detail", free_zone_page(z)
+    ))
+
+# =====================================================================
+# BUSINESS SETUP — hub + sub-pages
+# =====================================================================
+
+# --- Business Setup hub page
+business_setup_body = page_header(
+    "Business Setup",
+    "Start your UAE business with a partner who stays after the licence is issued.",
+    "Mainland, Free Zone or Offshore — Kingston handles end-to-end UAE company formation, then continues as your auditor and tax advisor for the years that follow. One firm. One team. No hand-offs.",
+    "Business Setup"
+) + '''
+<section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Three paths</span>
+      <h2>Mainland, Free Zone, or Offshore — pick the right structure first.</h2>
+      <p>The right answer depends on what you sell, who you sell it to, and where your customers are. We will recommend in writing — not just sell you the highest-margin licence.</p>
+    </div>
+    <div class="service-grid" style="grid-template-columns:repeat(3,1fr)">
+      <a href="mainland-setup.html" class="service-card reveal">
+        <span class="num">01</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V11l7-7 7 7v10"/><path d="M9 21V12h6v9"/></svg></div>
+        <h3>Mainland Setup</h3>
+        <p>The choice when you need to operate freely across the UAE, sell to government, or open multiple physical locations.</p>
+        <span class="read">Mainland details <span class="arrow">→</span></span>
+      </a>
+      <a href="freezones.html" class="service-card reveal">
+        <span class="num">02</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+        <h3>Free Zone Setup</h3>
+        <p>100% foreign ownership, full repatriation, sector-focused regulators — across DMCC, JAFZA, DIFC, ADGM and more.</p>
+        <span class="read">Browse Free Zones <span class="arrow">→</span></span>
+      </a>
+      <a href="offshore-setup.html" class="service-card reveal">
+        <span class="num">03</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c0-5 4-9 9-9s9 4 9 9-4 9-9 9-9-4-9-9z"/><path d="M12 3v18"/></svg></div>
+        <h3>Offshore Setup</h3>
+        <p>JAFZA Offshore, RAK ICC and Ajman Offshore — for holding structures, asset protection and international trading.</p>
+        <span class="read">Offshore details <span class="arrow">→</span></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Plus the things you actually need</span>
+      <h2>Setup is the start, not the finish.</h2>
+    </div>
+    <div class="service-grid">
+      <a href="pro-services.html" class="service-card reveal">
+        <span class="num">04</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg></div>
+        <h3>PRO &amp; Visa Services</h3>
+        <p>Investor, employee and family visas; Emirates ID; medicals; attestations and ongoing PRO support.</p>
+        <span class="read">PRO details <span class="arrow">→</span></span>
+      </a>
+      <a href="feasibility-studies.html" class="service-card reveal">
+        <span class="num">05</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <h3>Feasibility Studies</h3>
+        <p>Market sizing, financial modelling and viability analysis — done before you commit capital, not after.</p>
+        <span class="read">Feasibility details <span class="arrow">→</span></span>
+      </a>
+      <a href="accounting.html" class="service-card reveal">
+        <span class="num">06</span>
+        <div class="service-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v18H2z"/><path d="M2 9h20"/><path d="M9 21V9"/></svg></div>
+        <h3>Accounting &amp; Bookkeeping</h3>
+        <p>Day-one cloud accounting, monthly close by working day five, and audit-ready books from your first invoice.</p>
+        <span class="read">Accounting details <span class="arrow">→</span></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="bg-bone">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="eyebrow center">Mainland vs Free Zone vs Offshore</span>
+      <h2>The 60-second comparison.</h2>
+    </div>
+    <div style="overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius-lg)">
+      <table style="width:100%;border-collapse:collapse;min-width:680px">
+        <thead>
+          <tr style="background:var(--navy-50)">
+            <th style="padding:16px;text-align:left;font-weight:600;color:var(--navy-900)">&nbsp;</th>
+            <th style="padding:16px;text-align:left;font-weight:600;color:var(--navy-900)">Mainland</th>
+            <th style="padding:16px;text-align:left;font-weight:600;color:var(--navy-900)">Free Zone</th>
+            <th style="padding:16px;text-align:left;font-weight:600;color:var(--navy-900)">Offshore</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Foreign ownership</td><td style="padding:14px 16px;border-top:1px solid var(--line)">100% (most activities)</td><td style="padding:14px 16px;border-top:1px solid var(--line)">100%</td><td style="padding:14px 16px;border-top:1px solid var(--line)">100%</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Trade in UAE local market</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Yes, directly</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Via local distributor / branch</td><td style="padding:14px 16px;border-top:1px solid var(--line)">No (offshore-only)</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Government tenders</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Eligible</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Limited</td><td style="padding:14px 16px;border-top:1px solid var(--line)">No</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Office requirement</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Physical office (Ejari)</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Flexi-desk to physical</td><td style="padding:14px 16px;border-top:1px solid var(--line)">No physical office</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Visa eligibility</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Yes</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Yes</td><td style="padding:14px 16px;border-top:1px solid var(--line)">No</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Annual audit</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Activity-dependent</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Yes (most zones)</td><td style="padding:14px 16px;border-top:1px solid var(--line)">No (typically)</td></tr>
+          <tr><td style="padding:14px 16px;border-top:1px solid var(--line);font-weight:600">Best for</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Local market &amp; gov clients</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Regional &amp; international focus</td><td style="padding:14px 16px;border-top:1px solid var(--line)">Holding &amp; international trade</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+'''
+write('business-setup.html', shell(
+    "Business Setup in UAE — Mainland, Free Zone &amp; Offshore | Kingston",
+    "End-to-end UAE business setup with Kingston — Mainland, Free Zone (DMCC, JAFZA, DIFC, ADGM &amp; more) and Offshore (JAFZA, RAK ICC, Ajman) — plus PRO services, visas, and ongoing audit and tax.",
+    "service-detail", business_setup_body
+))
+
+# --- Mainland setup
+write('mainland-setup.html', shell(
+    "Mainland Company Setup in Dubai &amp; UAE — Kingston Chartered Auditing &amp; Advisory",
+    "End-to-end Mainland company setup in the UAE. Kingston handles DED licence, MoA/AoA, Ejari, immigration card, visas and ongoing audit/tax — all under one engagement.",
+    "service-detail",
+    service_page(
+        slug="mainland-setup",
+        name="Mainland Setup",
+        eyebrow="Business Setup",
+        hero_title="Mainland setup, end to end. Without the runaround.",
+        hero_sub="Mainland licences let you trade directly with the UAE local market, take on government contracts, and open multiple physical locations — Kingston handles the full setup, then stays on as your auditor and tax advisor.",
+        intro='''<p>UAE Mainland is the right choice when your customers are inside the UAE — local consumers, local businesses, and the government tender market. Mainland licences are issued by the Department of Economic Development (DED) of each emirate, and unlike Free Zones, allow you to trade across the country without a distributor.</p>
+        <p>Recent reforms now allow 100% foreign ownership for most commercial and professional activities — meaning Mainland is no longer a &quot;sponsor required&quot; jurisdiction in most cases. Kingston handles the full setup process and stays on for the ongoing audit, tax and compliance work that follows.</p>''',
+        features=[
+            ("DED trade licence", "Activity selection, name approval, initial approval, MoA drafting, and final licence issuance."),
+            ("100% foreign ownership", "Where eligible, structured as a sole-shareholder LLC with full foreign ownership — no UAE national required."),
+            ("Office &amp; Ejari", "Tenancy contract, Ejari registration and licence-linked physical address."),
+            ("Immigration &amp; establishment cards", "Issued post-licence to enable visa quotas and employee onboarding."),
+            ("Visa quotas", "Investor, partner, employee and family visas — quota tied to office space."),
+            ("Banking introductions", "Curated introductions to UAE banks with experience in your activity and structure."),
+        ],
+        why_us=[
+            ("One firm, end to end", "Setup, audit, tax, accounting — all under one engagement letter. No third-party hand-offs."),
+            ("Plain-English advice", "We will tell you when Mainland is wrong for your business — and recommend Free Zone or Offshore instead."),
+            ("Fixed scope, fixed fees", "Setup costs and timelines agreed in writing before any government fee is paid."),
+            ("Audit-ready from day one", "Books, controls and tax position set up correctly at the start — saving years of cleanup later."),
+        ],
+        process_steps=[
+            ("Discovery &amp; structuring", "Activity, ownership, office and visa needs mapped to the right Mainland structure (LLC, sole establishment, branch, professional licence)."),
+            ("Initial approval &amp; name", "Trade name reservation and DED initial approval — typically 2–5 working days."),
+            ("Office &amp; MoA", "Lease + Ejari finalised, MoA drafted and notarised, and licence fees paid."),
+            ("Licence, visas &amp; bank", "DED licence issued, immigration card processed, investor/employee visas applied for, and bank account opened."),
+        ],
+        faqs=[
+            ("Can I have 100% foreign ownership in a Mainland LLC?", "For the vast majority of commercial and professional activities, yes — recent reforms removed the historic 51% UAE national requirement. A small list of strategic activities still require local participation. We confirm at engagement."),
+            ("Mainland or Free Zone — which is right for me?", "If your customers are largely inside the UAE, or if you need access to government contracts, Mainland is typically right. If your customers are international or you need a sector-specific regulator, Free Zone is usually better."),
+            ("How long does Mainland setup take?", "From start to issued licence, typical Mainland setup runs 2–4 weeks. Bank account opening and visa processing add another 3–6 weeks on top."),
+            ("Do I need an Ejari?", "Yes — Mainland licences require a registered tenancy contract (Ejari). Kingston coordinates this as part of the setup process."),
+        ]
+    )
+))
+
+# --- Offshore setup
+write('offshore-setup.html', shell(
+    "Offshore Company Setup in UAE — JAFZA, RAK ICC, Ajman | Kingston",
+    "Set up an offshore company in the UAE — JAFZA Offshore, RAK ICC and Ajman Offshore. For holding structures, asset protection and international trade. Kingston handles formation end-to-end.",
+    "service-detail",
+    service_page(
+        slug="offshore-setup",
+        name="Offshore Setup",
+        eyebrow="Business Setup",
+        hero_title="UAE offshore — for holding, structuring and international trade.",
+        hero_sub="A UAE offshore company is a non-resident legal entity ideal for holding shares in operating companies, owning assets, and trading internationally — with no UAE physical-presence requirement.",
+        intro='''<p>UAE offshore is not a tax dodge. It is a structuring tool. The major UAE offshore regimes — JAFZA Offshore, RAK ICC and Ajman Offshore — offer fast, low-cost incorporation for vehicles whose role is to hold shares, own real estate, hold IP, or trade outside the UAE local market.</p>
+        <p>Kingston handles offshore incorporation across all three regimes, and advises on the right choice for your group structure — including ESR scoping for the years ahead.</p>''',
+        features=[
+            ("JAFZA Offshore", "Dubai-issued offshore vehicle — popular for holding UAE real estate and as the parent of UAE operating entities. Listing-eligible."),
+            ("RAK ICC", "RAK International Corporate Centre — modern common-law-flavoured regime; widely used for holding companies, SPVs and IP holding."),
+            ("Ajman Offshore", "Cost-effective alternative — popular for international trading vehicles and personal holding structures."),
+            ("Foundations &amp; trusts", "Where succession or asset-protection is the goal, we structure ADGM and DIFC foundations alongside offshore vehicles."),
+            ("Bank account opening", "Curated introductions to UAE banks experienced with offshore structures — including non-resident director scenarios."),
+            ("ESR &amp; corporate tax scoping", "Every offshore engagement includes scoping of Economic Substance Regulations and UAE corporate tax exposure."),
+        ],
+        why_us=[
+            ("Structuring partner, not just incorporator", "We will tell you when offshore is wrong for your goal — for example, where Free Zone is needed for visas or local trade."),
+            ("ESR-aware", "Offshore + ESR is where most groups get tripped up. We design positions that are clean from day one."),
+            ("Connected to UAE banking", "Offshore-friendly bank introductions matter — we have them."),
+            ("Joined-up with audit and tax", "If your group includes audited entities, structuring stays aligned with audit and tax positions across the board."),
+        ],
+        process_steps=[
+            ("Structuring", "Map the purpose of the vehicle (holding, real-estate, IP, trade), agree the right regime, and document the position."),
+            ("Incorporation", "Name approval, MoA/AoA, registered agent, certificate of incorporation."),
+            ("Banking", "Curated bank introductions and KYC support — typically the longest leg of an offshore project."),
+            ("ESR &amp; tax", "Annual ESR notification (where applicable), UAE corporate tax registration assessment, and ongoing compliance."),
+        ],
+        faqs=[
+            ("Can a UAE offshore company own real estate in Dubai?", "Only JAFZA Offshore is currently approved to own real estate in designated Dubai areas. RAK ICC and Ajman Offshore are not. We advise per asset class."),
+            ("Can an offshore company sponsor a UAE residence visa?", "No — offshore companies do not provide visa eligibility. If you need residency, pair the offshore vehicle with a Free Zone or Mainland operating entity."),
+            ("Is offshore subject to UAE corporate tax?", "UAE offshore entities are within scope of UAE corporate tax in many cases. Whether they have any taxable income depends on the activity. Kingston scopes this carefully — and structures to avoid surprises."),
+            ("Do offshore companies need ESR notifications?", "Where they carry on a Relevant Activity in any year, yes. Kingston includes ESR scoping with every offshore engagement."),
+        ]
+    )
+))
+
+# --- PRO & Visa services
+write('pro-services.html', shell(
+    "PRO &amp; Visa Services in UAE — Kingston Chartered Auditing &amp; Advisory",
+    "End-to-end PRO and visa services in Dubai and the UAE — investor visas, employee visas, family visas, Emirates ID, medical, attestations, GDRFA and immigration support.",
+    "service-detail",
+    service_page(
+        slug="pro-services",
+        name="PRO &amp; Visa Services",
+        eyebrow="Business Setup",
+        hero_title="PRO &amp; visas — handled end to end, on time, every time.",
+        hero_sub="Investor visas, employee visas, family residence visas, Emirates ID, medical fitness, attestations, immigration cards and ongoing PRO support — managed by people who know the queues, the portals and the right way to ask.",
+        intro='''<p>PRO and visa work is unglamorous, paperwork-heavy, and the place where most UAE businesses lose time and patience. Forms reject for missing stamps. Medicals fall on holidays. Family visas wait on a missed attestation from a third country. None of this is hard. All of it is annoying.</p>
+        <p>Kingston runs PRO and visa services as a structured service — clear checklists, single point of contact, status updates, and SLAs on the things that need them. Founders get visas. Boards get visibility. Nothing falls through the cracks.</p>''',
+        features=[
+            ("Investor &amp; partner visas", "Issued post-licence — full processing including entry permit, change of status, medical, Emirates ID and residence stamping."),
+            ("Employee visas", "End-to-end employee visa processing — including offer letter, MoHRE work permit, entry permit, medical, Emirates ID and residence visa."),
+            ("Family residence visas", "Spouse, children and parent residence visas — including required income/insurance evidence and attestations."),
+            ("Emirates ID &amp; medical", "Booking, accompaniment where needed, and same-day pickups where the system allows."),
+            ("Attestations &amp; legal translations", "Document attestation (origin country + UAE consulate + MOFA) and legal translations under UAE-recognised translators."),
+            ("Ongoing PRO support", "Renewals, amendments, immigration card renewals, establishment card renewals — diarised and managed."),
+        ],
+        why_us=[
+            ("People, not portals", "Most issues need a real person at the right desk. Our PRO team knows the desks."),
+            ("SLA-driven", "Each step has a target turnaround — and you see status weekly, not when something breaks."),
+            ("Single point of contact", "One person owns your file. One person you call. Decisions do not get lost in a generic inbox."),
+            ("Joined-up with setup", "PRO sits inside our setup engagements — no &quot;we will introduce you to a PRO&quot; hand-off after licence issuance."),
+        ],
+        process_steps=[
+            ("File opening", "Collect documents, set up the file, confirm visa quota and timeline expectations."),
+            ("Entry permits &amp; medical", "Process entry permits, accompany on medicals, secure Emirates ID appointments."),
+            ("Stamping &amp; ID", "Residence visa stamping in passport (or e-residence), Emirates ID issuance and dependant updates."),
+            ("Renewal &amp; tracking", "Diarised renewal calendar — investor visas, residence visas, immigration card, establishment card."),
+        ],
+        faqs=[
+            ("How long does an investor visa take?", "Typical end-to-end timing from licence issuance is 3–6 weeks, including entry permit, medical, Emirates ID and residence stamping. We agree the calendar at file opening."),
+            ("Can my spouse and kids come on my UAE visa?", "Yes — with sufficient income (typically AED 4,000–10,000/month depending on emirate and dependent type) and standard documents (attested marriage and birth certificates)."),
+            ("Do you handle visa renewals?", "Yes — we run the renewal calendar for every active client and handle the renewal end-to-end before expiry."),
+            ("Can I get a 10-year Golden Visa through Kingston?", "We assess Golden Visa eligibility against published criteria (investor, specialist, etc.) and handle the application end-to-end where eligible."),
+        ]
+    )
+))
+
+# --- Feasibility studies
+write('feasibility-studies.html', shell(
+    "Feasibility Studies &amp; Financial Modelling in UAE — Kingston",
+    "Bankable feasibility studies, financial modelling and viability analysis for UAE businesses — for new ventures, capex decisions, expansion plans and bank financing.",
+    "service-detail",
+    service_page(
+        slug="feasibility-studies",
+        name="Feasibility Studies",
+        eyebrow="Advisory",
+        hero_title="Decide with numbers, not hope.",
+        hero_sub="Independent feasibility studies, financial models and viability analysis — for new ventures, capex decisions, expansion plans and bank financing applications. Built before you commit capital, not after.",
+        intro='''<p>Most failed businesses had a feasibility study. Many of them just had the wrong one — built backwards from a target answer, with optimism baked into every assumption. A real feasibility study is the opposite: it stress-tests the idea, prices in the unknowns, and tells the founder or board what they need to hear, not what they want to hear.</p>
+        <p>Kingston builds feasibility studies and financial models for UAE founders, family offices and corporates — for new ventures, capex decisions, market entry, and bank financing applications. Independent. Numbers-led. Bankable.</p>''',
+        features=[
+            ("Market sizing &amp; demand analysis", "Top-down and bottom-up market sizing, competitor mapping and demand-driver analysis — for the UAE and the relevant catchment."),
+            ("Financial modelling", "5-year three-statement financial models — P&amp;L, balance sheet, cash flow — with scenario and sensitivity analysis."),
+            ("Capex &amp; opex breakdown", "Bottom-up capex and opex build, with quoted vendor data where possible — not generic per-unit assumptions."),
+            ("Funding &amp; capital structure", "Equity / debt mix analysis, debt-service coverage, and bank-friendly funding plans for financing applications."),
+            ("Sensitivity &amp; scenario analysis", "Base, downside and upside scenarios — with the assumptions that move the answer surfaced explicitly."),
+            ("Investor- and bank-ready report", "A written feasibility report designed to stand up to investor due diligence and bank credit committees."),
+        ],
+        why_us=[
+            ("Independent — no agenda", "We are not selling the deal. Our reports are written for decision-makers, not promoters."),
+            ("Bank-credible", "UAE banks recognise Kingston feasibility studies as credible evidence in financing applications."),
+            ("UAE market-aware", "Free Zones, customs, VAT, corporate tax, employment — we model UAE specifics correctly, not as a US/Europe template."),
+            ("Joined-up with audit and tax", "Models are tax-aware and accounting-aware — your day-one books pick up exactly where the model left off."),
+        ],
+        process_steps=[
+            ("Brief &amp; scope", "Workshop with you to define the question — &quot;is this idea viable?&quot;, &quot;at what scale?&quot;, &quot;with what funding?&quot;."),
+            ("Data &amp; research", "Market data, competitor benchmarks, vendor quotes — built into a transparent assumption book."),
+            ("Modelling &amp; analysis", "Three-statement model, scenarios, sensitivities, and break-even analysis."),
+            ("Report &amp; decision support", "Written feasibility report, model handover, and decision-support meeting with you and your investors / bankers."),
+        ],
+        faqs=[
+            ("Will banks accept your feasibility study for financing?", "Yes — UAE banks recognise Kingston-prepared feasibility studies in their credit-committee process. We design every report to be bankable."),
+            ("How long does a feasibility study take?", "Typical timeline is 4–8 weeks depending on the depth of market research and access to vendor data. Lean &quot;red-flag&quot; feasibility reviews can be turned in 2 weeks."),
+            ("Will you tell me if the idea does not work?", "Yes. Our reports are written to be honest with the founder. A polite no costs less than a bad yes."),
+            ("Do you also advise on raising the capital?", "Kingston is not a capital-raising firm — we are an audit and advisory firm. But our reports are designed to be used in fundraising, and we collaborate with your chosen advisors."),
+        ]
+    )
+))
+
 print('\nAll pages generated.')
