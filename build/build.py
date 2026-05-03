@@ -1251,7 +1251,7 @@ freezones_body = page_header(
 write('freezones.html', shell(
     "Free Zone Company Setup in UAE — Kingston Chartered Auditing &amp; Advisory",
     "Compare and choose the right UAE Free Zone — DMCC, JAFZA, DIFC, ADGM, DAFZA, RAKEZ, IFZA, Meydan, SHAMS. Kingston handles end-to-end setup plus ongoing audit and tax.",
-    "service-detail", freezones_body
+    "freezones", freezones_body
 ))
 
 # --- per-Free-Zone setup pages
@@ -1341,7 +1341,7 @@ for z in FREE_ZONES:
     write(f"free-zone-{z['slug']}.html", shell(
         f"{z['name']} Company Setup — Kingston Chartered Auditing &amp; Advisory, Dubai",
         f"Set up your business in {z['name']} ({z['full']}). Kingston handles licence, visa, office, banking, audit and tax — end to end.",
-        "service-detail", free_zone_page(z)
+        "free-zone-detail", free_zone_page(z)
     ))
 
 # =====================================================================

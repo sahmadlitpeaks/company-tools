@@ -43,7 +43,26 @@ NAV_ITEMS = [
     ('home', 'index.html', 'Home'),
     ('about', 'about.html', 'About'),
     ('services', 'services.html', 'Services'),
+    ('freezones', 'freezones.html', 'Free Zones'),
     ('contact', 'contact.html', 'Contact'),
+]
+
+FREEZONE_GROUPS = [
+    ('Dubai', [
+        ('free-zone-dmcc.html',   'DMCC'),
+        ('free-zone-jafza.html',  'JAFZA'),
+        ('free-zone-difc.html',   'DIFC'),
+        ('free-zone-dafza.html',  'DAFZA'),
+        ('free-zone-ifza.html',   'IFZA'),
+        ('free-zone-meydan.html', 'Meydan'),
+    ]),
+    ('Abu Dhabi', [
+        ('free-zone-adgm.html',   'ADGM'),
+    ]),
+    ('Sharjah &amp; RAK', [
+        ('free-zone-shams.html',  'SHAMS · Sharjah'),
+        ('free-zone-rakez.html',  'RAKEZ · Ras Al Khaimah'),
+    ]),
 ]
 
 SERVICE_LINKS = [
@@ -86,7 +105,6 @@ SERVICE_GROUPS = [
     ('Business Setup', [
         ('business-setup.html',  'All Setup Options'),
         ('mainland-setup.html',  'Mainland Setup'),
-        ('freezones.html',       'Free Zone Setup'),
         ('offshore-setup.html',  'Offshore Setup'),
         ('pro-services.html',    'PRO &amp; Visa Services'),
     ]),
@@ -108,6 +126,22 @@ def header(active='home'):
             nav_html += f'''      <div class="has-menu">
         <a href="services.html"{cls}>Services <span aria-hidden="true">⌄</span></a>
         <div class="dropdown" role="menu">
+{groups_html}        </div>
+      </div>
+'''
+        elif key == 'freezones':
+            groups_html = ''
+            for title, links in FREEZONE_GROUPS:
+                links_html = '\n'.join(f'            <a href="{h}">{l}</a>' for h, l in links)
+                groups_html += f'''          <div class="dropdown-group">
+            <span class="dropdown-title">{title}</span>
+{links_html}
+          </div>
+'''
+            cls = ' class="active"' if active in ('freezones', 'free-zone-detail') else ''
+            nav_html += f'''      <div class="has-menu">
+        <a href="freezones.html"{cls}>Free Zones <span aria-hidden="true">⌄</span></a>
+        <div class="dropdown dropdown-fz" role="menu">
 {groups_html}        </div>
       </div>
 '''
@@ -139,6 +173,12 @@ def header(active='home'):
 
 def mobile_menu():
     sub = '\n'.join(f'      <a href="{h}">— {l}</a>' for h, l in SERVICE_LINKS)
+    fz_sub_lines = []
+    for title, links in FREEZONE_GROUPS:
+        fz_sub_lines.append(f'      <span class="submenu-title">{title}</span>')
+        for h, l in links:
+            fz_sub_lines.append(f'      <a href="{h}">— {l}</a>')
+    fz_sub = '\n'.join(fz_sub_lines)
     return f'''
 <aside class="mobile-menu" aria-hidden="true">
   <div class="top">
@@ -157,6 +197,10 @@ def mobile_menu():
     <a href="services.html">Services</a>
     <div class="submenu">
 {sub}
+    </div>
+    <a href="freezones.html">Free Zones</a>
+    <div class="submenu">
+{fz_sub}
     </div>
     <a href="contact.html">Contact</a>
   </nav>

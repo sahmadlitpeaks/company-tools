@@ -217,8 +217,9 @@ section { padding: var(--section-y) 0; position: relative; }
 }
 .nav-links .has-menu { position: relative; }
 .dropdown {
-  position: absolute; top: 100%; left: 0;
-  min-width: 780px;
+  position: absolute; top: 100%;
+  right: 0; left: auto;
+  min-width: 720px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -232,8 +233,18 @@ section { padding: var(--section-y) 0; position: relative; }
   gap: 4px 18px;
 }
 .has-menu:hover .dropdown { transform: translateY(0); }
-.has-menu .dropdown { right: auto; }
-.has-menu:nth-last-child(-n+2) .dropdown { right: 0; left: auto; }
+.dropdown-fz { min-width: 620px; }
+
+.submenu-title {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--gold-400);
+  padding: 14px 0 4px;
+  opacity: .85;
+}
 .dropdown-group {
   display: flex; flex-direction: column;
 }
