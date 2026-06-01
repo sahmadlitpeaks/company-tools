@@ -1,0 +1,272 @@
+import { useState } from "react";
+import { api, apiUrl } from "../api/client";
+import type { DigitalCard, Lead } from "../api/types";
+import { useFetch } from "../hooks/useApi";
+import {
+  Empty,
+  ErrorBox,
+  Loading,
+  Modal,
+  PageHead,
+  useToast,
+} from "../components/ui";
+
+const PUBLIC_ORIGIN = window.location.origin;
+
+function CardForm({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { notify } = useToast();
+  const [form, setForm] = useState({
+    full_name: "",
+    title: "",
+    email: "",
+    phone: "",
+    whatsapp: "",
+    website: "",
+    linkedin: "",
+    bio: "",
+    accent_color: "#0b5cab",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api<DigitalCard>("/api/cards", { method: "POST", body: form });
+      notify("Digital card created.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="New digital card" onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="field">
+          <label>Full name *</label>
+          <input
+            required
+            value={form.full_name}
+            onChange={(e) => set("full_name", e.target.value)}
+          />
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>Title</label>
+            <input value={form.title} onChange={(e) => set("title", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Accent colour</label>
+            <input
+              type="color"
+              value={form.accent_color}
+              onChange={(e) => set("accent_color", e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>Email</label>
+            <input value={form.email} onChange={(e) => set("email", e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Phone</label>
+            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>WhatsApp</label>
+            <input
+              value={form.whatsapp}
+              onChange={(e) => set("whatsapp", e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Website</label>
+            <input
+              value={form.website}
+              onChange={(e) => set("website", e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="field">
+          <label>LinkedIn</label>
+          <input
+            value={form.linkedin}
+            onChange={(e) => set("linkedin", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Bio</label>
+          <textarea
+            rows={3}
+            value={form.bio}
+            onChange={(e) => set("bio", e.target.value)}
+          />
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
+            {busy ? "Saving…" : "Create card"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LeadsModal({ card, onClose }: { card: DigitalCard; onClose: () => void }) {
+  const { data, loading } = useFetch<Lead[]>(`/api/cards/${card.id}/leads`);
+  return (
+    <Modal title={`Leads — ${card.full_name}`} onClose={onClose}>
+      {loading ? (
+        <Loading />
+      ) : !data || data.length === 0 ? (
+        <Empty message="No leads captured yet." />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((l) => (
+              <tr key={l.id}>
+                <td style={{ fontWeight: 600 }}>{l.name}</td>
+                <td>
+                  <div>{l.email}</div>
+                  <div className="muted">{l.phone}</div>
+                </td>
+                <td className="muted">{l.message ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Modal>
+  );
+}
+
+export default function CardsPage() {
+  const { notify } = useToast();
+  const { data, loading, error, reload } = useFetch<DigitalCard[]>("/api/cards");
+  const [creating, setCreating] = useState(false);
+  const [leadsFor, setLeadsFor] = useState<DigitalCard | null>(null);
+
+  async function remove(card: DigitalCard) {
+    if (!confirm(`Delete card for ${card.full_name}?`)) return;
+    await api(`/api/cards/${card.id}`, { method: "DELETE" });
+    notify("Card deleted.");
+    reload();
+  }
+
+  function copyLink(card: DigitalCard) {
+    const url = `${PUBLIC_ORIGIN}/c/${card.slug}`;
+    void navigator.clipboard.writeText(url);
+    notify("Share link copied to clipboard.");
+  }
+
+  return (
+    <div>
+      <PageHead
+        title="Digital Cards"
+        subtitle="Shareable business cards with QR codes and lead capture."
+        action={
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            + New card
+          </button>
+        }
+      />
+      {loading ? (
+        <Loading />
+      ) : error ? (
+        <ErrorBox message={error} />
+      ) : !data || data.length === 0 ? (
+        <Empty message="You haven't created any digital cards yet." />
+      ) : (
+        <div className="grid cols-3">
+          {data.map((card) => (
+            <div className="card" key={card.id}>
+              <div className="spread">
+                <div
+                  style={{
+                    width: 8,
+                    height: 40,
+                    borderRadius: 4,
+                    background: card.accent_color,
+                  }}
+                />
+                <img
+                  alt="QR"
+                  width={72}
+                  height={72}
+                  src={apiUrl(`/api/cards/${card.id}/qr.png`)}
+                  style={{ border: "1px solid var(--border)", borderRadius: 8 }}
+                />
+              </div>
+              <h3 style={{ margin: "12px 0 2px" }}>{card.full_name}</h3>
+              <div className="muted">{card.title}</div>
+              <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+                /c/{card.slug}
+              </div>
+              <div className="row" style={{ gap: 8, marginTop: 14 }}>
+                <a
+                  className="btn btn-sm"
+                  href={`/c/${card.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ flex: "0 0 auto" }}
+                >
+                  View
+                </a>
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => copyLink(card)}
+                >
+                  Copy link
+                </button>
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => setLeadsFor(card)}
+                >
+                  Leads
+                </button>
+                <button
+                  className="btn-sm btn-danger"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => remove(card)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {creating && <CardForm onClose={() => setCreating(false)} onSaved={reload} />}
+      {leadsFor && (
+        <LeadsModal card={leadsFor} onClose={() => setLeadsFor(null)} />
+      )}
+    </div>
+  );
+}
