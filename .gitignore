@@ -10,7 +10,13 @@ env/
 # Local environment files
 .env
 *.sqlite3
+*.db
 
-# Django
+# Uploaded media / build output
 staticfiles/
 media/
+
+# Node
+node_modules/
+dist/
+.vite/
