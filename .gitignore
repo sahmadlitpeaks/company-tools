@@ -1,3 +1,16 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Python virtualenvs
+.venv/
+venv/
+env/
+
+# Local environment files
+.env
+*.sqlite3
+
+# Django
+staticfiles/
+media/
