@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 
@@ -29,8 +29,17 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
+function currentTitle(pathname: string): string {
+  if (pathname === "/") return "Dashboard";
+  const item = NAV.find(
+    (n) => "to" in n && n.to !== "/" && pathname.startsWith(n.to as string),
+  );
+  return (item && "label" in item ? item.label : "") || "Internal Platform";
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -78,9 +87,15 @@ export default function Layout() {
 
       <div className="main">
         <header className="topbar">
-          <div className="title">Internal Platform</div>
-          <div className="row" style={{ flex: "0 0 auto", gap: 8, alignItems: "center" }}>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
+              AG Holding
+            </span>
+            <span className="text-[15px] font-semibold">{currentTitle(location.pathname)}</span>
+          </div>
+          <div className="flex flex-none items-center gap-2">
           <NotificationBell />
+          <span className="mx-1 h-7 w-px bg-[var(--border)]" />
           <div className="profile" ref={menuRef}>
             <button className="profile-btn" onClick={() => setMenuOpen((o) => !o)}>
               <span className="avatar">{initials(user?.display_name, user?.email)}</span>

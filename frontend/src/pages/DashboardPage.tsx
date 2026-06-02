@@ -73,35 +73,51 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       {/* Hero banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 to-brand-500 p-7 text-white shadow-soft">
-        <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10" />
-        <div className="absolute -bottom-16 right-24 h-44 w-44 rounded-full bg-white/5" />
-        <div className="relative">
-          <h1 className="m-0 text-white">
-            Welcome, {user?.given_name ?? user?.display_name ?? "there"} 👋
-          </h1>
-          <p className="mt-1 max-w-xl text-white/80">
-            Your company marketing &amp; employee toolkit at a glance.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              to="/cards"
-              className="rounded-[10px] bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-white/90 hover:no-underline"
-            >
-              + New digital card
-            </Link>
-            <Link
-              to="/asset-tracker"
-              className="rounded-[10px] bg-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/25 hover:no-underline"
-            >
-              Add asset
-            </Link>
-            <Link
-              to="/shortener"
-              className="rounded-[10px] bg-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/25 hover:no-underline"
-            >
-              Shorten URL
-            </Link>
+      <div
+        className="relative overflow-hidden rounded-2xl p-6 text-white shadow-soft sm:p-7"
+        style={{
+          background:
+            "radial-gradient(1200px 200px at 0% 0%, rgba(255,255,255,.14), transparent 60%), linear-gradient(120deg, #08406f 0%, #0b5cab 55%, #1e6cc0 100%)",
+        }}
+      >
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wider text-white/60">
+              {new Date().toLocaleDateString(undefined, {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </div>
+            <h1 className="m-0 mt-1 text-white">
+              Welcome back, {user?.given_name ?? user?.display_name ?? "there"}
+            </h1>
+            <p className="mt-1 max-w-xl text-white/75">
+              Your company marketing &amp; employee toolkit at a glance.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                to="/cards"
+                className="rounded-[10px] bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-white/90 hover:no-underline"
+              >
+                + New digital card
+              </Link>
+              <Link
+                to="/asset-tracker"
+                className="rounded-[10px] bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-inset ring-white/20 hover:bg-white/25 hover:no-underline"
+              >
+                Add asset
+              </Link>
+              <Link
+                to="/shortener"
+                className="rounded-[10px] bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-inset ring-white/20 hover:bg-white/25 hover:no-underline"
+              >
+                Shorten URL
+              </Link>
+            </div>
+          </div>
+          <div className="hidden h-16 w-16 flex-none place-items-center rounded-2xl bg-white/10 text-2xl ring-1 ring-inset ring-white/20 sm:grid">
+            📊
           </div>
         </div>
       </div>
