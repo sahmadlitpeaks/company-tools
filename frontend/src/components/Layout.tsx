@@ -14,6 +14,8 @@ const NAV = [
   { to: "/assets", label: "Marketing Assets", icon: "📁" },
   { to: "/branding", label: "Brand Center", icon: "🎨" },
   { to: "/products", label: "Products & Brochures", icon: "📦" },
+  { section: "Sales" },
+  { to: "/crm", label: "Leads (CRM)", icon: "🧲" },
   { section: "Operations" },
   { to: "/asset-tracker", label: "Asset Tracker", icon: "🏷" },
   { section: "Tools" },

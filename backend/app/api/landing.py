@@ -151,6 +151,23 @@ async def submit_landing_lead(
         raise HTTPException(status_code=404, detail="Page not found")
     lead = LandingLead(page_id=page.id, **payload.model_dump())
     db.add(lead)
+    await db.flush()
+    from app.models.crm import CrmLead
+
+    db.add(
+        CrmLead(
+            brand_id=page.brand_id,
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            notes=lead.message,
+            source="landing",
+            source_detail=page.title,
+            status="new",
+            origin_type="landing_lead",
+            origin_id=str(lead.id),
+        )
+    )
     await db.commit()
     await db.refresh(lead)
     return lead

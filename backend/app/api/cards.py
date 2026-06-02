@@ -252,6 +252,25 @@ async def submit_lead(
         raise HTTPException(status_code=403, detail="Lead capture disabled")
     lead = Lead(card_id=card.id, **payload.model_dump())
     db.add(lead)
+    await db.flush()
+    # Mirror into the unified CRM inbox.
+    from app.models.crm import CrmLead
+
+    db.add(
+        CrmLead(
+            brand_id=card.brand_id,
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            company=lead.company,
+            notes=lead.message,
+            source="card",
+            source_detail=card.slug,
+            status="new",
+            origin_type="card_lead",
+            origin_id=str(lead.id),
+        )
+    )
     await db.commit()
     await db.refresh(lead)
     return lead

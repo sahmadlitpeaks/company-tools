@@ -12,6 +12,7 @@ from app.api import (
     brands,
     branding,
     cards,
+    crm,
     landing,
     notifications,
     products,
@@ -79,6 +80,7 @@ app.include_router(tracker.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(brands.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
+app.include_router(crm.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 
 

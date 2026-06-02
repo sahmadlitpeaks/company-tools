@@ -300,6 +300,31 @@ export interface Brand {
   created_at: string;
 }
 
+export interface CrmLead {
+  id: string;
+  brand_id?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  source: string;
+  source_detail?: string | null;
+  status: string;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  value?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CrmSummary {
+  total: number;
+  by_status: Record<string, number>;
+  by_source: Record<string, number>;
+  won_value: string;
+  open_value: string;
+}
+
 export interface AppNotification {
   id: string;
   title: string;
