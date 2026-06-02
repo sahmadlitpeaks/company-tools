@@ -1,13 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useToast } from "../components/ui";
+
+interface AuthConfig {
+  azure: boolean;
+  dev_login: boolean;
+}
 
 export default function LoginPage() {
   const { login, devLogin } = useAuth();
   const { notify } = useToast();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const isDev = import.meta.env.DEV;
+  // The production build is static, so DEV-flag detection won't work — ask the
+  // backend at runtime which sign-in options to show.
+  const [config, setConfig] = useState<AuthConfig>({ azure: true, dev_login: false });
+
+  useEffect(() => {
+    api<AuthConfig>("/api/auth/config", { auth: false })
+      .then(setConfig)
+      .catch(() => {
+        /* keep defaults (show Microsoft sign-in) */
+      });
+  }, []);
 
   async function handleDev(e: React.FormEvent) {
     e.preventDefault();
@@ -52,15 +68,17 @@ export default function LoginPage() {
           Sign in with your company Microsoft account to continue.
         </p>
 
-        <button
-          className="btn-primary"
-          style={{ width: "100%", padding: "11px" }}
-          onClick={login}
-        >
-          Sign in with Microsoft
-        </button>
+        {config.azure && (
+          <button
+            className="btn-primary"
+            style={{ width: "100%", padding: "11px" }}
+            onClick={login}
+          >
+            Sign in with Microsoft
+          </button>
+        )}
 
-        {isDev && (
+        {config.dev_login && (
           <form onSubmit={handleDev} style={{ marginTop: 22 }}>
             <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
               Developer login (local only)

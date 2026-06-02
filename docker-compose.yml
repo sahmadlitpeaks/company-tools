@@ -1,50 +1,70 @@
+# One-command, single-origin stack.
+#
+#   docker compose up --build
+#
+# Everything is served from ONE URL (http://localhost:8080 by default): the
+# frontend's nginx serves the built SPA and reverse-proxies /api, /s, /media,
+# /docs and /health to the backend. Because the frontend is built with an empty
+# VITE_API_BASE_URL it uses relative URLs, so there is no CORS and the whole
+# thing is host-agnostic. Data persists in the named volumes (pgdata + media).
+#
+# No .env editing is required to boot locally; override any value via the shell
+# or an .env file in this directory (see .env.example).
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: platform
-      POSTGRES_PASSWORD: platform
-      POSTGRES_DB: platform
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform}
+      POSTGRES_DB: ${POSTGRES_DB:-platform}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U platform"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   backend:
     build: ./backend
-    env_file:
-      - ./backend/.env
     environment:
-      DATABASE_URL: postgresql+psycopg://platform:platform@db:5432/platform
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform}@db:5432/${POSTGRES_DB:-platform}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
+      MEDIA_ROOT: /data/media
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      AZURE_REDIRECT_URI: ${AZURE_REDIRECT_URI:-${PUBLIC_BASE_URL:-http://localhost:8080}/api/auth/callback}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@agholding.net}
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
     volumes:
-      - ./backend:/app
-      - media:/app/media
+      - media:/data/media
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   frontend:
-    build: ./frontend
-    env_file:
-      - ./frontend/.env
+    build:
+      context: ./frontend
+      args:
+        # Empty base URL => the SPA uses relative URLs, which nginx proxies to
+        # the backend. This is what makes the single-origin setup work.
+        VITE_API_BASE_URL: ""
     depends_on:
       - backend
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0
+      - "${APP_PORT:-8080}:80"
 
 volumes:
   pgdata:

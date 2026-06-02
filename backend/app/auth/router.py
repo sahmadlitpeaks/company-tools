@@ -14,6 +14,19 @@ from app.services.users import upsert_user_from_graph
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.get("/config")
+async def auth_config() -> dict:
+    """Public: tells the SPA which sign-in options are available at runtime.
+
+    The production frontend is a static build, so it can't rely on Vite's DEV
+    flag — it asks the backend instead.
+    """
+    return {
+        "azure": bool(settings.AZURE_CLIENT_ID and settings.AZURE_TENANT_ID),
+        "dev_login": settings.ENVIRONMENT == "development",
+    }
+
+
 @router.get("/login")
 async def login(request: Request):
     """Kick off the Azure Entra ID OIDC authorization-code flow."""

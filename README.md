@@ -48,12 +48,19 @@ npm run dev
 Backend runs on http://localhost:8000 (docs at `/docs`), frontend on
 http://localhost:5173.
 
-## Or run everything with Docker
+## Or run everything with Docker (one command, one URL)
 
 ```bash
-cp backend/.env.example backend/.env   # fill values
 docker compose up --build
 ```
+
+Then open **http://localhost:8080** — that's it. nginx serves the built SPA and
+reverse-proxies the API, so the whole app lives on a single origin (no CORS, no
+`.env` editing). Data persists in the `pgdata` and `media` volumes.
+
+In `development` (the default) a local **dev-login** is available without Azure.
+To customise the port, secrets, Azure SSO or SMTP, copy `.env.example` to `.env`
+and edit it before running compose.
 
 ## Azure app registration
 
