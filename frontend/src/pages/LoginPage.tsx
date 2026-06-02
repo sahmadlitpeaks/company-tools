@@ -40,62 +40,74 @@ export default function LoginPage() {
 
   return (
     <div className="center-screen">
-      <div className="login-card">
-        <div className="row" style={{ gap: 12, marginBottom: 18 }}>
-          <span
-            className="logo"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "var(--brand)",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              fontWeight: 700,
-              flex: "0 0 auto",
-            }}
-          >
-            AG
-          </span>
-          <div>
-            <h2 style={{ margin: 0 }}>AG Holding</h2>
-            <div className="muted">Internal Platform</div>
+      <div className="grid w-full max-w-[920px] overflow-hidden rounded-[20px] bg-white shadow-[0_30px_80px_rgba(0,0,0,0.35)] md:grid-cols-2">
+        {/* Brand panel */}
+        <div className="relative hidden flex-col justify-between bg-gradient-to-br from-brand-800 to-brand-600 p-9 text-white md:flex">
+          <div className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10" />
+          <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-white/5" />
+          <div className="relative flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/15 text-lg font-bold">
+              AG
+            </span>
+            <span className="text-lg font-bold">AG Holding</span>
+          </div>
+          <div className="relative">
+            <h2 className="text-white">The internal toolkit for every team.</h2>
+            <ul className="mt-4 space-y-2 text-sm text-white/85">
+              <li>💳 Digital cards, brand center &amp; marketing assets</li>
+              <li>🏷 Asset tracking with QR labels &amp; depreciation</li>
+              <li>🔗 QR codes, short links &amp; landing pages</li>
+              <li>🔒 Encrypted, single-use secure transfers</li>
+            </ul>
+          </div>
+          <div className="relative text-xs text-white/60">
+            Secured by Azure Entra ID single sign-on
           </div>
         </div>
 
-        <p className="muted" style={{ marginTop: 0 }}>
-          Sign in with your company Microsoft account to continue.
-        </p>
+        {/* Sign-in panel */}
+        <div className="p-9">
+          <div className="mb-1 flex items-center gap-2 md:hidden">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-600 font-bold text-white">
+              AG
+            </span>
+            <span className="font-bold">AG Holding</span>
+          </div>
+          <h2 className="mt-2">Welcome back</h2>
+          <p className="muted mt-1">
+            Sign in with your company Microsoft account to continue.
+          </p>
 
-        {config.azure && (
-          <button
-            className="btn-primary"
-            style={{ width: "100%", padding: "11px" }}
-            onClick={login}
-          >
-            Sign in with Microsoft
-          </button>
-        )}
+          {config.azure && (
+            <button
+              className="btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3"
+              onClick={login}
+            >
+              <span aria-hidden>⊞</span> Sign in with Microsoft
+            </button>
+          )}
 
-        {config.dev_login && (
-          <form onSubmit={handleDev} style={{ marginTop: 22 }}>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-              Developer login (local only)
-            </div>
-            <div className="row" style={{ gap: 8 }}>
-              <input
-                type="email"
-                placeholder="you@agholding.net"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <button className="btn" style={{ flex: "0 0 auto" }} disabled={busy}>
-                {busy ? "…" : "Go"}
-              </button>
-            </div>
-          </form>
-        )}
+          {config.dev_login && (
+            <form onSubmit={handleDev} className="mt-6">
+              <div className="mb-3 flex items-center gap-3 text-xs text-ink-muted">
+                <span className="h-px flex-1 bg-[var(--border)]" />
+                developer login (local only)
+                <span className="h-px flex-1 bg-[var(--border)]" />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  placeholder="you@agholding.net"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <button className="btn flex-none" disabled={busy}>
+                  {busy ? "…" : "Go"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

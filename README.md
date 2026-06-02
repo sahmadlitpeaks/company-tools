@@ -24,7 +24,7 @@ Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card i
 ## Tech stack
 
 - **Backend:** FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, Authlib (OIDC).
-- **Frontend:** React 18 + Vite + TypeScript, MSAL (Azure auth), TanStack Query, React Router.
+- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, MSAL (Azure auth), TanStack Query, React Router.
 - **Auth:** Azure Entra ID OIDC → backend issues a short-lived app JWT session.
 
 ## Quick start (local dev)
