@@ -16,6 +16,7 @@ from app.api import (
     notifications,
     products,
     qrcodes,
+    settings as settings_api,
     shortener,
     signatures,
     tracker,
@@ -77,6 +78,7 @@ app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(tracker.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(brands.router, prefix=api_prefix)
+app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 
 

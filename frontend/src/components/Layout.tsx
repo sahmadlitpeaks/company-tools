@@ -24,6 +24,7 @@ const NAV = [
   { to: "/transfers", label: "Secure Transfers", icon: "🔒" },
   { section: "Admin", adminOnly: true },
   { to: "/brands", label: "Brands", icon: "🏢", adminOnly: true },
+  { to: "/settings", label: "Settings", icon: "⚙️", adminOnly: true },
 ];
 
 function initials(name?: string | null, email?: string): string {

@@ -1,6 +1,7 @@
 """Import all models so Alembic's autogenerate can see them."""
 from app.models.user import User  # noqa: F401
 from app.models.brand import Brand  # noqa: F401
+from app.models.app_setting import AppSetting  # noqa: F401
 from app.models.card import DigitalCard, CardScan, Lead  # noqa: F401
 from app.models.asset import Folder, Asset  # noqa: F401
 from app.models.branding import BrandKit, BrandAsset  # noqa: F401

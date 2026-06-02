@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.models.brand import Brand
 from app.models.user import User
 from app.schemas.user import ManagedBrandsUpdate, UserOut, UserUpdate
+from app.services.app_settings import get_azure_config
 from app.services.users import sync_all_users_from_graph
 
 ROLES = {"admin", "manager", "member"}
@@ -99,7 +100,10 @@ async def sync_directory(
     _: User = Depends(get_current_admin),
 ):
     """Feature #1 — pull every user from Entra ID into the local DB."""
-    token = await get_app_token()
+    cfg = await get_azure_config(db)
+    if not cfg["configured"]:
+        raise HTTPException(status_code=503, detail="Azure is not configured")
+    token = await get_app_token(cfg["tenant_id"], cfg["client_id"], cfg["client_secret"])
     graph_users = await fetch_graph_users(token)
     count = await sync_all_users_from_graph(db, graph_users)
     await db.commit()

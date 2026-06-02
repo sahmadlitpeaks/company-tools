@@ -1,21 +1,29 @@
-"""Azure Entra ID (Azure AD) OIDC client + Microsoft Graph helpers."""
+"""Azure Entra ID (Azure AD) OIDC client + Microsoft Graph helpers.
+
+The OAuth client is built dynamically from the effective Azure config (admin
+DB settings, falling back to environment), so connecting Azure is a UI task —
+no code or environment changes required.
+"""
 import httpx
 from authlib.integrations.starlette_client import OAuth
 
-from app.core.config import settings
-
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
-oauth = OAuth()
-oauth.register(
-    name="azure",
-    server_metadata_url=settings.azure_discovery_url,
-    client_id=settings.AZURE_CLIENT_ID,
-    client_secret=settings.AZURE_CLIENT_SECRET,
-    client_kwargs={
-        "scope": "openid profile email User.Read",
-    },
-)
+
+def build_oauth(tenant_id: str, client_id: str, client_secret: str) -> OAuth:
+    """Construct a one-off Authlib registry for the given Azure credentials."""
+    oauth = OAuth()
+    oauth.register(
+        name="azure",
+        server_metadata_url=(
+            f"https://login.microsoftonline.com/{tenant_id}"
+            "/v2.0/.well-known/openid-configuration"
+        ),
+        client_id=client_id,
+        client_secret=client_secret,
+        client_kwargs={"scope": "openid profile email User.Read"},
+    )
+    return oauth
 
 
 async def fetch_graph_me(access_token: str) -> dict:
@@ -36,10 +44,7 @@ async def fetch_graph_me(access_token: str) -> dict:
 
 
 async def fetch_graph_users(access_token: str) -> list[dict]:
-    """Fetch all users in the directory (feature #1 — requires User.Read.All).
-
-    Uses an application token (client-credentials). Pages through results.
-    """
+    """Fetch all users in the directory (feature #1 — requires User.Read.All)."""
     users: list[dict] = []
     url = (
         f"{GRAPH_BASE}/users?$select=id,displayName,givenName,surname,mail,"
@@ -58,15 +63,15 @@ async def fetch_graph_users(access_token: str) -> list[dict]:
     return users
 
 
-async def get_app_token() -> str:
+async def get_app_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     """Client-credentials token for app-only Graph calls (directory sync)."""
-    token_url = f"{settings.azure_authority}/oauth2/v2.0/token"
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             token_url,
             data={
-                "client_id": settings.AZURE_CLIENT_ID,
-                "client_secret": settings.AZURE_CLIENT_SECRET,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "scope": "https://graph.microsoft.com/.default",
                 "grant_type": "client_credentials",
             },

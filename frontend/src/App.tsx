@@ -12,6 +12,7 @@ import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import BrandsPage from "./pages/BrandsPage";
+import SettingsPage from "./pages/SettingsPage";
 import QRCodesPage from "./pages/QRCodesPage";
 import LandingPagesPage from "./pages/LandingPagesPage";
 import LandingBuilderPage from "./pages/LandingBuilderPage";
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/shortener" element={<ShortenerPage />} />
           <Route path="/transfers" element={<TransfersPage />} />
           <Route path="/brands" element={<BrandsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       )}
