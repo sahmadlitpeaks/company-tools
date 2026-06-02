@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead, useToast } from "../components/ui";
+import { AuthImage, Empty, Loading, PageHead, useToast } from "../components/ui";
 
 export default function QRCodesPage() {
   const { notify } = useToast();
@@ -15,13 +15,11 @@ export default function QRCodesPage() {
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const previewSrc =
+  const previewPath =
     form.target_url.length > 3
-      ? apiUrl(
-          `/api/qrcodes/preview.png?data=${encodeURIComponent(form.target_url)}` +
-            `&fill_color=${encodeURIComponent(form.fill_color)}` +
-            `&back_color=${encodeURIComponent(form.back_color)}`,
-        )
+      ? `/api/qrcodes/preview.png?data=${encodeURIComponent(form.target_url)}` +
+        `&fill_color=${encodeURIComponent(form.fill_color)}` +
+        `&back_color=${encodeURIComponent(form.back_color)}`
       : null;
 
   async function create(e: React.FormEvent) {
@@ -86,9 +84,9 @@ export default function QRCodesPage() {
           </form>
         </div>
         <div className="card" style={{ display: "grid", placeItems: "center" }}>
-          {previewSrc ? (
+          {previewPath ? (
             <div style={{ textAlign: "center" }}>
-              <img src={previewSrc} width={200} height={200} alt="QR preview" />
+              <AuthImage path={previewPath} width={200} height={200} alt="QR preview" />
               <div className="muted" style={{ marginTop: 8 }}>
                 Live preview
               </div>
@@ -108,8 +106,8 @@ export default function QRCodesPage() {
         <div className="grid cols-4">
           {data.map((qr) => (
             <div className="card" key={qr.id} style={{ textAlign: "center" }}>
-              <img
-                src={apiUrl(`/api/qrcodes/${qr.id}/image.png`)}
+              <AuthImage
+                path={`/api/qrcodes/${qr.id}/image.png`}
                 width={140}
                 height={140}
                 alt={qr.label}
@@ -119,14 +117,15 @@ export default function QRCodesPage() {
                 {qr.target_url}
               </div>
               <div className="row" style={{ gap: 6, marginTop: 10 }}>
-                <a
+                <button
                   className="btn btn-sm"
-                  href={apiUrl(`/api/qrcodes/${qr.id}/image.png`)}
-                  download={`${qr.label}.png`}
                   style={{ flex: "0 0 auto" }}
+                  onClick={() =>
+                    downloadFile(`/api/qrcodes/${qr.id}/image.png`, `${qr.label}.png`)
+                  }
                 >
                   PNG
-                </a>
+                </button>
                 <button
                   className="btn-sm btn-danger"
                   style={{ flex: "0 0 auto" }}

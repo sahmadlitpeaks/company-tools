@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { api, downloadFile } from "../api/client";
 import type { BrandAsset, BrandKit } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -52,12 +52,14 @@ function KitAssets({ kit, onClose }: { kit: BrandKit; onClose: () => void }) {
                   </td>
                   <td className="muted">{bytes(a.size_bytes)}</td>
                   <td>
-                    <a
+                    <button
                       className="btn btn-sm"
-                      href={apiUrl(`/api/branding/assets/${a.id}/download`)}
+                      onClick={() =>
+                        downloadFile(`/api/branding/assets/${a.id}/download`, a.name)
+                      }
                     >
                       Download
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}

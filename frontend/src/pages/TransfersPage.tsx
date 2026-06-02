@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { SecureTransfer, SecureTransferCreated } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
+  ConfirmModal,
   Empty,
   Loading,
   Modal,
@@ -60,6 +61,7 @@ export default function TransfersPage() {
   });
   const [busy, setBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<SecureTransfer | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +97,6 @@ export default function TransfersPage() {
   }
 
   async function revoke(t: SecureTransfer) {
-    if (!confirm(`Revoke and delete the file sent to ${t.recipient_email}?`)) return;
     await api(`/api/transfers/${t.id}`, { method: "DELETE" });
     notify("File revoked and deleted.");
     reload();
@@ -242,7 +243,7 @@ export default function TransfersPage() {
                     {!t.is_consumed && (
                       <button
                         className="btn-sm btn-danger"
-                        onClick={() => revoke(t)}
+                        onClick={() => setRevoking(t)}
                       >
                         Revoke
                       </button>
@@ -256,6 +257,16 @@ export default function TransfersPage() {
       )}
 
       {shareUrl && <ShareResult url={shareUrl} onClose={() => setShareUrl(null)} />}
+      {revoking && (
+        <ConfirmModal
+          title="Revoke transfer"
+          message={`Revoke and permanently delete the file sent to ${revoking.recipient_email}? The share link will stop working immediately.`}
+          confirmLabel="Revoke & delete"
+          danger
+          onConfirm={() => revoke(revoking)}
+          onClose={() => setRevoking(null)}
+        />
+      )}
     </div>
   );
 }

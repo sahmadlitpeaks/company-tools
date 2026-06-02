@@ -67,3 +67,41 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
 
 /** Build an absolute URL to a backend resource (e.g. a QR image). */
 export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
+
+/**
+ * Fetch a binary resource with the auth header attached. Needed for images and
+ * downloads behind auth, since `<img src>` / `<a download>` can't send the
+ * Bearer token and would 401.
+ */
+export async function apiBlob(path: string, auth = true): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (auth) {
+    const token = tokenStore.get();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (res.status === 401 && auth) tokenStore.clear();
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, String(detail));
+  }
+  return res.blob();
+}
+
+/** Download an auth-protected resource to the user's machine. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const blob = await apiBlob(path);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

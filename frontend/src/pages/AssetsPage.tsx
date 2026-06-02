@@ -1,13 +1,21 @@
 import { useRef, useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { api, downloadFile } from "../api/client";
 import type { Asset, Folder } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead, bytes, useToast } from "../components/ui";
+import {
+  Empty,
+  Loading,
+  PageHead,
+  PromptModal,
+  bytes,
+  useToast,
+} from "../components/ui";
 
 export default function AssetsPage() {
   const { notify } = useToast();
   const [folderId, setFolderId] = useState<string | null>(null);
   const [crumbs, setCrumbs] = useState<Folder[]>([]);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folderQuery = folderId ? `?parent_id=${folderId}` : "";
@@ -30,9 +38,7 @@ export default function AssetsPage() {
     }
   }
 
-  async function newFolder() {
-    const name = prompt("Folder name");
-    if (!name) return;
+  async function createFolder(name: string) {
     await api("/api/assets/folders", {
       method: "POST",
       body: { name, parent_id: folderId },
@@ -64,7 +70,11 @@ export default function AssetsPage() {
         subtitle="Organise campaign files in folders for easy team access."
         action={
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn" style={{ flex: "0 0 auto" }} onClick={newFolder}>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => setNewFolderOpen(true)}
+            >
               + Folder
             </button>
             <button
@@ -121,13 +131,13 @@ export default function AssetsPage() {
             <div className="muted" style={{ fontSize: 12 }}>
               {bytes(a.size_bytes)}
             </div>
-            <a
+            <button
               className="btn btn-sm"
-              style={{ marginTop: 10, display: "inline-block" }}
-              href={apiUrl(`/api/assets/${a.id}/download`)}
+              style={{ marginTop: 10 }}
+              onClick={() => downloadFile(`/api/assets/${a.id}/download`, a.name)}
             >
               Download
-            </a>
+            </button>
           </div>
         ))}
       </div>
@@ -137,6 +147,17 @@ export default function AssetsPage() {
       ) : (folders.data?.length ?? 0) + (assets.data?.length ?? 0) === 0 ? (
         <Empty message="This folder is empty. Create a sub-folder or upload a file." />
       ) : null}
+
+      {newFolderOpen && (
+        <PromptModal
+          title="New folder"
+          label="Folder name"
+          placeholder="e.g. Q2 Campaign"
+          submitLabel="Create folder"
+          onSubmit={createFolder}
+          onClose={() => setNewFolderOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -3,33 +3,31 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { LandingPage } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead, useToast } from "../components/ui";
+import {
+  ConfirmModal,
+  Empty,
+  Loading,
+  PageHead,
+  PromptModal,
+  useToast,
+} from "../components/ui";
 
 export default function LandingPagesPage() {
   const navigate = useNavigate();
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<LandingPage[]>("/api/landing-pages");
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<LandingPage | null>(null);
 
-  async function create() {
-    const title = prompt("Landing page title");
-    if (!title) return;
-    setCreating(true);
-    try {
-      const page = await api<LandingPage>("/api/landing-pages", {
-        method: "POST",
-        body: { title, status: "draft", blocks: "[]" },
-      });
-      navigate(`/landing-pages/${page.id}/edit`);
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
-    } finally {
-      setCreating(false);
-    }
+  async function create(title: string) {
+    const page = await api<LandingPage>("/api/landing-pages", {
+      method: "POST",
+      body: { title, status: "draft", blocks: "[]" },
+    });
+    navigate(`/landing-pages/${page.id}/edit`);
   }
 
   async function remove(p: LandingPage) {
-    if (!confirm(`Delete "${p.title}"?`)) return;
     await api(`/api/landing-pages/${p.id}`, { method: "DELETE" });
     notify("Deleted.");
     reload();
@@ -41,7 +39,7 @@ export default function LandingPagesPage() {
         title="Landing Pages"
         subtitle="Build marketing pages with the block editor, published at /p/{slug}."
         action={
-          <button className="btn-primary" onClick={create} disabled={creating}>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
             + New page
           </button>
         }
@@ -98,7 +96,7 @@ export default function LandingPagesPage() {
                       <button
                         className="btn-sm btn-danger"
                         style={{ flex: "0 0 auto" }}
-                        onClick={() => remove(p)}
+                        onClick={() => setDeleting(p)}
                       >
                         Delete
                       </button>
@@ -109,6 +107,27 @@ export default function LandingPagesPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {creating && (
+        <PromptModal
+          title="New landing page"
+          label="Page title"
+          placeholder="e.g. Summer Promo"
+          submitLabel="Create & open editor"
+          onSubmit={create}
+          onClose={() => setCreating(false)}
+        />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title="Delete landing page"
+          message={`Delete "${deleting.title}"? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => remove(deleting)}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </div>
   );

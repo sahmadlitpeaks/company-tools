@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { api } from "../api/client";
 import type { DigitalCard, Lead } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
+  AuthImage,
+  ConfirmModal,
   Empty,
   ErrorBox,
   Loading,
@@ -169,9 +171,9 @@ export default function CardsPage() {
   const { data, loading, error, reload } = useFetch<DigitalCard[]>("/api/cards");
   const [creating, setCreating] = useState(false);
   const [leadsFor, setLeadsFor] = useState<DigitalCard | null>(null);
+  const [deleting, setDeleting] = useState<DigitalCard | null>(null);
 
   async function remove(card: DigitalCard) {
-    if (!confirm(`Delete card for ${card.full_name}?`)) return;
     await api(`/api/cards/${card.id}`, { method: "DELETE" });
     notify("Card deleted.");
     reload();
@@ -213,11 +215,11 @@ export default function CardsPage() {
                     background: card.accent_color,
                   }}
                 />
-                <img
+                <AuthImage
                   alt="QR"
                   width={72}
                   height={72}
-                  src={apiUrl(`/api/cards/${card.id}/qr.png`)}
+                  path={`/api/cards/${card.id}/qr.png`}
                   style={{ border: "1px solid var(--border)", borderRadius: 8 }}
                 />
               </div>
@@ -253,7 +255,7 @@ export default function CardsPage() {
                 <button
                   className="btn-sm btn-danger"
                   style={{ flex: "0 0 auto" }}
-                  onClick={() => remove(card)}
+                  onClick={() => setDeleting(card)}
                 >
                   Delete
                 </button>
@@ -266,6 +268,16 @@ export default function CardsPage() {
       {creating && <CardForm onClose={() => setCreating(false)} onSaved={reload} />}
       {leadsFor && (
         <LeadsModal card={leadsFor} onClose={() => setLeadsFor(null)} />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title="Delete digital card"
+          message={`Delete the card for ${deleting.full_name}? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => remove(deleting)}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </div>
   );

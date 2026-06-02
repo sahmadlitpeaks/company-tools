@@ -7,6 +7,7 @@ import {
   Loading,
   Modal,
   PageHead,
+  PromptModal,
   bytes,
   useToast,
 } from "../components/ui";
@@ -73,10 +74,9 @@ export default function ProductsPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<Product[]>("/api/products");
   const [viewing, setViewing] = useState<Product | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  async function create() {
-    const name = prompt("Product / service name");
-    if (!name) return;
+  async function create(name: string) {
     await api("/api/products", { method: "POST", body: { name } });
     notify("Product created.");
     reload();
@@ -88,7 +88,7 @@ export default function ProductsPage() {
         title="Products & Brochures"
         subtitle="Catalogue products and host downloadable brochures."
         action={
-          <button className="btn-primary" onClick={create}>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
             + New product
           </button>
         }
@@ -118,6 +118,15 @@ export default function ProductsPage() {
         </div>
       )}
       {viewing && <Brochures product={viewing} onClose={() => setViewing(null)} />}
+      {creating && (
+        <PromptModal
+          title="New product"
+          label="Product / service name"
+          placeholder="e.g. Company Setup"
+          onSubmit={create}
+          onClose={() => setCreating(false)}
+        />
+      )}
     </div>
   );
 }
