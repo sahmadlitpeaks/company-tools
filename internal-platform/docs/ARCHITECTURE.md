@@ -51,6 +51,9 @@ bypasses Azure (returns 404 when `ENVIRONMENT != development`).
   fallback match key.
 - Analytics: `card_scans`, `link_clicks`, `Brochure.download_count`,
   `LandingPage.view_count`, `QRCode.scan_count`.
+- Landing pages store their layout as a JSON block list in `LandingPage.blocks`
+  (rendered by the SPA builder/public page) plus a self-contained static HTML
+  snapshot in `LandingPage.html` for portability/embedding.
 
 ## Storage
 
@@ -69,7 +72,5 @@ local spin-ups and seeds the default signature template.
 
 - Role-based access beyond the `is_admin` flag (per-module permissions).
 - Background directory sync (Celery/APScheduler) instead of on-demand.
-- vCard (`.vcf`) download from digital cards.
-- Block-based WYSIWYG landing-page editor + public HTML rendering route.
 - Object-storage backend (S3/Azure Blob) for uploads.
 - Audit log for admin actions.

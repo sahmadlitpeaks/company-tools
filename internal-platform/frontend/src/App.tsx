@@ -12,6 +12,7 @@ import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import QRCodesPage from "./pages/QRCodesPage";
 import LandingPagesPage from "./pages/LandingPagesPage";
+import LandingBuilderPage from "./pages/LandingBuilderPage";
 import SignaturesPage from "./pages/SignaturesPage";
 import ShortenerPage from "./pages/ShortenerPage";
 import PublicCardPage from "./pages/public/PublicCardPage";
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/qrcodes" element={<QRCodesPage />} />
           <Route path="/landing-pages" element={<LandingPagesPage />} />
+          <Route path="/landing-pages/:id/edit" element={<LandingBuilderPage />} />
           <Route path="/signatures" element={<SignaturesPage />} />
           <Route path="/shortener" element={<ShortenerPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
