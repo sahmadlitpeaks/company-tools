@@ -299,6 +299,22 @@ export function Loading() {
   return <div className="empty">Loading…</div>;
 }
 
+/** Shimmering placeholder bar. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`img-skeleton ${className}`} />;
+}
+
+/** A stack of skeleton rows for table/list loading states. */
+export function ListSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="img-skeleton h-11 w-full rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
 export function ErrorBox({ message }: { message: string }) {
   return (
     <div className="card" style={{ borderColor: "#fecaca", color: "#b91c1c" }}>
@@ -307,8 +323,25 @@ export function ErrorBox({ message }: { message: string }) {
   );
 }
 
-export function Empty({ message }: { message: string }) {
-  return <div className="empty">{message}</div>;
+export function Empty({
+  message,
+  icon,
+  hint,
+  action,
+}: {
+  message: string;
+  icon?: ReactNode;
+  hint?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="empty flex flex-col items-center gap-2">
+      {icon && <div className="text-4xl opacity-70">{icon}</div>}
+      <div className="font-semibold text-ink">{message}</div>
+      {hint && <div className="max-w-sm text-sm text-ink-muted">{hint}</div>}
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
 }
 
 export function bytes(n: number): string {

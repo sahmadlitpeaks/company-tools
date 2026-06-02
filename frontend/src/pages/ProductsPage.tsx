@@ -1,18 +1,17 @@
-import { useRef, useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import { api, downloadFile } from "../api/client";
 import type { Brochure, Product } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
-  Loading,
-  Modal,
+  ListSkeleton,
   PageHead,
   PromptModal,
   bytes,
   useToast,
 } from "../components/ui";
 
-function Brochures({ product, onClose }: { product: Product; onClose: () => void }) {
+function BrochurePanel({ product }: { product: Product }) {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<Brochure[]>(
     `/api/products/${product.id}/brochures`,
@@ -25,61 +24,98 @@ function Brochures({ product, onClose }: { product: Product; onClose: () => void
     const fd = new FormData();
     fd.append("file", file);
     fd.append("title", file.name);
-    await api(`/api/products/${product.id}/brochures`, { method: "POST", form: fd });
-    notify("Brochure uploaded.");
-    reload();
+    try {
+      await api(`/api/products/${product.id}/brochures`, { method: "POST", form: fd });
+      notify("Brochure uploaded.");
+      reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
     if (fileRef.current) fileRef.current.value = "";
   }
 
   return (
-    <Modal title={`${product.name} — brochures`} onClose={onClose}>
-      <button className="btn-primary" onClick={() => fileRef.current?.click()}>
-        Upload brochure
-      </button>
-      <input ref={fileRef} type="file" hidden onChange={upload} />
-      <div style={{ marginTop: 14 }}>
-        {loading ? (
-          <Loading />
-        ) : !data || data.length === 0 ? (
-          <Empty message="No brochures yet." />
-        ) : (
-          <table>
-            <tbody>
-              {data.map((b) => (
-                <tr key={b.id}>
-                  <td style={{ fontWeight: 600 }}>{b.title}</td>
-                  <td className="muted">{bytes(b.size_bytes)}</td>
-                  <td>
-                    <span className="badge">{b.download_count} downloads</span>
-                  </td>
-                  <td>
-                    <a
-                      className="btn btn-sm"
-                      href={apiUrl(`/api/public/brochures/${b.id}/download`)}
-                    >
-                      Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+    <div className="card">
+      <div className="spread mb-3">
+        <div>
+          <h3 className="m-0">{product.name}</h3>
+          {product.sku && <div className="muted text-sm">SKU: {product.sku}</div>}
+        </div>
+        <button
+          className="btn-primary flex-none"
+          onClick={() => fileRef.current?.click()}
+        >
+          + Upload brochure
+        </button>
+        <input ref={fileRef} type="file" hidden onChange={upload} />
       </div>
-    </Modal>
+      {product.description && (
+        <p className="muted mt-0">{product.description}</p>
+      )}
+
+      {loading ? (
+        <ListSkeleton rows={3} />
+      ) : !data || data.length === 0 ? (
+        <Empty
+          icon="📄"
+          message="No brochures yet"
+          hint="Upload a PDF or document to share with customers."
+        />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Size</th>
+              <th>Downloads</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((b) => (
+              <tr key={b.id}>
+                <td className="font-semibold">{b.title}</td>
+                <td className="muted">{bytes(b.size_bytes)}</td>
+                <td>
+                  <span className="badge">{b.download_count}</span>
+                </td>
+                <td className="text-right">
+                  <button
+                    className="btn-sm"
+                    onClick={() =>
+                      downloadFile(`/api/public/brochures/${b.id}/download`, b.title)
+                    }
+                  >
+                    Download
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
 export default function ProductsPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<Product[]>("/api/products");
-  const [viewing, setViewing] = useState<Product | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // Auto-select the first product so brochures are visible immediately.
+  useEffect(() => {
+    if (!selectedId && data && data.length > 0) setSelectedId(data[0].id);
+  }, [data, selectedId]);
+
+  const selected = data?.find((p) => p.id === selectedId) ?? null;
+
   async function create(name: string) {
-    await api("/api/products", { method: "POST", body: { name } });
+    const p = await api<Product>("/api/products", { method: "POST", body: { name } });
     notify("Product created.");
-    reload();
+    await reload();
+    setSelectedId(p.id);
   }
 
   return (
@@ -93,31 +129,51 @@ export default function ProductsPage() {
           </button>
         }
       />
+
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={5} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No products yet." />
+        <Empty
+          icon="📦"
+          message="No products yet"
+          hint="Add a product or service, then attach downloadable brochures."
+          action={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + New product
+            </button>
+          }
+        />
       ) : (
-        <div className="grid cols-3">
-          {data.map((p) => (
-            <div className="card" key={p.id}>
-              <h3 style={{ marginTop: 0 }}>{p.name}</h3>
-              {p.sku && <div className="muted">SKU: {p.sku}</div>}
-              <div className="muted" style={{ marginTop: 6 }}>
-                {p.description}
-              </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_1fr]">
+          {/* Product list */}
+          <div className="card !p-2">
+            {data.map((p) => (
               <button
-                className="btn btn-sm"
-                style={{ marginTop: 12 }}
-                onClick={() => setViewing(p)}
+                key={p.id}
+                onClick={() => setSelectedId(p.id)}
+                className={`flex w-full flex-col items-start gap-0.5 rounded-lg border-0 px-3 py-2.5 text-left ${
+                  p.id === selectedId
+                    ? "bg-brand-50 text-brand-800"
+                    : "bg-transparent hover:bg-slate-50"
+                }`}
               >
-                Brochures
+                <span className="font-semibold">{p.name}</span>
+                {p.sku && <span className="text-xs text-ink-muted">SKU: {p.sku}</span>}
               </button>
+            ))}
+          </div>
+
+          {/* Selected product's brochures */}
+          {selected ? (
+            <BrochurePanel key={selected.id} product={selected} />
+          ) : (
+            <div className="card">
+              <Empty message="Select a product to see its brochures." />
             </div>
-          ))}
+          )}
         </div>
       )}
-      {viewing && <Brochures product={viewing} onClose={() => setViewing(null)} />}
+
       {creating && (
         <PromptModal
           title="New product"

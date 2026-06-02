@@ -1,17 +1,17 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, downloadFile } from "../api/client";
 import type { BrandAsset, BrandKit } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
-  Loading,
+  ListSkeleton,
   Modal,
   PageHead,
   bytes,
   useToast,
 } from "../components/ui";
 
-function KitAssets({ kit, onClose }: { kit: BrandKit; onClose: () => void }) {
+function KitPanel({ kit }: { kit: BrandKit }) {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<BrandAsset[]>(
     `/api/branding/kits/${kit.id}/assets`,
@@ -24,54 +24,82 @@ function KitAssets({ kit, onClose }: { kit: BrandKit; onClose: () => void }) {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("category", "logo");
-    await api(`/api/branding/kits/${kit.id}/assets`, { method: "POST", form: fd });
-    notify("Asset uploaded.");
-    reload();
+    try {
+      await api(`/api/branding/kits/${kit.id}/assets`, { method: "POST", form: fd });
+      notify("Asset uploaded.");
+      reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
     if (fileRef.current) fileRef.current.value = "";
   }
 
   return (
-    <Modal title={`${kit.name} — assets`} onClose={onClose}>
-      <button className="btn-primary" onClick={() => fileRef.current?.click()}>
-        Upload asset
-      </button>
-      <input ref={fileRef} type="file" hidden onChange={upload} />
-      <div style={{ marginTop: 14 }}>
-        {loading ? (
-          <Loading />
-        ) : !data || data.length === 0 ? (
-          <Empty message="No brand assets yet." />
-        ) : (
-          <table>
-            <tbody>
-              {data.map((a) => (
-                <tr key={a.id}>
-                  <td style={{ fontWeight: 600 }}>{a.name}</td>
-                  <td>
-                    <span className="badge">{a.category}</span>
-                  </td>
-                  <td className="muted">{bytes(a.size_bytes)}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() =>
-                        downloadFile(`/api/branding/assets/${a.id}/download`, a.name)
-                      }
-                    >
-                      Download
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+    <div className="card">
+      <div className="spread mb-3">
+        <div>
+          <h3 className="m-0">{kit.name}</h3>
+          {kit.description && <div className="muted text-sm">{kit.description}</div>}
+        </div>
+        <button className="btn-primary flex-none" onClick={() => fileRef.current?.click()}>
+          + Upload asset
+        </button>
+        <input ref={fileRef} type="file" hidden onChange={upload} />
       </div>
-    </Modal>
+      {kit.guidelines_url && (
+        <div className="mb-3">
+          <a href={kit.guidelines_url} target="_blank" rel="noreferrer">
+            Brand guidelines ↗
+          </a>
+        </div>
+      )}
+
+      {loading ? (
+        <ListSkeleton rows={3} />
+      ) : !data || data.length === 0 ? (
+        <Empty
+          icon="🎨"
+          message="No brand assets yet"
+          hint="Upload logos, fonts or colour swatches for this kit."
+        />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Size</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((a) => (
+              <tr key={a.id}>
+                <td className="font-semibold">{a.name}</td>
+                <td>
+                  <span className="badge">{a.category}</span>
+                </td>
+                <td className="muted">{bytes(a.size_bytes)}</td>
+                <td className="text-right">
+                  <button
+                    className="btn-sm"
+                    onClick={() =>
+                      downloadFile(`/api/branding/assets/${a.id}/download`, a.name)
+                    }
+                  >
+                    Download
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
-function KitForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function KitForm({ onClose, onSaved }: { onClose: () => void; onSaved: (kit: BrandKit) => void }) {
   const { notify } = useToast();
   const [form, setForm] = useState({
     name: "",
@@ -85,9 +113,12 @@ function KitForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await api("/api/branding/kits", { method: "POST", body: form });
+          const kit = await api<BrandKit>("/api/branding/kits", {
+            method: "POST",
+            body: form,
+          });
           notify("Brand kit created.");
-          onSaved();
+          onSaved(kit);
           onClose();
         }}
       >
@@ -127,7 +158,13 @@ function KitForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 export default function BrandingPage() {
   const { data, loading, reload } = useFetch<BrandKit[]>("/api/branding/kits");
   const [creating, setCreating] = useState(false);
-  const [viewing, setViewing] = useState<BrandKit | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedId && data && data.length > 0) setSelectedId(data[0].id);
+  }, [data, selectedId]);
+
+  const selected = data?.find((k) => k.id === selectedId) ?? null;
 
   return (
     <div>
@@ -140,36 +177,59 @@ export default function BrandingPage() {
           </button>
         }
       />
+
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={5} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No brand kits yet. Create one to store guidelines and assets." />
+        <Empty
+          icon="🎨"
+          message="No brand kits yet"
+          hint="Create a kit to store guidelines, logos and downloadable assets."
+          action={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + New brand kit
+            </button>
+          }
+        />
       ) : (
-        <div className="grid cols-3">
-          {data.map((kit) => (
-            <div className="card" key={kit.id}>
-              <h3 style={{ marginTop: 0 }}>{kit.name}</h3>
-              <div className="muted">{kit.description}</div>
-              {kit.guidelines_url && (
-                <div style={{ marginTop: 8 }}>
-                  <a href={kit.guidelines_url} target="_blank" rel="noreferrer">
-                    Brand guidelines ↗
-                  </a>
-                </div>
-              )}
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_1fr]">
+          <div className="card !p-2">
+            {data.map((kit) => (
               <button
-                className="btn btn-sm"
-                style={{ marginTop: 12 }}
-                onClick={() => setViewing(kit)}
+                key={kit.id}
+                onClick={() => setSelectedId(kit.id)}
+                className={`flex w-full flex-col items-start gap-0.5 rounded-lg border-0 px-3 py-2.5 text-left ${
+                  kit.id === selectedId
+                    ? "bg-brand-50 text-brand-800"
+                    : "bg-transparent hover:bg-slate-50"
+                }`}
               >
-                Manage assets
+                <span className="font-semibold">{kit.name}</span>
+                {kit.description && (
+                  <span className="truncate text-xs text-ink-muted">{kit.description}</span>
+                )}
               </button>
+            ))}
+          </div>
+          {selected ? (
+            <KitPanel key={selected.id} kit={selected} />
+          ) : (
+            <div className="card">
+              <Empty message="Select a brand kit to manage its assets." />
             </div>
-          ))}
+          )}
         </div>
       )}
-      {creating && <KitForm onClose={() => setCreating(false)} onSaved={reload} />}
-      {viewing && <KitAssets kit={viewing} onClose={() => setViewing(null)} />}
+
+      {creating && (
+        <KitForm
+          onClose={() => setCreating(false)}
+          onSaved={(kit) => {
+            reload();
+            setSelectedId(kit.id);
+          }}
+        />
+      )}
     </div>
   );
 }
