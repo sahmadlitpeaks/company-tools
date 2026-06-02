@@ -5,12 +5,15 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.tracked_asset import AssetEvent, TrackedAsset
 from app.models.user import User
 from app.services.activity import record
+from app.services.email import notification_email_html, send_email
+from app.services.notify import notify_user
 from app.schemas.tracker import (
     AssetEventOut,
     AssetSummary,
@@ -244,8 +247,30 @@ async def checkout(
         entity_id=asset.id,
         summary=f"Checked out {asset.asset_tag} to {target.display_name or target.email}",
     )
+    await notify_user(
+        db,
+        user_id=target.id,
+        title="An asset was assigned to you",
+        body=f"{asset.name} ({asset.asset_tag}) has been checked out to you.",
+        link="/asset-tracker",
+        category="asset",
+    )
     await db.commit()
     await db.refresh(asset)
+
+    # Best-effort email to the assignee (no-op if SMTP isn't configured).
+    if target.email:
+        await run_in_threadpool(
+            send_email,
+            target.email,
+            "An asset was assigned to you",
+            notification_email_html(
+                "An asset was assigned to you",
+                f"{asset.name} ({asset.asset_tag}) has been checked out to you.",
+                None,
+            ),
+        )
+
     names = await _names(db, {asset.assigned_to_id})
     return _serialize(asset, names)
 

@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api/client";
 import { useFetch } from "../hooks/useApi";
 import { Loading, MiniBars, PageHead } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
@@ -44,6 +46,11 @@ const ACTION_ICON: Record<string, string> = {
 export default function DashboardPage() {
   const { user } = useAuth();
   const { data, loading } = useFetch<AnalyticsOverview>("/api/analytics/overview");
+
+  // Generate warranty notifications on load (idempotent on the backend).
+  useEffect(() => {
+    void api("/api/notifications/check-warranties", { method: "POST" }).catch(() => {});
+  }, []);
 
   const c = data?.counts;
   const alerts = data?.assets.warranty_alerts ?? [];

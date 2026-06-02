@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 const NAV = [
   { section: "Overview" },
@@ -78,6 +79,8 @@ export default function Layout() {
       <div className="main">
         <header className="topbar">
           <div className="title">Internal Platform</div>
+          <div className="row" style={{ flex: "0 0 auto", gap: 8, alignItems: "center" }}>
+          <NotificationBell />
           <div className="profile" ref={menuRef}>
             <button className="profile-btn" onClick={() => setMenuOpen((o) => !o)}>
               <span className="avatar">{initials(user?.display_name, user?.email)}</span>
@@ -98,6 +101,7 @@ export default function Layout() {
                 </button>
               </div>
             )}
+          </div>
           </div>
         </header>
         <main className="content">

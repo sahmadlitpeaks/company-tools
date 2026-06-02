@@ -253,6 +253,16 @@ export interface ActivityItem {
   created_at?: string | null;
 }
 
+export interface AppNotification {
+  id: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  category: string;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface AnalyticsOverview {
   counts: Record<string, number>;
   engagement: { total_link_clicks: number; total_card_scans: number };

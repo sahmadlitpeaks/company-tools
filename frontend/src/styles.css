@@ -159,6 +159,83 @@ a:hover {
   overflow: auto;
 }
 
+/* ---- Notification bell ---- */
+.bell {
+  position: relative;
+}
+.bell-btn {
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 18px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  line-height: 1;
+}
+.bell-btn:hover {
+  background: var(--bg);
+  border-color: var(--border);
+}
+.bell-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.bell-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 340px;
+  max-width: 90vw;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 40;
+}
+.bell-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.bell-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+.bell-item {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  padding: 11px 14px;
+}
+.bell-item:hover {
+  background: var(--bg);
+}
+.bell-item.unread {
+  background: #f0f6ff;
+}
+.bell-item.unread:hover {
+  background: #e6f0fc;
+}
+.bell-icon {
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+
 /* ---- Header profile ---- */
 .profile {
   position: relative;

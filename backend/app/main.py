@@ -10,6 +10,7 @@ from app.api import (
     branding,
     cards,
     landing,
+    notifications,
     products,
     qrcodes,
     shortener,
@@ -71,6 +72,7 @@ app.include_router(transfers.router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(tracker.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
+app.include_router(notifications.router, prefix=api_prefix)
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----
