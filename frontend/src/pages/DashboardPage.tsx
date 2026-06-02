@@ -1,15 +1,8 @@
 import { Link } from "react-router-dom";
 import { useFetch } from "../hooks/useApi";
-import { PageHead } from "../components/ui";
+import { Loading, MiniBars, PageHead } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
-import type {
-  DigitalCard,
-  LandingPage,
-  Product,
-  QRCode,
-  ShortLink,
-  User,
-} from "../api/types";
+import type { AnalyticsOverview } from "../api/types";
 
 function Stat({
   value,
@@ -28,17 +21,32 @@ function Stat({
   );
 }
 
+function timeAgo(iso?: string | null): string {
+  if (!iso) return "";
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+const ACTION_ICON: Record<string, string> = {
+  created: "➕",
+  updated: "✏️",
+  deleted: "🗑",
+  checked_out: "📤",
+  checked_in: "📥",
+  maintenance: "🔧",
+  published: "🚀",
+  sent: "✉️",
+};
+
 export default function DashboardPage() {
   const { user } = useAuth();
-  const users = useFetch<User[]>("/api/users");
-  const cards = useFetch<DigitalCard[]>("/api/cards");
-  const qrcodes = useFetch<QRCode[]>("/api/qrcodes");
-  const products = useFetch<Product[]>("/api/products");
-  const pages = useFetch<LandingPage[]>("/api/landing-pages");
-  const links = useFetch<ShortLink[]>("/api/short-links");
+  const { data, loading } = useFetch<AnalyticsOverview>("/api/analytics/overview");
 
-  const totalClicks =
-    links.data?.reduce((sum, l) => sum + l.click_count, 0) ?? 0;
+  const c = data?.counts;
+  const alerts = data?.assets.warranty_alerts ?? [];
 
   return (
     <div>
@@ -46,67 +54,137 @@ export default function DashboardPage() {
         title={`Welcome, ${user?.given_name ?? user?.display_name ?? "there"} 👋`}
         subtitle="Your company marketing & employee toolkit at a glance."
       />
-      <div className="grid cols-4">
-        <Stat value={users.data?.length ?? "…"} label="Employees" to="/directory" />
-        <Stat value={cards.data?.length ?? "…"} label="My Digital Cards" to="/cards" />
-        <Stat value={qrcodes.data?.length ?? "…"} label="QR Codes" to="/qrcodes" />
-        <Stat value={products.data?.length ?? "…"} label="Products" to="/products" />
-        <Stat
-          value={pages.data?.length ?? "…"}
-          label="Landing Pages"
-          to="/landing-pages"
-        />
-        <Stat
-          value={links.data?.length ?? "…"}
-          label="Short Links"
-          to="/shortener"
-        />
-        <Stat value={totalClicks} label="Total Link Clicks" to="/shortener" />
-      </div>
 
-      <div className="grid cols-2" style={{ marginTop: 20 }}>
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Quick actions</h3>
-          <div className="row" style={{ gap: 10 }}>
-            <Link className="btn btn-primary" to="/cards">
-              New digital card
-            </Link>
-            <Link className="btn" to="/qrcodes">
-              Generate QR code
-            </Link>
-            <Link className="btn" to="/shortener">
-              Shorten a URL
-            </Link>
-            <Link className="btn" to="/signatures">
-              Build email signature
-            </Link>
+      {loading || !data ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="grid cols-4">
+            <Stat value={c!.employees} label="Employees" to="/directory" />
+            <Stat value={c!.cards} label="Digital Cards" to="/cards" />
+            <Stat value={c!.assets} label="Tracked Assets" to="/asset-tracker" />
+            <Stat
+              value={data.engagement.total_link_clicks}
+              label="Total Link Clicks"
+              to="/shortener"
+            />
+            <Stat value={c!.qrcodes} label="QR Codes" to="/qrcodes" />
+            <Stat value={c!.landing_pages} label="Landing Pages" to="/landing-pages" />
+            <Stat
+              value={data.engagement.total_card_scans}
+              label="Card Scans"
+              to="/cards"
+            />
+            <Stat value={c!.short_links} label="Short Links" to="/shortener" />
           </div>
-        </div>
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Recent short links</h3>
-          {links.data && links.data.length > 0 ? (
-            <table>
-              <tbody>
-                {links.data.slice(0, 5).map((l) => (
-                  <tr key={l.id}>
-                    <td>
-                      <code>/s/{l.code}</code>
-                    </td>
-                    <td className="muted" style={{ maxWidth: 220 }}>
-                      {l.target_url}
-                    </td>
-                    <td>
-                      <span className="badge blue">{l.click_count} clicks</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="muted">No short links yet.</div>
-          )}
-        </div>
-      </div>
+
+          <div className="grid cols-2" style={{ marginTop: 20 }}>
+            <div className="card">
+              <h3 style={{ marginTop: 0 }}>Short-link clicks</h3>
+              <MiniBars
+                data={data.series.clicks}
+                label="Clicks"
+                color="var(--brand)"
+              />
+            </div>
+            <div className="card">
+              <h3 style={{ marginTop: 0 }}>Card scans</h3>
+              <MiniBars
+                data={data.series.scans}
+                label="Scans"
+                color="#16a34a"
+              />
+            </div>
+          </div>
+
+          <div className="grid cols-2" style={{ marginTop: 20 }}>
+            {/* Recent activity */}
+            <div className="card">
+              <h3 style={{ marginTop: 0 }}>Recent activity</h3>
+              {data.recent_activity.length === 0 ? (
+                <div className="muted">No activity yet.</div>
+              ) : (
+                <div>
+                  {data.recent_activity.map((a) => (
+                    <div
+                      key={a.id}
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        padding: "8px 0",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      <span style={{ flex: "0 0 auto" }}>
+                        {ACTION_ICON[a.action] ?? "•"}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div>{a.summary}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {a.actor ?? "Someone"} · {timeAgo(a.created_at)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Alerts + asset health + quick actions */}
+            <div className="row" style={{ flexDirection: "column", gap: 16, alignItems: "stretch" }}>
+              <div className="card">
+                <h3 style={{ marginTop: 0 }}>
+                  Warranties expiring soon{" "}
+                  {alerts.length > 0 && (
+                    <span className="badge amber">{alerts.length}</span>
+                  )}
+                </h3>
+                {alerts.length === 0 ? (
+                  <div className="muted">Nothing expiring in the next 30 days. ✅</div>
+                ) : (
+                  <table>
+                    <tbody>
+                      {alerts.slice(0, 5).map((a) => (
+                        <tr key={a.id}>
+                          <td style={{ fontWeight: 600 }}>{a.name}</td>
+                          <td className="muted">
+                            <code>{a.asset_tag}</code>
+                          </td>
+                          <td>
+                            <span
+                              className={`badge ${a.days_left <= 7 ? "red" : "amber"}`}
+                            >
+                              {a.days_left}d left
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="card">
+                <h3 style={{ marginTop: 0 }}>Quick actions</h3>
+                <div className="row" style={{ gap: 10 }}>
+                  <Link className="btn btn-primary" to="/cards">
+                    New digital card
+                  </Link>
+                  <Link className="btn" to="/asset-tracker">
+                    Add asset
+                  </Link>
+                  <Link className="btn" to="/qrcodes">
+                    Generate QR
+                  </Link>
+                  <Link className="btn" to="/shortener">
+                    Shorten URL
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

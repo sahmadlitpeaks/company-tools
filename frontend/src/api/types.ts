@@ -230,3 +230,37 @@ export interface AssetSummary {
   total_purchase_cost: string;
   total_book_value: string;
 }
+
+export interface SeriesPoint {
+  date: string;
+  count: number;
+}
+
+export interface WarrantyAlert {
+  id: string;
+  name: string;
+  asset_tag: string;
+  warranty_expiry: string;
+  days_left: number;
+}
+
+export interface ActivityItem {
+  id: string;
+  actor?: string | null;
+  action: string;
+  entity_type: string;
+  summary: string;
+  created_at?: string | null;
+}
+
+export interface AnalyticsOverview {
+  counts: Record<string, number>;
+  engagement: { total_link_clicks: number; total_card_scans: number };
+  series: { clicks: SeriesPoint[]; scans: SeriesPoint[] };
+  assets: {
+    by_status: Record<string, number>;
+    total_book_value: string;
+    warranty_alerts: WarrantyAlert[];
+  };
+  recent_activity: ActivityItem[];
+}

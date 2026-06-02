@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.qrcode import QRCode
 from app.models.user import User
 from app.schemas.common import QRCodeCreate, QRCodeOut
+from app.services.activity import record
 from app.services.qrcodes import generate_qr_png
 
 router = APIRouter(prefix="/qrcodes", tags=["qr-codes"])
@@ -31,6 +32,14 @@ async def create_qrcode(
 ):
     qr = QRCode(created_by_id=user.id, **payload.model_dump())
     db.add(qr)
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="qrcode",
+        entity_id=qr.id,
+        summary=f"Created QR code “{qr.label}”",
+    )
     await db.commit()
     await db.refresh(qr)
     return qr

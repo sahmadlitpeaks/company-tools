@@ -10,6 +10,7 @@ from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.tracked_asset import AssetEvent, TrackedAsset
 from app.models.user import User
+from app.services.activity import record
 from app.schemas.tracker import (
     AssetEventOut,
     AssetSummary,
@@ -107,7 +108,7 @@ async def summary(
 async def create_asset(
     payload: TrackedAssetCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if payload.status not in STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
@@ -122,6 +123,14 @@ async def create_asset(
     if asset.assigned_to_id and asset.status == "available":
         asset.status = "assigned"
     db.add(asset)
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="asset",
+        entity_id=asset.id,
+        summary=f"Added asset {asset.asset_tag} — {asset.name}",
+    )
     await db.commit()
     await db.refresh(asset)
     names = await _names(db, {asset.assigned_to_id})
@@ -227,6 +236,14 @@ async def checkout(
             performed_by_id=user.id,
         )
     )
+    record(
+        db,
+        user=user,
+        action="checked_out",
+        entity_type="asset",
+        entity_id=asset.id,
+        summary=f"Checked out {asset.asset_tag} to {target.display_name or target.email}",
+    )
     await db.commit()
     await db.refresh(asset)
     names = await _names(db, {asset.assigned_to_id})
@@ -253,6 +270,14 @@ async def checkin(
             performed_by_id=user.id,
         )
     )
+    record(
+        db,
+        user=user,
+        action="checked_in",
+        entity_type="asset",
+        entity_id=asset.id,
+        summary=f"Checked in {asset.asset_tag} — {asset.name}",
+    )
     await db.commit()
     await db.refresh(asset)
     return _serialize(asset, {})
@@ -276,6 +301,14 @@ async def log_maintenance(
             cost=payload.cost,
             performed_by_id=user.id,
         )
+    )
+    record(
+        db,
+        user=user,
+        action="maintenance",
+        entity_type="asset",
+        entity_id=asset.id,
+        summary=f"Logged maintenance on {asset.asset_tag}: {payload.note}",
     )
     await db.commit()
     await db.refresh(asset)

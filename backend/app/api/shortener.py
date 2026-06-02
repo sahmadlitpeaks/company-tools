@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.shortlink import LinkClick, ShortLink
 from app.models.user import User
 from app.schemas.common import ShortLinkCreate, ShortLinkOut
+from app.services.activity import record
 from app.services.utils import random_code
 
 router = APIRouter(prefix="/short-links", tags=["url-shortener"])
@@ -51,6 +52,14 @@ async def create_link(
         created_by_id=user.id,
     )
     db.add(link)
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="short_link",
+        entity_id=link.id,
+        summary=f"Created short link /s/{code}",
+    )
     await db.commit()
     await db.refresh(link)
     return link

@@ -17,6 +17,7 @@ from app.schemas.card import (
     LeadCreate,
     LeadOut,
 )
+from app.services.activity import record
 from app.services.card_render import build_vcard, render_card_pdf, render_card_png
 from app.services.qrcodes import generate_qr_png
 from app.services.utils import slugify
@@ -62,6 +63,14 @@ async def create_card(
     slug = await _unique_slug(db, payload.slug or payload.full_name)
     card = DigitalCard(owner_id=user.id, slug=slug, **data)
     db.add(card)
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="card",
+        entity_id=card.id,
+        summary=f"Created digital card for {card.full_name}",
+    )
     await db.commit()
     await db.refresh(card)
     return card

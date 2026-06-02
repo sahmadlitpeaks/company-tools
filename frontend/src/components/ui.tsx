@@ -226,6 +226,54 @@ export function AuthImage({
   return <img src={src} alt={alt} width={width} height={height} style={style} />;
 }
 
+/* ---------- Mini bar chart (no deps) ---------- */
+export function MiniBars({
+  data,
+  color = "var(--brand)",
+  height = 90,
+  label,
+}: {
+  data: { date: string; count: number }[];
+  color?: string;
+  height?: number;
+  label?: string;
+}) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const total = data.reduce((s, d) => s + d.count, 0);
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 3,
+          height,
+        }}
+      >
+        {data.map((d) => (
+          <div
+            key={d.date}
+            title={`${d.date}: ${d.count}`}
+            style={{
+              flex: 1,
+              height: `${Math.max(3, (d.count / max) * 100)}%`,
+              background: color,
+              opacity: d.count === 0 ? 0.18 : 1,
+              borderRadius: 3,
+              transition: "height 0.2s ease",
+            }}
+          />
+        ))}
+      </div>
+      {label && (
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          {label} · {total} in {data.length} days
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Misc ---------- */
 export function PageHead({
   title,
