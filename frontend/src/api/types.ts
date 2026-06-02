@@ -115,7 +115,18 @@ export interface QRCode {
   fill_color: string;
   back_color: string;
   scan_count: number;
+  dynamic: boolean;
   product_id?: string | null;
+  created_at: string;
+}
+
+export interface LandingLead {
+  id: string;
+  page_id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  message?: string | null;
   created_at: string;
 }
 

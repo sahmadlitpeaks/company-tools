@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -20,6 +20,9 @@ class QRCode(UUIDMixin, TimestampMixin, Base):
     fill_color: Mapped[str] = mapped_column(String(9), default="#000000")
     back_color: Mapped[str] = mapped_column(String(9), default="#ffffff")
     scan_count: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Dynamic codes encode a redirect we control (/q/{id}) so the destination
+    # can change without reprinting, and scans are counted.
+    dynamic: Mapped[bool] = mapped_column(Boolean, default=True)
 
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("products.id", ondelete="SET NULL"), nullable=True

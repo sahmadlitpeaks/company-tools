@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import BigInteger, ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
@@ -29,3 +29,23 @@ class LandingPage(UUIDMixin, TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+    leads: Mapped[list["LandingLead"]] = relationship(
+        back_populates="page", cascade="all, delete-orphan"
+    )
+
+
+class LandingLead(UUIDMixin, TimestampMixin, Base):
+    """A lead captured from a landing page's form block (feature #6)."""
+
+    __tablename__ = "landing_leads"
+
+    page_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("landing_pages.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    message: Mapped[str | None] = mapped_column(Text)
+
+    page: Mapped["LandingPage"] = relationship(back_populates="leads")

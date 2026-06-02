@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.schemas.card import (
 from app.services.activity import record
 from app.services.card_render import build_vcard, render_card_pdf, render_card_png
 from app.services.qrcodes import generate_qr_png
+from app.services.storage import media_url, save_upload
 from app.services.utils import slugify
 
 router = APIRouter(prefix="/cards", tags=["digital-cards"])
@@ -135,6 +136,21 @@ async def _owned_card(db: AsyncSession, card_id: uuid.UUID, user: User) -> Digit
     card = await db.get(DigitalCard, card_id)
     if not card or card.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Card not found")
+    return card
+
+
+@router.post("/{card_id}/photo", response_model=CardOut)
+async def upload_card_photo(
+    card_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    rel_path, _ = await save_upload(file, subdir="cards")
+    card.photo_url = media_url(rel_path)
+    await db.commit()
+    await db.refresh(card)
     return card
 
 

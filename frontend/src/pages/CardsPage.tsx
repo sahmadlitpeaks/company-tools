@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, downloadFile } from "../api/client";
 import type { DigitalCard, Lead } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -128,6 +128,37 @@ function CardForm({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function PhotoButton({ card, onDone }: { card: DigitalCard; onDone: () => void }) {
+  const { notify } = useToast();
+  const ref = useRef<HTMLInputElement>(null);
+  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await api(`/api/cards/${card.id}/photo`, { method: "POST", form: fd });
+      notify("Photo updated.");
+      onDone();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
+    if (ref.current) ref.current.value = "";
+  }
+  return (
+    <>
+      <button
+        className="btn-sm"
+        style={{ flex: "0 0 auto" }}
+        onClick={() => ref.current?.click()}
+      >
+        Photo
+      </button>
+      <input ref={ref} type="file" accept="image/*" hidden onChange={upload} />
+    </>
   );
 }
 
@@ -298,6 +329,7 @@ export default function CardsPage() {
                 >
                   Copy link
                 </button>
+                <PhotoButton card={card} onDone={reload} />
                 <button
                   className="btn-sm"
                   style={{ flex: "0 0 auto" }}

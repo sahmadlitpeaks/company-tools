@@ -20,8 +20,11 @@ const PALETTE: BlockType[] = [
   "image",
   "features",
   "cta",
+  "form",
   "spacer",
 ];
+
+const LEAD_FIELDS = ["name", "email", "phone", "message"] as const;
 
 /** Wrap rendered blocks in a minimal HTML document for the public route. */
 function exportHtml(title: string, blocks: Block[]): string {
@@ -412,6 +415,53 @@ function BlockEditor({
           >
             + Add feature
           </button>
+        </>
+      );
+    case "form":
+      return (
+        <>
+          <Text label="Heading" value={block.heading} onChange={(v) => patch({ heading: v })} />
+          <Text
+            label="Subheading"
+            area
+            value={block.subheading}
+            onChange={(v) => patch({ subheading: v })}
+          />
+          <div className="field">
+            <label>Fields to collect</label>
+            {LEAD_FIELDS.map((f) => (
+              <label
+                key={f}
+                style={{ display: "flex", gap: 8, fontWeight: 400, textTransform: "capitalize" }}
+              >
+                <input
+                  type="checkbox"
+                  style={{ width: "auto" }}
+                  checked={block.fields.includes(f)}
+                  onChange={(e) =>
+                    patch({
+                      fields: e.target.checked
+                        ? [...block.fields, f]
+                        : block.fields.filter((x) => x !== f),
+                    })
+                  }
+                />
+                {f}
+              </label>
+            ))}
+          </div>
+          <Text
+            label="Button text"
+            value={block.buttonText}
+            onChange={(v) => patch({ buttonText: v })}
+          />
+          <Text
+            label="Success message"
+            area
+            value={block.successMessage}
+            onChange={(v) => patch({ successMessage: v })}
+          />
+          <Color label="Background" value={block.bg} onChange={(v) => patch({ bg: v })} />
         </>
       );
     case "spacer":

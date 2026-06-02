@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { LandingPage } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import type { LandingLead } from "../api/types";
 import { parseBlocks } from "../landing/blocks";
 import { BlockList } from "../landing/BlockRenderer";
 import {
@@ -15,6 +16,45 @@ import {
   useToast,
 } from "../components/ui";
 
+function LeadsModal({ page, onClose }: { page: LandingPage; onClose: () => void }) {
+  const { data, loading } = useFetch<LandingLead[]>(
+    `/api/landing-pages/${page.id}/leads`,
+  );
+  return (
+    <Modal title={`Leads — ${page.title}`} maxWidth={720} onClose={onClose}>
+      {loading ? (
+        <Loading />
+      ) : !data || data.length === 0 ? (
+        <Empty message="No leads captured yet. Add a Lead form block and publish the page." />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Message</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((l) => (
+              <tr key={l.id}>
+                <td style={{ fontWeight: 600 }}>{l.name ?? "—"}</td>
+                <td>
+                  <div>{l.email}</div>
+                  <div className="muted">{l.phone}</div>
+                </td>
+                <td className="muted">{l.message ?? "—"}</td>
+                <td className="muted">{new Date(l.created_at).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Modal>
+  );
+}
+
 export default function LandingPagesPage() {
   const navigate = useNavigate();
   const { notify } = useToast();
@@ -22,6 +62,7 @@ export default function LandingPagesPage() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<LandingPage | null>(null);
   const [previewing, setPreviewing] = useState<LandingPage | null>(null);
+  const [leadsFor, setLeadsFor] = useState<LandingPage | null>(null);
 
   async function create(title: string) {
     const page = await api<LandingPage>("/api/landing-pages", {
@@ -100,6 +141,13 @@ export default function LandingPagesPage() {
                       <button
                         className="btn-sm"
                         style={{ flex: "0 0 auto" }}
+                        onClick={() => setLeadsFor(p)}
+                      >
+                        Leads
+                      </button>
+                      <button
+                        className="btn-sm"
+                        style={{ flex: "0 0 auto" }}
                         onClick={() => navigate(`/landing-pages/${p.id}/edit`)}
                       >
                         Edit
@@ -130,6 +178,7 @@ export default function LandingPagesPage() {
           onClose={() => setCreating(false)}
         />
       )}
+      {leadsFor && <LeadsModal page={leadsFor} onClose={() => setLeadsFor(null)} />}
       {previewing && (
         <Modal
           title={`Preview — ${previewing.title}`}

@@ -6,9 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.models.landing import LandingPage
+from app.models.landing import LandingLead, LandingPage
 from app.models.user import User
-from app.schemas.common import LandingCreate, LandingOut, LandingUpdate
+from app.schemas.common import (
+    LandingCreate,
+    LandingLeadCreate,
+    LandingLeadOut,
+    LandingOut,
+    LandingUpdate,
+)
 from app.services.utils import slugify
 
 router = APIRouter(prefix="/landing-pages", tags=["landing-pages"])
@@ -79,6 +85,24 @@ async def update_page(
     return page
 
 
+@router.get("/{page_id}/leads", response_model=list[LandingLeadOut])
+async def page_leads(
+    page_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    page = await db.get(LandingPage, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    return (
+        await db.execute(
+            select(LandingLead)
+            .where(LandingLead.page_id == page_id)
+            .order_by(LandingLead.created_at.desc())
+        )
+    ).scalars().all()
+
+
 @router.delete("/{page_id}", status_code=204)
 async def delete_page(
     page_id: uuid.UUID,
@@ -110,3 +134,23 @@ async def public_page(slug: str, db: AsyncSession = Depends(get_db)):
     page.view_count += 1
     await db.commit()
     return page
+
+
+@public_router.post("/{slug}/leads", response_model=LandingLeadOut, status_code=201)
+async def submit_landing_lead(
+    slug: str, payload: LandingLeadCreate, db: AsyncSession = Depends(get_db)
+):
+    page = (
+        await db.execute(
+            select(LandingPage).where(
+                LandingPage.slug == slug, LandingPage.status == "published"
+            )
+        )
+    ).scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    lead = LandingLead(page_id=page.id, **payload.model_dump())
+    db.add(lead)
+    await db.commit()
+    await db.refresh(lead)
+    return lead

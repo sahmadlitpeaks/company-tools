@@ -96,7 +96,15 @@ class QRCodeCreate(BaseModel):
     target_url: str
     fill_color: str = "#000000"
     back_color: str = "#ffffff"
+    dynamic: bool = True
     product_id: uuid.UUID | None = None
+
+
+class QRCodeUpdate(BaseModel):
+    label: str | None = None
+    target_url: str | None = None
+    fill_color: str | None = None
+    back_color: str | None = None
 
 
 class QRCodeOut(BaseModel):
@@ -108,6 +116,7 @@ class QRCodeOut(BaseModel):
     fill_color: str
     back_color: str
     scan_count: int
+    dynamic: bool
     product_id: uuid.UUID | None = None
     created_at: datetime
 
@@ -144,6 +153,21 @@ class LandingOut(BaseModel):
     theme: str
     status: str
     view_count: int
+    created_at: datetime
+
+
+class LandingLeadCreate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    message: str | None = None
+
+
+class LandingLeadOut(LandingLeadCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    page_id: uuid.UUID
     created_at: datetime
 
 

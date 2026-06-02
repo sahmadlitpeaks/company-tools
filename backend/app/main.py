@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +21,7 @@ from app.api import (
     transfers,
     users,
 )
+from app.api.qrcodes import scan_redirect
 from app.api.shortener import redirect_short_link
 from app.auth.router import router as auth_router
 from app.core.config import settings
@@ -81,3 +84,11 @@ async def short_link_redirect(
     code: str, request: Request, db: AsyncSession = Depends(get_db)
 ):
     return await redirect_short_link(code, request, db)
+
+
+# ---- Dynamic QR scan redirect: https://host/q/{qr_id} ----
+@app.get("/q/{qr_id}", tags=["qr-codes"])
+async def qr_scan_redirect(
+    qr_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)
+):
+    return await scan_redirect(qr_id, request, db)

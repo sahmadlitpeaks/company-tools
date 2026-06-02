@@ -1,4 +1,136 @@
-import type { Block } from "./blocks";
+import { useState } from "react";
+import { api } from "../api/client";
+import type { Block, FormBlock, LeadField } from "./blocks";
+import { useLandingSlug } from "./LandingContext";
+
+const FIELD_LABEL: Record<LeadField, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  message: "Message",
+};
+
+function FormBlockView({ block }: { block: FormBlock }) {
+  const slug = useLandingSlug();
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!slug) return; // preview mode (builder) — no endpoint to post to
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/public/landing-pages/${slug}/leads`, {
+        method: "POST",
+        auth: false,
+        body: {
+          name: form.name ?? null,
+          email: form.email ?? null,
+          phone: form.phone ?? null,
+          message: form.message ?? null,
+        },
+      });
+      setDone(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "11px 13px",
+    border: "1px solid #cbd5e1",
+    borderRadius: 9,
+    marginBottom: 12,
+    font: "inherit",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <section style={{ background: block.bg, padding: "56px 24px" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <h2 style={{ textAlign: "center", color: "#0c1a2b", marginTop: 0 }}>
+          {block.heading}
+        </h2>
+        {block.subheading && (
+          <p style={{ textAlign: "center", color: "#64748b", marginBottom: 24 }}>
+            {block.subheading}
+          </p>
+        )}
+        {done ? (
+          <div
+            style={{
+              background: "#dcfce7",
+              color: "#15803d",
+              padding: 18,
+              borderRadius: 10,
+              textAlign: "center",
+              fontWeight: 600,
+            }}
+          >
+            {block.successMessage}
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            {block.fields.map((f) =>
+              f === "message" ? (
+                <textarea
+                  key={f}
+                  placeholder={FIELD_LABEL[f]}
+                  rows={4}
+                  style={inputStyle}
+                  value={form[f] ?? ""}
+                  onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
+                />
+              ) : (
+                <input
+                  key={f}
+                  type={f === "email" ? "email" : "text"}
+                  placeholder={FIELD_LABEL[f]}
+                  style={inputStyle}
+                  value={form[f] ?? ""}
+                  onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
+                />
+              ),
+            )}
+            {error && (
+              <div style={{ color: "#dc2626", marginBottom: 10 }}>{error}</div>
+            )}
+            <button
+              type="submit"
+              disabled={busy}
+              style={{
+                width: "100%",
+                background: "#0b5cab",
+                color: "#fff",
+                border: "none",
+                padding: "13px",
+                borderRadius: 9,
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: "pointer",
+              }}
+            >
+              {busy ? "Sending…" : block.buttonText}
+            </button>
+            {!slug && (
+              <div
+                style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 8 }}
+              >
+                (Form is live once the page is published.)
+              </div>
+            )}
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
 
 const wrap = (children: React.ReactNode, key?: string) => (
   <div key={key} style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
@@ -166,6 +298,8 @@ export function BlockView({ block }: { block: Block }) {
           </a>
         </section>,
       );
+    case "form":
+      return <FormBlockView block={block} />;
     case "spacer":
       return <div style={{ height: block.size }} />;
   }

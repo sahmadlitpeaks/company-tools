@@ -11,6 +11,7 @@ export type BlockType =
   | "image"
   | "features"
   | "cta"
+  | "form"
   | "spacer";
 
 export interface HeroBlock {
@@ -68,6 +69,17 @@ export interface SpacerBlock {
   type: "spacer";
   size: number;
 }
+export type LeadField = "name" | "email" | "phone" | "message";
+export interface FormBlock {
+  id: string;
+  type: "form";
+  heading: string;
+  subheading: string;
+  fields: LeadField[];
+  buttonText: string;
+  successMessage: string;
+  bg: string;
+}
 
 export type Block =
   | HeroBlock
@@ -76,6 +88,7 @@ export type Block =
   | ImageBlock
   | FeaturesBlock
   | CtaBlock
+  | FormBlock
   | SpacerBlock;
 
 export const BLOCK_LABELS: Record<BlockType, string> = {
@@ -85,6 +98,7 @@ export const BLOCK_LABELS: Record<BlockType, string> = {
   image: "Image",
   features: "Feature grid",
   cta: "Call to action",
+  form: "Lead form",
   spacer: "Spacer",
 };
 
@@ -136,6 +150,17 @@ export function createBlock(type: BlockType): Block {
         buttonText: "Contact us",
         buttonUrl: "#",
         bg: "#0c1a2b",
+      };
+    case "form":
+      return {
+        id: uid(),
+        type,
+        heading: "Get in touch",
+        subheading: "Leave your details and we'll get back to you.",
+        fields: ["name", "email", "phone", "message"],
+        buttonText: "Submit",
+        successMessage: "Thanks! We'll be in touch shortly.",
+        bg: "#f8fafc",
       };
     case "spacer":
       return { id: uid(), type, size: 40 };

@@ -2,11 +2,71 @@ import { useState } from "react";
 import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { AuthImage, Empty, Loading, PageHead, useToast } from "../components/ui";
+import { AuthImage, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+
+function EditModal({
+  qr,
+  onClose,
+  onSaved,
+}: {
+  qr: QRCode;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { notify } = useToast();
+  const [label, setLabel] = useState(qr.label);
+  const [target, setTarget] = useState(qr.target_url);
+  const [busy, setBusy] = useState(false);
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api(`/api/qrcodes/${qr.id}`, {
+        method: "PATCH",
+        body: { label, target_url: target },
+      });
+      notify("QR code updated.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Edit QR code" onClose={onClose}>
+      <form onSubmit={save}>
+        <div className="field">
+          <label>Label</label>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Destination URL</label>
+          <input value={target} onChange={(e) => setTarget(e.target.value)} />
+        </div>
+        {qr.dynamic && (
+          <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            This is a dynamic code — the printed QR keeps working; only the
+            destination changes.
+          </div>
+        )}
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 export default function QRCodesPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<QRCode[]>("/api/qrcodes");
+  const [editing, setEditing] = useState<QRCode | null>(null);
   const [form, setForm] = useState({
     label: "",
     target_url: "",
@@ -116,6 +176,10 @@ export default function QRCodesPage() {
               <div className="muted" style={{ fontSize: 12, wordBreak: "break-all" }}>
                 {qr.target_url}
               </div>
+              <div className="row" style={{ gap: 6, marginTop: 8, justifyContent: "center" }}>
+                <span className="badge blue">{qr.scan_count} scans</span>
+                {qr.dynamic && <span className="badge">dynamic</span>}
+              </div>
               <div className="row" style={{ gap: 6, marginTop: 10 }}>
                 <button
                   className="btn btn-sm"
@@ -125,6 +189,13 @@ export default function QRCodesPage() {
                   }
                 >
                   PNG
+                </button>
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => setEditing(qr)}
+                >
+                  Edit
                 </button>
                 <button
                   className="btn-sm btn-danger"
@@ -137,6 +208,9 @@ export default function QRCodesPage() {
             </div>
           ))}
         </div>
+      )}
+      {editing && (
+        <EditModal qr={editing} onClose={() => setEditing(null)} onSaved={reload} />
       )}
     </div>
   );
