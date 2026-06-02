@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
-import { api } from "../api/client";
+import { useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { api, downloadFile } from "../api/client";
 import type {
   AssetEvent,
+  AssetReports,
   AssetSummary,
   TrackedAsset,
   User,
@@ -280,10 +282,24 @@ function AssetDetailModal({
   return (
     <Modal title={`${current.name} · ${current.asset_tag}`} onClose={onClose}>
       <div className="spread" style={{ marginBottom: 12 }}>
-        <StatusBadge status={current.status} />
-        {current.assigned_to_name && (
-          <span className="muted">Assigned to {current.assigned_to_name}</span>
-        )}
+        <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+          <StatusBadge status={current.status} />
+          {current.assigned_to_name && (
+            <span className="muted">Assigned to {current.assigned_to_name}</span>
+          )}
+        </div>
+        <button
+          className="btn-sm"
+          style={{ flex: "0 0 auto" }}
+          onClick={() =>
+            downloadFile(
+              `/api/asset-tracker/${current.id}/label.png`,
+              `${current.asset_tag}-label.png`,
+            ).catch(() => notify("Label download failed", "error"))
+          }
+        >
+          Download label
+        </button>
       </div>
 
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
@@ -420,6 +436,76 @@ function AssetDetailModal({
   );
 }
 
+function ReportsModal({ onClose }: { onClose: () => void }) {
+  const { data, loading } = useFetch<AssetReports>("/api/asset-tracker/reports");
+  return (
+    <Modal title="Asset reports" maxWidth={760} onClose={onClose}>
+      {loading || !data ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="grid cols-3" style={{ marginBottom: 16 }}>
+            <Stat value={data.totals.count} label="Assets" />
+            <Stat value={money(data.totals.purchase_cost)} label="Purchase cost" />
+            <Stat value={money(data.totals.book_value)} label="Book value" />
+          </div>
+          <h4>By category</h4>
+          <table style={{ marginBottom: 18 }}>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Count</th>
+                <th>Purchase cost</th>
+                <th>Book value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.by_category.map((r) => (
+                <tr key={r.category}>
+                  <td style={{ fontWeight: 600 }}>{r.category}</td>
+                  <td>{r.count}</td>
+                  <td>{money(r.purchase_cost)}</td>
+                  <td>{money(r.book_value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="grid cols-2">
+            <div>
+              <h4>By status</h4>
+              <table>
+                <tbody>
+                  {Object.entries(data.by_status).map(([s, n]) => (
+                    <tr key={s}>
+                      <td>
+                        <StatusBadge status={s} />
+                      </td>
+                      <td>{n}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h4>By location</h4>
+              <table>
+                <tbody>
+                  {data.by_location.map((r) => (
+                    <tr key={r.location}>
+                      <td>{r.location}</td>
+                      <td>{r.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function Stat({ value, label }: { value: React.ReactNode; label: string }) {
   return (
     <div className="card stat">
@@ -431,8 +517,12 @@ function Stat({ value, label }: { value: React.ReactNode; label: string }) {
 
 export default function AssetTrackerPage() {
   const { notify } = useToast();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
+  // Seed the search from ?q= so scanning an asset's QR label deep-links here.
+  const [q, setQ] = useState(searchParams.get("q") ?? "");
+  const [showReports, setShowReports] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
   const query = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
@@ -461,15 +551,69 @@ export default function AssetTrackerPage() {
     reloadAll();
   }
 
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await api<{ created: number; updated: number; errors: string[] }>(
+        "/api/asset-tracker/import",
+        { method: "POST", form: fd },
+      );
+      const errs = res.errors.length ? ` (${res.errors.length} skipped)` : "";
+      notify(`Imported: ${res.created} new, ${res.updated} updated${errs}.`);
+      reloadAll();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Import failed", "error");
+    }
+    if (importRef.current) importRef.current.value = "";
+  }
+
   return (
     <div>
       <PageHead
         title="Asset Tracker"
         subtitle="Track equipment, assignments, purchases, depreciation and maintenance."
         action={
-          <button className="btn-primary" onClick={() => setAdding(true)}>
-            + Add asset
-          </button>
+          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button className="btn" style={{ flex: "0 0 auto" }} onClick={() => setShowReports(true)}>
+              Reports
+            </button>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => importRef.current?.click()}
+            >
+              Import CSV
+            </button>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/asset-tracker/export.csv", "assets.csv").catch(() =>
+                  notify("Export failed", "error"),
+                )
+              }
+            >
+              Export CSV
+            </button>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/asset-tracker/labels.pdf", "asset-labels.pdf").catch(
+                  () => notify("Label sheet failed", "error"),
+                )
+              }
+            >
+              Print labels
+            </button>
+            <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
+              + Add asset
+            </button>
+            <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+          </div>
         }
       />
 
@@ -588,6 +732,7 @@ export default function AssetTrackerPage() {
           onChanged={reloadAll}
         />
       )}
+      {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
       {deleting && (
         <ConfirmModal
           title="Delete asset"

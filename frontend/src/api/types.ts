@@ -231,6 +231,18 @@ export interface AssetSummary {
   total_book_value: string;
 }
 
+export interface AssetReports {
+  by_category: {
+    category: string;
+    count: number;
+    purchase_cost: string;
+    book_value: string;
+  }[];
+  by_status: Record<string, number>;
+  by_location: { location: string; count: number }[];
+  totals: { count: number; purchase_cost: string; book_value: string };
+}
+
 export interface SeriesPoint {
   date: string;
   count: number;
