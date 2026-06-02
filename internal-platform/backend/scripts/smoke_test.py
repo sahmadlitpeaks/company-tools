@@ -174,6 +174,49 @@ async def main() -> None:
         assert links[0]["click_count"] == 1
         print("shortener OK — /s/%s -> 302, clicks tracked" % link["code"])
 
+        # ---- secure transfers (encrypted, burn-after-download) ----
+        secret = b"top secret contract bytes"
+        tr = await c.post(
+            "/api/transfers",
+            headers=h,
+            data={
+                "recipient_email": "client@example.com",
+                "message": "Here is the NDA.",
+                "password": "hunter2",
+                "one_time": "true",
+                "expires_in_hours": "24",
+            },
+            files={"file": ("nda.pdf", secret, "application/pdf")},
+        )
+        assert tr.status_code == 201, tr.text
+        body = tr.json()
+        token = body["share_url"].rsplit("/", 1)[-1]
+        assert body["has_password"] is True
+
+        meta = (await c.get(f"/api/public/transfers/{token}/meta")).json()
+        assert meta["status"] == "available" and meta["requires_password"] is True
+
+        # Wrong password rejected.
+        bad = await c.post(
+            f"/api/public/transfers/{token}/download", json={"password": "nope"}
+        )
+        assert bad.status_code == 403, bad.text
+
+        # Correct password downloads the decrypted bytes.
+        good = await c.post(
+            f"/api/public/transfers/{token}/download", json={"password": "hunter2"}
+        )
+        assert good.status_code == 200 and good.content == secret
+
+        # Burn-after-download: second attempt is gone.
+        again = await c.post(
+            f"/api/public/transfers/{token}/download", json={"password": "hunter2"}
+        )
+        assert again.status_code == 410, again.text
+        meta2 = (await c.get(f"/api/public/transfers/{token}/meta")).json()
+        assert meta2["status"] == "consumed"
+        print("transfers OK — encrypted, password-gated, burned after download")
+
     print("\nALL MODULES PASSED ✅")
 
 

@@ -15,8 +15,10 @@ import LandingPagesPage from "./pages/LandingPagesPage";
 import LandingBuilderPage from "./pages/LandingBuilderPage";
 import SignaturesPage from "./pages/SignaturesPage";
 import ShortenerPage from "./pages/ShortenerPage";
+import TransfersPage from "./pages/TransfersPage";
 import PublicCardPage from "./pages/public/PublicCardPage";
 import PublicLandingPage from "./pages/public/PublicLandingPage";
+import PublicTransferPage from "./pages/public/PublicTransferPage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -26,6 +28,7 @@ export default function App() {
       {/* Public, unauthenticated routes */}
       <Route path="/c/:slug" element={<PublicCardPage />} />
       <Route path="/p/:slug" element={<PublicLandingPage />} />
+      <Route path="/t/:token" element={<PublicTransferPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
 
       {loading ? (
@@ -48,6 +51,7 @@ export default function App() {
           <Route path="/landing-pages/:id/edit" element={<LandingBuilderPage />} />
           <Route path="/signatures" element={<SignaturesPage />} />
           <Route path="/shortener" element={<ShortenerPage />} />
+          <Route path="/transfers" element={<TransfersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       )}

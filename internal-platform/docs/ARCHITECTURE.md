@@ -42,6 +42,23 @@ bypasses Azure (returns 404 when `ENVIRONMENT != development`).
 | 6. Landing pages | `api/landing.py` | `CRUD /api/landing-pages` | `GET /api/public/landing-pages/{slug}` |
 | 7. Email signatures | `api/signatures.py` | templates + `POST /api/signatures/render` | – |
 | 8. URL shortener | `api/shortener.py` | `CRUD /api/short-links` | `GET /s/{code}` (302 redirect) |
+| 9. Secure transfers | `api/transfers.py` | `POST/GET /api/transfers`, `DELETE /api/transfers/{id}` | `GET /api/public/transfers/{token}/meta`, `POST /api/public/transfers/{token}/download` |
+
+### Secure transfer encryption (feature #9)
+
+Files are encrypted at rest with **Fernet (AES-128-CBC + HMAC)**. The key is
+derived with **HKDF-SHA256** from a high-entropy URL token (32 bytes) plus an
+optional password and a per-transfer random salt. The database stores only:
+
+- `token_hash` — `sha256(token)` for lookup (not reversible to the token), and
+- `salt` + `password_hash` (PBKDF2-SHA256).
+
+The token itself lives **only in the share link**, so a database compromise
+alone cannot decrypt the payload. On download the ciphertext is decrypted and —
+for one-time transfers — the file is deleted and the record marked consumed
+(burn-after-read). Expired transfers are purged lazily on access. If SMTP is
+configured the share link is emailed to the recipient; otherwise the sender
+copies it from the UI.
 
 ## Data model highlights
 

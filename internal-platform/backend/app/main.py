@@ -13,6 +13,7 @@ from app.api import (
     qrcodes,
     shortener,
     signatures,
+    transfers,
     users,
 )
 from app.api.shortener import redirect_short_link
@@ -64,6 +65,8 @@ app.include_router(landing.router, prefix=api_prefix)
 app.include_router(landing.public_router, prefix=api_prefix)
 app.include_router(signatures.router, prefix=api_prefix)
 app.include_router(shortener.router, prefix=api_prefix)
+app.include_router(transfers.router, prefix=api_prefix)
+app.include_router(transfers.public_router, prefix=api_prefix)
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

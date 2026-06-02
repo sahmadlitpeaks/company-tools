@@ -15,6 +15,7 @@ const NAV = [
   { to: "/landing-pages", label: "Landing Pages", icon: "🖥" },
   { to: "/signatures", label: "Email Signatures", icon: "✉" },
   { to: "/shortener", label: "URL Shortener", icon: "🔗" },
+  { to: "/transfers", label: "Secure Transfers", icon: "🔒" },
 ];
 
 export default function Layout() {

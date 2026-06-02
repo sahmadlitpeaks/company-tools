@@ -149,6 +149,37 @@ export interface EmailSignature {
   created_at: string;
 }
 
+export interface SecureTransfer {
+  id: string;
+  filename: string;
+  content_type?: string | null;
+  size_bytes: number;
+  recipient_email: string;
+  message?: string | null;
+  has_password: boolean;
+  one_time: boolean;
+  max_downloads: number;
+  download_count: number;
+  expires_at?: string | null;
+  is_consumed: boolean;
+  email_sent: boolean;
+  created_at: string;
+}
+
+export interface SecureTransferCreated extends SecureTransfer {
+  share_url: string;
+}
+
+export interface TransferMeta {
+  filename: string;
+  size_bytes: number;
+  requires_password: boolean;
+  sender_name?: string | null;
+  message?: string | null;
+  expires_at?: string | null;
+  status: "available" | "expired" | "consumed";
+}
+
 export interface ShortLink {
   id: string;
   code: string;

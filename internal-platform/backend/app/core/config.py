@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     MEDIA_ROOT: str = "./media"
     MEDIA_URL: str = "/media"
 
+    # SMTP (optional — used to email secure-transfer links)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_STARTTLS: bool = True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]

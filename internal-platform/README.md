@@ -16,6 +16,7 @@ platform's own PostgreSQL database on first login.
 | 6 | **Landing Pages** | Lightweight builder for marketing landing pages with a public URL. |
 | 7 | **Email Signatures** | Generate branded HTML email signatures from a template + user data. |
 | 8 | **URL Shortener** | Branded short links with click analytics for campaigns. |
+| 9 | **Secure Transfers** | Send a file via an encrypted, single-use link that self-destructs after download (optional password + expiry). |
 
 ## Tech stack
 
