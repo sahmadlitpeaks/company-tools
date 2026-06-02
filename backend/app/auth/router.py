@@ -82,6 +82,7 @@ async def dev_login(email: str, db: AsyncSession = Depends(get_db)):
     )
     # First dev user becomes admin for convenience.
     user.is_admin = True
+    user.role = "admin"
     await db.commit()
     token = create_access_token(subject=str(user.id), extra={"email": user.email})
     return {"access_token": token, "token_type": "bearer"}

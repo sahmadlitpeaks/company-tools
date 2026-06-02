@@ -20,6 +20,8 @@ class UserOut(BaseModel):
     avatar_url: str | None = None
     is_active: bool
     is_admin: bool
+    role: str = "member"
+    managed_brand_ids: list[uuid.UUID] = []
     created_at: datetime
 
 
@@ -30,4 +32,8 @@ class UserUpdate(BaseModel):
     mobile_phone: str | None = None
     business_phone: str | None = None
     is_active: bool | None = None
-    is_admin: bool | None = None
+    role: str | None = None
+
+
+class ManagedBrandsUpdate(BaseModel):
+    brand_ids: list[uuid.UUID] = []

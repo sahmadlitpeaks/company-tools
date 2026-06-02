@@ -7,9 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.azure import fetch_graph_users, get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
+from app.models.brand import Brand
 from app.models.user import User
-from app.schemas.user import UserOut, UserUpdate
+from app.schemas.user import ManagedBrandsUpdate, UserOut, UserUpdate
 from app.services.users import sync_all_users_from_graph
+
+ROLES = {"admin", "manager", "member"}
 
 router = APIRouter(prefix="/users", tags=["directory"])
 
@@ -57,8 +60,34 @@ async def update_user(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "role" in data:
+        if data["role"] not in ROLES:
+            raise HTTPException(status_code=422, detail="Invalid role")
+        # Keep the is_admin flag in sync with the role.
+        user.is_admin = data["role"] == "admin"
+    for field, value in data.items():
         setattr(user, field, value)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.put("/{user_id}/brands", response_model=UserOut)
+async def set_managed_brands(
+    user_id: uuid.UUID,
+    payload: ManagedBrandsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Set which brands a manager can manage."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    brands = (
+        await db.execute(select(Brand).where(Brand.id.in_(payload.brand_ids)))
+    ).scalars().all()
+    user.managed_brands = list(brands)
     await db.commit()
     await db.refresh(user)
     return user

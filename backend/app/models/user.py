@@ -1,8 +1,18 @@
-from sqlalchemy import Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column
+import uuid
+
+from sqlalchemy import Boolean, Column, ForeignKey, String, Table
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
+
+# Brands a "manager" is allowed to manage (admins manage all; members none).
+user_brands = Table(
+    "user_brands",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("brand_id", ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -29,3 +39,13 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # admin | manager | member
+    role: Mapped[str] = mapped_column(String(16), default="member")
+
+    managed_brands: Mapped[list["object"]] = relationship(
+        "Brand", secondary=user_brands, lazy="selectin"
+    )
+
+    @property
+    def managed_brand_ids(self) -> list[uuid.UUID]:
+        return [b.id for b in self.managed_brands]

@@ -12,6 +12,8 @@ export interface User {
   avatar_url?: string | null;
   is_active: boolean;
   is_admin: boolean;
+  role: string;
+  managed_brand_ids: string[];
   created_at: string;
 }
 

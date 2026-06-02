@@ -44,3 +44,21 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required"
         )
     return user
+
+
+async def get_current_manager(user: User = Depends(get_current_user)) -> User:
+    """Admins or brand managers (anyone who can manage some content)."""
+    if not (user.is_admin or user.role == "manager"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Manager privileges required"
+        )
+    return user
+
+
+def can_manage_brand(user: User, brand_id: uuid.UUID | None) -> bool:
+    """Admins manage everything; managers only their assigned brands."""
+    if user.is_admin:
+        return True
+    if user.role != "manager" or brand_id is None:
+        return False
+    return brand_id in set(user.managed_brand_ids)
