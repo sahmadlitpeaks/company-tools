@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { AuthImage, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { AuthImage, Empty, ListSkeleton, Modal, PageHead, useToast } from "../components/ui";
 
 function EditModal({
   qr,
@@ -159,9 +159,9 @@ export default function QRCodesPage() {
 
       <h3 style={{ marginTop: 24 }}>Saved QR codes</h3>
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={3} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No saved QR codes yet." />
+        <Empty icon="▣" message="No saved QR codes yet" hint="Create one above — it'll appear here with scan analytics." />
       ) : (
         <div className="grid cols-4">
           {data.map((qr) => (

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { ShortLink } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead, useToast } from "../components/ui";
+import { Empty, ListSkeleton, PageHead, useToast } from "../components/ui";
 
 export default function ShortenerPage() {
   const { notify } = useToast();
@@ -83,9 +83,9 @@ export default function ShortenerPage() {
       </div>
 
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No short links yet." />
+        <Empty icon="🔗" message="No short links yet" hint="Shorten a destination URL above to start tracking clicks." />
       ) : (
         <div className="card">
           <table>

@@ -5,11 +5,18 @@ import { useFetch } from "../hooks/useApi";
 import {
   Empty,
   ErrorBox,
-  Loading,
+  ListSkeleton,
   PageHead,
   useToast,
 } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
+
+function initials(name?: string | null, email?: string): string {
+  const src = (name || email || "?").trim();
+  const parts = src.split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return src.slice(0, 2).toUpperCase();
+}
 
 export default function DirectoryPage() {
   const { user } = useAuth();
@@ -56,11 +63,15 @@ export default function DirectoryPage() {
           style={{ marginBottom: 14 }}
         />
         {loading ? (
-          <Loading />
+          <ListSkeleton rows={6} />
         ) : error ? (
           <ErrorBox message={error} />
         ) : !data || data.length === 0 ? (
-          <Empty message="No employees found. Run a sync to import from Entra ID." />
+          <Empty
+            icon="👥"
+            message="No employees found"
+            hint="Run a sync to import staff from Azure Entra ID."
+          />
         ) : (
           <table>
             <thead>
@@ -76,7 +87,14 @@ export default function DirectoryPage() {
             <tbody>
               {data.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ fontWeight: 600 }}>{u.display_name ?? "—"}</td>
+                  <td>
+                    <div className="flex items-center gap-2.5">
+                      <span className="avatar !h-8 !w-8 !text-[11px]">
+                        {initials(u.display_name, u.email)}
+                      </span>
+                      <span className="font-semibold">{u.display_name ?? "—"}</span>
+                    </div>
+                  </td>
                   <td>{u.job_title ?? "—"}</td>
                   <td>{u.department ?? "—"}</td>
                   <td>{u.email}</td>

@@ -5,7 +5,7 @@ import { useFetch } from "../hooks/useApi";
 import {
   ConfirmModal,
   Empty,
-  Loading,
+  ListSkeleton,
   Modal,
   PageHead,
   bytes,
@@ -204,9 +204,9 @@ export default function TransfersPage() {
 
       <h3 style={{ marginTop: 24 }}>Sent files</h3>
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty message="You haven't sent any secure files yet." />
+        <Empty icon="🔒" message="No secure transfers yet" hint="Send an encrypted, single-use file using the form above." />
       ) : (
         <div className="card">
           <table>

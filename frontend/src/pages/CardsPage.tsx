@@ -7,6 +7,7 @@ import {
   ConfirmModal,
   Empty,
   ErrorBox,
+  ListSkeleton,
   Loading,
   Modal,
   PageHead,
@@ -281,11 +282,20 @@ export default function CardsPage() {
         }
       />
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : error ? (
         <ErrorBox message={error} />
       ) : !data || data.length === 0 ? (
-        <Empty message="You haven't created any digital cards yet." />
+        <Empty
+          icon="💳"
+          message="No digital cards yet"
+          hint="Create a shareable business card with a QR code and lead capture."
+          action={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + New card
+            </button>
+          }
+        />
       ) : (
         <div className="grid cols-3">
           {data.map((card) => (

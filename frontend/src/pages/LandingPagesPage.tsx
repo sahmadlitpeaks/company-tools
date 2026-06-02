@@ -9,6 +9,7 @@ import { BlockList } from "../landing/BlockRenderer";
 import {
   ConfirmModal,
   Empty,
+  ListSkeleton,
   Loading,
   Modal,
   PageHead,
@@ -90,9 +91,18 @@ export default function LandingPagesPage() {
         }
       />
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No landing pages yet. Create one to open the builder." />
+        <Empty
+          icon="🖥"
+          message="No landing pages yet"
+          hint="Create a page to open the block builder."
+          action={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + New page
+            </button>
+          }
+        />
       ) : (
         <div className="card">
           <table>
