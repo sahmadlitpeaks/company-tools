@@ -10,6 +10,7 @@ import CardsPage from "./pages/CardsPage";
 import AssetsPage from "./pages/AssetsPage";
 import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
+import AssetTrackerPage from "./pages/AssetTrackerPage";
 import QRCodesPage from "./pages/QRCodesPage";
 import LandingPagesPage from "./pages/LandingPagesPage";
 import LandingBuilderPage from "./pages/LandingBuilderPage";
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/assets" element={<AssetsPage />} />
           <Route path="/branding" element={<BrandingPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/asset-tracker" element={<AssetTrackerPage />} />
           <Route path="/qrcodes" element={<QRCodesPage />} />
           <Route path="/landing-pages" element={<LandingPagesPage />} />
           <Route path="/landing-pages/:id/edit" element={<LandingBuilderPage />} />

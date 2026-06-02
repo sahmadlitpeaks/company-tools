@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { EmailSignature, SignatureTemplate } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -64,20 +64,49 @@ export default function SignaturesPage() {
   const [selected, setSelected] = useState<string>("");
   const [creating, setCreating] = useState(false);
 
-  async function render(templateId: string) {
-    setSelected(templateId);
+  async function render(templateId: string, data = overrides) {
     const sig = await api<EmailSignature>("/api/signatures/render", {
       method: "POST",
-      body: { template_id: templateId, data: overrides },
+      body: { template_id: templateId, data },
     });
     setRendered(sig.rendered_html ?? "");
   }
+
+  // Auto-select the default (or first) template once they load.
+  useEffect(() => {
+    if (!selected && templates.data && templates.data.length > 0) {
+      const pick = templates.data.find((t) => t.is_default) ?? templates.data[0];
+      setSelected(pick.id);
+    }
+  }, [templates.data, selected]);
+
+  // Live preview: re-render whenever the template or overrides change.
+  useEffect(() => {
+    if (!selected) return;
+    const handle = window.setTimeout(() => void render(selected, overrides), 250);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, overrides]);
 
   function copyHtml() {
     if (rendered) {
       void navigator.clipboard.writeText(rendered);
       notify("Signature HTML copied — paste into Outlook/Gmail settings.");
     }
+  }
+
+  function downloadHtml() {
+    if (!rendered) return;
+    const blob = new Blob(
+      [`<!doctype html><meta charset="utf-8">${rendered}`],
+      { type: "text/html" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "signature.html";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -107,7 +136,7 @@ export default function SignaturesPage() {
                   key={t.id}
                   className={selected === t.id ? "btn-primary" : "btn"}
                   style={{ width: "100%", textAlign: "left" }}
-                  onClick={() => render(t.id)}
+                  onClick={() => setSelected(t.id)}
                 >
                   {t.name} {t.is_default && <span className="badge">default</span>}
                 </button>
@@ -117,7 +146,7 @@ export default function SignaturesPage() {
 
           <h3>2. Customise (optional)</h3>
           <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-            Leave blank to use your directory data.
+            Leave blank to use your directory data. The preview updates as you type.
           </div>
           {FIELDS.map((f) => (
             <div className="field" key={f}>
@@ -132,32 +161,42 @@ export default function SignaturesPage() {
               />
             </div>
           ))}
-          {selected && (
-            <button className="btn" onClick={() => render(selected)}>
-              Re-render with overrides
-            </button>
-          )}
         </div>
 
         <div className="card">
           <div className="spread">
             <h3 style={{ marginTop: 0 }}>Preview</h3>
             {rendered && (
-              <button className="btn-sm btn-primary" onClick={copyHtml}>
-                Copy HTML
-              </button>
+              <div className="row" style={{ flex: "0 0 auto", gap: 6 }}>
+                <button className="btn-sm" onClick={downloadHtml}>
+                  Download .html
+                </button>
+                <button className="btn-sm btn-primary" onClick={copyHtml}>
+                  Copy HTML
+                </button>
+              </div>
             )}
           </div>
           {rendered ? (
-            <div
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: 16,
-                background: "#fff",
-              }}
-              dangerouslySetInnerHTML={{ __html: rendered }}
-            />
+            <>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                How it will look in an email:
+              </div>
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: 18,
+                  background: "#fff",
+                  boxShadow: "var(--shadow)",
+                }}
+                dangerouslySetInnerHTML={{ __html: rendered }}
+              />
+            </>
+          ) : templates.loading ? (
+            <Loading />
+          ) : !templates.data || templates.data.length === 0 ? (
+            <Empty message="No templates yet. An admin can create one to get started." />
           ) : (
             <Empty message="Select a template to preview your signature." />
           )}

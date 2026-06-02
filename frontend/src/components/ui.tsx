@@ -42,14 +42,20 @@ export function Modal({
   title,
   onClose,
   children,
+  maxWidth,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  maxWidth?: number;
 }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        style={maxWidth ? { maxWidth } : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="spread" style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>{title}</h3>
           <button className="btn-sm" onClick={onClose}>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api/client";
+import { api, downloadFile } from "../api/client";
 import type { DigitalCard, Lead } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -131,6 +131,58 @@ function CardForm({
   );
 }
 
+function DownloadModal({ card, onClose }: { card: DigitalCard; onClose: () => void }) {
+  const { notify } = useToast();
+  const safe = card.slug || "card";
+  const items: { label: string; hint: string; path: string; file: string }[] = [
+    {
+      label: "Contact file (vCard)",
+      hint: "Import into phone / Outlook contacts",
+      path: `/api/cards/${card.id}/vcard`,
+      file: `${safe}.vcf`,
+    },
+    {
+      label: "QR code (PNG)",
+      hint: "Square QR image for print",
+      path: `/api/cards/${card.id}/qr.png`,
+      file: `${safe}-qr.png`,
+    },
+    {
+      label: "Card image (PNG)",
+      hint: "Full business card as an image",
+      path: `/api/cards/${card.id}/card.png`,
+      file: `${safe}.png`,
+    },
+    {
+      label: "Card (PDF)",
+      hint: "Print-ready PDF",
+      path: `/api/cards/${card.id}/card.pdf`,
+      file: `${safe}.pdf`,
+    },
+  ];
+  return (
+    <Modal title={`Download — ${card.full_name}`} onClose={onClose}>
+      <div className="row" style={{ flexDirection: "column", gap: 8 }}>
+        {items.map((it) => (
+          <button
+            key={it.label}
+            className="btn"
+            style={{ width: "100%", textAlign: "left" }}
+            onClick={() =>
+              downloadFile(it.path, it.file).catch(() =>
+                notify("Download failed", "error"),
+              )
+            }
+          >
+            <div style={{ fontWeight: 600 }}>{it.label}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{it.hint}</div>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 function LeadsModal({ card, onClose }: { card: DigitalCard; onClose: () => void }) {
   const { data, loading } = useFetch<Lead[]>(`/api/cards/${card.id}/leads`);
   return (
@@ -171,6 +223,7 @@ export default function CardsPage() {
   const { data, loading, error, reload } = useFetch<DigitalCard[]>("/api/cards");
   const [creating, setCreating] = useState(false);
   const [leadsFor, setLeadsFor] = useState<DigitalCard | null>(null);
+  const [downloadFor, setDownloadFor] = useState<DigitalCard | null>(null);
   const [deleting, setDeleting] = useState<DigitalCard | null>(null);
 
   async function remove(card: DigitalCard) {
@@ -248,6 +301,13 @@ export default function CardsPage() {
                 <button
                   className="btn-sm"
                   style={{ flex: "0 0 auto" }}
+                  onClick={() => setDownloadFor(card)}
+                >
+                  Download
+                </button>
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
                   onClick={() => setLeadsFor(card)}
                 >
                   Leads
@@ -268,6 +328,9 @@ export default function CardsPage() {
       {creating && <CardForm onClose={() => setCreating(false)} onSaved={reload} />}
       {leadsFor && (
         <LeadsModal card={leadsFor} onClose={() => setLeadsFor(null)} />
+      )}
+      {downloadFor && (
+        <DownloadModal card={downloadFor} onClose={() => setDownloadFor(null)} />
       )}
       {deleting && (
         <ConfirmModal

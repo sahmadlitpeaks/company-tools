@@ -17,6 +17,7 @@ from app.schemas.card import (
     LeadCreate,
     LeadOut,
 )
+from app.services.card_render import build_vcard, render_card_pdf, render_card_png
 from app.services.qrcodes import generate_qr_png
 from app.services.utils import slugify
 
@@ -119,6 +120,53 @@ async def card_qr(
         raise HTTPException(status_code=404, detail="Card not found")
     png = generate_qr_png(_card_url(card.slug), fill_color=card.accent_color)
     return Response(content=png, media_type="image/png")
+
+
+async def _owned_card(db: AsyncSession, card_id: uuid.UUID, user: User) -> DigitalCard:
+    card = await db.get(DigitalCard, card_id)
+    if not card or card.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return card
+
+
+@router.get("/{card_id}/vcard")
+async def card_vcard(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    filename = f"{card.slug or 'contact'}.vcf"
+    return Response(
+        content=build_vcard(card),
+        media_type="text/vcard; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{card_id}/card.png")
+async def card_image(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    return Response(content=render_card_png(card, _card_url(card.slug)), media_type="image/png")
+
+
+@router.get("/{card_id}/card.pdf")
+async def card_pdf(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    filename = f"{card.slug or 'card'}.pdf"
+    return Response(
+        content=render_card_pdf(card, _card_url(card.slug)),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{card_id}/leads", response_model=list[LeadOut])

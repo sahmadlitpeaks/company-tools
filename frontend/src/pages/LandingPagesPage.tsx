@@ -3,10 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { LandingPage } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { parseBlocks } from "../landing/blocks";
+import { BlockList } from "../landing/BlockRenderer";
 import {
   ConfirmModal,
   Empty,
   Loading,
+  Modal,
   PageHead,
   PromptModal,
   useToast,
@@ -18,6 +21,7 @@ export default function LandingPagesPage() {
   const { data, loading, reload } = useFetch<LandingPage[]>("/api/landing-pages");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<LandingPage | null>(null);
+  const [previewing, setPreviewing] = useState<LandingPage | null>(null);
 
   async function create(title: string) {
     const page = await api<LandingPage>("/api/landing-pages", {
@@ -89,6 +93,13 @@ export default function LandingPagesPage() {
                       <button
                         className="btn-sm"
                         style={{ flex: "0 0 auto" }}
+                        onClick={() => setPreviewing(p)}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        className="btn-sm"
+                        style={{ flex: "0 0 auto" }}
                         onClick={() => navigate(`/landing-pages/${p.id}/edit`)}
                       >
                         Edit
@@ -118,6 +129,45 @@ export default function LandingPagesPage() {
           onSubmit={create}
           onClose={() => setCreating(false)}
         />
+      )}
+      {previewing && (
+        <Modal
+          title={`Preview — ${previewing.title}`}
+          maxWidth={980}
+          onClose={() => setPreviewing(null)}
+        >
+          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+            {previewing.status === "published" ? (
+              <>
+                Live at <code>/p/{previewing.slug}</code> ·{" "}
+                <a href={`/p/${previewing.slug}`} target="_blank" rel="noreferrer">
+                  open in new tab ↗
+                </a>
+              </>
+            ) : (
+              <>Draft preview — not publicly visible until published.</>
+            )}
+          </div>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              overflow: "auto",
+              maxHeight: "70vh",
+              background: "#fff",
+            }}
+          >
+            {(() => {
+              const blocks = parseBlocks(previewing.blocks);
+              if (blocks.length > 0) return <BlockList blocks={blocks} />;
+              if (previewing.html)
+                return <div dangerouslySetInnerHTML={{ __html: previewing.html }} />;
+              return (
+                <div className="empty">This page has no content yet.</div>
+              );
+            })()}
+          </div>
+        </Modal>
       )}
       {deleting && (
         <ConfirmModal

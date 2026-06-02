@@ -17,6 +17,9 @@ platform's own PostgreSQL database on first login.
 | 7 | **Email Signatures** | Generate branded HTML email signatures from a template + user data. |
 | 8 | **URL Shortener** | Branded short links with click analytics for campaigns. |
 | 9 | **Secure Transfers** | Send a file via an encrypted, single-use link that self-destructs after download (optional password + expiry). |
+| 10 | **Asset Tracker** | Track physical/IT assets (tag, category, location), assign & check-out/check-in to employees, record purchase/warranty info, straight-line depreciation and a maintenance log. |
+
+Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
 
 ## Tech stack
 

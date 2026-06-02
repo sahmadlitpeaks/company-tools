@@ -9,3 +9,4 @@ from app.models.landing import LandingPage  # noqa: F401
 from app.models.signature import EmailSignature, SignatureTemplate  # noqa: F401
 from app.models.shortlink import ShortLink, LinkClick  # noqa: F401
 from app.models.transfer import SecureTransfer  # noqa: F401
+from app.models.tracked_asset import TrackedAsset, AssetEvent  # noqa: F401

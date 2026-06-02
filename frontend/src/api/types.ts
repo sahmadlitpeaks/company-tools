@@ -190,3 +190,43 @@ export interface ShortLink {
   click_count: number;
   created_at: string;
 }
+
+export interface TrackedAsset {
+  id: string;
+  asset_tag: string;
+  name: string;
+  category?: string | null;
+  status: string;
+  location?: string | null;
+  serial_number?: string | null;
+  notes?: string | null;
+  assigned_to_id?: string | null;
+  assigned_to_name?: string | null;
+  purchase_date?: string | null;
+  purchase_cost?: string | null;
+  vendor?: string | null;
+  warranty_expiry?: string | null;
+  useful_life_years?: number | null;
+  current_book_value?: string | null;
+  created_at: string;
+}
+
+export interface AssetEvent {
+  id: string;
+  asset_id: string;
+  event_type: string;
+  user_id?: string | null;
+  user_name?: string | null;
+  note?: string | null;
+  cost?: string | null;
+  performed_by_id?: string | null;
+  performed_by_name?: string | null;
+  created_at: string;
+}
+
+export interface AssetSummary {
+  total: number;
+  by_status: Record<string, number>;
+  total_purchase_cost: string;
+  total_book_value: string;
+}
