@@ -13,6 +13,9 @@ class Product(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "products"
 
     name: Mapped[str] = mapped_column(String(255))
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     sku: Mapped[str | None] = mapped_column(String(128), index=True)
     description: Mapped[str | None] = mapped_column(Text)
     landing_url: Mapped[str | None] = mapped_column(String(1024))

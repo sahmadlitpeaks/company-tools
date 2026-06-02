@@ -18,6 +18,9 @@ class ShortLink(UUIDMixin, TimestampMixin, Base):
     campaign: Mapped[str | None] = mapped_column(String(255), index=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     click_count: Mapped[int] = mapped_column(BigInteger, default=0)
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

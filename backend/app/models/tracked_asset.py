@@ -30,6 +30,9 @@ class TrackedAsset(UUIDMixin, TimestampMixin, Base):
     assigned_to_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     # ---- Purchase / finance ----
     purchase_date: Mapped[date | None] = mapped_column(Date)

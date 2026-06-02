@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.api import (
     assets,
     analytics,
+    brands,
     branding,
     cards,
     landing,
@@ -75,6 +76,7 @@ app.include_router(transfers.router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(tracker.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
+app.include_router(brands.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 
 

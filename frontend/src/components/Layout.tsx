@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { BrandProvider } from "../brand/BrandContext";
+import BrandSwitcher from "../brand/BrandSwitcher";
 import NotificationBell from "./NotificationBell";
 
 const NAV = [
@@ -20,6 +22,8 @@ const NAV = [
   { to: "/signatures", label: "Email Signatures", icon: "✉" },
   { to: "/shortener", label: "URL Shortener", icon: "🔗" },
   { to: "/transfers", label: "Secure Transfers", icon: "🔒" },
+  { section: "Admin", adminOnly: true },
+  { to: "/brands", label: "Brands", icon: "🏢", adminOnly: true },
 ];
 
 function initials(name?: string | null, email?: string): string {
@@ -57,6 +61,7 @@ export default function Layout() {
   const role = user?.is_admin ? "Administrator" : user?.job_title ?? "Employee";
 
   return (
+   <BrandProvider>
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
@@ -64,7 +69,9 @@ export default function Layout() {
           <span>AG Holding</span>
         </div>
         <nav className="nav-scroll">
-          {NAV.map((item, i) =>
+          {NAV.filter(
+            (item) => !("adminOnly" in item && item.adminOnly) || user?.is_admin,
+          ).map((item, i) =>
             "section" in item ? (
               <div key={i} className="nav-section">
                 {item.section}
@@ -94,6 +101,8 @@ export default function Layout() {
             <span className="text-[15px] font-semibold">{currentTitle(location.pathname)}</span>
           </div>
           <div className="flex flex-none items-center gap-2">
+          <BrandSwitcher />
+          <span className="mx-1 hidden h-7 w-px bg-[var(--border)] sm:block" />
           <NotificationBell />
           <span className="mx-1 h-7 w-px bg-[var(--border)]" />
           <div className="profile" ref={menuRef}>
@@ -124,5 +133,6 @@ export default function Layout() {
         </main>
       </div>
     </div>
+   </BrandProvider>
   );
 }

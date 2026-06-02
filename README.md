@@ -21,6 +21,12 @@ platform's own PostgreSQL database on first login.
 
 Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
 
+**Multi-brand:** the platform is brand-aware. Define each company brand (AG Holding,
+Agiomix, Timepiece, …) in **Admin → Brands** with its logo, colours and contact
+details; a brand switcher in the header sets the active brand, which themes email
+signatures (and progressively the other modules). Content tables carry a
+`brand_id` so items can be scoped and filtered per brand.
+
 ## Tech stack
 
 - **Backend:** FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, Authlib (OIDC).

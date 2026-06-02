@@ -276,6 +276,28 @@ export interface ActivityItem {
   created_at?: string | null;
 }
 
+export interface Brand {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url?: string | null;
+  icon_url?: string | null;
+  primary_color: string;
+  secondary_color?: string | null;
+  accent_color: string;
+  font_family?: string | null;
+  website?: string | null;
+  email_domain?: string | null;
+  contact_email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  tagline?: string | null;
+  social?: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+}
+
 export interface AppNotification {
   id: string;
   title: string;

@@ -4,6 +4,7 @@ import type { EmailSignature, SignatureTemplate } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { ListSkeleton, Modal, PageHead, useToast } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
+import { useBrand } from "../brand/BrandContext";
 import { SIGNATURE_DESIGNS, type SigData } from "../signatures/templates";
 
 const FIELDS: { key: keyof SigData; label: string }[] = [
@@ -59,6 +60,7 @@ function TemplateForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
 export default function SignaturesPage() {
   const { user } = useAuth();
+  const { active } = useBrand();
   const { notify } = useToast();
   const templates = useFetch<SignatureTemplate[]>("/api/signatures/templates");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -74,17 +76,17 @@ export default function SignaturesPage() {
       title: user?.job_title ?? "",
       department: user?.department ?? "",
       email: user?.email ?? "",
-      phone: user?.business_phone ?? user?.mobile_phone ?? "",
-      website: "agholding.net",
-      company: "AG Holding",
-      accent: "#0b5cab",
+      phone: user?.business_phone ?? user?.mobile_phone ?? active?.phone ?? "",
+      website: active?.website ?? "agholding.net",
+      company: active?.name ?? "AG Holding",
+      accent: active?.accent_color ?? "#0b5cab",
     };
     for (const f of FIELDS) {
       const v = overrides[f.key];
       if (v && v.trim()) (base as Record<string, string>)[f.key] = v.trim();
     }
     return base;
-  }, [user, overrides]);
+  }, [user, overrides, active]);
 
   // Render the selected signature. Built-ins render instantly client-side;
   // custom DB templates render through the backend (debounced).
