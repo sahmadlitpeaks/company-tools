@@ -14,6 +14,7 @@ import AssetTrackerPage from "./pages/AssetTrackerPage";
 import BrandsPage from "./pages/BrandsPage";
 import SettingsPage from "./pages/SettingsPage";
 import CrmPage from "./pages/CrmPage";
+import CampaignsPage from "./pages/CampaignsPage";
 import QRCodesPage from "./pages/QRCodesPage";
 import LandingPagesPage from "./pages/LandingPagesPage";
 import LandingBuilderPage from "./pages/LandingBuilderPage";
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/asset-tracker" element={<AssetTrackerPage />} />
           <Route path="/crm" element={<CrmPage />} />
+          <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/qrcodes" element={<QRCodesPage />} />
           <Route path="/landing-pages" element={<LandingPagesPage />} />
           <Route path="/landing-pages/:id/edit" element={<LandingBuilderPage />} />

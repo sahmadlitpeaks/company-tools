@@ -193,6 +193,62 @@ export interface TransferMeta {
   status: "available" | "expired" | "consumed";
 }
 
+export interface CampaignKpis {
+  spend: string;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: string;
+  ctr: number;
+  cpc: string;
+  cpm: string;
+  cpa: string;
+  conversion_rate: number;
+  roas: number;
+}
+
+export interface Campaign {
+  id: string;
+  brand_id?: string | null;
+  name: string;
+  objective?: string | null;
+  status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  notes?: string | null;
+  created_at: string;
+  kpis?: CampaignKpis | null;
+}
+
+export interface CampaignMetric {
+  id: string;
+  campaign_id: string;
+  channel: string;
+  date?: string | null;
+  spend: string;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: string;
+  created_at: string;
+}
+
+export interface ChannelBreakdown extends CampaignKpis {
+  channel: string;
+}
+
+export interface CampaignBreakdown {
+  totals: CampaignKpis;
+  by_channel: ChannelBreakdown[];
+  series: { date: string; spend: string; conversions: number; clicks: number }[];
+}
+
+export interface CampaignOverview {
+  totals: CampaignKpis;
+  by_channel: ChannelBreakdown[];
+  campaigns: (CampaignKpis & { id: string; name: string })[];
+}
+
 export interface ShortLink {
   id: string;
   code: string;
