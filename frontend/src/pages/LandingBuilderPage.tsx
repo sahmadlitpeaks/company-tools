@@ -150,9 +150,9 @@ export default function LandingBuilderPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 300px", gap: 16 }}>
+      <div className="grid gap-4 lg:grid-cols-[240px_1fr_280px]">
         {/* ---- Left: block list + palette ---- */}
-        <div className="card" style={{ alignSelf: "start" }}>
+        <div className="card self-start lg:sticky lg:top-[84px]">
           <h4 style={{ margin: "0 0 10px" }}>Blocks</h4>
           {blocks.length === 0 && (
             <div className="muted" style={{ fontSize: 13 }}>
@@ -211,12 +211,14 @@ export default function LandingBuilderPage() {
         </div>
 
         {/* ---- Middle: live preview ---- */}
-        <div
-          className="card"
-          style={{ padding: 0, overflow: "hidden", minHeight: 400 }}
-        >
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-slate-100 p-3 shadow-card">
+          <div className="min-h-[420px] overflow-hidden rounded-lg bg-white shadow-soft">
           {blocks.length === 0 ? (
-            <div className="empty">Your page preview will appear here.</div>
+            <div className="empty">
+              <div className="text-4xl opacity-70">🧱</div>
+              <div className="mt-2 font-semibold text-ink">Your page preview appears here</div>
+              <div className="text-sm text-ink-muted">Add a block from the panel on the left.</div>
+            </div>
           ) : (
             blocks.map((b) => (
               <div
@@ -233,10 +235,11 @@ export default function LandingBuilderPage() {
               </div>
             ))
           )}
+          </div>
         </div>
 
         {/* ---- Right: inspector ---- */}
-        <div className="card" style={{ alignSelf: "start" }}>
+        <div className="card self-start lg:sticky lg:top-[84px]">
           <h4 style={{ margin: "0 0 10px" }}>
             {selected ? `Edit: ${BLOCK_LABELS[selected.type]}` : "Inspector"}
           </h4>

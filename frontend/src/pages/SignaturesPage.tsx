@@ -4,7 +4,7 @@ import type { EmailSignature, SignatureTemplate } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
-  Loading,
+  ListSkeleton,
   Modal,
   PageHead,
   useToast,
@@ -122,52 +122,64 @@ export default function SignaturesPage() {
           )
         }
       />
-      <div className="grid cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>1. Pick a template</h3>
+          <h3 className="mt-0 flex items-center gap-2">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">
+              1
+            </span>
+            Pick a template
+          </h3>
           {templates.loading ? (
-            <Loading />
+            <ListSkeleton rows={3} />
           ) : !templates.data || templates.data.length === 0 ? (
-            <Empty message="No templates yet. An admin can create one." />
+            <Empty icon="✉️" message="No templates yet" hint="An admin can create one." />
           ) : (
-            <div className="row" style={{ flexDirection: "column", gap: 8 }}>
+            <div className="flex flex-col gap-2">
               {templates.data.map((t) => (
                 <button
                   key={t.id}
-                  className={selected === t.id ? "btn-primary" : "btn"}
-                  style={{ width: "100%", textAlign: "left" }}
                   onClick={() => setSelected(t.id)}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
+                    selected === t.id
+                      ? "border border-brand-200 bg-brand-50 text-brand-800"
+                      : "border border-[var(--border)] bg-white hover:bg-slate-50"
+                  }`}
                 >
-                  {t.name} {t.is_default && <span className="badge">default</span>}
+                  <span className="font-semibold">{t.name}</span>
+                  {t.is_default && <span className="badge">default</span>}
                 </button>
               ))}
             </div>
           )}
 
-          <h3>2. Customise (optional)</h3>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+          <h3 className="mt-6 flex items-center gap-2">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">
+              2
+            </span>
+            Customise <span className="text-sm font-normal text-ink-muted">(optional)</span>
+          </h3>
+          <div className="muted mb-3 text-xs">
             Leave blank to use your directory data. The preview updates as you type.
           </div>
-          {FIELDS.map((f) => (
-            <div className="field" key={f}>
-              <label style={{ textTransform: "capitalize" }}>
-                {f.replace("_", " ")}
-              </label>
-              <input
-                value={overrides[f] ?? ""}
-                onChange={(e) =>
-                  setOverrides((o) => ({ ...o, [f]: e.target.value }))
-                }
-              />
-            </div>
-          ))}
+          <div className="grid grid-cols-2 gap-x-3">
+            {FIELDS.map((f) => (
+              <div className="field" key={f}>
+                <label className="capitalize">{f.replace("_", " ")}</label>
+                <input
+                  value={overrides[f] ?? ""}
+                  onChange={(e) => setOverrides((o) => ({ ...o, [f]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="card">
+        <div className="card lg:sticky lg:top-[84px]">
           <div className="spread">
-            <h3 style={{ marginTop: 0 }}>Preview</h3>
+            <h3 className="mt-0">Live preview</h3>
             {rendered && (
-              <div className="row" style={{ flex: "0 0 auto", gap: 6 }}>
+              <div className="flex flex-none gap-1.5">
                 <button className="btn-sm" onClick={downloadHtml}>
                   Download .html
                 </button>
@@ -179,26 +191,17 @@ export default function SignaturesPage() {
           </div>
           {rendered ? (
             <>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-                How it will look in an email:
+              <div className="muted mb-2 text-xs">How it will look in an email:</div>
+              <div className="rounded-xl border border-[var(--border)] bg-gradient-to-b from-slate-50 to-white p-5 shadow-card">
+                <div dangerouslySetInnerHTML={{ __html: rendered }} />
               </div>
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 10,
-                  padding: 18,
-                  background: "#fff",
-                  boxShadow: "var(--shadow)",
-                }}
-                dangerouslySetInnerHTML={{ __html: rendered }}
-              />
             </>
           ) : templates.loading ? (
-            <Loading />
+            <ListSkeleton rows={3} />
           ) : !templates.data || templates.data.length === 0 ? (
-            <Empty message="No templates yet. An admin can create one to get started." />
+            <Empty icon="✉️" message="No templates yet" hint="An admin can create one to get started." />
           ) : (
-            <Empty message="Select a template to preview your signature." />
+            <Empty icon="👀" message="Select a template" hint="Pick a template on the left to preview your signature." />
           )}
         </div>
       </div>
