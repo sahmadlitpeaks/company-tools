@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -50,18 +51,53 @@ export function Modal({
   children: ReactNode;
   maxWidth?: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const focusable = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
+    // Focus the first field (skip the close button) for a natural start.
+    const items = focusable();
+    (items[1] ?? items[0])?.focus();
+
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const f = focusable();
+      if (f.length === 0) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus?.();
+    };
   }, [onClose]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal"
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
