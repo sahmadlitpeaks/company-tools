@@ -12,6 +12,7 @@ import {
 } from "../landing/blocks";
 import { BlockList, BlockView } from "../landing/BlockRenderer";
 import { Loading, useToast } from "../components/ui";
+import { useBrand } from "../brand/BrandContext";
 
 const PALETTE: BlockType[] = [
   "hero",
@@ -39,6 +40,7 @@ export default function LandingBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { notify } = useToast();
+  const { active } = useBrand();
 
   const [page, setPage] = useState<LandingPage | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -64,6 +66,10 @@ export default function LandingBuilderPage() {
 
   function addBlock(type: BlockType) {
     const block = createBlock(type);
+    // Seed new hero/CTA blocks with the active brand's colour.
+    if (active && (block.type === "hero" || block.type === "cta")) {
+      block.bg = active.primary_color;
+    }
     setBlocks((b) => [...b, block]);
     setSelectedId(block.id);
   }

@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { LandingPage } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import type { LandingLead } from "../api/types";
+import { Monitor, Smartphone } from "lucide-react";
 import { parseBlocks } from "../landing/blocks";
 import { BlockList } from "../landing/BlockRenderer";
 import {
@@ -52,6 +53,59 @@ function LeadsModal({ page, onClose }: { page: LandingPage; onClose: () => void 
           </tbody>
         </table>
       )}
+    </Modal>
+  );
+}
+
+function PreviewModal({ page, onClose }: { page: LandingPage; onClose: () => void }) {
+  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const blocks = parseBlocks(page.blocks);
+  return (
+    <Modal title={`Preview — ${page.title}`} maxWidth={1040} onClose={onClose}>
+      <div className="spread mb-3">
+        <div className="muted text-xs">
+          {page.status === "published" ? (
+            <>
+              Live at <code>/p/{page.slug}</code> ·{" "}
+              <a href={`/p/${page.slug}`} target="_blank" rel="noreferrer">
+                open in new tab ↗
+              </a>
+            </>
+          ) : (
+            <>Draft preview — not publicly visible until published.</>
+          )}
+        </div>
+        <div className="flex flex-none gap-1 rounded-lg border border-[var(--border)] p-0.5">
+          <button
+            className={`flex items-center gap-1 rounded-md border-0 px-2.5 py-1 text-sm ${device === "desktop" ? "bg-brand-50 text-brand-700" : "bg-transparent"}`}
+            onClick={() => setDevice("desktop")}
+            aria-label="Desktop preview"
+          >
+            <Monitor size={15} /> Desktop
+          </button>
+          <button
+            className={`flex items-center gap-1 rounded-md border-0 px-2.5 py-1 text-sm ${device === "mobile" ? "bg-brand-50 text-brand-700" : "bg-transparent"}`}
+            onClick={() => setDevice("mobile")}
+            aria-label="Mobile preview"
+          >
+            <Smartphone size={15} /> Mobile
+          </button>
+        </div>
+      </div>
+      <div className="grid max-h-[70vh] place-items-start overflow-auto rounded-xl bg-slate-100 p-3">
+        <div
+          className="mx-auto overflow-hidden rounded-lg bg-white shadow-soft transition-all"
+          style={{ width: device === "mobile" ? 390 : "100%" }}
+        >
+          {blocks.length > 0 ? (
+            <BlockList blocks={blocks} />
+          ) : page.html ? (
+            <div dangerouslySetInnerHTML={{ __html: page.html }} />
+          ) : (
+            <div className="empty">This page has no content yet.</div>
+          )}
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -190,43 +244,7 @@ export default function LandingPagesPage() {
       )}
       {leadsFor && <LeadsModal page={leadsFor} onClose={() => setLeadsFor(null)} />}
       {previewing && (
-        <Modal
-          title={`Preview — ${previewing.title}`}
-          maxWidth={980}
-          onClose={() => setPreviewing(null)}
-        >
-          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-            {previewing.status === "published" ? (
-              <>
-                Live at <code>/p/{previewing.slug}</code> ·{" "}
-                <a href={`/p/${previewing.slug}`} target="_blank" rel="noreferrer">
-                  open in new tab ↗
-                </a>
-              </>
-            ) : (
-              <>Draft preview — not publicly visible until published.</>
-            )}
-          </div>
-          <div
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 10,
-              overflow: "auto",
-              maxHeight: "70vh",
-              background: "#fff",
-            }}
-          >
-            {(() => {
-              const blocks = parseBlocks(previewing.blocks);
-              if (blocks.length > 0) return <BlockList blocks={blocks} />;
-              if (previewing.html)
-                return <div dangerouslySetInnerHTML={{ __html: previewing.html }} />;
-              return (
-                <div className="empty">This page has no content yet.</div>
-              );
-            })()}
-          </div>
-        </Modal>
+        <PreviewModal page={previewing} onClose={() => setPreviewing(null)} />
       )}
       {deleting && (
         <ConfirmModal
