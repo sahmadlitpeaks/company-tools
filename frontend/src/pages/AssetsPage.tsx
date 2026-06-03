@@ -153,23 +153,31 @@ export default function AssetsPage() {
                   className="cursor-pointer"
                   onClick={() => open(f)}
                 >
-                  <td className="font-semibold">
-                    <span className="mr-2">📁</span>
-                    {f.name}
+                  <td>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-amber-50 text-lg">
+                        📁
+                      </span>
+                      <span className="font-semibold">{f.name}</span>
+                    </div>
                   </td>
-                  <td className="muted">Folder</td>
+                  <td><span className="badge amber">Folder</span></td>
                   <td className="muted">—</td>
-                  <td className="text-right text-ink-muted">Open ›</td>
+                  <td className="text-right font-medium text-brand-600">Open ›</td>
                 </tr>
               ))}
               {assets.data?.map((a) => (
                 <tr key={a.id}>
-                  <td className="font-medium">
-                    <span className="mr-2">{fileIcon(a.name)}</span>
-                    {a.name}
+                  <td>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-slate-100 text-lg">
+                        {fileIcon(a.name)}
+                      </span>
+                      <span className="font-medium">{a.name}</span>
+                    </div>
                   </td>
-                  <td className="muted uppercase text-xs">
-                    {a.name.split(".").pop() ?? "file"}
+                  <td>
+                    <span className="badge">{(a.name.split(".").pop() ?? "file").toUpperCase()}</span>
                   </td>
                   <td className="muted">{bytes(a.size_bytes)}</td>
                   <td className="text-right">

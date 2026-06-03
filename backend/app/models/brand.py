@@ -27,6 +27,8 @@ class Brand(UUIDMixin, TimestampMixin, Base):
     secondary_color: Mapped[str | None] = mapped_column(String(9))
     accent_color: Mapped[str] = mapped_column(String(9), default="#0b5cab")
     font_family: Mapped[str | None] = mapped_column(String(255))
+    # Extra brand palette: JSON list of {"name","hex"}.
+    palette: Mapped[str | None] = mapped_column(Text)
     website: Mapped[str | None] = mapped_column(String(512))
     email_domain: Mapped[str | None] = mapped_column(String(255))
     contact_email: Mapped[str | None] = mapped_column(String(320))

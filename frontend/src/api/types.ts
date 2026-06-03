@@ -344,6 +344,7 @@ export interface Brand {
   secondary_color?: string | null;
   accent_color: string;
   font_family?: string | null;
+  palette?: string | null;
   website?: string | null;
   email_domain?: string | null;
   contact_email?: string | null;
@@ -353,6 +354,25 @@ export interface Brand {
   social?: string | null;
   is_active: boolean;
   is_default: boolean;
+  created_at: string;
+}
+
+export interface BrandDocument {
+  id: string;
+  brand_id: string;
+  name: string;
+  category: string;
+  current_version: number;
+  version_count: number;
+  latest_size?: number | null;
+  updated_at: string;
+}
+
+export interface BrandDocumentVersion {
+  id: string;
+  version: number;
+  content_type?: string | null;
+  size_bytes: number;
   created_at: string;
 }
 

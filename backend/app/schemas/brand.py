@@ -13,6 +13,7 @@ class BrandBase(BaseModel):
     secondary_color: str | None = None
     accent_color: str = "#0b5cab"
     font_family: str | None = None
+    palette: str | None = None
     website: str | None = None
     email_domain: str | None = None
     contact_email: str | None = None
@@ -35,6 +36,7 @@ class BrandUpdate(BaseModel):
     secondary_color: str | None = None
     accent_color: str | None = None
     font_family: str | None = None
+    palette: str | None = None
     website: str | None = None
     email_domain: str | None = None
     contact_email: str | None = None

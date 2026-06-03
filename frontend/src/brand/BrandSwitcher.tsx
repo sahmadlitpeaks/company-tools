@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useBrand } from "./BrandContext";
-import { useAuth } from "../auth/AuthContext";
 
 function Swatch({ color, src }: { color: string; src?: string | null }) {
   if (src) {
@@ -23,7 +22,6 @@ function Swatch({ color, src }: { color: string; src?: string | null }) {
 
 export default function BrandSwitcher() {
   const { brands, active, setActive } = useBrand();
-  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -73,15 +71,13 @@ export default function BrandSwitcher() {
               </button>
             ))}
           </div>
-          {user?.is_admin && (
-            <Link
-              to="/brands"
-              onClick={() => setOpen(false)}
-              className="block border-t border-[var(--border)] px-3.5 py-2.5 text-sm font-medium hover:bg-slate-50 hover:no-underline"
-            >
-              ⚙ Manage brands
-            </Link>
-          )}
+          <Link
+            to="/branding"
+            onClick={() => setOpen(false)}
+            className="block border-t border-[var(--border)] px-3.5 py-2.5 text-sm font-medium hover:bg-slate-50 hover:no-underline"
+          >
+            🎨 Brand Center
+          </Link>
         </div>
       )}
     </div>

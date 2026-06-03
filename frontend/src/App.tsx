@@ -11,7 +11,6 @@ import AssetsPage from "./pages/AssetsPage";
 import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
-import BrandsPage from "./pages/BrandsPage";
 import SettingsPage from "./pages/SettingsPage";
 import CrmPage from "./pages/CrmPage";
 import CampaignsPage from "./pages/CampaignsPage";
@@ -60,7 +59,6 @@ export default function App() {
           <Route path="/signatures" element={<SignaturesPage />} />
           <Route path="/shortener" element={<ShortenerPage />} />
           <Route path="/transfers" element={<TransfersPage />} />
-          <Route path="/brands" element={<BrandsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -26,7 +26,6 @@ const NAV = [
   { to: "/shortener", label: "URL Shortener", icon: "🔗" },
   { to: "/transfers", label: "Secure Transfers", icon: "🔒" },
   { section: "Admin", adminOnly: true },
-  { to: "/brands", label: "Brands", icon: "🏢", adminOnly: true },
   { to: "/settings", label: "Settings", icon: "⚙️", adminOnly: true },
 ];
 
