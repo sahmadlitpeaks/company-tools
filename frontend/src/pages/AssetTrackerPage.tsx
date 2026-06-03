@@ -12,6 +12,7 @@ import { useFetch } from "../hooks/useApi";
 import {
   ConfirmModal,
   Empty,
+  ErrorState,
   Loading,
   Modal,
   PageHead,
@@ -653,6 +654,8 @@ export default function AssetTrackerPage() {
 
       {assets.loading ? (
         <Loading />
+      ) : assets.error ? (
+        <ErrorState message={assets.error} onRetry={assets.reload} />
       ) : !assets.data || assets.data.length === 0 ? (
         <Empty message="No assets yet. Add one to start tracking." />
       ) : (

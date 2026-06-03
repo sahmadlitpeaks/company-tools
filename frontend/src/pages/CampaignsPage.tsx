@@ -11,6 +11,7 @@ import { useFetch } from "../hooks/useApi";
 import {
   ConfirmModal,
   Empty,
+  ErrorState,
   ListSkeleton,
   MiniBars,
   Modal,
@@ -315,6 +316,8 @@ export default function CampaignsPage() {
       <h3 className="mt-5">Campaigns</h3>
       {campaigns.loading ? (
         <ListSkeleton rows={4} />
+      ) : campaigns.error ? (
+        <ErrorState message={campaigns.error} onRetry={campaigns.reload} />
       ) : !campaigns.data || campaigns.data.length === 0 ? (
         <Empty
           icon="📣"

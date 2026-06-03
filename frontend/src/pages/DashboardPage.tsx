@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useApi";
-import { Loading, MiniBars } from "../components/ui";
+import { ErrorState, Loading, MiniBars } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
 import type { AnalyticsOverview } from "../api/types";
 
@@ -61,7 +61,9 @@ const ACTION_ICON: Record<string, string> = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { data, loading } = useFetch<AnalyticsOverview>("/api/analytics/overview");
+  const { data, loading, error, reload } = useFetch<AnalyticsOverview>(
+    "/api/analytics/overview",
+  );
 
   useEffect(() => {
     void api("/api/notifications/check-warranties", { method: "POST" }).catch(() => {});
@@ -122,7 +124,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {loading || !data ? (
+      {error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : loading || !data ? (
         <Loading />
       ) : (
         <>

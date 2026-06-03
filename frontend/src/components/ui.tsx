@@ -334,6 +334,28 @@ export function ErrorBox({ message }: { message: string }) {
   );
 }
 
+/** Full-panel error state with a retry action. */
+export function ErrorState({
+  message,
+  onRetry,
+}: {
+  message?: string | null;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="card flex flex-col items-center gap-2 py-10 text-center">
+      <div className="text-4xl">⚠️</div>
+      <div className="font-semibold text-ink">Couldn't load this</div>
+      {message && <div className="max-w-sm text-sm text-ink-muted">{message}</div>}
+      {onRetry && (
+        <button className="btn mt-2" onClick={onRetry}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Empty({
   message,
   icon,

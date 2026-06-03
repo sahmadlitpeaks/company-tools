@@ -36,10 +36,16 @@ function CardForm({
     accent_color: "#0b5cab",
   });
   const [busy, setBusy] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.full_name.trim()) {
+      setNameError("Full name is required.");
+      return;
+    }
+    setNameError(null);
     setBusy(true);
     try {
       await api<DigitalCard>("/api/cards", { method: "POST", body: form });
@@ -55,14 +61,24 @@ function CardForm({
 
   return (
     <Modal title="New digital card" onClose={onClose}>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} noValidate>
         <div className="field">
-          <label>Full name *</label>
+          <label htmlFor="card-full-name">Full name *</label>
           <input
-            required
+            id="card-full-name"
             value={form.full_name}
-            onChange={(e) => set("full_name", e.target.value)}
+            aria-invalid={!!nameError}
+            aria-describedby={nameError ? "card-full-name-err" : undefined}
+            onChange={(e) => {
+              set("full_name", e.target.value);
+              if (nameError) setNameError(null);
+            }}
           />
+          {nameError && (
+            <div id="card-full-name-err" className="mt-1 text-xs text-red-600">
+              {nameError}
+            </div>
+          )}
         </div>
         <div className="row">
           <div className="field">

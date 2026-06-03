@@ -5,6 +5,7 @@ import { useFetch } from "../hooks/useApi";
 import {
   ConfirmModal,
   Empty,
+  ErrorState,
   ListSkeleton,
   Modal,
   PageHead,
@@ -195,6 +196,7 @@ export default function CrmPage() {
   const [editing, setEditing] = useState<CrmLead | null>(null);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<CrmLead | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   function reloadAll() {
     leads.reload();
@@ -202,8 +204,16 @@ export default function CrmPage() {
   }
 
   async function changeStatus(l: CrmLead, s: string) {
-    await api(`/api/crm/leads/${l.id}`, { method: "PATCH", body: { status: s } });
-    reloadAll();
+    setSavingId(l.id);
+    try {
+      await api(`/api/crm/leads/${l.id}`, { method: "PATCH", body: { status: s } });
+      notify(`Saved — ${l.name ?? "lead"} is now ${s}.`);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Couldn't save status", "error");
+    } finally {
+      setSavingId(null);
+      reloadAll();
+    }
   }
 
   async function syncExisting() {
@@ -292,6 +302,8 @@ export default function CrmPage() {
 
       {leads.loading ? (
         <ListSkeleton rows={6} />
+      ) : leads.error ? (
+        <ErrorState message={leads.error} onRetry={leads.reload} />
       ) : !leads.data || leads.data.length === 0 ? (
         <Empty
           icon="🧲"
@@ -332,14 +344,21 @@ export default function CrmPage() {
                   <td>{l.owner_name ?? "—"}</td>
                   <td>{money(l.value)}</td>
                   <td>
-                    <select
-                      value={l.status}
-                      onChange={(e) => changeStatus(l, e.target.value)}
-                      className={`!w-auto !py-1 text-sm badge ${STATUS_BADGE[l.status] ?? ""}`}
-                      style={{ borderRadius: 999 }}
-                    >
-                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={l.status}
+                        disabled={savingId === l.id}
+                        onChange={(e) => changeStatus(l, e.target.value)}
+                        aria-label={`Status for ${l.name ?? "lead"}`}
+                        className={`!w-auto !py-1 text-sm badge ${STATUS_BADGE[l.status] ?? ""}`}
+                        style={{ borderRadius: 999 }}
+                      >
+                        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      {savingId === l.id && (
+                        <span className="text-xs text-ink-muted">Saving…</span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className="row" style={{ gap: 6 }}>
