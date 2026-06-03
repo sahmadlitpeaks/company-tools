@@ -2,7 +2,15 @@ import { useState } from "react";
 import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { AuthImage, Empty, ListSkeleton, Modal, PageHead, useToast } from "../components/ui";
+import {
+  AuthImage,
+  ConfirmModal,
+  Empty,
+  ListSkeleton,
+  Modal,
+  PageHead,
+  useToast,
+} from "../components/ui";
 
 function EditModal({
   qr,
@@ -67,6 +75,7 @@ export default function QRCodesPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<QRCode[]>("/api/qrcodes");
   const [editing, setEditing] = useState<QRCode | null>(null);
+  const [deleting, setDeleting] = useState<QRCode | null>(null);
   const [form, setForm] = useState({
     label: "",
     target_url: "",
@@ -200,7 +209,7 @@ export default function QRCodesPage() {
                 <button
                   className="btn-sm btn-danger"
                   style={{ flex: "0 0 auto" }}
-                  onClick={() => remove(qr.id)}
+                  onClick={() => setDeleting(qr)}
                 >
                   Delete
                 </button>
@@ -211,6 +220,18 @@ export default function QRCodesPage() {
       )}
       {editing && (
         <EditModal qr={editing} onClose={() => setEditing(null)} onSaved={reload} />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title="Delete QR code"
+          message={`Delete the QR code “${deleting.label}”? Printed codes will stop working.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={async () => {
+            await remove(deleting.id);
+          }}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </div>
   );

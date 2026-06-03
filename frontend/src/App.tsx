@@ -12,6 +12,7 @@ import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
+import NotFoundPage from "./pages/NotFoundPage";
 import CrmPage from "./pages/CrmPage";
 import CampaignsPage from "./pages/CampaignsPage";
 import QRCodesPage from "./pages/QRCodesPage";
@@ -47,7 +48,8 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/directory" element={<DirectoryPage />} />
           <Route path="/cards" element={<CardsPage />} />
-          <Route path="/assets" element={<AssetsPage />} />
+          <Route path="/marketing-assets" element={<AssetsPage />} />
+          <Route path="/assets" element={<Navigate to="/marketing-assets" replace />} />
           <Route path="/branding" element={<BrandingPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/asset-tracker" element={<AssetTrackerPage />} />
@@ -60,7 +62,7 @@ export default function App() {
           <Route path="/shortener" element={<ShortenerPage />} />
           <Route path="/transfers" element={<TransfersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       )}
     </Routes>

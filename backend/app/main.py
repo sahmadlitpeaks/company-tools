@@ -87,7 +87,8 @@ app.include_router(notifications.router, prefix=api_prefix)
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----
-@app.get("/s/{code}", tags=["url-shortener"])
+# GET + HEAD so link previews, uptime checks and crawlers work.
+@app.api_route("/s/{code}", methods=["GET", "HEAD"], tags=["url-shortener"])
 async def short_link_redirect(
     code: str, request: Request, db: AsyncSession = Depends(get_db)
 ):
@@ -95,7 +96,7 @@ async def short_link_redirect(
 
 
 # ---- Dynamic QR scan redirect: https://host/q/{qr_id} ----
-@app.get("/q/{qr_id}", tags=["qr-codes"])
+@app.api_route("/q/{qr_id}", methods=["GET", "HEAD"], tags=["qr-codes"])
 async def qr_scan_redirect(
     qr_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)
 ):

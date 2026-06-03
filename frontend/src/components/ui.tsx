@@ -49,16 +49,27 @@ export function Modal({
   children: ReactNode;
   maxWidth?: number;
 }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         style={maxWidth ? { maxWidth } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="spread" style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>{title}</h3>
-          <button className="btn-sm" onClick={onClose}>
+          <button className="btn-sm" aria-label="Close dialog" onClick={onClose}>
             ✕
           </button>
         </div>

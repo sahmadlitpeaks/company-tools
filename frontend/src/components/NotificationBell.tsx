@@ -87,7 +87,12 @@ export default function NotificationBell() {
 
   return (
     <div className="bell" ref={ref}>
-      <button className="bell-btn" onClick={toggle} title="Notifications">
+      <button
+        className="bell-btn"
+        onClick={toggle}
+        aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
+        title="Notifications"
+      >
         🔔
         {count > 0 && <span className="bell-badge">{count > 9 ? "9+" : count}</span>}
       </button>

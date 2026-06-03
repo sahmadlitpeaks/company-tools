@@ -5,13 +5,15 @@ import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
 import NotificationBell from "./NotificationBell";
 
+export const APP_NAME = "AG Holding";
+
 const NAV = [
   { section: "Overview" },
   { to: "/", label: "Dashboard", icon: "▦", end: true },
   { to: "/directory", label: "Employee Directory", icon: "👥" },
   { section: "Marketing" },
   { to: "/cards", label: "Digital Cards", icon: "💳" },
-  { to: "/assets", label: "Marketing Assets", icon: "📁" },
+  { to: "/marketing-assets", label: "Marketing Assets", icon: "📁" },
   { to: "/branding", label: "Brand Center", icon: "🎨" },
   { to: "/products", label: "Products & Brochures", icon: "📦" },
   { section: "Sales" },
@@ -48,7 +50,20 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const title = currentTitle(location.pathname);
+
+  // Dynamic document title per route.
+  useEffect(() => {
+    document.title = `${title} — ${APP_NAME}`;
+  }, [title]);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -66,7 +81,14 @@ export default function Layout() {
   return (
    <BrandProvider>
     <div className="app-shell">
-      <aside className="sidebar">
+      {navOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`sidebar ${navOpen ? "open" : ""}`}>
         <div className="brand">
           <span className="logo">AG</span>
           <span>AG Holding</span>
@@ -97,11 +119,20 @@ export default function Layout() {
 
       <div className="main">
         <header className="topbar">
-          <div className="flex flex-col leading-tight">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
-              AG Holding
-            </span>
-            <span className="text-[15px] font-semibold">{currentTitle(location.pathname)}</span>
+          <div className="flex items-center gap-2">
+            <button
+              className="menu-btn"
+              aria-label="Open menu"
+              onClick={() => setNavOpen((o) => !o)}
+            >
+              ☰
+            </button>
+            <div className="flex flex-col leading-tight">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
+                {APP_NAME}
+              </span>
+              <span className="text-[15px] font-semibold">{title}</span>
+            </div>
           </div>
           <div className="flex flex-none items-center gap-2">
           <BrandSwitcher />
@@ -109,7 +140,7 @@ export default function Layout() {
           <NotificationBell />
           <span className="mx-1 h-7 w-px bg-[var(--border)]" />
           <div className="profile" ref={menuRef}>
-            <button className="profile-btn" onClick={() => setMenuOpen((o) => !o)}>
+            <button className="profile-btn" aria-label="Account menu" onClick={() => setMenuOpen((o) => !o)}>
               <span className="avatar">{initials(user?.display_name, user?.email)}</span>
               <span className="profile-meta">
                 <span className="profile-name">{name}</span>

@@ -33,7 +33,7 @@ function StatCard({
         <span className="block text-2xl font-bold leading-none -tracking-[0.02em] text-ink">
           {value}
         </span>
-        <span className="mt-1 block truncate text-[13px] text-ink-muted">{label}</span>
+        <span className="mt-1 block text-[13px] leading-tight text-ink-muted">{label}</span>
       </span>
     </Link>
   );

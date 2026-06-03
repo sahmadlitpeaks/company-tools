@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.security import create_access_token
 from app.models.user import User
 from app.schemas.user import UserOut
+from app.services.activity import record
 from app.services.app_settings import get_azure_config
 from app.services.users import upsert_user_from_graph
 
@@ -89,6 +90,13 @@ async def dev_login(email: str, db: AsyncSession = Depends(get_db)):
     # First dev user becomes admin for convenience.
     user.is_admin = True
     user.role = "admin"
+    record(
+        db,
+        user=user,
+        action="updated",
+        entity_type="auth",
+        summary=f"Dev-login used as {email} (development only)",
+    )
     await db.commit()
     token = create_access_token(subject=str(user.id), extra={"email": user.email})
     return {"access_token": token, "token_type": "bearer"}
