@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Bell } from "lucide-react";
 import { api } from "../api/client";
 import type { AppNotification } from "../api/types";
 
@@ -93,7 +94,7 @@ export default function NotificationBell() {
         aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
         title="Notifications"
       >
-        🔔
+        <Bell size={18} />
         {count > 0 && <span className="bell-badge">{count > 9 ? "9+" : count}</span>}
       </button>
       {open && (

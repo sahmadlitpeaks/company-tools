@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
 import { useBrand } from "./BrandContext";
 
 function Swatch({ color, src }: { color: string; src?: string | null }) {
@@ -47,7 +48,7 @@ export default function BrandSwitcher() {
         <span className="hidden max-w-[140px] truncate text-sm font-semibold sm:block">
           {active.name}
         </span>
-        <span className="text-xs text-ink-muted">▾</span>
+        <ChevronDown size={14} className="text-ink-muted" />
       </button>
       {open && (
         <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-[240px] overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-pop">

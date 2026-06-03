@@ -1,5 +1,16 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import {
+  Boxes,
+  CreditCard,
+  LayoutTemplate,
+  Link2,
+  QrCode,
+  Scissors,
+  ScanLine,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useApi";
 import { ErrorState, Loading, MiniBars } from "../components/ui";
@@ -10,13 +21,13 @@ function StatCard({
   value,
   label,
   to,
-  icon,
+  icon: Icon,
   accent,
 }: {
   value: number | string;
   label: string;
   to: string;
-  icon: string;
+  icon: LucideIcon;
   accent: string;
 }) {
   return (
@@ -24,10 +35,8 @@ function StatCard({
       to={to}
       className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-white p-4 shadow-card transition-all hover:-translate-y-0.5 hover:no-underline hover:shadow-soft"
     >
-      <span
-        className={`grid h-11 w-11 flex-none place-items-center rounded-xl text-lg ${accent}`}
-      >
-        {icon}
+      <span className={`grid h-11 w-11 flex-none place-items-center rounded-xl ${accent}`}>
+        <Icon size={20} />
       </span>
       <span className="min-w-0">
         <span className="block text-2xl font-bold leading-none -tracking-[0.02em] text-ink">
@@ -131,14 +140,14 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard value={c!.employees} label="Employees" to="/directory" icon="👥" accent="bg-blue-50 text-blue-600" />
-            <StatCard value={c!.cards} label="Digital Cards" to="/cards" icon="💳" accent="bg-violet-50 text-violet-600" />
-            <StatCard value={c!.assets} label="Tracked Assets" to="/asset-tracker" icon="🏷" accent="bg-amber-50 text-amber-600" />
-            <StatCard value={data.engagement.total_link_clicks} label="Link Clicks" to="/shortener" icon="🔗" accent="bg-emerald-50 text-emerald-600" />
-            <StatCard value={c!.qrcodes} label="QR Codes" to="/qrcodes" icon="▣" accent="bg-slate-100 text-slate-600" />
-            <StatCard value={c!.landing_pages} label="Landing Pages" to="/landing-pages" icon="🖥" accent="bg-cyan-50 text-cyan-600" />
-            <StatCard value={data.engagement.total_card_scans} label="Card Scans" to="/cards" icon="📈" accent="bg-rose-50 text-rose-600" />
-            <StatCard value={c!.short_links} label="Short Links" to="/shortener" icon="✂️" accent="bg-indigo-50 text-indigo-600" />
+            <StatCard value={c!.employees} label="Employees" to="/directory" icon={Users} accent="bg-blue-50 text-blue-600" />
+            <StatCard value={c!.cards} label="Digital Cards" to="/cards" icon={CreditCard} accent="bg-violet-50 text-violet-600" />
+            <StatCard value={c!.assets} label="Tracked Assets" to="/asset-tracker" icon={Boxes} accent="bg-amber-50 text-amber-600" />
+            <StatCard value={data.engagement.total_link_clicks} label="Link Clicks" to="/shortener" icon={Link2} accent="bg-emerald-50 text-emerald-600" />
+            <StatCard value={c!.qrcodes} label="QR Codes" to="/qrcodes" icon={QrCode} accent="bg-slate-100 text-slate-600" />
+            <StatCard value={c!.landing_pages} label="Landing Pages" to="/landing-pages" icon={LayoutTemplate} accent="bg-cyan-50 text-cyan-600" />
+            <StatCard value={data.engagement.total_card_scans} label="Card Scans" to="/cards" icon={ScanLine} accent="bg-rose-50 text-rose-600" />
+            <StatCard value={c!.short_links} label="Short Links" to="/shortener" icon={Scissors} accent="bg-indigo-50 text-indigo-600" />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">

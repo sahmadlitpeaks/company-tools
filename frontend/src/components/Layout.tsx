@@ -1,5 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import {
+  Boxes,
+  ChevronDown,
+  CreditCard,
+  FolderOpen,
+  LayoutDashboard,
+  LayoutTemplate,
+  Link2,
+  Lock,
+  Magnet,
+  Mail,
+  Megaphone,
+  Menu,
+  Package,
+  Palette,
+  QrCode,
+  Settings as SettingsIcon,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
@@ -7,28 +27,32 @@ import NotificationBell from "./NotificationBell";
 
 export const APP_NAME = "AG Holding";
 
-const NAV = [
+type NavEntry =
+  | { section: string; adminOnly?: boolean }
+  | { to: string; label: string; icon: LucideIcon; end?: boolean; adminOnly?: boolean };
+
+const NAV: NavEntry[] = [
   { section: "Overview" },
-  { to: "/", label: "Dashboard", icon: "▦", end: true },
-  { to: "/directory", label: "Employee Directory", icon: "👥" },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/directory", label: "Employee Directory", icon: Users },
   { section: "Marketing" },
-  { to: "/cards", label: "Digital Cards", icon: "💳" },
-  { to: "/marketing-assets", label: "Marketing Assets", icon: "📁" },
-  { to: "/branding", label: "Brand Center", icon: "🎨" },
-  { to: "/products", label: "Products & Brochures", icon: "📦" },
+  { to: "/cards", label: "Digital Cards", icon: CreditCard },
+  { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen },
+  { to: "/branding", label: "Brand Center", icon: Palette },
+  { to: "/products", label: "Products & Brochures", icon: Package },
   { section: "Sales" },
-  { to: "/crm", label: "Leads (CRM)", icon: "🧲" },
-  { to: "/campaigns", label: "Campaign Studio", icon: "📣" },
+  { to: "/crm", label: "Leads (CRM)", icon: Magnet },
+  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone },
   { section: "Operations" },
-  { to: "/asset-tracker", label: "Asset Tracker", icon: "🏷" },
+  { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes },
   { section: "Tools" },
-  { to: "/qrcodes", label: "QR Codes", icon: "▣" },
-  { to: "/landing-pages", label: "Landing Pages", icon: "🖥" },
-  { to: "/signatures", label: "Email Signatures", icon: "✉" },
-  { to: "/shortener", label: "URL Shortener", icon: "🔗" },
-  { to: "/transfers", label: "Secure Transfers", icon: "🔒" },
+  { to: "/qrcodes", label: "QR Codes", icon: QrCode },
+  { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate },
+  { to: "/signatures", label: "Email Signatures", icon: Mail },
+  { to: "/shortener", label: "URL Shortener", icon: Link2 },
+  { to: "/transfers", label: "Secure Transfers", icon: Lock },
   { section: "Admin", adminOnly: true },
-  { to: "/settings", label: "Settings", icon: "⚙️", adminOnly: true },
+  { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
 function initials(name?: string | null, email?: string): string {
@@ -104,11 +128,11 @@ export default function Layout() {
             ) : (
               <NavLink
                 key={item.to}
-                to={item.to!}
+                to={item.to}
                 end={item.end}
                 className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <item.icon className="nav-icon" size={18} strokeWidth={2} />
                 {item.label}
               </NavLink>
             ),
@@ -125,7 +149,7 @@ export default function Layout() {
               aria-label="Open menu"
               onClick={() => setNavOpen((o) => !o)}
             >
-              ☰
+              <Menu size={18} />
             </button>
             <div className="flex flex-col leading-tight">
               <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
@@ -146,7 +170,7 @@ export default function Layout() {
                 <span className="profile-name">{name}</span>
                 <span className="profile-role">{role}</span>
               </span>
-              <span className="caret">▾</span>
+              <ChevronDown size={14} className="caret" />
             </button>
             {menuOpen && (
               <div className="profile-menu">

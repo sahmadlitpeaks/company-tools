@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { X } from "lucide-react";
 import { apiBlob } from "../api/client";
 
 /* ---------- Toast ---------- */
@@ -69,8 +70,12 @@ export function Modal({
       >
         <div className="spread" style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>{title}</h3>
-          <button className="btn-sm" aria-label="Close dialog" onClick={onClose}>
-            ✕
+          <button
+            className="btn-sm grid place-items-center"
+            aria-label="Close dialog"
+            onClick={onClose}
+          >
+            <X size={16} />
           </button>
         </div>
         {children}
