@@ -29,6 +29,8 @@ export default function FlipbookModal({
   name,
   onClose,
   auth = true,
+  brandName,
+  brandLogo,
 }: {
   /** Download path of the PDF, e.g. `/api/assets/:id/download`. */
   url: string;
@@ -37,6 +39,9 @@ export default function FlipbookModal({
   onClose?: () => void;
   /** Send the auth token when fetching the PDF. Set false for public pages. */
   auth?: boolean;
+  /** Optional brand identity shown in the header (public viewer). */
+  brandName?: string | null;
+  brandLogo?: string | null;
 }) {
   const [pages, setPages] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -108,7 +113,20 @@ export default function FlipbookModal({
     <div className="fixed inset-0 z-[70] flex flex-col bg-slate-900/95 backdrop-blur-sm">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
-        <span className="truncate text-sm font-medium">{name}</span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          {brandLogo ? (
+            <img
+              src={brandLogo}
+              alt={brandName ?? ""}
+              className="h-7 w-auto flex-none rounded bg-white/90 p-0.5"
+            />
+          ) : brandName ? (
+            <span className="flex-none text-sm font-semibold text-white/90">
+              {brandName}
+            </span>
+          ) : null}
+          <span className="truncate text-sm font-medium">{name}</span>
+        </span>
         <div className="flex items-center gap-2">
           {ready && (
             <span className="hidden text-xs text-white/70 sm:inline">

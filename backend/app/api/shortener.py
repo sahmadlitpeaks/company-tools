@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -89,6 +90,8 @@ async def redirect_short_link(code: str, request: Request, db: AsyncSession):
     ).scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
+    if link.is_expired(datetime.now(timezone.utc)):
+        raise HTTPException(status_code=410, detail="This link has expired")
 
     link.click_count += 1
     db.add(

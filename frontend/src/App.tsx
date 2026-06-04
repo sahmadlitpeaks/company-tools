@@ -10,6 +10,7 @@ import CardsPage from "./pages/CardsPage";
 import AssetsPage from "./pages/AssetsPage";
 import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
+import SharedPage from "./pages/SharedPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/assets" element={<Navigate to="/marketing-assets" replace />} />
           <Route path="/branding" element={<BrandingPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/shared" element={<SharedPage />} />
           <Route path="/asset-tracker" element={<AssetTrackerPage />} />
           <Route path="/crm" element={<CrmPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />

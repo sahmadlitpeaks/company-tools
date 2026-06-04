@@ -19,6 +19,7 @@ from app.api import (
     products,
     qrcodes,
     settings as settings_api,
+    shares,
     shortener,
     signatures,
     tracker,
@@ -85,6 +86,8 @@ app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(crm.router, prefix=api_prefix)
 app.include_router(campaigns.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
+app.include_router(shares.router, prefix=api_prefix)
+app.include_router(shares.public_router, prefix=api_prefix)
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

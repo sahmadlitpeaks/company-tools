@@ -64,21 +64,85 @@ export interface Asset {
   file_path: string;
   content_type?: string | null;
   size_bytes: number;
+  version: number;
   is_public: boolean;
   share_code?: string | null;
+  share_expires_at?: string | null;
+  share_require_lead: boolean;
+  share_has_passcode: boolean;
   created_at: string;
+}
+
+export interface ShareSettings {
+  expires_in_days?: number | null;
+  passcode?: string | null;
+  require_lead?: boolean;
 }
 
 export interface ShareInfo {
   is_public: boolean;
   share_code?: string | null;
+  share_url?: string | null;
+  expires_at?: string | null;
+  require_lead?: boolean;
+  has_passcode?: boolean;
+}
+
+export interface BrandBrief {
+  name: string;
+  logo_url?: string | null;
+  primary_color: string;
+  website?: string | null;
+  tagline?: string | null;
 }
 
 export interface PublicDocMeta {
   id: string;
+  kind: "brochure" | "asset";
   title: string;
   content_type?: string | null;
   size_bytes: number;
+  requires_passcode: boolean;
+  requires_lead: boolean;
+  brand?: BrandBrief | null;
+}
+
+export interface DocVersion {
+  id: string;
+  version: number;
+  content_type?: string | null;
+  size_bytes: number;
+  note?: string | null;
+  created_at: string;
+}
+
+export interface SharedDoc {
+  kind: "brochure" | "asset";
+  id: string;
+  title: string;
+  share_code: string;
+  share_url: string;
+  public_url: string;
+  opens: number;
+  downloads: number;
+  last_opened?: string | null;
+  expires_at?: string | null;
+  require_lead: boolean;
+  has_passcode: boolean;
+  created_at: string;
+}
+
+export interface SearchHit {
+  kind: "brochure" | "asset" | "product";
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  href: string;
+}
+
+export interface SearchResults {
+  query: string;
+  hits: SearchHit[];
 }
 
 export interface BrandKit {
@@ -121,8 +185,12 @@ export interface Brochure {
   content_type?: string | null;
   size_bytes: number;
   download_count: number;
+  version: number;
   is_public: boolean;
   share_code?: string | null;
+  share_expires_at?: string | null;
+  share_require_lead: boolean;
+  share_has_passcode: boolean;
   created_at: string;
 }
 

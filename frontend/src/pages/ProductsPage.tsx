@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { BookOpen } from "lucide-react";
+import { BookOpen, History } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import ShareControl from "../components/ShareControl";
+import PdfThumb from "../components/PdfThumb";
+import VersionsModal from "../components/VersionsModal";
 import type { Brochure, Product } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -29,6 +31,7 @@ function BrochurePanel({ product }: { product: Product }) {
     `/api/products/${product.id}/brochures`,
   );
   const [reading, setReading] = useState<Brochure | null>(null);
+  const [versioning, setVersioning] = useState<Brochure | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -78,8 +81,7 @@ function BrochurePanel({ product }: { product: Product }) {
         <table>
           <thead>
             <tr>
-              <th>Title</th>
-              <th>Size</th>
+              <th>Brochure</th>
               <th>Downloads</th>
               <th>Client sharing</th>
               <th></th>
@@ -88,16 +90,39 @@ function BrochurePanel({ product }: { product: Product }) {
           <tbody>
             {data.map((b) => (
               <tr key={b.id}>
-                <td className="font-semibold">{b.title}</td>
-                <td className="muted">{bytes(b.size_bytes)}</td>
+                <td>
+                  <div className="flex items-center gap-3">
+                    {isPdf(b) ? (
+                      <PdfThumb
+                        url={`/api/products/brochures/${b.id}/download`}
+                        size={40}
+                      />
+                    ) : (
+                      <span className="grid h-10 w-10 flex-none place-items-center rounded-lg bg-slate-100 text-lg">
+                        📄
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{b.title}</div>
+                      <div className="muted text-xs">
+                        {bytes(b.size_bytes)}
+                        {b.version > 1 && ` · v${b.version}`}
+                      </div>
+                    </div>
+                  </div>
+                </td>
                 <td>
                   <span className="badge">{b.download_count}</span>
                 </td>
                 <td>
                   <ShareControl
                     base={`/api/products/brochures/${b.id}`}
+                    name={b.title}
                     isPublic={b.is_public}
                     shareCode={b.share_code}
+                    expiresAt={b.share_expires_at}
+                    requireLead={b.share_require_lead}
+                    hasPasscode={b.share_has_passcode}
                     onChange={() => reload()}
                   />
                 </td>
@@ -112,6 +137,13 @@ function BrochurePanel({ product }: { product: Product }) {
                         <BookOpen size={14} /> Read
                       </button>
                     )}
+                    <button
+                      className="btn-sm inline-flex items-center gap-1.5"
+                      onClick={() => setVersioning(b)}
+                      title="Version history / upload new version"
+                    >
+                      <History size={14} /> v{b.version}
+                    </button>
                     <button
                       className="btn-sm"
                       onClick={() =>
@@ -136,6 +168,16 @@ function BrochurePanel({ product }: { product: Product }) {
             onClose={() => setReading(null)}
           />
         </Suspense>
+      )}
+
+      {versioning && (
+        <VersionsModal
+          base={`/api/products/brochures/${versioning.id}`}
+          name={versioning.title}
+          currentVersion={versioning.version}
+          onClose={() => setVersioning(null)}
+          onReplaced={reload}
+        />
       )}
     </div>
   );

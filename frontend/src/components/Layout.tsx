@@ -17,12 +17,14 @@ import {
   Palette,
   QrCode,
   Settings as SettingsIcon,
+  Share2,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
+import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
 
 export const APP_NAME = "AG Holding";
@@ -40,6 +42,7 @@ const NAV: NavEntry[] = [
   { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen },
   { to: "/branding", label: "Brand Center", icon: Palette },
   { to: "/products", label: "Products & Brochures", icon: Package },
+  { to: "/shared", label: "Shared Links", icon: Share2 },
   { section: "Sales" },
   { to: "/crm", label: "Leads (CRM)", icon: Magnet },
   { to: "/campaigns", label: "Campaign Studio", icon: Megaphone },
@@ -159,6 +162,7 @@ export default function Layout() {
             </div>
           </div>
           <div className="flex flex-none items-center gap-2">
+          <GlobalSearch />
           <BrandSwitcher />
           <span className="mx-1 hidden h-7 w-px bg-[var(--border)] sm:block" />
           <NotificationBell />
