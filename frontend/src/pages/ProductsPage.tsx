@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { BookOpen } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Brochure, Product } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -11,11 +12,22 @@ import {
   useToast,
 } from "../components/ui";
 
+const FlipbookModal = lazy(() => import("../components/FlipbookModal"));
+
+function isPdf(b: Brochure): boolean {
+  return (
+    b.content_type === "application/pdf" ||
+    b.file_path.toLowerCase().endsWith(".pdf") ||
+    b.title.toLowerCase().endsWith(".pdf")
+  );
+}
+
 function BrochurePanel({ product }: { product: Product }) {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<Brochure[]>(
     `/api/products/${product.id}/brochures`,
   );
+  const [reading, setReading] = useState<Brochure | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -80,19 +92,40 @@ function BrochurePanel({ product }: { product: Product }) {
                   <span className="badge">{b.download_count}</span>
                 </td>
                 <td className="text-right">
-                  <button
-                    className="btn-sm"
-                    onClick={() =>
-                      downloadFile(`/api/public/brochures/${b.id}/download`, b.title)
-                    }
-                  >
-                    Download
-                  </button>
+                  <div className="inline-flex items-center gap-2">
+                    {isPdf(b) && (
+                      <button
+                        className="btn-sm inline-flex items-center gap-1.5"
+                        onClick={() => setReading(b)}
+                        title="Read as flipbook"
+                      >
+                        <BookOpen size={14} /> Read
+                      </button>
+                    )}
+                    <button
+                      className="btn-sm"
+                      onClick={() =>
+                        downloadFile(`/api/public/brochures/${b.id}/download`, b.title)
+                      }
+                    >
+                      Download
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {reading && (
+        <Suspense fallback={null}>
+          <FlipbookModal
+            url={`/api/public/brochures/${reading.id}/download`}
+            name={reading.title}
+            onClose={() => setReading(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

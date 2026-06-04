@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
+import { BookOpen } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Asset, Folder } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -10,6 +11,12 @@ import {
   bytes,
   useToast,
 } from "../components/ui";
+
+const FlipbookModal = lazy(() => import("../components/FlipbookModal"));
+
+function isPdf(name: string): boolean {
+  return name.split(".").pop()?.toLowerCase() === "pdf";
+}
 
 function fileIcon(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
@@ -26,6 +33,7 @@ export default function AssetsPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [crumbs, setCrumbs] = useState<Folder[]>([]);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [reading, setReading] = useState<Asset | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folderQuery = folderId ? `?parent_id=${folderId}` : "";
@@ -181,12 +189,23 @@ export default function AssetsPage() {
                   </td>
                   <td className="muted">{bytes(a.size_bytes)}</td>
                   <td className="text-right">
-                    <button
-                      className="btn-sm"
-                      onClick={() => downloadFile(`/api/assets/${a.id}/download`, a.name)}
-                    >
-                      Download
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      {isPdf(a.name) && (
+                        <button
+                          className="btn-sm inline-flex items-center gap-1.5"
+                          onClick={() => setReading(a)}
+                          title="Read as flipbook"
+                        >
+                          <BookOpen size={14} /> Read
+                        </button>
+                      )}
+                      <button
+                        className="btn-sm"
+                        onClick={() => downloadFile(`/api/assets/${a.id}/download`, a.name)}
+                      >
+                        Download
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -194,6 +213,16 @@ export default function AssetsPage() {
           </table>
         )}
       </div>
+
+      {reading && (
+        <Suspense fallback={null}>
+          <FlipbookModal
+            url={`/api/assets/${reading.id}/download`}
+            name={reading.name}
+            onClose={() => setReading(null)}
+          />
+        </Suspense>
+      )}
 
       {newFolderOpen && (
         <PromptModal
