@@ -1,6 +1,7 @@
 import { lazy, Suspense, useRef, useState } from "react";
 import { BookOpen } from "lucide-react";
 import { api, downloadFile } from "../api/client";
+import ShareControl from "../components/ShareControl";
 import type { Asset, Folder } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -151,6 +152,7 @@ export default function AssetsPage() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Size</th>
+                <th>Client sharing</th>
                 <th></th>
               </tr>
             </thead>
@@ -171,6 +173,7 @@ export default function AssetsPage() {
                   </td>
                   <td><span className="badge amber">Folder</span></td>
                   <td className="muted">—</td>
+                  <td className="muted">—</td>
                   <td className="text-right font-medium text-brand-600">Open ›</td>
                 </tr>
               ))}
@@ -188,6 +191,18 @@ export default function AssetsPage() {
                     <span className="badge">{(a.name.split(".").pop() ?? "file").toUpperCase()}</span>
                   </td>
                   <td className="muted">{bytes(a.size_bytes)}</td>
+                  <td>
+                    {isPdf(a.name) ? (
+                      <ShareControl
+                        base={`/api/assets/${a.id}`}
+                        isPublic={a.is_public}
+                        shareCode={a.share_code}
+                        onChange={() => assets.reload()}
+                      />
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td className="text-right">
                     <div className="inline-flex items-center gap-2">
                       {isPdf(a.name) && (

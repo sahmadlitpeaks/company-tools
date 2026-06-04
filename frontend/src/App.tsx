@@ -24,6 +24,7 @@ import TransfersPage from "./pages/TransfersPage";
 import PublicCardPage from "./pages/public/PublicCardPage";
 import PublicLandingPage from "./pages/public/PublicLandingPage";
 import PublicTransferPage from "./pages/public/PublicTransferPage";
+import PublicDocPage from "./pages/public/PublicDocPage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -34,6 +35,8 @@ export default function App() {
       <Route path="/c/:slug" element={<PublicCardPage />} />
       <Route path="/p/:slug" element={<PublicLandingPage />} />
       <Route path="/t/:token" element={<PublicTransferPage />} />
+      <Route path="/b/:id" element={<PublicDocPage base="brochures" />} />
+      <Route path="/a/:id" element={<PublicDocPage base="assets" />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
 
       {loading ? (

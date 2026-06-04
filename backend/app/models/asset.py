@@ -1,10 +1,14 @@
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.shortlink import ShortLink
 
 
 class Folder(UUIDMixin, TimestampMixin, Base):
@@ -46,5 +50,17 @@ class Asset(UUIDMixin, TimestampMixin, Base):
     uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Public sharing (shareable brochures/reports with a short URL).
+    is_public: Mapped[bool] = mapped_column(default=False)
+    short_link_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("short_links.id", ondelete="SET NULL"), nullable=True
+    )
 
     folder: Mapped["Folder"] = relationship(back_populates="assets")
+    short_link: Mapped["ShortLink | None"] = relationship("ShortLink", lazy="raise")
+
+    @property
+    def share_code(self) -> str | None:
+        """Code of the linked short link, when it has been eager-loaded."""
+        link = self.__dict__.get("short_link")
+        return link.code if link else None

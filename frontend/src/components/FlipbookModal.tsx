@@ -28,11 +28,15 @@ export default function FlipbookModal({
   url,
   name,
   onClose,
+  auth = true,
 }: {
   /** Download path of the PDF, e.g. `/api/assets/:id/download`. */
   url: string;
   name: string;
-  onClose: () => void;
+  /** When omitted (e.g. the public viewer page) the close button is hidden. */
+  onClose?: () => void;
+  /** Send the auth token when fetching the PDF. Set false for public pages. */
+  auth?: boolean;
 }) {
   const [pages, setPages] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
@@ -47,7 +51,7 @@ export default function FlipbookModal({
     let cancelled = false;
     (async () => {
       try {
-        const data = await (await apiBlob(url)).arrayBuffer();
+        const data = await (await apiBlob(url, auth)).arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data }).promise;
         if (cancelled) return;
         setTotal(pdf.numPages);
@@ -80,7 +84,7 @@ export default function FlipbookModal({
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, auth]);
 
   const flip = (dir: 1 | -1) => {
     const pf = bookRef.current?.pageFlip?.();
@@ -90,7 +94,7 @@ export default function FlipbookModal({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose?.();
       else if (e.key === "ArrowRight") flip(1);
       else if (e.key === "ArrowLeft") flip(-1);
     }
@@ -130,14 +134,16 @@ export default function FlipbookModal({
           >
             <Maximize2 size={17} />
           </button>
-          <button
-            className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
-            title="Close (Esc)"
-            aria-label="Close viewer"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
+          {onClose && (
+            <button
+              className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+              title="Close (Esc)"
+              aria-label="Close viewer"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
       </div>
 

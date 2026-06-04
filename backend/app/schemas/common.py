@@ -28,6 +28,8 @@ class AssetOut(BaseModel):
     file_path: str
     content_type: str | None = None
     size_bytes: int
+    is_public: bool = False
+    share_code: str | None = None
     created_at: datetime
 
 
@@ -87,7 +89,25 @@ class BrochureOut(BaseModel):
     content_type: str | None = None
     size_bytes: int
     download_count: int
+    is_public: bool = False
+    share_code: str | None = None
     created_at: datetime
+
+
+class ShareInfo(BaseModel):
+    """Result of sharing / unsharing a document."""
+
+    is_public: bool
+    share_code: str | None = None
+
+
+class PublicDocMeta(BaseModel):
+    """Lightweight metadata for the public flipbook viewer."""
+
+    id: uuid.UUID
+    title: str
+    content_type: str | None = None
+    size_bytes: int
 
 
 # ---- QR codes (feature #5) ----

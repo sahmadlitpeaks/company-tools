@@ -64,7 +64,21 @@ export interface Asset {
   file_path: string;
   content_type?: string | null;
   size_bytes: number;
+  is_public: boolean;
+  share_code?: string | null;
   created_at: string;
+}
+
+export interface ShareInfo {
+  is_public: boolean;
+  share_code?: string | null;
+}
+
+export interface PublicDocMeta {
+  id: string;
+  title: string;
+  content_type?: string | null;
+  size_bytes: number;
 }
 
 export interface BrandKit {
@@ -107,6 +121,8 @@ export interface Brochure {
   content_type?: string | null;
   size_bytes: number;
   download_count: number;
+  is_public: boolean;
+  share_code?: string | null;
   created_at: string;
 }
 

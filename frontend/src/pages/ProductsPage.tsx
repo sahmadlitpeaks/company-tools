@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { BookOpen } from "lucide-react";
 import { api, downloadFile } from "../api/client";
+import ShareControl from "../components/ShareControl";
 import type { Brochure, Product } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -80,6 +81,7 @@ function BrochurePanel({ product }: { product: Product }) {
               <th>Title</th>
               <th>Size</th>
               <th>Downloads</th>
+              <th>Client sharing</th>
               <th></th>
             </tr>
           </thead>
@@ -90,6 +92,14 @@ function BrochurePanel({ product }: { product: Product }) {
                 <td className="muted">{bytes(b.size_bytes)}</td>
                 <td>
                   <span className="badge">{b.download_count}</span>
+                </td>
+                <td>
+                  <ShareControl
+                    base={`/api/products/brochures/${b.id}`}
+                    isPublic={b.is_public}
+                    shareCode={b.share_code}
+                    onChange={() => reload()}
+                  />
                 </td>
                 <td className="text-right">
                   <div className="inline-flex items-center gap-2">
@@ -105,7 +115,7 @@ function BrochurePanel({ product }: { product: Product }) {
                     <button
                       className="btn-sm"
                       onClick={() =>
-                        downloadFile(`/api/public/brochures/${b.id}/download`, b.title)
+                        downloadFile(`/api/products/brochures/${b.id}/download`, b.title)
                       }
                     >
                       Download
@@ -121,7 +131,7 @@ function BrochurePanel({ product }: { product: Product }) {
       {reading && (
         <Suspense fallback={null}>
           <FlipbookModal
-            url={`/api/public/brochures/${reading.id}/download`}
+            url={`/api/products/brochures/${reading.id}/download`}
             name={reading.title}
             onClose={() => setReading(null)}
           />
