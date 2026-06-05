@@ -67,6 +67,7 @@ const NAV: NavEntry[] = [
   { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
   { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
   { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
+  { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements" },
   { section: "Operations" },
   { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
   { section: "Tools" },

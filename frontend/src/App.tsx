@@ -16,6 +16,7 @@ import TasksPage from "./pages/TasksPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ServiceDeskPage from "./pages/ServiceDeskPage";
 import KnowledgePage from "./pages/KnowledgePage";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -99,6 +100,10 @@ export default function App() {
           <Route
             path="/knowledge"
             element={<Protected module="knowledge"><KnowledgePage /></Protected>}
+          />
+          <Route
+            path="/announcements"
+            element={<Protected module="announcements"><AnnouncementsPage /></Protected>}
           />
           <Route
             path="/crm"

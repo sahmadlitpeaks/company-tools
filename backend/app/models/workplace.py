@@ -119,6 +119,41 @@ class TicketComment(UUIDMixin, TimestampMixin, Base):
 
 
 # --------------------------------------------------------------------------
+# Announcements (company noticeboard)
+# --------------------------------------------------------------------------
+class Announcement(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "announcements"
+
+    title: Mapped[str] = mapped_column(String(512))
+    body: Mapped[str] = mapped_column(Text, default="")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    reads: Mapped[list["AnnouncementRead"]] = relationship(
+        back_populates="announcement", cascade="all, delete-orphan"
+    )
+
+
+class AnnouncementRead(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "announcement_reads"
+
+    announcement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("announcements.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    announcement: Mapped["Announcement"] = relationship(back_populates="reads")
+
+
+# --------------------------------------------------------------------------
 # Generic attachments (approvals, tickets, tasks …)
 # --------------------------------------------------------------------------
 class Attachment(UUIDMixin, TimestampMixin, Base):

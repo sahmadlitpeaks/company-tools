@@ -15,7 +15,13 @@ from app.api.service_desk import _serialize as ser_ticket
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.models.workplace import ApprovalRequest, Task, Ticket
+from app.models.workplace import (
+    Announcement,
+    AnnouncementRead,
+    ApprovalRequest,
+    Task,
+    Ticket,
+)
 from app.schemas.workplace import WorkSummary
 from app.services.people import user_names
 
@@ -149,5 +155,20 @@ async def my_work(
         {t.requester_id for t in my_tickets} | {t.assignee_id for t in my_tickets},
     )
     out.my_tickets = [ser_ticket(t, knames, {}) for t in my_tickets]
+
+    # --- Unread announcements ---
+    published = await _count(
+        db,
+        select(func.count())
+        .select_from(Announcement)
+        .where(Announcement.is_published.is_(True)),
+    )
+    read = await _count(
+        db,
+        select(func.count())
+        .select_from(AnnouncementRead)
+        .where(AnnouncementRead.user_id == user.id),
+    )
+    out.announcements_unread = max(published - read, 0)
 
     return out

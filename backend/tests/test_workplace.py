@@ -214,3 +214,21 @@ async def test_attachment_module_gated(client, auth):
     # No 'approvals' permission -> can't read its attachments.
     r = await client.get(f"/api/attachments/by/approval/{a['id']}", headers=hdr)
     assert r.status_code == 403
+
+
+async def test_announcements(client, auth):
+    hdr, uid = await _member(client, auth, email="lina@agholding.net")
+    # Member can't post.
+    assert (await client.post("/api/announcements", headers=hdr, json={"title": "Hi"})).status_code == 403
+    # Admin posts -> members notified + see it unread.
+    a = await client.post("/api/announcements", headers=auth, json={"title": "Office closed Friday", "body": "Eid"})
+    assert a.status_code == 201
+    aid = a.json()["id"]
+    notes = (await client.get("/api/notifications", headers=hdr)).json()
+    assert any(n["category"] == "announcement" for n in notes)
+    assert (await client.get("/api/announcements/unread-count", headers=hdr)).json()["count"] >= 1
+    feed = (await client.get("/api/announcements", headers=hdr)).json()
+    assert any(x["id"] == aid and x["is_read"] is False for x in feed)
+    # Mark read -> unread drops.
+    await client.post(f"/api/announcements/{aid}/read", headers=hdr)
+    assert (await client.get("/api/announcements/unread-count", headers=hdr)).json()["count"] == 0

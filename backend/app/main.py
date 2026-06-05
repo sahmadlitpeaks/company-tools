@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import (
+    announcements,
     approvals,
     attachments,
     assets,
@@ -119,6 +120,7 @@ app.include_router(tasks.router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
+app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

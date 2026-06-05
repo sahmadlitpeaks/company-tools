@@ -660,3 +660,16 @@ export interface Attachment {
   uploaded_by_id?: string | null;
   created_at: string;
 }
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  is_published: boolean;
+  author_id?: string | null;
+  author_name?: string | null;
+  is_read: boolean;
+  read_count: number;
+  created_at: string;
+}

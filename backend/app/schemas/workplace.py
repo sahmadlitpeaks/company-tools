@@ -221,3 +221,33 @@ class AttachmentOut(BaseModel):
     size_bytes: int
     uploaded_by_id: uuid.UUID | None = None
     created_at: datetime
+
+
+# ---- Announcements ----
+class AnnouncementCreate(BaseModel):
+    title: str
+    body: str = ""
+    pinned: bool = False
+    is_published: bool = True
+
+
+class AnnouncementUpdate(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    pinned: bool | None = None
+    is_published: bool | None = None
+
+
+class AnnouncementOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    body: str
+    pinned: bool
+    is_published: bool
+    author_id: uuid.UUID | None = None
+    author_name: str | None = None
+    is_read: bool = False
+    read_count: int = 0
+    created_at: datetime
