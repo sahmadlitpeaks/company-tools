@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
+import Protected from "./auth/Protected";
 import Layout from "./components/Layout";
 import { Loading } from "./components/ui";
 import LoginPage from "./pages/LoginPage";
@@ -50,23 +51,71 @@ export default function App() {
       ) : (
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/directory" element={<DirectoryPage />} />
-          <Route path="/cards" element={<CardsPage />} />
-          <Route path="/marketing-assets" element={<AssetsPage />} />
+          <Route
+            path="/directory"
+            element={<Protected module="directory"><DirectoryPage /></Protected>}
+          />
+          <Route
+            path="/cards"
+            element={<Protected module="cards"><CardsPage /></Protected>}
+          />
+          <Route
+            path="/marketing-assets"
+            element={<Protected module="marketing_assets"><AssetsPage /></Protected>}
+          />
           <Route path="/assets" element={<Navigate to="/marketing-assets" replace />} />
-          <Route path="/branding" element={<BrandingPage />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/shared" element={<SharedPage />} />
-          <Route path="/asset-tracker" element={<AssetTrackerPage />} />
-          <Route path="/crm" element={<CrmPage />} />
-          <Route path="/campaigns" element={<CampaignsPage />} />
-          <Route path="/qrcodes" element={<QRCodesPage />} />
-          <Route path="/landing-pages" element={<LandingPagesPage />} />
-          <Route path="/landing-pages/:id/edit" element={<LandingBuilderPage />} />
-          <Route path="/signatures" element={<SignaturesPage />} />
-          <Route path="/shortener" element={<ShortenerPage />} />
-          <Route path="/transfers" element={<TransfersPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="/branding"
+            element={<Protected module="branding"><BrandingPage /></Protected>}
+          />
+          <Route
+            path="/products"
+            element={<Protected module="products"><ProductsPage /></Protected>}
+          />
+          <Route
+            path="/shared"
+            element={<Protected module="shared"><SharedPage /></Protected>}
+          />
+          <Route
+            path="/asset-tracker"
+            element={<Protected module="asset_tracker"><AssetTrackerPage /></Protected>}
+          />
+          <Route
+            path="/crm"
+            element={<Protected module="crm"><CrmPage /></Protected>}
+          />
+          <Route
+            path="/campaigns"
+            element={<Protected module="campaigns"><CampaignsPage /></Protected>}
+          />
+          <Route
+            path="/qrcodes"
+            element={<Protected module="qrcodes"><QRCodesPage /></Protected>}
+          />
+          <Route
+            path="/landing-pages"
+            element={<Protected module="landing_pages"><LandingPagesPage /></Protected>}
+          />
+          <Route
+            path="/landing-pages/:id/edit"
+            element={<Protected module="landing_pages"><LandingBuilderPage /></Protected>}
+          />
+          <Route
+            path="/signatures"
+            element={<Protected module="signatures"><SignaturesPage /></Protected>}
+          />
+          <Route
+            path="/shortener"
+            element={<Protected module="shortener"><ShortenerPage /></Protected>}
+          />
+          <Route
+            path="/transfers"
+            element={<Protected module="transfers"><TransfersPage /></Protected>}
+          />
+          <Route
+            path="/settings"
+            element={<Protected adminOnly><SettingsPage /></Protected>}
+          />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       )}

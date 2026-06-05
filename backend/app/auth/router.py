@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.azure import build_oauth, fetch_graph_me
@@ -10,8 +11,16 @@ from app.core.security import create_access_token
 from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.activity import record
-from app.services.app_settings import get_azure_config
+from app.services.app_settings import (
+    email_domain_allowed,
+    get_allowed_domains,
+    get_azure_config,
+)
 from app.services.users import upsert_user_from_graph
+
+
+async def _is_first_user(db: AsyncSession) -> bool:
+    return (await db.scalar(select(func.count(User.id)))) == 0
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -62,8 +71,27 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
             "userPrincipalName": claims.get("preferred_username"),
         }
 
+    # Enforce the email-domain allowlist before provisioning anything.
+    email = profile.get("mail") or profile.get("userPrincipalName")
+    allowed = await get_allowed_domains(db)
+    if not email_domain_allowed(email, allowed):
+        return RedirectResponse(
+            f"{settings.FRONTEND_BASE_URL}/login?error=domain_not_allowed"
+        )
+
+    first = await _is_first_user(db)
     user = await upsert_user_from_graph(db, profile)
+    if first:
+        # Bootstrap: the very first person to sign in owns the system.
+        user.is_admin = True
+        user.role = "admin"
+        user.status = "active"
     await db.commit()
+
+    if user.status == "pending":
+        return RedirectResponse(
+            f"{settings.FRONTEND_BASE_URL}/login?error=pending_approval"
+        )
 
     app_token = create_access_token(
         subject=str(user.id),
@@ -84,12 +112,16 @@ async def dev_login(email: str, db: AsyncSession = Depends(get_db)):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Not found")
+    first = await _is_first_user(db)
     user = await upsert_user_from_graph(
         db, {"id": None, "mail": email, "displayName": email.split("@")[0]}
     )
-    # First dev user becomes admin for convenience.
-    user.is_admin = True
-    user.role = "admin"
+    # The first dev user bootstraps as admin; later ones are normal members
+    # (pending approval) — mirroring the real Azure flow.
+    if first:
+        user.is_admin = True
+        user.role = "admin"
+        user.status = "active"
     record(
         db,
         user=user,

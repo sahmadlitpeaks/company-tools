@@ -22,6 +22,8 @@ export default function SettingsPage() {
   });
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [domains, setDomains] = useState("");
+  const [savingSec, setSavingSec] = useState(false);
 
   const callbackHint =
     typeof window !== "undefined"
@@ -41,8 +43,27 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void load().catch(() => notify("Failed to load settings", "error"));
+    api<{ allowed_email_domains: string[] }>("/api/settings/security")
+      .then((s) => setDomains(s.allowed_email_domains.join(", ")))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveSecurity() {
+    setSavingSec(true);
+    try {
+      const r = await api<{ allowed_email_domains: string[] }>(
+        "/api/settings/security",
+        { method: "PUT", body: { allowed_email_domains: domains } },
+      );
+      setDomains(r.allowed_email_domains.join(", "));
+      notify("Security settings saved.");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Save failed", "error");
+    } finally {
+      setSavingSec(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -144,6 +165,38 @@ export default function SettingsPage() {
                 <strong>{status.source === "database" ? "saved settings" : "environment"}</strong>
               </span>
             </div>
+          </div>
+
+          <div className="card">
+            <div className="spread mb-3">
+              <h3 className="m-0 flex items-center gap-2">
+                <span className="text-xl">🛡️</span> Access control
+              </h3>
+            </div>
+            <p className="muted mt-0 text-sm">
+              Restrict who can sign in. New accounts always start as{" "}
+              <strong>pending</strong> and need an admin to approve them in the
+              Employee Directory.
+            </p>
+            <div className="field">
+              <label>Allowed email domains</label>
+              <input
+                value={domains}
+                onChange={(e) => setDomains(e.target.value)}
+                placeholder="agholding.net, agiomix.com"
+              />
+              <p className="muted mt-1 text-xs">
+                Comma-separated. Leave blank to allow any domain (still subject to
+                approval).
+              </p>
+            </div>
+            <button
+              className="btn-primary flex-none"
+              disabled={savingSec}
+              onClick={saveSecurity}
+            >
+              {savingSec ? "Saving…" : "Save access control"}
+            </button>
           </div>
 
           <div className="card bg-gradient-to-br from-slate-50 to-white">

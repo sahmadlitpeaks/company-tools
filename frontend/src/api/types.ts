@@ -13,8 +13,21 @@ export interface User {
   is_active: boolean;
   is_admin: boolean;
   role: string;
+  status: string;
+  permissions?: string[] | null;
+  effective_permissions: string[];
   managed_brand_ids: string[];
   created_at: string;
+}
+
+export interface ModuleInfo {
+  key: string;
+  label: string;
+}
+
+export interface ModuleCatalogue {
+  modules: ModuleInfo[];
+  role_defaults: Record<string, string[]>;
 }
 
 export interface DigitalCard {

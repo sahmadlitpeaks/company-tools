@@ -17,6 +17,8 @@ interface AuthState {
   devLogin: (email: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
+  /** Whether the current user may access a permission module. */
+  can: (module: string) => boolean;
 }
 
 const AuthCtx = createContext<AuthState | undefined>(undefined);
@@ -68,9 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const can = useCallback(
+    (module: string) =>
+      !!user && (user.is_admin || user.effective_permissions.includes(module)),
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, devLogin, logout, refresh }),
-    [user, loading, login, devLogin, logout, refresh],
+    () => ({ user, loading, login, devLogin, logout, refresh, can }),
+    [user, loading, login, devLogin, logout, refresh, can],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

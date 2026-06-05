@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict
 
 
 class UserOut(BaseModel):
@@ -21,6 +21,9 @@ class UserOut(BaseModel):
     is_active: bool
     is_admin: bool
     role: str = "member"
+    status: str = "active"
+    permissions: list[str] | None = None
+    effective_permissions: list[str] = []
     managed_brand_ids: list[uuid.UUID] = []
     created_at: datetime
 
@@ -33,6 +36,8 @@ class UserUpdate(BaseModel):
     business_phone: str | None = None
     is_active: bool | None = None
     role: str | None = None
+    status: str | None = None
+    permissions: list[str] | None = None
 
 
 class ManagedBrandsUpdate(BaseModel):

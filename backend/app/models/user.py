@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, String, Table
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -41,6 +41,10 @@ class User(UUIDMixin, TimestampMixin, Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # admin | manager | member
     role: Mapped[str] = mapped_column(String(16), default="member")
+    # pending (awaiting admin approval) | active | disabled
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    # Explicit per-user module grants; null = use the role's defaults.
+    permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     managed_brands: Mapped[list["object"]] = relationship(
         "Brand", secondary=user_brands, lazy="selectin"
@@ -49,3 +53,11 @@ class User(UUIDMixin, TimestampMixin, Base):
     @property
     def managed_brand_ids(self) -> list[uuid.UUID]:
         return [b.id for b in self.managed_brands]
+
+    @property
+    def effective_permissions(self) -> list[str]:
+        from app.core.permissions import resolve_permissions
+
+        return resolve_permissions(
+            role=self.role, is_admin=self.is_admin, permissions=self.permissions
+        )

@@ -17,12 +17,23 @@ export default function LoginPage() {
   // backend at runtime which sign-in options to show.
   const [config, setConfig] = useState<AuthConfig>({ azure: true, dev_login: false });
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   useEffect(() => {
     api<AuthConfig>("/api/auth/config", { auth: false })
       .then(setConfig)
       .catch(() => {
         /* keep defaults (show Microsoft sign-in) */
       });
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err === "pending_approval")
+      setNotice(
+        "Your account was created and is awaiting administrator approval. You'll get access once an admin activates it.",
+      );
+    else if (err === "domain_not_allowed")
+      setNotice(
+        "That email domain isn't allowed to sign in. Please use your company Microsoft account.",
+      );
   }, []);
 
   async function handleDev(e: React.FormEvent) {
@@ -77,6 +88,12 @@ export default function LoginPage() {
           <p className="muted mt-1">
             Sign in with your company Microsoft account to continue.
           </p>
+
+          {notice && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+              {notice}
+            </div>
+          )}
 
           {config.azure && (
             <button

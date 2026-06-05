@@ -6,9 +6,37 @@ from app.auth.azure import get_app_token
 from app.auth.deps import get_current_admin
 from app.core.database import get_db
 from app.models.user import User
-from app.services.app_settings import encrypt, get_all, get_azure_config, set_many
+from app.services.app_settings import (
+    encrypt,
+    get_allowed_domains,
+    get_azure_config,
+    set_many,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+class SecurityConfigIn(BaseModel):
+    # Comma-separated email domains; blank clears the allowlist (open sign-up).
+    allowed_email_domains: str | None = None
+
+
+@router.get("/security")
+async def get_security(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    return {"allowed_email_domains": await get_allowed_domains(db)}
+
+
+@router.put("/security")
+async def put_security(
+    payload: SecurityConfigIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    raw = (payload.allowed_email_domains or "").strip()
+    await set_many(db, {"allowed_email_domains": raw or None})
+    return {"allowed_email_domains": await get_allowed_domains(db)}
 
 
 class AzureConfigIn(BaseModel):

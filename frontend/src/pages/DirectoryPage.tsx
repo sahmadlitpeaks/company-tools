@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import type { User } from "../api/types";
+import type { ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
@@ -18,6 +18,145 @@ const ROLE_BADGE: Record<string, string> = {
   manager: "amber",
   member: "",
 };
+
+const STATUS_BADGE: Record<string, string> = {
+  active: "green",
+  pending: "amber",
+  disabled: "red",
+};
+
+function AccessModal({
+  u,
+  onClose,
+  onSaved,
+}: {
+  u: User;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { notify } = useToast();
+  const { data: cat } = useFetch<ModuleCatalogue>("/api/users/modules");
+  const [role, setRole] = useState(u.role);
+  const [status, setStatus] = useState(u.status);
+  const [useDefaults, setUseDefaults] = useState(
+    u.permissions === null || u.permissions === undefined,
+  );
+  const [perms, setPerms] = useState<Set<string>>(
+    new Set(u.effective_permissions),
+  );
+  const [busy, setBusy] = useState(false);
+
+  const roleDefaults = new Set(cat?.role_defaults[role] ?? []);
+  const shown = useDefaults ? roleDefaults : perms;
+
+  function toggle(key: string) {
+    setPerms((s) => {
+      const n = new Set(s);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/users/${u.id}`, {
+        method: "PATCH",
+        body: {
+          role,
+          status,
+          permissions: useDefaults ? null : [...perms],
+        },
+      });
+      notify("Access updated.");
+      onSaved();
+      onClose();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  const isAdminRole = role === "admin";
+
+  return (
+    <Modal
+      title={`Access — ${u.display_name ?? u.email}`}
+      onClose={onClose}
+      maxWidth={560}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <label className="field">
+          <span className="mb-1 block text-sm font-medium">Role</span>
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="member">Member</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label className="field">
+          <span className="mb-1 block text-sm font-medium">Status</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="pending">Pending approval</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+      </div>
+
+      {isAdminRole ? (
+        <p className="muted mt-1 text-sm">
+          Admins have full access to every module and settings.
+        </p>
+      ) : (
+        <>
+          <label className="mt-2 flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="!w-auto"
+              checked={useDefaults}
+              onChange={(e) => setUseDefaults(e.target.checked)}
+            />
+            Use the {role} role's default modules
+          </label>
+          <div className="mt-3 grid grid-cols-2 gap-1.5">
+            {cat?.modules.map((m) => (
+              <label
+                key={m.key}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                  useDefaults ? "opacity-60" : "hover:bg-slate-50"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="!w-auto"
+                  disabled={useDefaults}
+                  checked={shown.has(m.key)}
+                  onChange={() => toggle(m.key)}
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="row mt-4" style={{ justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className="btn-primary"
+          style={{ flex: "0 0 auto" }}
+          disabled={busy}
+          onClick={save}
+        >
+          {busy ? "Saving…" : "Save access"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
 
 function ManageBrandsModal({
   u,
@@ -100,15 +239,17 @@ export default function DirectoryPage() {
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [managing, setManaging] = useState<User | null>(null);
+  const [editingAccess, setEditingAccess] = useState<User | null>(null);
   const { data, loading, error, reload } = useFetch<User[]>(
     `/api/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
   );
   const isAdmin = user?.is_admin;
+  const pendingCount = data?.filter((u) => u.status === "pending").length ?? 0;
 
-  async function changeRole(u: User, role: string) {
+  async function approve(u: User) {
     try {
-      await api(`/api/users/${u.id}`, { method: "PATCH", body: { role } });
-      notify(`${u.display_name ?? u.email} is now a ${role}.`);
+      await api(`/api/users/${u.id}`, { method: "PATCH", body: { status: "active" } });
+      notify(`${u.display_name ?? u.email} approved.`);
       reload();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
@@ -143,6 +284,12 @@ export default function DirectoryPage() {
           )
         }
       />
+      {isAdmin && pendingCount > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <strong>{pendingCount}</strong> account{pendingCount > 1 ? "s" : ""} awaiting
+          approval. Review and activate them below.
+        </div>
+      )}
       <div className="card">
         <input
           placeholder="Search by name, email, department…"
@@ -165,10 +312,10 @@ export default function DirectoryPage() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Title</th>
                 <th>Department</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Status</th>
                 {isAdmin && <th></th>}
               </tr>
             </thead>
@@ -180,34 +327,42 @@ export default function DirectoryPage() {
                       <span className="avatar !h-8 !w-8 !text-[11px]">
                         {initials(u.display_name, u.email)}
                       </span>
-                      <span className="font-semibold">{u.display_name ?? "—"}</span>
+                      <div className="min-w-0">
+                        <div className="font-semibold">{u.display_name ?? "—"}</div>
+                        <div className="muted text-xs">{u.job_title ?? "—"}</div>
+                      </div>
                     </div>
                   </td>
-                  <td>{u.job_title ?? "—"}</td>
                   <td>{u.department ?? "—"}</td>
                   <td>{u.email}</td>
                   <td>
-                    {isAdmin ? (
-                      <select
-                        value={u.role}
-                        onChange={(e) => changeRole(u, e.target.value)}
-                        className="!w-auto !py-1 text-sm"
-                      >
-                        <option value="member">Member</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    ) : (
-                      <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
-                    )}
+                    <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
+                  </td>
+                  <td>
+                    <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>
+                      {u.status}
+                    </span>
                   </td>
                   {isAdmin && (
                     <td className="text-right">
-                      {u.role === "manager" && (
-                        <button className="btn-sm" onClick={() => setManaging(u)}>
-                          Brands ({u.managed_brand_ids?.length ?? 0})
+                      <div className="inline-flex items-center gap-1.5">
+                        {u.status === "pending" && (
+                          <button
+                            className="btn-sm btn-primary"
+                            onClick={() => approve(u)}
+                          >
+                            Approve
+                          </button>
+                        )}
+                        {u.role === "manager" && (
+                          <button className="btn-sm" onClick={() => setManaging(u)}>
+                            Brands ({u.managed_brand_ids?.length ?? 0})
+                          </button>
+                        )}
+                        <button className="btn-sm" onClick={() => setEditingAccess(u)}>
+                          Access
                         </button>
-                      )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -221,6 +376,14 @@ export default function DirectoryPage() {
         <ManageBrandsModal
           u={managing}
           onClose={() => setManaging(null)}
+          onSaved={reload}
+        />
+      )}
+
+      {editingAccess && (
+        <AccessModal
+          u={editingAccess}
+          onClose={() => setEditingAccess(null)}
           onSaved={reload}
         />
       )}

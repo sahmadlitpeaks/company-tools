@@ -7,15 +7,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.azure import fetch_graph_users, get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
+from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
 from app.models.brand import Brand
 from app.models.user import User
 from app.schemas.user import ManagedBrandsUpdate, UserOut, UserUpdate
+from app.services.activity import record
 from app.services.app_settings import get_azure_config
 from app.services.users import sync_all_users_from_graph
 
 ROLES = {"admin", "manager", "member"}
+STATUSES = {"pending", "active", "disabled"}
 
 router = APIRouter(prefix="/users", tags=["directory"])
+
+
+@router.get("/modules")
+async def list_modules(_: User = Depends(get_current_admin)) -> dict:
+    """Catalogue of permission modules + role defaults, for the admin matrix."""
+    return {
+        "modules": [{"key": k, "label": label} for k, label in MODULES],
+        "role_defaults": ROLE_DEFAULTS,
+    }
 
 
 @router.get("", response_model=list[UserOut])
@@ -56,7 +68,7 @@ async def update_user(
     user_id: uuid.UUID,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin),
 ):
     user = await db.get(User, user_id)
     if not user:
@@ -67,8 +79,24 @@ async def update_user(
             raise HTTPException(status_code=422, detail="Invalid role")
         # Keep the is_admin flag in sync with the role.
         user.is_admin = data["role"] == "admin"
+    if "status" in data and data["status"] not in STATUSES:
+        raise HTTPException(status_code=422, detail="Invalid status")
+    if data.get("permissions") is not None:
+        invalid = set(data["permissions"]) - set(ALL_MODULES)
+        if invalid:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown modules: {', '.join(sorted(invalid))}"
+            )
     for field, value in data.items():
         setattr(user, field, value)
+    record(
+        db,
+        user=admin,
+        action="updated",
+        entity_type="user",
+        entity_id=user.id,
+        summary=f"Updated access for {user.email}",
+    )
     await db.commit()
     await db.refresh(user)
     return user

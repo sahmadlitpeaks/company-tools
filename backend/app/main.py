@@ -31,6 +31,7 @@ from app.api.shortener import redirect_short_link
 from app.auth.router import router as auth_router
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import require_module
 from app.services.storage import ensure_media_root
 
 app = FastAPI(
@@ -63,31 +64,43 @@ async def health() -> dict:
 
 # ---- API routers (all behind Azure SSO except the explicit /public ones) ----
 api_prefix = "/api"
+
+
+def _mod(key: str):
+    """Router-level dependency that gates a feature module by permission."""
+    return [Depends(require_module(key))]
+
+
+# Open to any active, authenticated user (foundational/shared surfaces).
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
-app.include_router(cards.router, prefix=api_prefix)
-app.include_router(cards.public_router, prefix=api_prefix)
-app.include_router(assets.router, prefix=api_prefix)
-app.include_router(assets.public_router, prefix=api_prefix)
-app.include_router(branding.router, prefix=api_prefix)
-app.include_router(products.router, prefix=api_prefix)
-app.include_router(products.public_router, prefix=api_prefix)
-app.include_router(qrcodes.router, prefix=api_prefix)
-app.include_router(landing.router, prefix=api_prefix)
-app.include_router(landing.public_router, prefix=api_prefix)
-app.include_router(signatures.router, prefix=api_prefix)
-app.include_router(shortener.router, prefix=api_prefix)
-app.include_router(transfers.router, prefix=api_prefix)
-app.include_router(transfers.public_router, prefix=api_prefix)
-app.include_router(tracker.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(brands.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
-app.include_router(crm.router, prefix=api_prefix)
-app.include_router(campaigns.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
-app.include_router(shares.router, prefix=api_prefix)
+
+# Public (no auth) surfaces.
+app.include_router(cards.public_router, prefix=api_prefix)
+app.include_router(assets.public_router, prefix=api_prefix)
+app.include_router(products.public_router, prefix=api_prefix)
+app.include_router(landing.public_router, prefix=api_prefix)
+app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(shares.public_router, prefix=api_prefix)
+
+# Module-gated feature routers (403 unless the user has the permission).
+app.include_router(cards.router, prefix=api_prefix, dependencies=_mod("cards"))
+app.include_router(assets.router, prefix=api_prefix, dependencies=_mod("marketing_assets"))
+app.include_router(branding.router, prefix=api_prefix, dependencies=_mod("branding"))
+app.include_router(products.router, prefix=api_prefix, dependencies=_mod("products"))
+app.include_router(qrcodes.router, prefix=api_prefix, dependencies=_mod("qrcodes"))
+app.include_router(landing.router, prefix=api_prefix, dependencies=_mod("landing_pages"))
+app.include_router(signatures.router, prefix=api_prefix, dependencies=_mod("signatures"))
+app.include_router(shortener.router, prefix=api_prefix, dependencies=_mod("shortener"))
+app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("transfers"))
+app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
+app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
+app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
+app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

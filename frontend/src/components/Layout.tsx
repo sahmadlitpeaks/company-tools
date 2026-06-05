@@ -31,29 +31,36 @@ export const APP_NAME = "AG Holding";
 
 type NavEntry =
   | { section: string; adminOnly?: boolean }
-  | { to: string; label: string; icon: LucideIcon; end?: boolean; adminOnly?: boolean };
+  | {
+      to: string;
+      label: string;
+      icon: LucideIcon;
+      end?: boolean;
+      adminOnly?: boolean;
+      module?: string;
+    };
 
 const NAV: NavEntry[] = [
   { section: "Overview" },
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/directory", label: "Employee Directory", icon: Users },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, module: "dashboard" },
+  { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
   { section: "Marketing" },
-  { to: "/cards", label: "Digital Cards", icon: CreditCard },
-  { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen },
-  { to: "/branding", label: "Brand Center", icon: Palette },
-  { to: "/products", label: "Products & Brochures", icon: Package },
-  { to: "/shared", label: "Shared Links", icon: Share2 },
+  { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards" },
+  { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets" },
+  { to: "/branding", label: "Brand Center", icon: Palette, module: "branding" },
+  { to: "/products", label: "Products & Brochures", icon: Package, module: "products" },
+  { to: "/shared", label: "Shared Links", icon: Share2, module: "shared" },
   { section: "Sales" },
-  { to: "/crm", label: "Leads (CRM)", icon: Magnet },
-  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone },
+  { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm" },
+  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
   { section: "Operations" },
-  { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes },
+  { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
   { section: "Tools" },
-  { to: "/qrcodes", label: "QR Codes", icon: QrCode },
-  { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate },
-  { to: "/signatures", label: "Email Signatures", icon: Mail },
-  { to: "/shortener", label: "URL Shortener", icon: Link2 },
-  { to: "/transfers", label: "Secure Transfers", icon: Lock },
+  { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes" },
+  { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate, module: "landing_pages" },
+  { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures" },
+  { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener" },
+  { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers" },
   { section: "Admin", adminOnly: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
@@ -74,7 +81,20 @@ function currentTitle(pathname: string): string {
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
+
+  // Filter nav by permission, then drop section headers left with no items.
+  const navItems = NAV.filter((item) => {
+    if ("section" in item) return !item.adminOnly || user?.is_admin;
+    if (item.adminOnly && !user?.is_admin) return false;
+    if (item.module && !can(item.module)) return false;
+    return true;
+  });
+  const visibleNav = navItems.filter((item, i) => {
+    if (!("section" in item)) return true;
+    const next = navItems[i + 1];
+    return next !== undefined && !("section" in next);
+  });
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -121,9 +141,7 @@ export default function Layout() {
           <span>AG Holding</span>
         </div>
         <nav className="nav-scroll">
-          {NAV.filter(
-            (item) => !("adminOnly" in item && item.adminOnly) || user?.is_admin,
-          ).map((item, i) =>
+          {visibleNav.map((item, i) =>
             "section" in item ? (
               <div key={i} className="nav-section">
                 {item.section}

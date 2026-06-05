@@ -54,6 +54,23 @@ async def set_many(db: AsyncSession, values: dict[str, str | None]) -> None:
     await db.commit()
 
 
+async def get_allowed_domains(db: AsyncSession) -> list[str]:
+    """Effective email-domain allowlist: DB value falls back to env config."""
+    stored = await get_all(db)
+    raw = stored.get("allowed_email_domains")
+    if raw is None:
+        return settings.allowed_domains
+    return [d.strip().lstrip("@").lower() for d in raw.split(",") if d.strip()]
+
+
+def email_domain_allowed(email: str | None, allowed: list[str]) -> bool:
+    if not allowed:
+        return True  # no allowlist configured -> open
+    if not email or "@" not in email:
+        return False
+    return email.rsplit("@", 1)[1].lower() in allowed
+
+
 async def get_azure_config(db: AsyncSession) -> dict:
     """Effective Azure config: DB values fall back to environment."""
     stored = await get_all(db)
