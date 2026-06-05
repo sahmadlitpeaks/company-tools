@@ -12,6 +12,10 @@ import AssetsPage from "./pages/AssetsPage";
 import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import SharedPage from "./pages/SharedPage";
+import TasksPage from "./pages/TasksPage";
+import ApprovalsPage from "./pages/ApprovalsPage";
+import ServiceDeskPage from "./pages/ServiceDeskPage";
+import KnowledgePage from "./pages/KnowledgePage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -79,6 +83,22 @@ export default function App() {
           <Route
             path="/asset-tracker"
             element={<Protected module="asset_tracker"><AssetTrackerPage /></Protected>}
+          />
+          <Route
+            path="/tasks"
+            element={<Protected module="tasks"><TasksPage /></Protected>}
+          />
+          <Route
+            path="/approvals"
+            element={<Protected module="approvals"><ApprovalsPage /></Protected>}
+          />
+          <Route
+            path="/service-desk"
+            element={<Protected module="service_desk"><ServiceDeskPage /></Protected>}
+          />
+          <Route
+            path="/knowledge"
+            element={<Protected module="knowledge"><KnowledgePage /></Protected>}
           />
           <Route
             path="/crm"

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Boxes,
+  CheckSquare,
   ChevronDown,
   CreditCard,
   FolderOpen,
   LayoutDashboard,
   LayoutTemplate,
+  LifeBuoy,
   Link2,
   Lock,
   Magnet,
@@ -20,8 +22,10 @@ import {
   Settings as SettingsIcon,
   Share2,
   Sliders,
+  Stamp,
   Sun,
   Users,
+  BookText,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
@@ -58,6 +62,11 @@ const NAV: NavEntry[] = [
   { section: "Sales" },
   { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm" },
   { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
+  { section: "Workplace" },
+  { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks" },
+  { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
+  { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
+  { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
   { section: "Operations" },
   { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
   { section: "Tools" },

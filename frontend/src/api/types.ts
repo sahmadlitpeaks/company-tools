@@ -551,3 +551,87 @@ export interface AnalyticsOverview {
   };
   recent_activity: ActivityItem[];
 }
+
+// ---- Office operations ----
+export interface Task {
+  id: string;
+  title: string;
+  description?: string | null;
+  status: string;
+  priority: string;
+  due_date?: string | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  brand_id?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export interface Approval {
+  id: string;
+  type: string;
+  title: string;
+  details?: string | null;
+  amount?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  status: string;
+  requester_id?: string | null;
+  requester_name?: string | null;
+  approver_id?: string | null;
+  approver_name?: string | null;
+  decided_by_id?: string | null;
+  decided_by_name?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  created_at: string;
+}
+
+export interface TicketComment {
+  id: string;
+  ticket_id: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface Ticket {
+  id: string;
+  subject: string;
+  description?: string | null;
+  category: string;
+  priority: string;
+  status: string;
+  requester_id?: string | null;
+  requester_name?: string | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  asset_id?: string | null;
+  resolved_at?: string | null;
+  comment_count: number;
+  created_at: string;
+}
+
+export interface TicketDetail extends Ticket {
+  comments: TicketComment[];
+}
+
+export interface ArticleSummary {
+  id: string;
+  title: string;
+  category?: string | null;
+  is_published: boolean;
+  pinned: boolean;
+  view_count: number;
+  author_name?: string | null;
+  updated_at: string;
+}
+
+export interface Article extends ArticleSummary {
+  body: string;
+  author_id?: string | null;
+  created_at: string;
+}
