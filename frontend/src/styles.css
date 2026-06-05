@@ -190,6 +190,15 @@
     @apply w-full rounded-[10px] border border-[var(--border)] bg-white px-[11px] py-[9px] text-ink;
     font: inherit;
   }
+  /* Checkboxes/radios must keep their native size, not stretch full width. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    @apply h-4 w-4 cursor-pointer rounded p-0 align-middle accent-brand-600;
+  }
+  /* Color pickers render as a tidy swatch instead of a thin full-width line. */
+  input[type="color"] {
+    @apply h-10 w-16 cursor-pointer p-1;
+  }
   input:focus,
   textarea:focus,
   select:focus {
