@@ -30,6 +30,7 @@ from app.models.workplace import (  # noqa: F401
     ApprovalRequest,
     Attachment,
     KnowledgeArticle,
+    LeaveBalance,
     Task,
     Ticket,
     TicketComment,

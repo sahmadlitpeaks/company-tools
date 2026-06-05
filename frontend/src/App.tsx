@@ -17,6 +17,7 @@ import ApprovalsPage from "./pages/ApprovalsPage";
 import ServiceDeskPage from "./pages/ServiceDeskPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
+import LeavePage from "./pages/LeavePage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -92,6 +93,10 @@ export default function App() {
           <Route
             path="/approvals"
             element={<Protected module="approvals"><ApprovalsPage /></Protected>}
+          />
+          <Route
+            path="/leave"
+            element={<Protected module="approvals"><LeavePage /></Protected>}
           />
           <Route
             path="/service-desk"

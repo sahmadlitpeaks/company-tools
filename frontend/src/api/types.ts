@@ -673,3 +673,20 @@ export interface Announcement {
   read_count: number;
   created_at: string;
 }
+
+export interface LeaveBalance {
+  user_id: string;
+  user_name?: string | null;
+  year: number;
+  entitlement_days: number;
+  used_days: number;
+  remaining_days: number;
+}
+
+export interface WhosOutItem {
+  user_id?: string | null;
+  user_name?: string | null;
+  title: string;
+  start_date?: string | null;
+  end_date?: string | null;
+}

@@ -5,7 +5,7 @@ knowledge base. They share the same conventions as the rest of the app
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -151,6 +151,19 @@ class AnnouncementRead(UUIDMixin, TimestampMixin, Base):
     )
 
     announcement: Mapped["Announcement"] = relationship(back_populates="reads")
+
+
+# --------------------------------------------------------------------------
+# Leave balances (annual entitlement; usage derived from approved leave)
+# --------------------------------------------------------------------------
+class LeaveBalance(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "leave_balances"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    entitlement_days: Mapped[int] = mapped_column(Integer, default=25)
 
 
 # --------------------------------------------------------------------------

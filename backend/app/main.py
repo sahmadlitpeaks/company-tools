@@ -19,6 +19,7 @@ from app.api import (
     crm,
     knowledge,
     landing,
+    leave,
     me as me_api,
     notifications,
     products,
@@ -118,6 +119,7 @@ app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campa
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
 app.include_router(tasks.router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
+app.include_router(leave.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
 app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))

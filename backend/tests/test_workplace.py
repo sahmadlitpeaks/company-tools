@@ -232,3 +232,28 @@ async def test_announcements(client, auth):
     # Mark read -> unread drops.
     await client.post(f"/api/announcements/{aid}/read", headers=hdr)
     assert (await client.get("/api/announcements/unread-count", headers=hdr)).json()["count"] == 0
+
+
+async def test_leave_balance(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    from datetime import date
+    y = date.today().year
+    # Approved 5-working-day leave (Mon 2026-06-01 .. Fri 2026-06-05 if this year).
+    req = (await client.post(
+        "/api/approvals", headers=auth,
+        json={"type": "leave", "title": "Holiday", "start_date": f"{y}-06-01", "end_date": f"{y}-06-05"},
+    )).json()
+    await client.post(f"/api/approvals/{req['id']}/decision", headers=auth, json={"status": "approved"})
+
+    bal = (await client.get("/api/leave/balance", headers=auth)).json()
+    assert bal["entitlement_days"] == 25
+    assert bal["used_days"] >= 1
+    assert bal["remaining_days"] == bal["entitlement_days"] - bal["used_days"]
+
+    # Admin sets a custom entitlement.
+    up = await client.put(f"/api/leave/balances/{me['id']}", headers=auth, json={"entitlement_days": 30})
+    assert up.json()["entitlement_days"] == 30
+
+    # whos-out window (depends on current date; just ensure it returns a list).
+    out = await client.get("/api/leave/whos-out?days=400", headers=auth)
+    assert out.status_code == 200 and isinstance(out.json(), list)

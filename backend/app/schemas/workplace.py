@@ -251,3 +251,26 @@ class AnnouncementOut(BaseModel):
     is_read: bool = False
     read_count: int = 0
     created_at: datetime
+
+
+# ---- Leave ----
+class LeaveBalanceOut(BaseModel):
+    user_id: uuid.UUID
+    user_name: str | None = None
+    year: int
+    entitlement_days: int
+    used_days: int
+    remaining_days: int
+
+
+class LeaveEntitlementIn(BaseModel):
+    entitlement_days: int
+    year: int | None = None
+
+
+class WhosOutItem(BaseModel):
+    user_id: uuid.UUID | None = None
+    user_name: str | None = None
+    title: str
+    start_date: date | None = None
+    end_date: date | None = None
