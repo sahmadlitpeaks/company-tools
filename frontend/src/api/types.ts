@@ -690,3 +690,20 @@ export interface WhosOutItem {
   start_date?: string | null;
   end_date?: string | null;
 }
+
+export interface AuditEntry {
+  id: string;
+  actor_name?: string | null;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  summary: string;
+  created_at: string;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  actions: string[];
+  entity_types: string[];
+  has_more: boolean;
+}

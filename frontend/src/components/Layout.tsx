@@ -20,6 +20,7 @@ import {
   Palette,
   Plane,
   QrCode,
+  ScrollText,
   Settings as SettingsIcon,
   Share2,
   Sliders,
@@ -79,6 +80,7 @@ const NAV: NavEntry[] = [
   { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener" },
   { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers" },
   { section: "Admin", adminOnly: true },
+  { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 

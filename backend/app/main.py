@@ -11,6 +11,7 @@ from app.api import (
     approvals,
     attachments,
     assets,
+    audit,
     analytics,
     brands,
     branding,
@@ -91,6 +92,7 @@ app.include_router(users.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(brands.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
+app.include_router(audit.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)

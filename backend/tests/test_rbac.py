@@ -128,3 +128,16 @@ async def test_appearance_update_is_admin_only(client, auth):
     assert (
         await client.put("/api/settings/appearance", headers=hdr, json={"mode": "dark"})
     ).status_code == 403
+
+
+async def test_audit_admin_only(client, auth):
+    # Generate an activity entry, then read the audit log as admin.
+    await client.post("/api/products", headers=auth, json={"name": "Auditable"})
+    page = (await client.get("/api/audit", headers=auth)).json()
+    assert "items" in page and "actions" in page
+    # Member is blocked.
+    token = await _member_token(client)
+    hdr = {"Authorization": f"Bearer {token}"}
+    mid = await _member_id(client, auth)
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    assert (await client.get("/api/audit", headers=hdr)).status_code == 403

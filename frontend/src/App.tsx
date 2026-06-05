@@ -18,6 +18,7 @@ import ServiceDeskPage from "./pages/ServiceDeskPage";
 import KnowledgePage from "./pages/KnowledgePage";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
 import LeavePage from "./pages/LeavePage";
+import AuditPage from "./pages/AuditPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -141,6 +142,10 @@ export default function App() {
           <Route
             path="/transfers"
             element={<Protected module="transfers"><TransfersPage /></Protected>}
+          />
+          <Route
+            path="/audit"
+            element={<Protected adminOnly><AuditPage /></Protected>}
           />
           <Route
             path="/settings"
