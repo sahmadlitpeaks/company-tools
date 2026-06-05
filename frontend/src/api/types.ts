@@ -649,3 +649,14 @@ export interface WorkSummary {
   review_approvals: Approval[];
   my_tickets: Ticket[];
 }
+
+export interface Attachment {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  name: string;
+  content_type?: string | null;
+  size_bytes: number;
+  uploaded_by_id?: string | null;
+  created_at: string;
+}

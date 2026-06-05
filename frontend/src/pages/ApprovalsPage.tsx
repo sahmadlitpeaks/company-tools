@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Check, Plus, X } from "lucide-react";
+import { Check, Paperclip, Plus, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Approval, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import Attachments from "../components/Attachments";
 
 const TYPES = ["leave", "expense", "purchase", "document", "access", "general"];
 const STATUS_BADGE: Record<string, string> = {
@@ -28,6 +29,7 @@ export default function ApprovalsPage() {
   const [scope, setScope] = useState<"mine" | "to_review">("mine");
   const list = useFetch<Approval[]>(`/api/approvals?scope=${scope}`);
   const [adding, setAdding] = useState(false);
+  const [attachOf, setAttachOf] = useState<Approval | null>(null);
   const canReview = user?.is_admin || user?.role === "manager";
 
   async function decide(a: Approval, status: "approved" | "rejected") {
@@ -107,21 +109,30 @@ export default function ApprovalsPage() {
                     {a.decision_note && <div className="muted text-xs">“{a.decision_note}”</div>}
                   </td>
                   <td className="text-right">
-                    {a.status === "pending" && scope === "to_review" && (
-                      <div className="inline-flex gap-1.5">
-                        <button className="btn-sm btn-primary inline-flex items-center gap-1" onClick={() => decide(a, "approved")}>
-                          <Check size={14} /> Approve
-                        </button>
-                        <button className="btn-sm btn-danger inline-flex items-center gap-1" onClick={() => decide(a, "rejected")}>
-                          <X size={14} /> Reject
-                        </button>
-                      </div>
-                    )}
-                    {a.status === "pending" && scope === "mine" && (
-                      <button className="btn-sm" onClick={() => cancel(a)}>
-                        Cancel
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        className="btn-sm"
+                        title="Attachments"
+                        onClick={() => setAttachOf(a)}
+                      >
+                        <Paperclip size={14} />
                       </button>
-                    )}
+                      {a.status === "pending" && scope === "to_review" && (
+                        <>
+                          <button className="btn-sm btn-primary inline-flex items-center gap-1" onClick={() => decide(a, "approved")}>
+                            <Check size={14} /> Approve
+                          </button>
+                          <button className="btn-sm btn-danger inline-flex items-center gap-1" onClick={() => decide(a, "rejected")}>
+                            <X size={14} /> Reject
+                          </button>
+                        </>
+                      )}
+                      {a.status === "pending" && scope === "mine" && (
+                        <button className="btn-sm" onClick={() => cancel(a)}>
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -139,6 +150,11 @@ export default function ApprovalsPage() {
             setAdding(false);
           }}
         />
+      )}
+      {attachOf && (
+        <Modal title={`Attachments — ${attachOf.title}`} onClose={() => setAttachOf(null)} maxWidth={460}>
+          <Attachments entityType="approval" entityId={attachOf.id} />
+        </Modal>
       )}
     </div>
   );

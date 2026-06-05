@@ -119,6 +119,24 @@ class TicketComment(UUIDMixin, TimestampMixin, Base):
 
 
 # --------------------------------------------------------------------------
+# Generic attachments (approvals, tickets, tasks …)
+# --------------------------------------------------------------------------
+class Attachment(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "attachments"
+
+    # approval | ticket | task
+    entity_type: Mapped[str] = mapped_column(String(24), index=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column(String(512))
+    file_path: Mapped[str] = mapped_column(String(1024))
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+# --------------------------------------------------------------------------
 # Knowledge base
 # --------------------------------------------------------------------------
 class KnowledgeArticle(UUIDMixin, TimestampMixin, Base):

@@ -8,6 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import (
     approvals,
+    attachments,
     assets,
     analytics,
     brands,
@@ -90,6 +91,7 @@ app.include_router(brands.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)
+app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.
 app.include_router(cards.public_router, prefix=api_prefix)

@@ -208,3 +208,16 @@ class WorkSummary(BaseModel):
     my_approvals: list[ApprovalOut] = []
     review_approvals: list[ApprovalOut] = []
     my_tickets: list[TicketOut] = []
+
+
+class AttachmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entity_type: str
+    entity_id: uuid.UUID
+    name: str
+    content_type: str | None = None
+    size_bytes: int
+    uploaded_by_id: uuid.UUID | None = None
+    created_at: datetime

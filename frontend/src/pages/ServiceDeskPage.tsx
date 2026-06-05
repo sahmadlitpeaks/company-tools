@@ -5,6 +5,7 @@ import type { Ticket, TicketDetail, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import Attachments from "../components/Attachments";
 
 const CATEGORIES = ["it", "facilities", "hr", "finance", "other"];
 const STATUSES = ["open", "in_progress", "resolved", "closed"];
@@ -262,6 +263,10 @@ function TicketDetailModal({
               </div>
             </div>
           )}
+
+          <div className="mb-3">
+            <Attachments entityType="ticket" entityId={id} />
+          </div>
 
           <h4 className="mb-2">Conversation</h4>
           <div className="mb-3 flex flex-col gap-2" style={{ maxHeight: 240, overflow: "auto" }}>

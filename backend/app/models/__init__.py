@@ -26,6 +26,7 @@ from app.models.notification import Notification  # noqa: F401
 from app.models.docversion import DocVersion  # noqa: F401
 from app.models.workplace import (  # noqa: F401
     ApprovalRequest,
+    Attachment,
     KnowledgeArticle,
     Task,
     Ticket,

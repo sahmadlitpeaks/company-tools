@@ -189,3 +189,28 @@ async def test_my_work_aggregation(client, auth):
     assert work["tasks_open"] >= 1
     assert work["tickets_open"] >= 1
     assert any(t["title"] == "Do thing" for t in work["my_tasks"])
+
+
+async def test_attachments_on_ticket(client, auth):
+    t = (await client.post("/api/tickets", headers=auth, json={"subject": "X", "category": "it"})).json()
+    up = await client.post(
+        f"/api/attachments/by/ticket/{t['id']}",
+        headers=auth,
+        files={"file": ("shot.png", b"\x89PNG fake", "image/png")},
+    )
+    assert up.status_code == 201
+    lst = (await client.get(f"/api/attachments/by/ticket/{t['id']}", headers=auth)).json()
+    assert len(lst) == 1 and lst[0]["name"] == "shot.png"
+    dl = await client.get(f"/api/attachments/{up.json()['id']}/download", headers=auth)
+    assert dl.status_code == 200 and dl.content == b"\x89PNG fake"
+
+
+async def test_attachment_module_gated(client, auth):
+    hdr, uid = await _member(client, auth, email="amir@agholding.net")
+    await client.patch(
+        f"/api/users/{uid}", headers=auth, json={"permissions": ["dashboard", "tasks"]}
+    )
+    a = (await client.post("/api/approvals", headers=auth, json={"type": "general", "title": "X"})).json()
+    # No 'approvals' permission -> can't read its attachments.
+    r = await client.get(f"/api/attachments/by/approval/{a['id']}", headers=hdr)
+    assert r.status_code == 403
