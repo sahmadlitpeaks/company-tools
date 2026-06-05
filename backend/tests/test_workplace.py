@@ -176,3 +176,16 @@ async def test_module_gating_blocks_unpermitted(client, auth):
     assert (await client.get("/api/knowledge", headers=hdr)).status_code == 403
     assert (await client.get("/api/tickets", headers=hdr)).status_code == 403
     assert (await client.get("/api/tasks", headers=hdr)).status_code == 200
+
+
+async def test_my_work_aggregation(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    # A task assigned to me + a ticket raised by me.
+    await client.post(
+        "/api/tasks", headers=auth, json={"title": "Do thing", "assignee_id": me["id"]}
+    )
+    await client.post("/api/tickets", headers=auth, json={"subject": "Help", "category": "it"})
+    work = (await client.get("/api/me/work", headers=auth)).json()
+    assert work["tasks_open"] >= 1
+    assert work["tickets_open"] >= 1
+    assert any(t["title"] == "Do thing" for t in work["my_tasks"])

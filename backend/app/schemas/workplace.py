@@ -193,3 +193,18 @@ class ArticleSummary(BaseModel):
     view_count: int
     author_name: str | None = None
     updated_at: datetime
+
+
+# ---- My Work (personal home aggregation) ----
+class WorkSummary(BaseModel):
+    tasks_open: int = 0
+    tasks_overdue: int = 0
+    approvals_pending: int = 0
+    approvals_to_review: int = 0
+    tickets_open: int = 0
+    tickets_assigned: int = 0
+    announcements_unread: int = 0
+    my_tasks: list[TaskOut] = []
+    my_approvals: list[ApprovalOut] = []
+    review_approvals: list[ApprovalOut] = []
+    my_tickets: list[TicketOut] = []

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useApi";
+import MyWork from "../components/MyWork";
 import { ErrorState, Loading, MiniBars } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
 import type { AnalyticsOverview } from "../api/types";
@@ -132,6 +133,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <MyWork />
 
       {error ? (
         <ErrorState message={error} onRetry={reload} />

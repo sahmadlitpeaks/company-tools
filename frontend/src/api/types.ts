@@ -635,3 +635,17 @@ export interface Article extends ArticleSummary {
   author_id?: string | null;
   created_at: string;
 }
+
+export interface WorkSummary {
+  tasks_open: number;
+  tasks_overdue: number;
+  approvals_pending: number;
+  approvals_to_review: number;
+  tickets_open: number;
+  tickets_assigned: number;
+  announcements_unread: number;
+  my_tasks: Task[];
+  my_approvals: Approval[];
+  review_approvals: Approval[];
+  my_tickets: Ticket[];
+}
