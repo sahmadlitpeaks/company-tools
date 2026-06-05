@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CalendarClock, Plus, Trash2, User as UserIcon } from "lucide-react";
 import { api } from "../api/client";
 import type { Task, User } from "../api/types";
@@ -25,6 +26,13 @@ export default function TasksPage() {
   const tasks = useFetch<Task[]>(`/api/tasks${mine ? "?mine=true" : ""}`);
   const users = useFetch<User[]>("/api/users");
   const [adding, setAdding] = useState(false);
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("new")) {
+      setAdding(true);
+      setParams({}, { replace: true });
+    }
+  }, [params, setParams]);
 
   const byStatus = useMemo(() => {
     const map: Record<string, Task[]> = { todo: [], in_progress: [], blocked: [], done: [] };

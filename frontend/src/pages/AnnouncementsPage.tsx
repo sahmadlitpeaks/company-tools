@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Eye, Megaphone, Pin, Plus, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import type { Announcement } from "../api/types";
@@ -12,6 +13,13 @@ export default function AnnouncementsPage() {
   const feed = useFetch<Announcement[]>("/api/announcements");
   const [adding, setAdding] = useState(false);
   const canPost = user?.is_admin || user?.role === "manager";
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("new") && canPost) {
+      setAdding(true);
+      setParams({}, { replace: true });
+    }
+  }, [params, setParams, canPost]);
 
   async function markRead(a: Announcement) {
     if (a.is_read) return;

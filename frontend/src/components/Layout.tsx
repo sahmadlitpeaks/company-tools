@@ -35,6 +35,7 @@ import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
+import CommandPalette from "./CommandPalette";
 import AppearanceModal from "../theme/AppearanceModal";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -103,6 +104,19 @@ export default function Layout() {
   const { user, logout, can } = useAuth();
   const theme = useTheme();
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K to open the command palette.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const isDark =
     theme.mode === "dark" ||
     (theme.mode === "system" &&
@@ -256,6 +270,7 @@ export default function Layout() {
         </main>
       </div>
       {appearanceOpen && <AppearanceModal onClose={() => setAppearanceOpen(false)} />}
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
    </BrandProvider>
   );

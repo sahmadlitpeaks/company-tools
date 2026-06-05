@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Check, Paperclip, Plus, X } from "lucide-react";
 import { api } from "../api/client";
 import type { Approval, User } from "../api/types";
@@ -31,6 +32,13 @@ export default function ApprovalsPage() {
   const [adding, setAdding] = useState(false);
   const [attachOf, setAttachOf] = useState<Approval | null>(null);
   const canReview = user?.is_admin || user?.role === "manager";
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("new")) {
+      setAdding(true);
+      setParams({}, { replace: true });
+    }
+  }, [params, setParams]);
 
   async function decide(a: Approval, status: "approved" | "rejected") {
     const note =

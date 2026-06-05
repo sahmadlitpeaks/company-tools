@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MessageSquare, Plus, Send } from "lucide-react";
 import { api } from "../api/client";
 import type { Ticket, TicketDetail, User } from "../api/types";
@@ -24,6 +25,13 @@ export default function ServiceDeskPage() {
   const tickets = useFetch<Ticket[]>(`/api/tickets${q}`);
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("new")) {
+      setAdding(true);
+      setParams({}, { replace: true });
+    }
+  }, [params, setParams]);
 
   return (
     <div>
