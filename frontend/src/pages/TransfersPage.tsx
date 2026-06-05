@@ -120,7 +120,7 @@ export default function TransfersPage() {
                 className={`flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
                   fileName
                     ? "border-brand-300 bg-brand-50"
-                    : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50/50"
+                    : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50"
                 }`}
               >
                 <span className="text-2xl">{fileName ? "📎" : "⬆️"}</span>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ListSkeleton, PageHead, useToast } from "../components/ui";
+import AppearanceControls from "../theme/AppearanceControls";
+import { DEFAULT_APPEARANCE, type Appearance } from "../theme/ThemeContext";
 
 interface AzureStatus {
   tenant_id: string | null;
@@ -24,6 +26,8 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [domains, setDomains] = useState("");
   const [savingSec, setSavingSec] = useState(false);
+  const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
+  const [savingAppearance, setSavingAppearance] = useState(false);
 
   const callbackHint =
     typeof window !== "undefined"
@@ -46,8 +50,23 @@ export default function SettingsPage() {
     api<{ allowed_email_domains: string[] }>("/api/settings/security")
       .then((s) => setDomains(s.allowed_email_domains.join(", ")))
       .catch(() => {});
+    api<Appearance>("/api/settings/appearance")
+      .then((a) => setAppearance({ ...DEFAULT_APPEARANCE, ...a }))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveAppearance() {
+    setSavingAppearance(true);
+    try {
+      await api("/api/settings/appearance", { method: "PUT", body: appearance });
+      notify("Default appearance saved. Users see it unless they personalize.");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Save failed", "error");
+    } finally {
+      setSavingAppearance(false);
+    }
+  }
 
   async function saveSecurity() {
     setSavingSec(true);
@@ -196,6 +215,28 @@ export default function SettingsPage() {
               onClick={saveSecurity}
             >
               {savingSec ? "Saving…" : "Save access control"}
+            </button>
+          </div>
+
+          <div className="card">
+            <div className="spread mb-3">
+              <h3 className="m-0 flex items-center gap-2">
+                <span className="text-xl">🎨</span> Default appearance
+              </h3>
+            </div>
+            <p className="muted mt-0 text-sm">
+              The company-wide look new users get. Anyone can still personalize
+              their own from the profile menu.
+            </p>
+            <div className="mt-2">
+              <AppearanceControls value={appearance} onChange={(k, v) => setAppearance((a) => ({ ...a, [k]: v }))} />
+            </div>
+            <button
+              className="btn-primary mt-4 flex-none"
+              disabled={savingAppearance}
+              onClick={saveAppearance}
+            >
+              {savingAppearance ? "Saving…" : "Save default appearance"}
             </button>
           </div>
 

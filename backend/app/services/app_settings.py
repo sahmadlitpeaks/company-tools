@@ -71,6 +71,25 @@ def email_domain_allowed(email: str | None, allowed: list[str]) -> bool:
     return email.rsplit("@", 1)[1].lower() in allowed
 
 
+# Organization-wide appearance default (users may override locally).
+APPEARANCE_DEFAULT = {
+    "mode": "light",          # light | dark | system
+    "accent": "#0b5cab",
+    "density": "comfortable",  # comfortable | compact
+    "font": "system",          # system | inter | serif
+}
+
+
+async def get_appearance(db: AsyncSession) -> dict:
+    stored = await get_all(db)
+    result = dict(APPEARANCE_DEFAULT)
+    for key in APPEARANCE_DEFAULT:
+        v = stored.get(f"appearance_{key}")
+        if v:
+            result[key] = v
+    return result
+
+
 async def get_azure_config(db: AsyncSession) -> dict:
     """Effective Azure config: DB values fall back to environment."""
     stored = await get_all(db)

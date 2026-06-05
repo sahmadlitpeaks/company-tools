@@ -1,19 +1,60 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.azure import get_app_token
-from app.auth.deps import get_current_admin
+from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.services.app_settings import (
     encrypt,
     get_allowed_domains,
+    get_appearance,
     get_azure_config,
     set_many,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+VALID_MODES = {"light", "dark", "system"}
+VALID_DENSITY = {"comfortable", "compact"}
+VALID_FONTS = {"system", "inter", "serif"}
+
+
+class AppearanceIn(BaseModel):
+    mode: str | None = None
+    accent: str | None = None
+    density: str | None = None
+    font: str | None = None
+
+
+@router.get("/appearance")
+async def get_appearance_settings(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+):
+    """Org-wide appearance default (readable by any signed-in user)."""
+    return await get_appearance(db)
+
+
+@router.put("/appearance")
+async def put_appearance_settings(
+    payload: AppearanceIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    if payload.mode and payload.mode not in VALID_MODES:
+        raise HTTPException(status_code=422, detail="Invalid mode")
+    if payload.density and payload.density not in VALID_DENSITY:
+        raise HTTPException(status_code=422, detail="Invalid density")
+    if payload.font and payload.font not in VALID_FONTS:
+        raise HTTPException(status_code=422, detail="Invalid font")
+    values: dict[str, str | None] = {}
+    for key in ("mode", "accent", "density", "font"):
+        v = getattr(payload, key)
+        if v is not None:
+            values[f"appearance_{key}"] = v.strip() or None
+    await set_many(db, values)
+    return await get_appearance(db)
 
 
 class SecurityConfigIn(BaseModel):

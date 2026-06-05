@@ -13,11 +13,14 @@ import {
   Mail,
   Megaphone,
   Menu,
+  Moon,
   Package,
   Palette,
   QrCode,
   Settings as SettingsIcon,
   Share2,
+  Sliders,
+  Sun,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -26,6 +29,8 @@ import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
+import AppearanceModal from "../theme/AppearanceModal";
+import { useTheme } from "../theme/ThemeContext";
 
 export const APP_NAME = "AG Holding";
 
@@ -82,6 +87,13 @@ function currentTitle(pathname: string): string {
 
 export default function Layout() {
   const { user, logout, can } = useAuth();
+  const theme = useTheme();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const isDark =
+    theme.mode === "dark" ||
+    (theme.mode === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-color-scheme: dark)").matches);
 
   // Filter nav by permission, then drop section headers left with no items.
   const navItems = NAV.filter((item) => {
@@ -181,6 +193,14 @@ export default function Layout() {
           </div>
           <div className="flex flex-none items-center gap-2">
           <GlobalSearch />
+          <button
+            className="bell-btn"
+            title={isDark ? "Switch to light" : "Switch to dark"}
+            aria-label="Toggle dark mode"
+            onClick={() => theme.setField("mode", isDark ? "light" : "dark")}
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
           <BrandSwitcher />
           <span className="mx-1 hidden h-7 w-px bg-[var(--border)] sm:block" />
           <NotificationBell />
@@ -200,6 +220,15 @@ export default function Layout() {
                   <div style={{ fontWeight: 600 }}>{name}</div>
                   <div className="muted" style={{ fontSize: 12 }}>{user?.email}</div>
                 </div>
+                <button
+                  className="profile-menu-item flex items-center gap-2"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAppearanceOpen(true);
+                  }}
+                >
+                  <Sliders size={15} /> Appearance
+                </button>
                 <button className="profile-menu-item" onClick={logout}>
                   Sign out
                 </button>
@@ -212,6 +241,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      {appearanceOpen && <AppearanceModal onClose={() => setAppearanceOpen(false)} />}
     </div>
    </BrandProvider>
   );

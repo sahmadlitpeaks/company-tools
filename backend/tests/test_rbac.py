@@ -94,3 +94,37 @@ async def test_modules_catalogue(client, auth):
     assert {"crm", "asset_tracker", "cards"} <= keys
     assert "crm" in cat["role_defaults"]["admin"]
     assert "crm" not in cat["role_defaults"]["member"]
+
+
+async def test_appearance_default_and_admin_update(client, auth):
+    # Default appearance is readable by any signed-in user.
+    d = (await client.get("/api/settings/appearance", headers=auth)).json()
+    assert d["mode"] == "light" and d["accent"] == "#0b5cab"
+
+    # Admin can set the org default.
+    r = await client.put(
+        "/api/settings/appearance",
+        headers=auth,
+        json={"mode": "dark", "accent": "#7c3aed", "density": "compact"},
+    )
+    assert r.status_code == 200 and r.json()["mode"] == "dark"
+    again = (await client.get("/api/settings/appearance", headers=auth)).json()
+    assert again["accent"] == "#7c3aed" and again["density"] == "compact"
+
+    # Invalid values are rejected.
+    bad = await client.put(
+        "/api/settings/appearance", headers=auth, json={"mode": "neon"}
+    )
+    assert bad.status_code == 422
+
+
+async def test_appearance_update_is_admin_only(client, auth):
+    token = await _member_token(client)
+    hdr = {"Authorization": f"Bearer {token}"}
+    mid = await _member_id(client, auth)
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    # Member can read the default but not change it.
+    assert (await client.get("/api/settings/appearance", headers=hdr)).status_code == 200
+    assert (
+        await client.put("/api/settings/appearance", headers=hdr, json={"mode": "dark"})
+    ).status_code == 403

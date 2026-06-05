@@ -4,41 +4,39 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Accent ramp — derived from --accent via color-mix in styles.css so a
+        // single accent colour (and dark mode) recolours every brand-* utility.
         brand: {
-          50: "#eff6fc",
-          100: "#d8e9f8",
-          200: "#b3d2f0",
-          300: "#82b4e6",
-          400: "#4f91d8",
-          500: "#2773c4",
-          600: "#0b5cab",
-          700: "#094d8f",
-          800: "#08406f",
-          900: "#0c2f4f",
-          950: "#0a1726",
+          50: "var(--brand-50)",
+          100: "var(--brand-100)",
+          200: "var(--brand-200)",
+          300: "var(--brand-300)",
+          400: "var(--brand-400)",
+          500: "var(--brand-500)",
+          600: "var(--brand-600)",
+          700: "var(--brand-700)",
+          800: "var(--brand-800)",
+          900: "var(--brand-900)",
+          950: "var(--brand-950)",
         },
         ink: {
-          DEFAULT: "#1a2230",
-          muted: "#64748b",
+          DEFAULT: "var(--text)",
+          muted: "var(--muted)",
         },
+        surface: "var(--surface)",
+        line: "var(--border)",
       },
       fontFamily: {
-        sans: [
-          '"Segoe UI"',
-          "system-ui",
-          "-apple-system",
-          "Arial",
-          "sans-serif",
-        ],
+        sans: ["var(--font-sans)"],
       },
       borderRadius: {
         xl: "14px",
         "2xl": "18px",
       },
       boxShadow: {
-        card: "0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04)",
-        soft: "0 6px 24px rgba(16,24,40,.08)",
-        pop: "0 12px 40px rgba(16,24,40,.16)",
+        card: "var(--shadow-card)",
+        soft: "var(--shadow-soft)",
+        pop: "var(--shadow-pop)",
       },
       keyframes: {
         "fade-in": {

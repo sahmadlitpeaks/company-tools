@@ -159,7 +159,7 @@ export default function SignaturesPage() {
                   onClick={() => setSelected(id)}
                   className={`rounded-xl border p-3 text-left transition-all ${
                     active
-                      ? "border-brand-500 bg-brand-50 ring-2 ring-brand-500/30"
+                      ? "border-brand-500 bg-brand-50 ring-2 ring-brand-500"
                       : "border-[var(--border)] bg-white hover:border-brand-300 hover:bg-slate-50"
                   }`}
                 >

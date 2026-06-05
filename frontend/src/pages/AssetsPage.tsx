@@ -223,7 +223,7 @@ export default function AssetsPage() {
                 </tr>
               ))}
               {assets.data?.map((a) => (
-                <tr key={a.id} className={selected.has(a.id) ? "bg-brand-50/60" : ""}>
+                <tr key={a.id} className={selected.has(a.id) ? "bg-brand-50" : ""}>
                   <td onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
