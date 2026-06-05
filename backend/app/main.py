@@ -57,6 +57,12 @@ app.mount(
 )
 
 
+if settings.RUN_SCHEDULER:
+    from app.services.scheduler import start_scheduler
+
+    start_scheduler(app)
+
+
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
     return {"status": "ok", "app": settings.APP_NAME}

@@ -366,6 +366,8 @@ export interface TrackedAsset {
   location?: string | null;
   serial_number?: string | null;
   notes?: string | null;
+  condition?: string | null;
+  brand_id?: string | null;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
   purchase_date?: string | null;
@@ -374,7 +376,36 @@ export interface TrackedAsset {
   warranty_expiry?: string | null;
   useful_life_years?: number | null;
   current_book_value?: string | null;
+  next_maintenance_date?: string | null;
+  maintenance_interval_days?: number | null;
+  disposal_date?: string | null;
+  salvage_value?: string | null;
+  disposal_notes?: string | null;
+  attachment_count: number;
   created_at: string;
+}
+
+export interface NamedItem {
+  id: string;
+  name: string;
+}
+
+export interface AssetAttachment {
+  id: string;
+  asset_id: string;
+  kind: string;
+  name: string;
+  content_type?: string | null;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface AssignmentSpan {
+  user_id?: string | null;
+  user_name?: string | null;
+  checked_out_at: string;
+  checked_in_at?: string | null;
+  note?: string | null;
 }
 
 export interface AssetEvent {
@@ -406,6 +437,7 @@ export interface AssetReports {
   }[];
   by_status: Record<string, number>;
   by_location: { location: string; count: number }[];
+  by_condition?: Record<string, number>;
   totals: { count: number; purchase_cost: string; book_value: string };
 }
 

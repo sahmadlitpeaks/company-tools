@@ -2,9 +2,12 @@ import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, downloadFile } from "../api/client";
 import type {
+  AssetAttachment,
   AssetEvent,
   AssetReports,
   AssetSummary,
+  AssignmentSpan,
+  NamedItem,
   TrackedAsset,
   User,
 } from "../api/types";
@@ -16,10 +19,35 @@ import {
   Loading,
   Modal,
   PageHead,
+  bytes,
   useToast,
 } from "../components/ui";
 
 const STATUSES = ["available", "assigned", "maintenance", "retired"];
+const CONDITIONS = ["new", "good", "fair", "poor", "damaged"];
+
+const CONDITION_BADGE: Record<string, string> = {
+  new: "green",
+  good: "green",
+  fair: "amber",
+  poor: "amber",
+  damaged: "red",
+};
+
+function ConditionBadge({ condition }: { condition?: string | null }) {
+  if (!condition) return <span className="muted">—</span>;
+  return (
+    <span className={`badge ${CONDITION_BADGE[condition] ?? ""}`}>{condition}</span>
+  );
+}
+
+function isMaintenanceDue(a: TrackedAsset): boolean {
+  if (!a.next_maintenance_date || a.status === "retired") return false;
+  const due = new Date(a.next_maintenance_date);
+  const soon = new Date();
+  soon.setDate(soon.getDate() + 7);
+  return due <= soon;
+}
 
 function money(v?: string | null): string {
   if (v === null || v === undefined || v === "") return "—";
@@ -45,12 +73,14 @@ const EMPTY_FORM = {
   name: "",
   category: "",
   location: "",
+  condition: "",
   serial_number: "",
   vendor: "",
   purchase_date: "",
   purchase_cost: "",
   warranty_expiry: "",
   useful_life_years: "",
+  maintenance_interval_days: "",
   notes: "",
 };
 
@@ -64,6 +94,8 @@ function AssetFormModal({
   onSaved: () => void;
 }) {
   const { notify } = useToast();
+  const categories = useFetch<NamedItem[]>("/api/asset-tracker/categories");
+  const locations = useFetch<NamedItem[]>("/api/asset-tracker/locations");
   const [form, setForm] = useState({
     ...EMPTY_FORM,
     ...(asset
@@ -72,12 +104,15 @@ function AssetFormModal({
           name: asset.name,
           category: asset.category ?? "",
           location: asset.location ?? "",
+          condition: asset.condition ?? "",
           serial_number: asset.serial_number ?? "",
           vendor: asset.vendor ?? "",
           purchase_date: asset.purchase_date ?? "",
           purchase_cost: asset.purchase_cost ?? "",
           warranty_expiry: asset.warranty_expiry ?? "",
           useful_life_years: asset.useful_life_years?.toString() ?? "",
+          maintenance_interval_days:
+            asset.maintenance_interval_days?.toString() ?? "",
           notes: asset.notes ?? "",
         }
       : {}),
@@ -93,6 +128,7 @@ function AssetFormModal({
       name: form.name,
       category: form.category || null,
       location: form.location || null,
+      condition: form.condition || null,
       serial_number: form.serial_number || null,
       vendor: form.vendor || null,
       purchase_date: form.purchase_date || null,
@@ -100,6 +136,9 @@ function AssetFormModal({
       warranty_expiry: form.warranty_expiry || null,
       useful_life_years: form.useful_life_years
         ? Number(form.useful_life_years)
+        : null,
+      maintenance_interval_days: form.maintenance_interval_days
+        ? Number(form.maintenance_interval_days)
         : null,
       notes: form.notes || null,
     };
@@ -146,17 +185,51 @@ function AssetFormModal({
           <div className="field">
             <label>Category</label>
             <input
+              list="asset-categories"
               placeholder="Laptop"
               value={form.category}
               onChange={(e) => set("category", e.target.value)}
             />
+            <datalist id="asset-categories">
+              {(categories.data ?? []).map((c) => (
+                <option key={c.id} value={c.name} />
+              ))}
+            </datalist>
           </div>
           <div className="field">
             <label>Location</label>
             <input
+              list="asset-locations"
               placeholder="HQ — 3rd floor"
               value={form.location}
               onChange={(e) => set("location", e.target.value)}
+            />
+            <datalist id="asset-locations">
+              {(locations.data ?? []).map((c) => (
+                <option key={c.id} value={c.name} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+        <div className="row">
+          <div className="field">
+            <label>Condition</label>
+            <select value={form.condition} onChange={(e) => set("condition", e.target.value)}>
+              <option value="">—</option>
+              {CONDITIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Maintenance every (days)</label>
+            <input
+              type="number"
+              placeholder="e.g. 90"
+              value={form.maintenance_interval_days}
+              onChange={(e) => set("maintenance_interval_days", e.target.value)}
             />
           </div>
         </div>
@@ -256,11 +329,22 @@ function AssetDetailModal({
   const { notify } = useToast();
   const [current, setCurrent] = useState<TrackedAsset>(asset);
   const events = useFetch<AssetEvent[]>(`/api/asset-tracker/${asset.id}/events`);
+  const assignments = useFetch<AssignmentSpan[]>(
+    `/api/asset-tracker/${asset.id}/assignments`,
+  );
+  const attachments = useFetch<AssetAttachment[]>(
+    `/api/asset-tracker/${asset.id}/attachments`,
+  );
   const [assignee, setAssignee] = useState("");
   const [actionNote, setActionNote] = useState("");
   const [maintNote, setMaintNote] = useState("");
   const [maintCost, setMaintCost] = useState("");
+  const [maintNextDays, setMaintNextDays] = useState("");
+  const [salvage, setSalvage] = useState("");
+  const [disposalNotes, setDisposalNotes] = useState("");
+  const [attKind, setAttKind] = useState("document");
   const [busy, setBusy] = useState(false);
+  const attRef = useRef<HTMLInputElement>(null);
 
   async function act(path: string, body: unknown, msg: string) {
     setBusy(true);
@@ -272,12 +356,39 @@ function AssetDetailModal({
       setCurrent(updated);
       notify(msg);
       events.reload();
+      assignments.reload();
       onChanged();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function uploadAttachment(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("kind", attKind);
+    try {
+      await api(`/api/asset-tracker/${asset.id}/attachments`, {
+        method: "POST",
+        form: fd,
+      });
+      notify("Attachment added.");
+      attachments.reload();
+      onChanged();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
+    if (attRef.current) attRef.current.value = "";
+  }
+
+  async function removeAttachment(id: string) {
+    await api(`/api/asset-tracker/attachments/${id}`, { method: "DELETE" });
+    attachments.reload();
+    onChanged();
   }
 
   return (
@@ -306,21 +417,58 @@ function AssetDetailModal({
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
         <DetailRow label="Category" value={current.category} />
         <DetailRow label="Location" value={current.location} />
+        <DetailRow
+          label="Condition"
+          value={<ConditionBadge condition={current.condition} />}
+        />
         <DetailRow label="Serial" value={current.serial_number} />
         <DetailRow label="Vendor" value={current.vendor} />
         <DetailRow label="Purchased" value={current.purchase_date} />
         <DetailRow label="Purchase cost" value={money(current.purchase_cost)} />
         <DetailRow label="Warranty until" value={current.warranty_expiry} />
         <DetailRow
-          label="Book value (today)"
+          label="Next maintenance"
           value={
-            current.current_book_value != null ? (
-              <span>{money(current.current_book_value)}</span>
+            current.next_maintenance_date ? (
+              <span className={isMaintenanceDue(current) ? "text-amber-600" : ""}>
+                {current.next_maintenance_date}
+              </span>
             ) : (
               "—"
             )
           }
         />
+        <DetailRow
+          label="Book value (today)"
+          value={
+            current.current_book_value != null
+              ? money(current.current_book_value)
+              : "—"
+          }
+        />
+        {current.status === "retired" && (
+          <>
+            <DetailRow label="Disposed" value={current.disposal_date} />
+            <DetailRow label="Salvage value" value={money(current.salvage_value)} />
+            <DetailRow label="Disposal notes" value={current.disposal_notes} />
+          </>
+        )}
+      </div>
+
+      {/* ---- Condition ---- */}
+      <h4 style={{ margin: "0 0 8px" }}>Condition</h4>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+        {CONDITIONS.map((c) => (
+          <button
+            key={c}
+            className={`btn-sm ${current.condition === c ? "btn-primary" : ""}`}
+            style={{ flex: "0 0 auto" }}
+            disabled={busy}
+            onClick={() => act("condition", { condition: c }, `Condition set to ${c}.`)}
+          >
+            {c}
+          </button>
+        ))}
       </div>
 
       {/* ---- Assign / check-in ---- */}
@@ -386,6 +534,15 @@ function AssetDetailModal({
             onChange={(e) => setMaintCost(e.target.value)}
           />
         </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Next in (days)</label>
+          <input
+            type="number"
+            placeholder="90"
+            value={maintNextDays}
+            onChange={(e) => setMaintNextDays(e.target.value)}
+          />
+        </div>
         <button
           className="btn"
           style={{ flex: "0 0 auto" }}
@@ -393,17 +550,155 @@ function AssetDetailModal({
           onClick={() =>
             act(
               "maintenance",
-              { note: maintNote, cost: maintCost || null, set_in_maintenance: false },
+              {
+                note: maintNote,
+                cost: maintCost || null,
+                set_in_maintenance: false,
+                schedule_next_days: maintNextDays ? Number(maintNextDays) : null,
+              },
               "Maintenance logged.",
             ).then(() => {
               setMaintNote("");
               setMaintCost("");
+              setMaintNextDays("");
             })
           }
         >
           Log
         </button>
       </div>
+
+      {/* ---- Retire / dispose ---- */}
+      {current.status !== "retired" && (
+        <>
+          <h4 style={{ margin: "18px 0 8px" }}>Retire / dispose</h4>
+          <div className="row" style={{ alignItems: "flex-end" }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Salvage value</label>
+              <input
+                type="number"
+                step="0.01"
+                value={salvage}
+                onChange={(e) => setSalvage(e.target.value)}
+              />
+            </div>
+            <div className="field" style={{ marginBottom: 0, flex: 3 }}>
+              <label>Disposal notes</label>
+              <input
+                placeholder="Sold / recycled / written off"
+                value={disposalNotes}
+                onChange={(e) => setDisposalNotes(e.target.value)}
+              />
+            </div>
+            <button
+              className="btn btn-danger"
+              style={{ flex: "0 0 auto" }}
+              disabled={busy}
+              onClick={() =>
+                act(
+                  "retire",
+                  {
+                    salvage_value: salvage || null,
+                    disposal_notes: disposalNotes || null,
+                  },
+                  "Asset retired.",
+                )
+              }
+            >
+              Retire
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ---- Attachments ---- */}
+      <div className="spread" style={{ margin: "18px 0 8px" }}>
+        <h4 style={{ margin: 0 }}>Attachments</h4>
+        <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
+          <select
+            value={attKind}
+            onChange={(e) => setAttKind(e.target.value)}
+            className="!w-auto !py-1 text-sm"
+          >
+            <option value="document">Document</option>
+            <option value="photo">Photo</option>
+            <option value="receipt">Receipt</option>
+            <option value="warranty">Warranty</option>
+          </select>
+          <button
+            className="btn-sm"
+            style={{ flex: "0 0 auto" }}
+            onClick={() => attRef.current?.click()}
+          >
+            + Upload
+          </button>
+          <input ref={attRef} type="file" hidden onChange={uploadAttachment} />
+        </div>
+      </div>
+      {!attachments.data || attachments.data.length === 0 ? (
+        <p className="muted text-sm">No files attached.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {attachments.data.map((att) => (
+            <div
+              key={att.id}
+              className="spread"
+              style={{ borderBottom: "1px solid var(--border)", padding: "6px 0" }}
+            >
+              <span className="row" style={{ gap: 8 }}>
+                <span className="badge">{att.kind}</span>
+                <span className="font-medium">{att.name}</span>
+                <span className="muted text-xs">{bytes(att.size_bytes)}</span>
+              </span>
+              <span className="row" style={{ gap: 6, flex: "0 0 auto" }}>
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() =>
+                    downloadFile(
+                      `/api/asset-tracker/attachments/${att.id}/download`,
+                      att.name,
+                    )
+                  }
+                >
+                  Download
+                </button>
+                <button
+                  className="btn-sm btn-danger"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => removeAttachment(att.id)}
+                >
+                  ✕
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- Assignment timeline ---- */}
+      {assignments.data && assignments.data.length > 0 && (
+        <>
+          <h4 style={{ margin: "18px 0 8px" }}>Assignment history</h4>
+          <div style={{ maxHeight: 160, overflow: "auto" }}>
+            {assignments.data.map((s, i) => (
+              <div
+                key={i}
+                className="spread"
+                style={{ borderBottom: "1px solid var(--border)", padding: "6px 0" }}
+              >
+                <span className="font-medium">{s.user_name ?? "Unknown"}</span>
+                <span className="muted text-xs">
+                  {new Date(s.checked_out_at).toLocaleDateString()} →{" "}
+                  {s.checked_in_at
+                    ? new Date(s.checked_in_at).toLocaleDateString()
+                    : "current"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ---- History ---- */}
       <h4 style={{ margin: "18px 0 8px" }}>History</h4>
@@ -501,6 +796,23 @@ function ReportsModal({ onClose }: { onClose: () => void }) {
               </table>
             </div>
           </div>
+          {data.by_condition && Object.keys(data.by_condition).length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <h4>By condition</h4>
+              <table>
+                <tbody>
+                  {Object.entries(data.by_condition).map(([c, n]) => (
+                    <tr key={c}>
+                      <td>
+                        <ConditionBadge condition={c === "Unknown" ? null : c} />
+                      </td>
+                      <td>{n}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </Modal>
@@ -520,17 +832,20 @@ export default function AssetTrackerPage() {
   const { notify } = useToast();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState("");
+  const [condition, setCondition] = useState("");
   // Seed the search from ?q= so scanning an asset's QR label deep-links here.
   const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [showReports, setShowReports] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const importRef = useRef<HTMLInputElement>(null);
   const query = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
+    if (condition) p.set("condition", condition);
     if (q) p.set("q", q);
     const s = p.toString();
     return s ? `?${s}` : "";
-  }, [status, q]);
+  }, [status, condition, q]);
 
   const assets = useFetch<TrackedAsset[]>(`/api/asset-tracker${query}`);
   const summary = useFetch<AssetSummary>("/api/asset-tracker/summary");
@@ -544,6 +859,31 @@ export default function AssetTrackerPage() {
   function reloadAll() {
     assets.reload();
     summary.reload();
+    setSelected(new Set());
+  }
+
+  function toggle(id: string) {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  async function bulk(action: string, value?: string) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (action === "delete" && !confirm(`Delete ${ids.length} asset(s)?`)) return;
+    try {
+      await api("/api/asset-tracker/bulk", {
+        method: "POST",
+        body: { ids, action, value: value ?? null },
+      });
+      notify(`Applied ${action} to ${ids.length} asset(s).`);
+      reloadAll();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Bulk action failed", "error");
+    }
   }
 
   async function remove(a: TrackedAsset) {
@@ -649,8 +989,44 @@ export default function AssetTrackerPage() {
               ))}
             </select>
           </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Condition</label>
+            <select value={condition} onChange={(e) => setCondition(e.target.value)}>
+              <option value="">All</option>
+              {CONDITIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm">
+          <strong>{selected.size} selected</strong>
+          <span className="flex-1" />
+          <button className="btn-sm" onClick={() => bulk("checkin")}>
+            Check in
+          </button>
+          <button
+            className="btn-sm"
+            onClick={() => {
+              const v = prompt("Set location to:");
+              if (v !== null) bulk("set_location", v);
+            }}
+          >
+            Set location
+          </button>
+          <button className="btn-sm" onClick={() => bulk("retire")}>
+            Retire
+          </button>
+          <button className="btn-sm btn-danger" onClick={() => bulk("delete")}>
+            Delete
+          </button>
+        </div>
+      )}
 
       {assets.loading ? (
         <Loading />
@@ -663,9 +1039,11 @@ export default function AssetTrackerPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 32 }}></th>
                 <th>Tag</th>
                 <th>Name</th>
                 <th>Category</th>
+                <th>Condition</th>
                 <th>Status</th>
                 <th>Assigned to</th>
                 <th>Book value</th>
@@ -674,12 +1052,32 @@ export default function AssetTrackerPage() {
             </thead>
             <tbody>
               {assets.data.map((a) => (
-                <tr key={a.id}>
+                <tr key={a.id} className={selected.has(a.id) ? "bg-brand-50/60" : ""}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(a.id)}
+                      onChange={() => toggle(a.id)}
+                    />
+                  </td>
                   <td>
                     <code>{a.asset_tag}</code>
                   </td>
-                  <td style={{ fontWeight: 600 }}>{a.name}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {a.name}
+                    {a.attachment_count > 0 && (
+                      <span className="muted" title="Attachments"> 📎{a.attachment_count}</span>
+                    )}
+                    {isMaintenanceDue(a) && (
+                      <span className="badge amber" style={{ marginLeft: 6 }} title={`Service due ${a.next_maintenance_date}`}>
+                        service due
+                      </span>
+                    )}
+                  </td>
                   <td>{a.category ?? "—"}</td>
+                  <td>
+                    <ConditionBadge condition={a.condition} />
+                  </td>
                   <td>
                     <StatusBadge status={a.status} />
                   </td>

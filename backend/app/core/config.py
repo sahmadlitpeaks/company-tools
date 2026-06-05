@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Comma-separated email domains allowed to sign in (empty = allow any).
     # New accounts still land in "pending" until an admin approves them.
     ALLOWED_EMAIL_DOMAINS: str = ""
+    # Run the in-process background scheduler (asset warranty/maintenance alerts).
+    RUN_SCHEDULER: bool = True
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg://platform:platform@localhost:5432/platform"

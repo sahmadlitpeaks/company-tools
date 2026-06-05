@@ -5,6 +5,7 @@ import os
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("RUN_SCHEDULER", "false")
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
