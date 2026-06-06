@@ -5,7 +5,9 @@ explored with realistic content, and removes exactly what it created (tracked
 via a manifest in app_settings). Guarded so it never runs on production unless
 explicitly allowed.
 """
+import hashlib
 import json
+import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -15,23 +17,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.app_setting import AppSetting
 from app.models.brand import Brand
+from app.models.brand_document import BrandDocument, BrandDocumentVersion
+from app.models.branding import BrandAsset, BrandKit
+from app.models.card import CardScan, DigitalCard, Lead
 from app.models.crm import CrmLead
 from app.models.campaign import Campaign, CampaignMetric
 from app.models.asset import Asset, Folder
+from app.models.landing import LandingLead, LandingPage
+from app.models.notification import Notification
+from app.models.people import AccessGrant, OnboardingJourney, OnboardingTask
 from app.models.product import Brochure, Product
 from app.models.qrcode import QRCode
 from app.models.shortlink import ShortLink
+from app.models.signature import EmailSignature, SignatureTemplate
 from app.models.tracked_asset import (
     AssetCategory,
     AssetEvent,
     AssetLocation,
     TrackedAsset,
 )
+from app.models.transfer import SecureTransfer
 from app.models.user import User
 from app.models.workplace import (
     Announcement,
     ApprovalRequest,
     KnowledgeArticle,
+    LeaveBalance,
     Task,
     Ticket,
     TicketComment,
@@ -56,6 +67,23 @@ _MODELS = {
     "knowledge": KnowledgeArticle,
     "announcement": Announcement,
     "qrcode": QRCode,
+    "card_lead": Lead,
+    "card_scan": CardScan,
+    "card": DigitalCard,
+    "email_signature": EmailSignature,
+    "signature_template": SignatureTemplate,
+    "landing_lead": LandingLead,
+    "landing_page": LandingPage,
+    "secure_transfer": SecureTransfer,
+    "brand_asset": BrandAsset,
+    "brand_kit": BrandKit,
+    "brand_doc_version": BrandDocumentVersion,
+    "brand_document": BrandDocument,
+    "access_grant": AccessGrant,
+    "onboarding_task": OnboardingTask,
+    "onboarding_journey": OnboardingJourney,
+    "leave_balance": LeaveBalance,
+    "notification": Notification,
     "shortlink": ShortLink,
     "brochure": Brochure,
     "asset": Asset,
@@ -170,7 +198,8 @@ async def seed_demo(db: AsyncSession) -> dict:
         Asset(folder_id=folders[1].id, name="Hero Banner.png", file_path="demo/hero.png",
               content_type="image/png", size_bytes=820_000, uploaded_by_id=mkt.id),
         Asset(name="Company Profile.pdf", file_path="demo/company-profile.pdf",
-              content_type="application/pdf", size_bytes=3_300_000, uploaded_by_id=mkt_mgr.id),
+              content_type="application/pdf", size_bytes=3_300_000, uploaded_by_id=mkt_mgr.id,
+              is_public=True),
     ]
     for a in assets:
         db.add(a)
@@ -190,7 +219,8 @@ async def seed_demo(db: AsyncSession) -> dict:
         m.add("product", p)
     brochures = [
         Brochure(product_id=products[0].id, title="WIMS Roadmap 2026", file_path="demo/wims.pdf",
-                 content_type="application/pdf", size_bytes=152_000, download_count=12, created_by_id=mkt_mgr.id),
+                 content_type="application/pdf", size_bytes=152_000, download_count=12, created_by_id=mkt_mgr.id,
+                 is_public=True),
         Brochure(product_id=products[1].id, title="Airthings Overview", file_path="demo/airthings.pdf",
                  content_type="application/pdf", size_bytes=106_000, download_count=4, created_by_id=mkt.id),
     ]
@@ -290,13 +320,14 @@ async def seed_demo(db: AsyncSession) -> dict:
 
     # ---- Approvals ----
     appr_spec = [
-        ("leave", "Annual leave (3 days)", "pending", sales1.id),
-        ("expense", "Client dinner - AED 450", "pending", mkt.id),
-        ("purchase", "New monitor", "approved", it.id),
-        ("leave", "Sick leave", "approved", fin.id),
+        ("leave", "Annual leave (3 days)", "pending", sales1.id, today + timedelta(days=10), today + timedelta(days=12), None),
+        ("expense", "Client dinner - AED 450", "pending", mkt.id, None, None, 450),
+        ("purchase", "New monitor", "approved", it.id, None, None, 1200),
+        ("leave", "Sick leave", "approved", fin.id, today - timedelta(days=2), today - timedelta(days=1), None),
     ]
-    for typ, title, st, who in appr_spec:
+    for typ, title, st, who, start, end, amount in appr_spec:
         ap = ApprovalRequest(type=typ, title=title, status=st, requester_id=who,
+                             start_date=start, end_date=end, amount=amount,
                              decided_by_id=hr.id if st == "approved" else None,
                              decided_at=now if st == "approved" else None)
         db.add(ap)
@@ -374,6 +405,208 @@ async def seed_demo(db: AsyncSession) -> dict:
     await db.flush()
     for sl in (await db.execute(select(ShortLink).where(ShortLink.created_by_id == mkt_mgr.id))).scalars().all():
         m.add("shortlink", sl)
+
+    # ---- Leave balances (entitlements for the Leave screen) ----
+    year = today.year
+    for u in (mkt_mgr, mkt, it, hr, sales1, fin, sales2):
+        db.add(LeaveBalance(user_id=u.id, year=year, entitlement_days=25))
+    await db.flush()
+    for lb in (await db.execute(select(LeaveBalance).where(LeaveBalance.year == year))).scalars().all():
+        if lb.user_id in {u.id for u in users}:
+            m.add("leave_balance", lb)
+
+    # ---- Digital business cards (+ a scan and a captured lead) ----
+    card_spec = [
+        (mkt_mgr, "demo-ahmed-khan", "Marketing Manager", brands[0].id, "#0d9488"),
+        (sales1, "demo-omar-farooq", "Account Executive", brands[1].id, "#7c3aed"),
+        (it, "demo-bilal-hussain", "IT Support", None, "#0b5cab"),
+    ]
+    cards = []
+    for owner, slug, title, brand_id, colour in card_spec:
+        c = DigitalCard(
+            owner_id=owner.id, brand_id=brand_id, slug=slug, full_name=owner.display_name,
+            title=title, company="AG Holding", email=owner.email, phone=owner.mobile_phone,
+            whatsapp=owner.mobile_phone, website="https://agholding.net",
+            linkedin=f"https://linkedin.com/in/{slug}", accent_color=colour,
+            bio=f"{title} at AG Holding.", is_active=True, lead_capture_enabled=True,
+        )
+        db.add(c)
+        cards.append(c)
+    await db.flush()
+    for c in cards:
+        m.add("card", c)
+    scan = CardScan(card_id=cards[0].id, ip_address="203.0.113.7",
+                    user_agent="Mozilla/5.0", referer="https://linkedin.com")
+    clead = Lead(card_id=cards[0].id, name="Jane Prospect", email="jane@prospect.com",
+                 phone="+971500001234", company="Prospect LLC",
+                 message="Interested in your services.", status="new")
+    db.add(scan)
+    db.add(clead)
+    await db.flush()
+    m.add("card_scan", scan)
+    m.add("card_lead", clead)
+
+    # ---- Email signature template + a rendered signature ----
+    tmpl = SignatureTemplate(
+        name="AG Holding — Standard", description="Company default signature",
+        html=(
+            '<table><tr><td style="font-family:Arial"><b>{{ full_name }}</b><br>'
+            '{{ title }} — AG Holding<br>{{ email }} · {{ phone }}</td></tr></table>'
+        ),
+        is_default=True,
+    )
+    db.add(tmpl)
+    await db.flush()
+    m.add("signature_template", tmpl)
+    sig = EmailSignature(
+        user_id=mkt_mgr.id, template_id=tmpl.id,
+        data=json.dumps({"full_name": mkt_mgr.display_name, "title": "Marketing Manager",
+                         "email": mkt_mgr.email, "phone": mkt_mgr.mobile_phone}),
+        rendered_html=f"<b>{mkt_mgr.display_name}</b><br>Marketing Manager — AG Holding",
+    )
+    db.add(sig)
+    await db.flush()
+    m.add("email_signature", sig)
+
+    # ---- Landing pages (+ a captured lead) ----
+    lp_spec = [
+        ("demo-ramadan-2026", "Ramadan 2026 Offer", brands[0].id, "published", 340),
+        ("demo-grilltime-launch", "Grill Time Launch", brands[2].id, "draft", 0),
+    ]
+    pages = []
+    for slug, title, brand_id, status, views in lp_spec:
+        p = LandingPage(
+            slug=slug, brand_id=brand_id, title=title,
+            description=f"{title} landing page.",
+            blocks=json.dumps([
+                {"type": "hero", "heading": title, "subheading": "Limited time only."},
+                {"type": "form", "fields": ["name", "email", "phone"]},
+            ]),
+            theme="light", status=status, view_count=views, created_by_id=mkt.id,
+        )
+        db.add(p)
+        pages.append(p)
+    await db.flush()
+    for p in pages:
+        m.add("landing_page", p)
+    llead = LandingLead(page_id=pages[0].id, name="Sam Visitor", email="sam@visitor.com",
+                        phone="+971500005678", message="Send me the offer details.")
+    db.add(llead)
+    await db.flush()
+    m.add("landing_lead", llead)
+
+    # ---- Secure transfers (encrypted one-time hand-offs) ----
+    for fname, rcpt, sender, consumed in [
+        ("Q1-Report.pdf", "partner@external.com", mkt_mgr.id, False),
+        ("Signed-NDA.pdf", "legal@external.com", hr.id, True),
+    ]:
+        token = secrets.token_urlsafe(24)
+        st = SecureTransfer(
+            token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            salt=secrets.token_hex(16), filename=fname, content_type="application/pdf",
+            size_bytes=240_000, file_path=None if consumed else "demo/transfer.bin",
+            sender_id=sender, recipient_email=rcpt, message="Please find attached.",
+            one_time=True, max_downloads=1, download_count=1 if consumed else 0,
+            expires_at=now + timedelta(days=7), is_consumed=consumed,
+            consumed_at=now if consumed else None, email_sent=True,
+        )
+        db.add(st)
+    await db.flush()
+    for st in (await db.execute(select(SecureTransfer).where(SecureTransfer.sender_id.in_([mkt_mgr.id, hr.id])))).scalars().all():
+        m.add("secure_transfer", st)
+
+    # ---- Brand kits (+ downloadable assets) ----
+    kit = BrandKit(
+        name="Agiomix Brand Kit", description="Primary brand guidelines & assets.",
+        guidelines_url="https://agholding.net/brand", logo_url="demo/agiomix-logo.svg",
+        primary_colors=json.dumps([{"name": "Primary", "hex": "#0d9488"},
+                                   {"name": "Ink", "hex": "#0f172a"}]),
+        fonts=json.dumps(["Inter", "Poppins"]),
+    )
+    db.add(kit)
+    await db.flush()
+    m.add("brand_kit", kit)
+    for name, cat in [("Logo (SVG)", "logo"), ("Letterhead", "template"), ("Brand Font", "font")]:
+        db.add(BrandAsset(brand_kit_id=kit.id, name=name, category=cat,
+                          file_path=f"demo/{name.lower().replace(' ', '-')}",
+                          content_type="application/octet-stream", size_bytes=64_000))
+    await db.flush()
+    for ba in (await db.execute(select(BrandAsset).where(BrandAsset.brand_kit_id == kit.id))).scalars().all():
+        m.add("brand_asset", ba)
+
+    # ---- Brand documents (versioned) ----
+    doc = BrandDocument(brand_id=brands[0].id, name="Brand Guidelines", category="guideline",
+                        current_version=2)
+    db.add(doc)
+    await db.flush()
+    m.add("brand_document", doc)
+    for v in (1, 2):
+        db.add(BrandDocumentVersion(document_id=doc.id, version=v,
+                                    file_path=f"demo/brand-guidelines-v{v}.pdf",
+                                    content_type="application/pdf", size_bytes=1_200_000 + v,
+                                    uploaded_by_id=mkt_mgr.id))
+    await db.flush()
+    for dv in (await db.execute(select(BrandDocumentVersion).where(BrandDocumentVersion.document_id == doc.id))).scalars().all():
+        m.add("brand_doc_version", dv)
+
+    # ---- People ops: onboarding & offboarding journeys ----
+    onj = OnboardingJourney(kind="onboarding", target_user_id=pending.id, status="in_progress",
+                            brand_id=brands[0].id, created_by_id=hr.id,
+                            note="New Operations coordinator starting next week.")
+    offj = OnboardingJourney(kind="offboarding", target_user_id=sales2.id, status="in_progress",
+                             brand_id=brands[1].id, created_by_id=hr.id,
+                             note="Moving on at end of month.")
+    db.add(onj)
+    db.add(offj)
+    await db.flush()
+    m.add("onboarding_journey", onj)
+    m.add("onboarding_journey", offj)
+    on_tasks = [
+        ("access", "Grant system access & set permissions", "done", it.id),
+        ("accounts", "Create digital business card", "pending", mkt.id),
+        ("equipment", "Assign laptop & equipment", "done", it.id),
+        ("hr", "Collect signed contract & ID documents", "pending", hr.id),
+        ("other", "Office tour & team introductions", "pending", hr.id),
+    ]
+    for i, (cat, title, st, owner) in enumerate(on_tasks):
+        db.add(OnboardingTask(journey_id=onj.id, title=title, category=cat, status=st,
+                              owner_id=owner, sort=i,
+                              done_by_id=owner if st == "done" else None,
+                              done_at=now if st == "done" else None))
+    off_tasks = [
+        ("access", "Revoke system access & disable account", "pending", it.id),
+        ("equipment", "Collect laptop & equipment", "pending", it.id),
+        ("hr", "Final settlement & exit interview", "pending", hr.id),
+    ]
+    for i, (cat, title, st, owner) in enumerate(off_tasks):
+        db.add(OnboardingTask(journey_id=offj.id, title=title, category=cat, status=st,
+                              owner_id=owner, sort=i))
+    await db.flush()
+    for t in (await db.execute(select(OnboardingTask).where(OnboardingTask.journey_id.in_([onj.id, offj.id])))).scalars().all():
+        m.add("onboarding_task", t)
+    for name, system, user_id, status in [
+        ("Google Workspace", "google", pending.id, "active"),
+        ("Facebook Business", "facebook", pending.id, "active"),
+        ("ERP Portal", "portal", sales2.id, "active"),
+    ]:
+        db.add(AccessGrant(user_id=user_id, journey_id=onj.id if user_id == pending.id else offj.id,
+                           name=name, system=system, username=f"demo.{system}",
+                           status=status, granted_by_id=it.id))
+    await db.flush()
+    for ag in (await db.execute(select(AccessGrant).where(AccessGrant.user_id.in_([pending.id, sales2.id])))).scalars().all():
+        m.add("access_grant", ag)
+
+    # ---- In-app notifications (a few for demo users) ----
+    notif_spec = [
+        (it.id, "Asset warranty expiring", "MacBook Pro 14 (LAP-001) warranty expires soon.", "/asset-tracker", "warning"),
+        (sales1.id, "Approval pending", "Your annual leave request is awaiting approval.", "/approvals", "info"),
+        (mkt.id, "New task assigned", "You were assigned: Design Ramadan creatives.", "/tasks", "info"),
+    ]
+    for uid, title, body, link, cat in notif_spec:
+        db.add(Notification(user_id=uid, title=title, body=body, link=link, category=cat))
+    await db.flush()
+    for nt in (await db.execute(select(Notification).where(Notification.user_id.in_([it.id, sales1.id, mkt.id])))).scalars().all():
+        m.add("notification", nt)
 
     await set_many(db, {MANIFEST_KEY: m.to_json()})
     await db.commit()
