@@ -1,6 +1,10 @@
 export interface User {
   id: string;
-  email: string;
+  email?: string | null;
+  personal_email?: string | null;
+  passport_no?: string | null;
+  nationality?: string | null;
+  bamboo_id?: string | null;
   display_name?: string | null;
   given_name?: string | null;
   surname?: string | null;

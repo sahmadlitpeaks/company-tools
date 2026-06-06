@@ -11,6 +11,7 @@ from app.services.app_settings import (
     get_allowed_domains,
     get_appearance,
     get_azure_config,
+    get_bamboo_config,
     set_many,
 )
 
@@ -60,6 +61,35 @@ async def put_appearance_settings(
 class SecurityConfigIn(BaseModel):
     # Comma-separated email domains; blank clears the allowlist (open sign-up).
     allowed_email_domains: str | None = None
+
+
+class BambooConfigIn(BaseModel):
+    subdomain: str | None = None
+    api_key: str | None = None  # blank keeps the existing key
+
+
+@router.get("/bamboo")
+async def get_bamboo(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    cfg = await get_bamboo_config(db)
+    return {"subdomain": cfg["subdomain"], "key_set": bool(cfg["api_key"]), "configured": cfg["configured"]}
+
+
+@router.put("/bamboo")
+async def put_bamboo(
+    payload: BambooConfigIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    values: dict[str, str | None] = {
+        "bamboo_subdomain": (payload.subdomain or "").strip() or None,
+    }
+    if payload.api_key and payload.api_key.strip():
+        values["bamboo_api_key"] = encrypt(payload.api_key.strip())
+    await set_many(db, values)
+    cfg = await get_bamboo_config(db)
+    return {"configured": cfg["configured"]}
 
 
 @router.get("/security")

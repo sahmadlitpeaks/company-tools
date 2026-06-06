@@ -80,6 +80,19 @@ APPEARANCE_DEFAULT = {
 }
 
 
+async def get_bamboo_config(db: AsyncSession) -> dict:
+    """BambooHR connection (subdomain + API key, key encrypted at rest)."""
+    stored = await get_all(db)
+    subdomain = stored.get("bamboo_subdomain") or None
+    key_enc = stored.get("bamboo_api_key")
+    api_key = decrypt(key_enc) if key_enc else None
+    return {
+        "subdomain": subdomain,
+        "api_key": api_key,
+        "configured": bool(subdomain and api_key),
+    }
+
+
 async def get_appearance(db: AsyncSession) -> dict:
     stored = await get_all(db)
     result = dict(APPEARANCE_DEFAULT)

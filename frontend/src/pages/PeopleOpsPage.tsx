@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Boxes,
   Check,
+  Cloud,
   FileDown,
   KeyRound,
   Lock,
@@ -140,44 +141,78 @@ function StartModal({
   const { notify } = useToast();
   const users = useFetch<User[]>("/api/users");
   const brands = useFetch<Brand[]>("/api/brands");
+  // Onboarding is almost always a brand-new person, so default to that.
+  const [mode, setMode] = useState<"new" | "existing">(
+    kind === "onboarding" ? "new" : "existing",
+  );
   const [targetId, setTargetId] = useState("");
   const [brandId, setBrandId] = useState("");
   const [note, setNote] = useState("");
   const [announce, setAnnounce] = useState(kind === "onboarding");
   const [busy, setBusy] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [emp, setEmp] = useState({ display_name: "", email: "", job_title: "", department: "", mobile_phone: "" });
+  const [emp, setEmp] = useState({
+    given_name: "",
+    surname: "",
+    personal_email: "",
+    email: "",
+    job_title: "",
+    department: "",
+    mobile_phone: "",
+    passport_no: "",
+    nationality: "",
+  });
   const setE = (k: string, v: string) => setEmp((f) => ({ ...f, [k]: v }));
+  const emailOk = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
 
-  async function createEmployee() {
-    if (!emp.email.trim()) {
-      notify("Email is required", "error");
-      return;
-    }
-    setBusy(true);
-    try {
-      const u = await api<User>("/api/users", { method: "POST", body: emp });
-      await users.reload();
-      setTargetId(u.id);
-      setCreating(false);
-      notify("Employee added.");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Couldn't add employee", "error");
-    } finally {
-      setBusy(false);
-    }
+  function validateNew(): string | null {
+    if (!emp.given_name.trim() || !emp.surname.trim()) return "First and last name are required.";
+    if (!emp.personal_email.trim() && !emp.email.trim())
+      return "A personal or official email is required.";
+    if (emp.personal_email.trim() && !emailOk(emp.personal_email.trim()))
+      return "Personal email looks invalid.";
+    if (emp.email.trim() && !emailOk(emp.email.trim()))
+      return "Official email looks invalid.";
+    return null;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!targetId) return;
     setBusy(true);
     try {
+      let target = targetId;
+      if (mode === "new") {
+        const err = validateNew();
+        if (err) {
+          notify(err, "error");
+          setBusy(false);
+          return;
+        }
+        const u = await api<User>("/api/users", {
+          method: "POST",
+          body: {
+            given_name: emp.given_name.trim(),
+            surname: emp.surname.trim(),
+            personal_email: emp.personal_email.trim() || null,
+            email: emp.email.trim() || null,
+            job_title: emp.job_title.trim() || null,
+            department: emp.department.trim() || null,
+            mobile_phone: emp.mobile_phone.trim() || null,
+            passport_no: emp.passport_no.trim() || null,
+            nationality: emp.nationality.trim() || null,
+          },
+        });
+        target = u.id;
+      }
+      if (!target) {
+        notify("Select an employee.", "error");
+        setBusy(false);
+        return;
+      }
       await api("/api/people/journeys", {
         method: "POST",
         body: {
           kind,
-          target_user_id: targetId,
+          target_user_id: target,
           brand_id: brandId || null,
           note: note || null,
           announce,
@@ -192,7 +227,7 @@ function StartModal({
   }
 
   return (
-    <Modal title={kind === "onboarding" ? "Start onboarding" : "Start offboarding"} onClose={onClose}>
+    <Modal title={kind === "onboarding" ? "Start onboarding" : "Start offboarding"} onClose={onClose} maxWidth={560}>
       <form onSubmit={submit}>
         <div className="field">
           <div className="spread">
@@ -200,17 +235,18 @@ function StartModal({
             <button
               type="button"
               className="!border-0 !bg-transparent !p-0 text-xs font-medium text-brand-600"
-              onClick={() => setCreating((c) => !c)}
+              onClick={() => setMode((m) => (m === "new" ? "existing" : "new"))}
             >
-              {creating ? "Pick existing" : "+ New employee (not in Azure)"}
+              {mode === "new" ? "Pick existing employee" : "+ New employee (not in Azure)"}
             </button>
           </div>
-          {!creating ? (
-            <select required={!creating} value={targetId} onChange={(e) => setTargetId(e.target.value)} className="mt-1.5">
+
+          {mode === "existing" ? (
+            <select className="mt-1.5" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">Select employee…</option>
               {(users.data ?? []).map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.display_name ?? u.email}
+                  {u.display_name ?? u.email ?? u.personal_email}
                 </option>
               ))}
             </select>
@@ -218,32 +254,52 @@ function StartModal({
             <div className="mt-1.5 rounded-xl p-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
               <div className="row">
                 <div className="field" style={{ marginBottom: 8 }}>
-                  <input placeholder="Full name" value={emp.display_name} onChange={(e) => setE("display_name", e.target.value)} />
+                  <label>First name *</label>
+                  <input value={emp.given_name} onChange={(e) => setE("given_name", e.target.value)} />
                 </div>
                 <div className="field" style={{ marginBottom: 8 }}>
-                  <input type="email" placeholder="Email *" value={emp.email} onChange={(e) => setE("email", e.target.value)} />
+                  <label>Last name *</label>
+                  <input value={emp.surname} onChange={(e) => setE("surname", e.target.value)} />
                 </div>
               </div>
               <div className="row">
                 <div className="field" style={{ marginBottom: 8 }}>
-                  <input placeholder="Job title" value={emp.job_title} onChange={(e) => setE("job_title", e.target.value)} />
+                  <label>Personal email *</label>
+                  <input type="email" placeholder="name@gmail.com" value={emp.personal_email} onChange={(e) => setE("personal_email", e.target.value)} />
                 </div>
                 <div className="field" style={{ marginBottom: 8 }}>
-                  <input placeholder="Department" value={emp.department} onChange={(e) => setE("department", e.target.value)} />
+                  <label>Official email <span className="muted">(optional)</span></label>
+                  <input type="email" placeholder="not yet assigned" value={emp.email} onChange={(e) => setE("email", e.target.value)} />
                 </div>
               </div>
-              <div className="field" style={{ marginBottom: 8 }}>
-                <input placeholder="Phone" value={emp.mobile_phone} onChange={(e) => setE("mobile_phone", e.target.value)} />
+              <div className="row">
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Job title</label>
+                  <input value={emp.job_title} onChange={(e) => setE("job_title", e.target.value)} />
+                </div>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Department</label>
+                  <input value={emp.department} onChange={(e) => setE("department", e.target.value)} />
+                </div>
               </div>
-              <button type="button" className="btn-sm btn-primary" disabled={busy} onClick={createEmployee}>
-                {busy ? "Adding…" : "Add & select"}
-              </button>
-              {targetId && (
-                <span className="muted ml-2 text-xs">✓ Added — continue below.</span>
-              )}
+              <div className="row">
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Phone</label>
+                  <input value={emp.mobile_phone} onChange={(e) => setE("mobile_phone", e.target.value)} />
+                </div>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label>Nationality</label>
+                  <input value={emp.nationality} onChange={(e) => setE("nationality", e.target.value)} />
+                </div>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Passport / ID no.</label>
+                <input value={emp.passport_no} onChange={(e) => setE("passport_no", e.target.value)} />
+              </div>
             </div>
           )}
         </div>
+
         <div className="field">
           <label>Branch / sub-company</label>
           <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>
@@ -347,6 +403,26 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
     notify("Access updated.");
     detail.reload();
   }
+  async function syncAzure() {
+    if (!d?.target) return;
+    try {
+      const r = await api<{ temp_password?: string }>(`/api/users/${d.target.id}/sync-azure`, { method: "POST" });
+      notify(r.temp_password ? `Created in Azure. Temp password: ${r.temp_password}` : "Synced to Azure.");
+      detail.reload();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Azure sync failed", "error");
+    }
+  }
+  async function syncBamboo() {
+    if (!d?.target) return;
+    try {
+      await api(`/api/users/${d.target.id}/sync-bamboo`, { method: "POST" });
+      notify("Pushed to BambooHR.");
+      detail.reload();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "BambooHR sync failed", "error");
+    }
+  }
 
   return (
     <Modal title={d ? `${d.kind} — ${d.target_name ?? ""}` : "Journey"} onClose={onClose} maxWidth={640}>
@@ -398,6 +474,16 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
                   )}
                   <button className="btn-sm btn-danger inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => access("revoke_access")}>
                     <UserMinus size={13} /> Revoke all access
+                  </button>
+                </div>
+              )}
+              {user?.is_admin && d.kind === "onboarding" && (
+                <div className="row mt-2" style={{ gap: 6 }}>
+                  <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={syncAzure}>
+                    <Cloud size={13} /> {d.target.email ? "Sync to Azure" : "Azure (needs official email)"}
+                  </button>
+                  <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={syncBamboo}>
+                    <Cloud size={13} /> Push to BambooHR
                   </button>
                 </div>
               )}

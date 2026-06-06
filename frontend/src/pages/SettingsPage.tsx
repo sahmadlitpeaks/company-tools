@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [savingSec, setSavingSec] = useState(false);
   const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
   const [savingAppearance, setSavingAppearance] = useState(false);
+  const [bamboo, setBamboo] = useState({ subdomain: "", api_key: "", key_set: false });
+  const [savingBamboo, setSavingBamboo] = useState(false);
 
   const callbackHint =
     typeof window !== "undefined"
@@ -53,8 +55,27 @@ export default function SettingsPage() {
     api<Appearance>("/api/settings/appearance")
       .then((a) => setAppearance({ ...DEFAULT_APPEARANCE, ...a }))
       .catch(() => {});
+    api<{ subdomain: string | null; key_set: boolean }>("/api/settings/bamboo")
+      .then((b) => setBamboo({ subdomain: b.subdomain ?? "", api_key: "", key_set: b.key_set }))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveBamboo() {
+    setSavingBamboo(true);
+    try {
+      await api("/api/settings/bamboo", {
+        method: "PUT",
+        body: { subdomain: bamboo.subdomain, api_key: bamboo.api_key || undefined },
+      });
+      notify("BambooHR settings saved.");
+      setBamboo((b) => ({ ...b, api_key: "", key_set: b.key_set || !!b.api_key }));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Save failed", "error");
+    } finally {
+      setSavingBamboo(false);
+    }
+  }
 
   async function saveAppearance() {
     setSavingAppearance(true);
@@ -237,6 +258,43 @@ export default function SettingsPage() {
               onClick={saveAppearance}
             >
               {savingAppearance ? "Saving…" : "Save default appearance"}
+            </button>
+          </div>
+
+          <div className="card">
+            <div className="spread mb-3">
+              <h3 className="m-0 flex items-center gap-2">
+                <span className="text-xl">🌿</span> BambooHR
+              </h3>
+              <span className={`badge ${bamboo.subdomain && (bamboo.key_set || bamboo.api_key) ? "green" : "amber"}`}>
+                {bamboo.subdomain && (bamboo.key_set || bamboo.api_key) ? "Configured" : "Not configured"}
+              </span>
+            </div>
+            <p className="muted mt-0 text-sm">
+              Connect BambooHR so new joiners can be pushed from the Onboarding screen.
+            </p>
+            <div className="field">
+              <label>Subdomain</label>
+              <input
+                value={bamboo.subdomain}
+                onChange={(e) => setBamboo((b) => ({ ...b, subdomain: e.target.value }))}
+                placeholder="yourcompany (from yourcompany.bamboohr.com)"
+              />
+            </div>
+            <div className="field">
+              <label>
+                API key{" "}
+                {bamboo.key_set && <span className="text-xs font-normal text-emerald-600">• set</span>}
+              </label>
+              <input
+                type="password"
+                value={bamboo.api_key}
+                placeholder={bamboo.key_set ? "•••••• (leave blank to keep)" : ""}
+                onChange={(e) => setBamboo((b) => ({ ...b, api_key: e.target.value }))}
+              />
+            </div>
+            <button className="btn-primary flex-none" disabled={savingBamboo} onClick={saveBamboo}>
+              {savingBamboo ? "Saving…" : "Save BambooHR"}
             </button>
           </div>
 

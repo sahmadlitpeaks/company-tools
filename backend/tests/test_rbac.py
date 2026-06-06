@@ -152,8 +152,12 @@ async def test_create_employee_manual(client, auth):
     assert r.status_code == 201
     body = r.json()
     assert body["email"] == "newjoiner@agholding.net" and body["status"] == "active"
-    # Duplicate rejected.
-    dup = await client.post("/api/users", headers=auth, json={"email": "newjoiner@agholding.net"})
+    # Duplicate official email rejected.
+    dup = await client.post(
+        "/api/users",
+        headers=auth,
+        json={"display_name": "Dup", "email": "newjoiner@agholding.net"},
+    )
     assert dup.status_code == 409
     # Member can't create users.
     token = await _member_token(client)
@@ -161,3 +165,33 @@ async def test_create_employee_manual(client, auth):
     mid = await _member_id(client, auth)
     await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
     assert (await client.post("/api/users", headers=hdr, json={"email": "x@agholding.net"})).status_code == 403
+
+
+async def test_create_employee_validation_and_personal_only(client, auth):
+    # No name -> 422.
+    assert (await client.post("/api/users", headers=auth, json={"email": "x@agholding.net"})).status_code == 422
+    # No email at all -> 422.
+    assert (await client.post("/api/users", headers=auth, json={"display_name": "No Email"})).status_code == 422
+    # Invalid email -> 422.
+    assert (await client.post("/api/users", headers=auth, json={"display_name": "Bad", "personal_email": "nope"})).status_code == 422
+    # Personal email only (official not yet assigned) -> allowed.
+    r = await client.post(
+        "/api/users",
+        headers=auth,
+        json={"given_name": "Sara", "surname": "Khan", "personal_email": "sara@gmail.com", "passport_no": "A1234567", "nationality": "AE"},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["email"] is None and body["personal_email"] == "sara@gmail.com"
+    assert body["display_name"] == "Sara Khan" and body["passport_no"] == "A1234567"
+
+
+async def test_sync_endpoints_report_not_configured(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    az = await client.post(f"/api/users/{me['id']}/sync-azure", headers=auth)
+    # Already linked (dev admin has azure_oid None) -> attempts, Azure not configured.
+    assert az.status_code in (400, 200)
+    bamboo = await client.post(f"/api/users/{me['id']}/sync-bamboo", headers=auth)
+    assert bamboo.status_code == 400 and "BambooHR" in bamboo.json()["detail"]
+    # BambooHR settings are admin-managed.
+    assert (await client.get("/api/settings/bamboo", headers=auth)).status_code == 200

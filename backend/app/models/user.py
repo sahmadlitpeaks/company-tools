@@ -24,9 +24,11 @@ class User(UUIDMixin, TimestampMixin, Base):
     azure_oid: Mapped[str | None] = mapped_column(
         String(64), unique=True, index=True, nullable=True
     )
-    email: Mapped[str] = mapped_column(
-        String(320), unique=True, index=True, nullable=False
+    # Official / login email — optional for brand-new joiners (not yet assigned).
+    email: Mapped[str | None] = mapped_column(
+        String(320), unique=True, index=True, nullable=True
     )
+    personal_email: Mapped[str | None] = mapped_column(String(320), index=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
     given_name: Mapped[str | None] = mapped_column(String(255))
     surname: Mapped[str | None] = mapped_column(String(255))
@@ -36,6 +38,11 @@ class User(UUIDMixin, TimestampMixin, Base):
     mobile_phone: Mapped[str | None] = mapped_column(String(64))
     business_phone: Mapped[str | None] = mapped_column(String(64))
     avatar_url: Mapped[str | None] = mapped_column(String(1024))
+    # Extra HR details captured at onboarding.
+    passport_no: Mapped[str | None] = mapped_column(String(64))
+    nationality: Mapped[str | None] = mapped_column(String(128))
+    # External system ids for sync.
+    bamboo_id: Mapped[str | None] = mapped_column(String(64))
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)

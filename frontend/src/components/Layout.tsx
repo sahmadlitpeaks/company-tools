@@ -9,6 +9,7 @@ import {
   FolderHeart,
   FolderOpen,
   LayoutDashboard,
+  LayoutGrid,
   LayoutTemplate,
   LifeBuoy,
   Link2,
@@ -69,6 +70,7 @@ const NAV: NavEntry[] = [
   { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm" },
   { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
   { section: "Workplace" },
+  { to: "/hub", label: "My Workspace", icon: LayoutGrid },
   { to: "/my-docs", label: "My Docs", icon: FolderHeart, module: "workspace" },
   { to: "/work-log", label: "Work Log", icon: Clock3, module: "worklog" },
   { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks" },
@@ -241,7 +243,7 @@ export default function Layout() {
           <span className="mx-1 h-7 w-px bg-[var(--border)]" />
           <div className="profile" ref={menuRef}>
             <button className="profile-btn" aria-label="Account menu" onClick={() => setMenuOpen((o) => !o)}>
-              <span className="avatar">{initials(user?.display_name, user?.email)}</span>
+              <span className="avatar">{initials(user?.display_name, user?.email ?? undefined)}</span>
               <span className="profile-meta">
                 <span className="profile-name">{name}</span>
                 <span className="profile-role">{role}</span>

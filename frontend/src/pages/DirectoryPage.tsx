@@ -325,7 +325,7 @@ export default function DirectoryPage() {
                   <td>
                     <div className="flex items-center gap-2.5">
                       <span className="avatar !h-8 !w-8 !text-[11px]">
-                        {initials(u.display_name, u.email)}
+                        {initials(u.display_name, u.email ?? undefined)}
                       </span>
                       <div className="min-w-0">
                         <div className="font-semibold">{u.display_name ?? "—"}</div>
