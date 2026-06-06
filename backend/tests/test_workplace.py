@@ -35,6 +35,40 @@ async def test_task_lifecycle(client, auth):
     assert done.json()["status"] == "done" and done.json()["completed_at"]
 
 
+async def test_task_subtasks_comments_and_recurrence(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    # A weekly recurring task with a due date.
+    t = (await client.post(
+        "/api/tasks", headers=auth,
+        json={"title": "Weekly backup", "recurrence": "weekly", "due_date": "2026-06-01",
+              "assignee_id": me["id"]},
+    )).json()
+    tid = t["id"]
+
+    # Add two checklist items; tick one.
+    i1 = (await client.post(f"/api/tasks/{tid}/items", headers=auth, json={"title": "Snapshot DB"})).json()
+    await client.post(f"/api/tasks/{tid}/items", headers=auth, json={"title": "Verify restore"})
+    await client.patch(f"/api/tasks/items/{i1['id']}", headers=auth, json={"done": True})
+
+    # A comment.
+    await client.post(f"/api/tasks/{tid}/comments", headers=auth, json={"body": "Started this"})
+
+    detail = (await client.get(f"/api/tasks/{tid}", headers=auth)).json()
+    assert detail["subtasks_total"] == 2 and detail["subtasks_done"] == 1
+    assert detail["comment_count"] == 1 and len(detail["items"]) == 2
+
+    # List view exposes the aggregate counts too.
+    listing = (await client.get("/api/tasks", headers=auth)).json()
+    row = next(x for x in listing if x["id"] == tid)
+    assert row["subtasks_total"] == 2 and row["comment_count"] == 1
+
+    # Completing a recurring task spawns the next occurrence (due +1 week).
+    await client.patch(f"/api/tasks/{tid}", headers=auth, json={"status": "done"})
+    after = (await client.get("/api/tasks", headers=auth)).json()
+    nxt = [x for x in after if x["title"] == "Weekly backup" and x["status"] == "todo"]
+    assert nxt and nxt[0]["due_date"] == "2026-06-08"
+
+
 async def test_task_assignment_notifies(client, auth):
     hdr, uid = await _member(client, auth)
     await client.post(
@@ -101,24 +135,58 @@ async def test_ticket_flow(client, auth):
     )
     assert t.status_code == 201
     tid = t.json()["id"]
+    # Ticket gets a human-friendly number and SLA targets from its priority.
+    assert t.json()["number"] and t.json()["sla_resolution_due"]
     admin_notes = (await client.get("/api/notifications", headers=auth)).json()
     assert any(n["category"] == "ticket" for n in admin_notes)
 
-    # Admin (agent) replies and resolves.
+    # Admin (agent) replies (sets first response) and resolves with a note.
     c = await client.post(
         f"/api/tickets/{tid}/comments", headers=auth, json={"body": "Rebooting it"}
     )
     assert c.status_code == 201
+    # Resolving without a note is rejected.
+    bad = await client.patch(f"/api/tickets/{tid}", headers=auth, json={"status": "resolved"})
+    assert bad.status_code == 422
     upd = await client.patch(
-        f"/api/tickets/{tid}", headers=auth, json={"status": "resolved"}
+        f"/api/tickets/{tid}",
+        headers=auth,
+        json={"status": "resolved", "resolution_note": "Reseated the RAM."},
     )
     assert upd.json()["status"] == "resolved" and upd.json()["resolved_at"]
+    assert upd.json()["first_responded_at"] and upd.json()["resolution_note"]
 
     detail = (await client.get(f"/api/tickets/{tid}", headers=auth)).json()
     assert detail["comment_count"] == 1 and detail["comments"][0]["author_name"]
     # Requester was notified of comment + resolution.
     notes = (await client.get("/api/notifications", headers=hdr)).json()
     assert sum(1 for n in notes if n["category"] == "ticket") >= 1
+
+    # An activity timeline was recorded (created + status change).
+    acts = (await client.get(f"/api/activity?entity_type=ticket&entity_id={tid}", headers=auth)).json()
+    assert any(a["action"] == "status" for a in acts)
+
+
+async def test_ticket_internal_notes_hidden_from_requester(client, auth):
+    hdr, uid = await _member(client, auth, email="reporter@agholding.net")
+    t = (await client.post(
+        "/api/tickets", headers=hdr, json={"subject": "VPN down", "category": "it"}
+    )).json()
+    # Admin adds an internal note + a public reply.
+    await client.post(f"/api/tickets/{t['id']}/comments", headers=auth, json={"body": "check logs", "is_internal": True})
+    await client.post(f"/api/tickets/{t['id']}/comments", headers=auth, json={"body": "Looking into it"})
+    # Requester sees only the public reply.
+    seen = (await client.get(f"/api/tickets/{t['id']}", headers=hdr)).json()
+    bodies = {c["body"] for c in seen["comments"]}
+    assert "Looking into it" in bodies and "check logs" not in bodies
+    # Agent sees both.
+    agent_view = (await client.get(f"/api/tickets/{t['id']}", headers=auth)).json()
+    assert len(agent_view["comments"]) == 2
+
+    # Overdue filter + unassigned scope return lists.
+    assert (await client.get("/api/tickets?overdue=true", headers=auth)).status_code == 200
+    unassigned = (await client.get("/api/tickets?scope=unassigned", headers=auth)).json()
+    assert any(x["id"] == t["id"] for x in unassigned)
 
 
 async def test_ticket_member_cannot_triage(client, auth):

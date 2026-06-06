@@ -44,6 +44,8 @@ from app.models.workplace import (
     KnowledgeArticle,
     LeaveBalance,
     Task,
+    TaskComment,
+    TaskItem,
     Ticket,
     TicketComment,
 )
@@ -302,21 +304,28 @@ async def seed_demo(db: AsyncSession) -> dict:
     await db.flush()
     m.add("asset_event", ev)
 
-    # ---- Tasks ----
+    # ---- Tasks (with a checklist, a comment and a recurring one) ----
     task_spec = [
-        ("Design Ramadan creatives", "in_progress", "high", mkt.id),
-        ("Refresh website hero", "todo", "normal", mkt.id),
-        ("Q1 sales report", "todo", "high", sales1.id),
-        ("Patch office laptops", "done", "normal", it.id),
-        ("Plan team offsite", "blocked", "low", hr.id),
+        ("Design Ramadan creatives", "in_progress", "high", mkt.id, None, today + timedelta(days=5)),
+        ("Refresh website hero", "todo", "normal", mkt.id, None, today + timedelta(days=8)),
+        ("Q1 sales report", "todo", "high", sales1.id, None, today - timedelta(days=1)),  # overdue
+        ("Patch office laptops", "done", "normal", it.id, None, today - timedelta(days=3)),
+        ("Weekly backup check", "todo", "normal", it.id, "weekly", today + timedelta(days=2)),
     ]
-    for title, st, prio, who in task_spec:
+    tasks = []
+    for title, st, prio, who, rec, due in task_spec:
         tk = Task(title=title, status=st, priority=prio, assignee_id=who, created_by_id=mkt_mgr.id,
-                  due_date=today + timedelta(days=5))
+                  recurrence=rec, due_date=due)
         db.add(tk)
+        tasks.append(tk)
     await db.flush()
-    for tk in (await db.execute(select(Task).where(Task.created_by_id == mkt_mgr.id))).scalars().all():
+    for tk in tasks:
         m.add("task", tk)
+    # Checklist + a comment on the first task (cascade-deleted with the task).
+    for i, title in enumerate(["Brief from marketing", "Draft 3 concepts", "Review with manager", "Export final"]):
+        db.add(TaskItem(task_id=tasks[0].id, title=title, done=i == 0, sort=i))
+    db.add(TaskComment(task_id=tasks[0].id, author_id=mkt_mgr.id, body="Let's prioritise the hero banner first."))
+    await db.flush()
 
     # ---- Approvals ----
     appr_spec = [
@@ -336,20 +345,27 @@ async def seed_demo(db: AsyncSession) -> dict:
         if ap.requester_id in {u.id for u in users}:
             m.add("approval", ap)
 
-    # ---- Tickets + comments ----
-    tk1 = Ticket(subject="VPN not connecting", category="it", priority="high", status="in_progress",
-                 requester_id=sales1.id, assignee_id=it.id)
-    tk2 = Ticket(subject="AC too cold in meeting room", category="facilities", priority="low",
-                 status="open", requester_id=mkt.id)
+    # ---- Tickets + comments (with numbers, SLA targets, an internal note) ----
+    tk1 = Ticket(number=9001, subject="VPN not connecting", category="it", priority="high",
+                 status="in_progress", requester_id=sales1.id, assignee_id=it.id,
+                 sla_response_due=now - timedelta(hours=1), sla_resolution_due=now + timedelta(hours=6),
+                 first_responded_at=now - timedelta(hours=2))
+    tk2 = Ticket(number=9002, subject="AC too cold in meeting room", category="facilities", priority="low",
+                 status="open", requester_id=mkt.id,
+                 sla_response_due=now + timedelta(hours=20), sla_resolution_due=now - timedelta(hours=2))  # overdue
     db.add(tk1)
     db.add(tk2)
     await db.flush()
     m.add("ticket", tk1)
     m.add("ticket", tk2)
     cmt = TicketComment(ticket_id=tk1.id, author_id=it.id, body="Looking into it, please retry in 10 min.")
+    note = TicketComment(ticket_id=tk1.id, author_id=it.id, is_internal=True,
+                         body="Checked the firewall — likely an expired cert on the gateway.")
     db.add(cmt)
+    db.add(note)
     await db.flush()
     m.add("ticket_comment", cmt)
+    m.add("ticket_comment", note)
 
     # ---- Knowledge + announcements ----
     for title, cat, body, pinned in [

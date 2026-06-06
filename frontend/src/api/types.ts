@@ -564,12 +564,46 @@ export interface Task {
   status: string;
   priority: string;
   due_date?: string | null;
+  recurrence?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   brand_id?: string | null;
   completed_at?: string | null;
+  created_at: string;
+  subtasks_total: number;
+  subtasks_done: number;
+  comment_count: number;
+}
+
+export interface TaskItem {
+  id: string;
+  task_id: string;
+  title: string;
+  done: boolean;
+  sort: number;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface TaskDetail extends Task {
+  items: TaskItem[];
+  comments: TaskComment[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  actor_name?: string | null;
+  action: string;
+  summary: string;
   created_at: string;
 }
 
@@ -599,11 +633,13 @@ export interface TicketComment {
   author_id?: string | null;
   author_name?: string | null;
   body: string;
+  is_internal: boolean;
   created_at: string;
 }
 
 export interface Ticket {
   id: string;
+  number?: number | null;
   subject: string;
   description?: string | null;
   category: string;
@@ -614,7 +650,11 @@ export interface Ticket {
   assignee_id?: string | null;
   assignee_name?: string | null;
   asset_id?: string | null;
+  sla_response_due?: string | null;
+  sla_resolution_due?: string | null;
+  first_responded_at?: string | null;
   resolved_at?: string | null;
+  resolution_note?: string | null;
   comment_count: number;
   effort_minutes: number;
   created_at: string;

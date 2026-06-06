@@ -14,6 +14,7 @@ class TaskCreate(BaseModel):
     status: str = "todo"
     priority: str = "normal"
     due_date: date | None = None
+    recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
 
@@ -24,8 +25,43 @@ class TaskUpdate(BaseModel):
     status: str | None = None
     priority: str | None = None
     due_date: date | None = None
+    recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
+
+
+class TaskItemCreate(BaseModel):
+    title: str
+
+
+class TaskItemUpdate(BaseModel):
+    title: str | None = None
+    done: bool | None = None
+
+
+class TaskItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    task_id: uuid.UUID
+    title: str
+    done: bool
+    sort: int
+
+
+class TaskCommentCreate(BaseModel):
+    body: str
+
+
+class TaskCommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    task_id: uuid.UUID
+    author_id: uuid.UUID | None = None
+    author_name: str | None = None
+    body: str
+    created_at: datetime
 
 
 class TaskOut(BaseModel):
@@ -37,6 +73,7 @@ class TaskOut(BaseModel):
     status: str
     priority: str
     due_date: date | None = None
+    recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
     created_by_id: uuid.UUID | None = None
@@ -44,6 +81,14 @@ class TaskOut(BaseModel):
     brand_id: uuid.UUID | None = None
     completed_at: datetime | None = None
     created_at: datetime
+    subtasks_total: int = 0
+    subtasks_done: int = 0
+    comment_count: int = 0
+
+
+class TaskDetail(TaskOut):
+    items: list[TaskItemOut] = []
+    comments: list[TaskCommentOut] = []
 
 
 # ---- Approvals ----
@@ -105,10 +150,12 @@ class TicketUpdate(BaseModel):
     assignee_id: uuid.UUID | None = None
     asset_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
+    resolution_note: str | None = None
 
 
 class TicketCommentCreate(BaseModel):
     body: str
+    is_internal: bool = False
 
 
 class TicketCommentOut(BaseModel):
@@ -119,6 +166,7 @@ class TicketCommentOut(BaseModel):
     author_id: uuid.UUID | None = None
     author_name: str | None = None
     body: str
+    is_internal: bool = False
     created_at: datetime
 
 
@@ -126,6 +174,7 @@ class TicketOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    number: int | None = None
     subject: str
     description: str | None = None
     category: str
@@ -137,7 +186,11 @@ class TicketOut(BaseModel):
     assignee_name: str | None = None
     asset_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
+    sla_response_due: datetime | None = None
+    sla_resolution_due: datetime | None = None
+    first_responded_at: datetime | None = None
     resolved_at: datetime | None = None
+    resolution_note: str | None = None
     comment_count: int = 0
     effort_minutes: int = 0
     created_at: datetime
@@ -145,6 +198,17 @@ class TicketOut(BaseModel):
 
 class TicketDetail(TicketOut):
     comments: list[TicketCommentOut] = []
+
+
+# ---- Activity timeline (shared) ----
+class ActivityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    actor_name: str | None = None
+    action: str
+    summary: str
+    created_at: datetime
 
 
 # ---- Knowledge base ----

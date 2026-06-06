@@ -25,6 +25,8 @@ class Task(UUIDMixin, TimestampMixin, Base):
     # low | normal | high | urgent
     priority: Mapped[str] = mapped_column(String(16), default="normal")
     due_date: Mapped[date | None] = mapped_column(Date)
+    # none | daily | weekly | monthly — when done, the next occurrence is spawned.
+    recurrence: Mapped[str | None] = mapped_column(String(12))
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
     )
@@ -35,6 +37,46 @@ class Task(UUIDMixin, TimestampMixin, Base):
         ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    items: Mapped[list["TaskItem"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskItem.sort.asc()",
+    )
+    comments: Mapped[list["TaskComment"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskComment.created_at.asc()",
+    )
+
+
+class TaskItem(UUIDMixin, TimestampMixin, Base):
+    """A checklist item / subtask within a task."""
+
+    __tablename__ = "task_items"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(512))
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+    task: Mapped["Task"] = relationship(back_populates="items")
+
+
+class TaskComment(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "task_comments"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text)
+
+    task: Mapped["Task"] = relationship(back_populates="comments")
 
 
 # --------------------------------------------------------------------------
@@ -75,6 +117,8 @@ class ApprovalRequest(UUIDMixin, TimestampMixin, Base):
 class Ticket(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "tickets"
 
+    # Human-friendly sequential number shown as #1001 (assigned on creation).
+    number: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     subject: Mapped[str] = mapped_column(String(512))
     description: Mapped[str | None] = mapped_column(Text)
     # it | facilities | hr | finance | other
@@ -95,7 +139,12 @@ class Ticket(UUIDMixin, TimestampMixin, Base):
     brand_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    # SLA targets (computed from priority at creation) and timing milestones.
+    sla_response_due: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sla_resolution_due: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
 
     comments: Mapped[list["TicketComment"]] = relationship(
         back_populates="ticket",
@@ -114,6 +163,8 @@ class TicketComment(UUIDMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text)
+    # Internal notes are visible to agents only, not the requester.
+    is_internal: Mapped[bool] = mapped_column(Boolean, default=False)
 
     ticket: Mapped["Ticket"] = relationship(back_populates="comments")
 
