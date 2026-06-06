@@ -60,11 +60,11 @@
   --brand-950: color-mix(in srgb, var(--accent) 38%, black);
 
   /* Density */
-  --radius: 14px;
+  --radius: 12px;
   --fs: 14px;
-  --card-pad: 18px;
+  --card-pad: 16px;
   --ctl-py: 9px;
-  --row-py: 10px;
+  --row-py: 9px;
 
   /* Font */
   --font-sans: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
@@ -214,7 +214,7 @@
 
   /* ---- Cards & layout ---- */
   .card {
-    @apply rounded-xl shadow-card;
+    @apply rounded-[10px] shadow-card;
     border: 1px solid var(--border);
     background: var(--surface);
     padding: var(--card-pad);
@@ -233,7 +233,7 @@
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   }
   .stat {
-    @apply flex flex-col gap-1 transition-all duration-150;
+    @apply flex min-w-0 flex-col gap-0.5 transition-all duration-150;
   }
   a.stat:hover {
     @apply shadow-soft;
@@ -241,16 +241,22 @@
     border-color: var(--border-strong);
   }
   .stat .value {
-    @apply text-[28px] font-bold -tracking-[0.02em];
+    @apply min-w-0 truncate font-bold leading-none -tracking-[0.02em];
+    /* Scales down on narrow/many-column grids so figures never clip. */
+    font-size: clamp(1.125rem, 0.85rem + 0.8vw, 1.5rem);
+    font-variant-numeric: tabular-nums;
   }
   .stat .label {
-    @apply text-ink-muted;
+    @apply text-[13px] font-medium text-ink-muted;
   }
   .page-head {
-    @apply mb-[18px] flex items-center justify-between gap-3;
+    @apply mb-5 flex items-start justify-between gap-3;
   }
   .page-head h2 {
     @apply m-0;
+  }
+  .page-head .muted {
+    @apply mt-1 text-[13px];
   }
   .spread {
     @apply flex items-center justify-between gap-2.5;
@@ -368,13 +374,15 @@
     padding: var(--row-py) 12px;
   }
   th {
-    @apply text-xs font-semibold uppercase tracking-wide text-ink-muted;
+    @apply text-[11px] font-semibold uppercase tracking-wider text-ink-muted;
+    padding-top: 7px;
+    padding-bottom: 7px;
   }
   tbody tr {
     @apply transition-colors;
   }
   tbody tr:hover {
-    background: var(--surface-2);
+    background: var(--brand-50);
   }
 
   /* ---- Badges ---- */

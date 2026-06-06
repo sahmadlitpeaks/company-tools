@@ -2,11 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Boxes,
-  CheckSquare,
   ChevronDown,
-  Clock3,
   CreditCard,
-  FolderHeart,
   FolderOpen,
   LayoutDashboard,
   LayoutGrid,
@@ -71,9 +68,6 @@ const NAV: NavEntry[] = [
   { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
   { section: "Workplace" },
   { to: "/hub", label: "My Workspace", icon: LayoutGrid },
-  { to: "/my-docs", label: "My Docs", icon: FolderHeart, module: "workspace" },
-  { to: "/work-log", label: "Work Log", icon: Clock3, module: "worklog" },
-  { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks" },
   { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
   { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
   { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
