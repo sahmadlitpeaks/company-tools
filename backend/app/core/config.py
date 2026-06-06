@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     ALLOWED_EMAIL_DOMAINS: str = ""
     # Run the in-process background scheduler (asset warranty/maintenance alerts).
     RUN_SCHEDULER: bool = True
+    # Escape hatch to allow demo-data seeding even in production (default: off).
+    ALLOW_DEMO_SEED: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg://platform:platform@localhost:5432/platform"

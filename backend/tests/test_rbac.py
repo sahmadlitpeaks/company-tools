@@ -227,3 +227,39 @@ async def test_marketing_integrations_config(client, auth):
     mid = await _member_id(client, auth)
     await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
     assert (await client.get("/api/settings/integrations", headers=hdr)).status_code == 403
+
+
+async def test_demo_seed_and_clear(client, auth):
+    st = (await client.get("/api/demo/status", headers=auth)).json()
+    assert st["seeded"] is False and st["allowed"] is True
+
+    seeded = await client.post("/api/demo/seed", headers=auth)
+    assert seeded.status_code == 200 and seeded.json()["records"] > 30
+
+    # Demo content shows up across modules.
+    users = (await client.get("/api/users", headers=auth)).json()
+    assert any(u["department"] == "Marketing" for u in users)
+    assert any(u["status"] == "pending" for u in users)
+    leads = (await client.get("/api/crm/leads", headers=auth)).json()
+    assert len(leads) >= 5
+    tracked = (await client.get("/api/asset-tracker", headers=auth)).json()
+    assert any(t["asset_tag"] == "LAP-001" for t in tracked)
+
+    # Re-seeding is blocked until cleared.
+    assert (await client.post("/api/demo/seed", headers=auth)).status_code == 409
+
+    # Clear removes exactly what was added.
+    cleared = await client.post("/api/demo/clear", headers=auth)
+    assert cleared.status_code == 200 and cleared.json()["removed"] > 30
+    assert (await client.get("/api/demo/status", headers=auth)).json()["seeded"] is False
+    leads_after = (await client.get("/api/crm/leads", headers=auth)).json()
+    assert len(leads_after) == 0
+
+
+async def test_demo_admin_only(client, auth):
+    token = await _member_token(client)
+    hdr = {"Authorization": f"Bearer {token}"}
+    mid = await _member_id(client, auth)
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    assert (await client.get("/api/demo/status", headers=hdr)).status_code == 403
+    assert (await client.post("/api/demo/seed", headers=hdr)).status_code == 403

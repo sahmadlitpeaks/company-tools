@@ -14,6 +14,7 @@ import {
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useApi";
 import MyWork from "../components/MyWork";
+import DemoDataCard from "../components/DemoDataCard";
 import { ErrorState, Loading, MiniBars } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
 import type { AnalyticsOverview } from "../api/types";
@@ -133,6 +134,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <DemoDataCard />
 
       <MyWork />
 
