@@ -20,6 +20,8 @@ import AnnouncementsPage from "./pages/AnnouncementsPage";
 import LeavePage from "./pages/LeavePage";
 import AuditPage from "./pages/AuditPage";
 import PeopleOpsPage from "./pages/PeopleOpsPage";
+import WorkLogPage from "./pages/WorkLogPage";
+import MyDocsPage from "./pages/MyDocsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -115,6 +117,14 @@ export default function App() {
           <Route
             path="/people-ops"
             element={<Protected module="people_ops"><PeopleOpsPage /></Protected>}
+          />
+          <Route
+            path="/work-log"
+            element={<Protected module="worklog"><WorkLogPage /></Protected>}
+          />
+          <Route
+            path="/my-docs"
+            element={<Protected module="workspace"><MyDocsPage /></Protected>}
           />
           <Route
             path="/crm"

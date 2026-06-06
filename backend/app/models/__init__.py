@@ -29,6 +29,8 @@ from app.models.people import (  # noqa: F401
     OnboardingJourney,
     OnboardingTask,
 )
+from app.models.worklog import WorkLog  # noqa: F401
+from app.models.workspace import WorkspaceItem  # noqa: F401
 from app.models.workplace import (  # noqa: F401
     Announcement,
     AnnouncementRead,

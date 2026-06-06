@@ -139,6 +139,7 @@ class TicketOut(BaseModel):
     brand_id: uuid.UUID | None = None
     resolved_at: datetime | None = None
     comment_count: int = 0
+    effort_minutes: int = 0
     created_at: datetime
 
 

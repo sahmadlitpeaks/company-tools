@@ -35,6 +35,8 @@ from app.api import (
     tracker,
     transfers,
     users,
+    worklog,
+    workspace,
 )
 from app.api.qrcodes import scan_redirect
 from app.api.shortener import redirect_short_link
@@ -127,6 +129,8 @@ app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("se
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
 app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))
 app.include_router(people.router, prefix=api_prefix, dependencies=_mod("people_ops"))
+app.include_router(worklog.router, prefix=api_prefix, dependencies=_mod("worklog"))
+app.include_router(workspace.router, prefix=api_prefix, dependencies=_mod("workspace"))
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

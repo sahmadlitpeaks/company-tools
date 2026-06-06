@@ -612,6 +612,7 @@ export interface Ticket {
   asset_id?: string | null;
   resolved_at?: string | null;
   comment_count: number;
+  effort_minutes: number;
   created_at: string;
 }
 
@@ -775,4 +776,44 @@ export interface JourneyDetail extends Journey {
   target?: TargetAccess | null;
   assigned_assets: AssignedAsset[];
   access_grants: AccessGrant[];
+}
+
+// ---- Work log + quick docs ----
+export interface WorkLog {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  work_date: string;
+  minutes: number;
+  description: string;
+  kind: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  entity_label?: string | null;
+  created_at: string;
+}
+
+export interface WorkLogSummary {
+  total_minutes: number;
+  entries: number;
+  by_kind: Record<string, number>;
+  by_day: Record<string, number>;
+  by_user: Record<string, number>;
+}
+
+export interface WorkspaceItem {
+  id: string;
+  owner_id: string;
+  owner_name?: string | null;
+  kind: string;
+  title: string;
+  body?: string | null;
+  url?: string | null;
+  content_type?: string | null;
+  size_bytes: number;
+  tags?: string | null;
+  pinned: boolean;
+  shared: boolean;
+  created_at: string;
+  updated_at: string;
 }

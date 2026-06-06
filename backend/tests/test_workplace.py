@@ -404,3 +404,67 @@ async def test_offboarding_revoke_grant_and_return_asset(client, auth):
     assert not any(a["asset_tag"] == "OB-LAP-2" for a in ret.json()["assigned_assets"])
     tracked = (await client.get(f"/api/asset-tracker/{asset['id']}", headers=auth)).json()
     assert tracked["status"] == "available"
+
+
+# ---- Work log + effort on tickets ----
+async def test_worklog_and_ticket_effort(client, auth):
+    t = (await client.post("/api/tickets", headers=auth, json={"subject": "Build report", "category": "it"})).json()
+    # Log 90 minutes against the ticket + a standalone R&D entry.
+    await client.post("/api/worklogs", headers=auth, json={"minutes": 90, "description": "Wrote the query", "kind": "ticket", "entity_type": "ticket", "entity_id": t["id"]})
+    await client.post("/api/worklogs", headers=auth, json={"minutes": 60, "description": "R&D on charts", "kind": "rnd"})
+
+    # Ticket now shows effort.
+    detail = (await client.get(f"/api/tickets/{t['id']}", headers=auth)).json()
+    assert detail["effort_minutes"] == 90
+    listing = (await client.get("/api/tickets", headers=auth)).json()
+    assert next(x for x in listing if x["id"] == t["id"])["effort_minutes"] == 90
+
+    # My worklog + summary.
+    mine = (await client.get("/api/worklogs?scope=mine", headers=auth)).json()
+    assert len(mine) == 2
+    rnd = next(lg for lg in mine if lg["kind"] == "rnd")
+    assert rnd["description"] == "R&D on charts"
+    s = (await client.get("/api/worklogs/summary", headers=auth)).json()
+    assert s["total_minutes"] == 150 and s["by_kind"]["rnd"] == 60
+
+    # The ticket-linked entry resolves a label.
+    linked = next(lg for lg in mine if lg["entity_type"] == "ticket")
+    assert linked["entity_label"] == "Build report"
+
+
+async def test_worklog_gated(client, auth):
+    hdr, uid = await _member(client, auth, email="logger@agholding.net")
+    await client.patch(f"/api/users/{uid}", headers=auth, json={"permissions": ["dashboard"]})
+    assert (await client.get("/api/worklogs", headers=hdr)).status_code == 403
+
+
+# ---- My Docs (workspace) ----
+async def test_workspace_quick_docs(client, auth):
+    # A link (e.g. OneDrive) + a note, one pinned.
+    link = await client.post("/api/workspace", headers=auth, json={"kind": "link", "title": "Q2 Plan", "url": "https://onedrive/x", "pinned": True, "tags": "plan"})
+    assert link.status_code == 201
+    await client.post("/api/workspace", headers=auth, json={"kind": "note", "title": "Server creds note", "body": "see vault"})
+    # A file upload.
+    up = await client.post("/api/workspace/upload", headers=auth, files={"file": ("spec.txt", b"hello", "text/plain")}, data={"title": "Spec", "shared": "true"})
+    assert up.status_code == 201 and up.json()["kind"] == "file"
+
+    items = (await client.get("/api/workspace", headers=auth)).json()
+    assert len(items) == 3 and items[0]["pinned"] is True  # pinned first
+
+    found = (await client.get("/api/workspace?q=onedrive", headers=auth)).json()
+    # search matches title/body/tags, not url -> 'plan' tag matches 'plan' not onedrive; check tag search
+    tagged = (await client.get("/api/workspace?q=plan", headers=auth)).json()
+    assert any(i["title"] == "Q2 Plan" for i in tagged)
+
+    dl = await client.get(f"/api/workspace/{up.json()['id']}/download", headers=auth)
+    assert dl.status_code == 200 and dl.content == b"hello"
+
+
+async def test_workspace_shared_visible_to_others(client, auth):
+    hdr, uid = await _member(client, auth, email="viewer@agholding.net")
+    # Admin shares a doc; member sees it; private one stays hidden.
+    await client.post("/api/workspace", headers=auth, json={"kind": "link", "title": "Shared SOP", "url": "http://x", "shared": True})
+    await client.post("/api/workspace", headers=auth, json={"kind": "note", "title": "Private admin note"})
+    seen = (await client.get("/api/workspace", headers=hdr)).json()
+    titles = {i["title"] for i in seen}
+    assert "Shared SOP" in titles and "Private admin note" not in titles

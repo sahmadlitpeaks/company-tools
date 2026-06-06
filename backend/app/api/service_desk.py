@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
+from app.models.worklog import WorkLog
 from app.models.workplace import Ticket, TicketComment
 from app.schemas.workplace import (
     TicketCommentCreate,
@@ -46,11 +47,25 @@ async def _counts(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, int]
     return {r[0]: int(r[1]) for r in rows}
 
 
-def _serialize(t: Ticket, names: dict, counts: dict) -> TicketOut:
+async def _effort(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(WorkLog.entity_id, func.coalesce(func.sum(WorkLog.minutes), 0))
+            .where(WorkLog.entity_type == "ticket", WorkLog.entity_id.in_(ids))
+            .group_by(WorkLog.entity_id)
+        )
+    ).all()
+    return {r[0]: int(r[1]) for r in rows}
+
+
+def _serialize(t: Ticket, names: dict, counts: dict, effort: dict | None = None) -> TicketOut:
     out = TicketOut.model_validate(t)
     out.requester_name = names.get(t.requester_id) if t.requester_id else None
     out.assignee_name = names.get(t.assignee_id) if t.assignee_id else None
     out.comment_count = counts.get(t.id, 0)
+    out.effort_minutes = (effort or {}).get(t.id, 0)
     return out
 
 
@@ -79,7 +94,8 @@ async def list_tickets(
         db, {t.requester_id for t in tickets} | {t.assignee_id for t in tickets}
     )
     counts = await _counts(db, {t.id for t in tickets})
-    return [_serialize(t, names, counts) for t in tickets]
+    effort = await _effort(db, {t.id for t in tickets})
+    return [_serialize(t, names, counts, effort) for t in tickets]
 
 
 @router.post("", response_model=TicketOut, status_code=201)
@@ -145,6 +161,7 @@ async def get_ticket(
     detail.requester_name = names.get(ticket.requester_id) if ticket.requester_id else None
     detail.assignee_name = names.get(ticket.assignee_id) if ticket.assignee_id else None
     detail.comment_count = len(ticket.comments)
+    detail.effort_minutes = (await _effort(db, {ticket.id})).get(ticket.id, 0)
     detail.comments = []
     for c in ticket.comments:
         co = TicketCommentOut.model_validate(c)

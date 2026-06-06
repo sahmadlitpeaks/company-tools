@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { MessageSquare, Plus, Send } from "lucide-react";
+import { Clock, MessageSquare, Plus, Send } from "lucide-react";
 import { api } from "../api/client";
-import type { Ticket, TicketDetail, User } from "../api/types";
+import type { Ticket, TicketDetail, User, WorkLog } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import Attachments from "../components/Attachments";
+import { hm } from "./WorkLogPage";
 
 const CATEGORIES = ["it", "facilities", "hr", "finance", "other"];
 const STATUSES = ["open", "in_progress", "resolved", "closed"];
@@ -276,6 +277,8 @@ function TicketDetailModal({
             <Attachments entityType="ticket" entityId={id} />
           </div>
 
+          <TicketEffort ticketId={id} initial={t.effort_minutes} onLogged={detail.reload} />
+
           <h4 className="mb-2">Conversation</h4>
           <div className="mb-3 flex flex-col gap-2" style={{ maxHeight: 240, overflow: "auto" }}>
             {t.comments.length === 0 && <p className="muted text-sm">No replies yet.</p>}
@@ -305,5 +308,76 @@ function TicketDetailModal({
         </>
       )}
     </Modal>
+  );
+}
+
+function TicketEffort({
+  ticketId,
+  initial,
+  onLogged,
+}: {
+  ticketId: string;
+  initial: number;
+  onLogged: () => void;
+}) {
+  const { notify } = useToast();
+  const logs = useFetch<WorkLog[]>(`/api/worklogs?entity_type=ticket&entity_id=${ticketId}`);
+  const [minutes, setMinutes] = useState("30");
+  const [note, setNote] = useState("");
+
+  async function log() {
+    if (!note.trim()) return;
+    await api("/api/worklogs", {
+      method: "POST",
+      body: {
+        minutes: Number(minutes) || 0,
+        description: note,
+        kind: "ticket",
+        entity_type: "ticket",
+        entity_id: ticketId,
+      },
+    });
+    setNote("");
+    setMinutes("30");
+    notify("Effort logged.");
+    logs.reload();
+    onLogged();
+  }
+
+  const total = (logs.data ?? []).reduce((s, l) => s + l.minutes, 0) || initial;
+
+  return (
+    <div className="mb-3">
+      <div className="spread mb-2">
+        <h4 className="m-0 inline-flex items-center gap-1.5">
+          <Clock size={15} /> Effort
+        </h4>
+        <span className="badge blue">{hm(total)}</span>
+      </div>
+      {(logs.data?.length ?? 0) > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {logs.data!.map((l) => (
+            <div key={l.id} className="flex items-center justify-between gap-2 text-sm">
+              <span className="truncate">
+                <span className="font-medium">{l.user_name}</span>
+                <span className="muted"> · {l.description}</span>
+              </span>
+              <span className="muted flex-none whitespace-nowrap">{hm(l.minutes)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="field" style={{ marginBottom: 0, flex: 4 }}>
+          <input placeholder="What did you do?" value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+        <div className="field" style={{ marginBottom: 0, width: 90 }}>
+          <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} title="Minutes" />
+        </div>
+        <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={log}>
+          <Clock size={14} /> Log
+        </button>
+      </div>
+    </div>
   );
 }
