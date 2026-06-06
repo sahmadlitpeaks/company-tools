@@ -195,3 +195,35 @@ async def test_sync_endpoints_report_not_configured(client, auth):
     assert bamboo.status_code == 400 and "BambooHR" in bamboo.json()["detail"]
     # BambooHR settings are admin-managed.
     assert (await client.get("/api/settings/bamboo", headers=auth)).status_code == 200
+
+
+async def test_marketing_integrations_config(client, auth):
+    items = (await client.get("/api/settings/integrations", headers=auth)).json()
+    providers = {i["provider"] for i in items}
+    assert {"facebook", "google_ads", "tiktok", "instagram"} <= providers
+    fb = next(i for i in items if i["provider"] == "facebook")
+    assert fb["configured"] is False
+
+    # Save Facebook creds; secret is stored but never returned.
+    saved = await client.put(
+        "/api/settings/integrations/facebook",
+        headers=auth,
+        json={"values": {"ad_account_id": "act_123", "access_token": "SECRET-TOKEN"}},
+    )
+    assert saved.status_code == 200
+    fb2 = next(i for i in saved.json() if i["provider"] == "facebook")
+    assert fb2["configured"] is True
+    tok_field = next(f for f in fb2["fields"] if f["key"] == "access_token")
+    assert tok_field["is_set"] is True and tok_field["value"] is None  # secret masked
+    acct_field = next(f for f in fb2["fields"] if f["key"] == "ad_account_id")
+    assert acct_field["value"] == "act_123"
+
+    # Unknown provider -> 404.
+    assert (await client.put("/api/settings/integrations/myspace", headers=auth, json={"values": {}})).status_code == 404
+
+    # Admin-only.
+    token = await _member_token(client)
+    hdr = {"Authorization": f"Bearer {token}"}
+    mid = await _member_id(client, auth)
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    assert (await client.get("/api/settings/integrations", headers=hdr)).status_code == 403

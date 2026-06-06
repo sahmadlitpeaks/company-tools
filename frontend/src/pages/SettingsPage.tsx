@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ListSkeleton, PageHead, useToast } from "../components/ui";
 import AppearanceControls from "../theme/AppearanceControls";
+import IntegrationsSettings from "../components/IntegrationsSettings";
 import { DEFAULT_APPEARANCE, type Appearance } from "../theme/ThemeContext";
 
 interface AzureStatus {
@@ -297,6 +298,8 @@ export default function SettingsPage() {
               {savingBamboo ? "Saving…" : "Save BambooHR"}
             </button>
           </div>
+
+          <IntegrationsSettings />
 
           <div className="card bg-gradient-to-br from-slate-50 to-white">
             <h3 className="mt-0">Setup guide</h3>

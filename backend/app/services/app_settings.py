@@ -93,6 +93,124 @@ async def get_bamboo_config(db: AsyncSession) -> dict:
     }
 
 
+# --------------------------------------------------------------------------
+# Generic third-party integrations (ad channels, etc.) — admin-configurable.
+# Secret fields are encrypted at rest; the "primary" field decides "configured".
+# --------------------------------------------------------------------------
+INTEGRATIONS: dict[str, dict] = {
+    "facebook": {
+        "label": "Facebook / Meta Ads",
+        "fields": [
+            {"key": "ad_account_id", "label": "Ad account ID", "secret": False},
+            {"key": "access_token", "label": "Access token", "secret": True, "primary": True},
+        ],
+    },
+    "instagram": {
+        "label": "Instagram",
+        "fields": [
+            {"key": "ig_account_id", "label": "Instagram account ID", "secret": False},
+            {"key": "access_token", "label": "Access token", "secret": True, "primary": True},
+        ],
+    },
+    "google_ads": {
+        "label": "Google Ads",
+        "fields": [
+            {"key": "customer_id", "label": "Customer ID", "secret": False},
+            {"key": "developer_token", "label": "Developer token", "secret": True, "primary": True},
+            {"key": "client_id", "label": "OAuth client ID", "secret": False},
+            {"key": "client_secret", "label": "OAuth client secret", "secret": True},
+            {"key": "refresh_token", "label": "Refresh token", "secret": True},
+        ],
+    },
+    "tiktok": {
+        "label": "TikTok Ads",
+        "fields": [
+            {"key": "advertiser_id", "label": "Advertiser ID", "secret": False},
+            {"key": "access_token", "label": "Access token", "secret": True, "primary": True},
+        ],
+    },
+}
+
+
+def _ikey(provider: str, field: str) -> str:
+    return f"integration_{provider}_{field}"
+
+
+async def get_integration(db: AsyncSession, provider: str) -> dict | None:
+    """Return a provider's stored values (secrets decrypted) + configured flag."""
+    spec = INTEGRATIONS.get(provider)
+    if not spec:
+        return None
+    stored = await get_all(db)
+    values: dict[str, str | None] = {}
+    primary_set = False
+    any_primary = False
+    for f in spec["fields"]:
+        raw = stored.get(_ikey(provider, f["key"]))
+        val = decrypt(raw) if (raw and f["secret"]) else raw
+        values[f["key"]] = val or None
+        if f.get("primary"):
+            any_primary = True
+            primary_set = bool(val)
+    return {
+        "provider": provider,
+        "label": spec["label"],
+        "values": values,
+        "configured": primary_set if any_primary else any(values.values()),
+    }
+
+
+async def integrations_status(db: AsyncSession) -> list[dict]:
+    """Catalogue + status for the admin UI (secrets never returned, only set/not)."""
+    stored = await get_all(db)
+    out = []
+    for provider, spec in INTEGRATIONS.items():
+        fields = []
+        configured = False
+        any_primary = False
+        for f in spec["fields"]:
+            raw = stored.get(_ikey(provider, f["key"]))
+            is_set = bool(raw)
+            fields.append(
+                {
+                    "key": f["key"],
+                    "label": f["label"],
+                    "secret": f["secret"],
+                    # Non-secret values are shown; secrets only report whether set.
+                    "value": (None if f["secret"] else raw),
+                    "is_set": is_set,
+                }
+            )
+            if f.get("primary"):
+                any_primary = True
+                configured = is_set
+        if not any_primary:
+            configured = any(stored.get(_ikey(provider, f["key"])) for f in spec["fields"])
+        out.append(
+            {"provider": provider, "label": spec["label"], "configured": configured, "fields": fields}
+        )
+    return out
+
+
+async def set_integration(db: AsyncSession, provider: str, values: dict) -> None:
+    """Persist provided fields; blank secret fields keep the existing value."""
+    spec = INTEGRATIONS.get(provider)
+    if not spec:
+        raise KeyError(provider)
+    to_save: dict[str, str | None] = {}
+    for f in spec["fields"]:
+        if f["key"] not in values:
+            continue
+        v = (values.get(f["key"]) or "").strip()
+        if f["secret"]:
+            if v:  # only overwrite a secret when a new value is supplied
+                to_save[_ikey(provider, f["key"])] = encrypt(v)
+        else:
+            to_save[_ikey(provider, f["key"])] = v or None
+    if to_save:
+        await set_many(db, to_save)
+
+
 async def get_appearance(db: AsyncSession) -> dict:
     stored = await get_all(db)
     result = dict(APPEARANCE_DEFAULT)

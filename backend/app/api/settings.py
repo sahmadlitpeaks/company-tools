@@ -12,6 +12,8 @@ from app.services.app_settings import (
     get_appearance,
     get_azure_config,
     get_bamboo_config,
+    integrations_status,
+    set_integration,
     set_many,
 )
 
@@ -90,6 +92,32 @@ async def put_bamboo(
     await set_many(db, values)
     cfg = await get_bamboo_config(db)
     return {"configured": cfg["configured"]}
+
+
+class IntegrationIn(BaseModel):
+    values: dict[str, str | None] = {}
+
+
+@router.get("/integrations")
+async def get_integrations(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    """Catalogue + status of third-party integrations (secrets never returned)."""
+    return await integrations_status(db)
+
+
+@router.put("/integrations/{provider}")
+async def put_integration(
+    provider: str,
+    payload: IntegrationIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    try:
+        await set_integration(db, provider, payload.values)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown integration")
+    return await integrations_status(db)
 
 
 @router.get("/security")
