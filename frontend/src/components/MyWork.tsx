@@ -4,23 +4,34 @@ import {
   CheckSquare,
   LifeBuoy,
   Stamp,
+  UserCheck,
 } from "lucide-react";
+import { api } from "../api/client";
 import type { WorkSummary } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
+import { useToast } from "./ui";
 
 /** Personal "what needs me today" panel shown at the top of the dashboard. */
 export default function MyWork() {
   const { can } = useAuth();
-  const { data } = useFetch<WorkSummary>("/api/me/work");
+  const { notify } = useToast();
+  const { data, reload } = useFetch<WorkSummary>("/api/me/work");
   if (!data) return null;
+
+  async function completeOnboarding(id: string) {
+    await api(`/api/me/onboarding-tasks/${id}/done`, { method: "POST" });
+    notify("Marked done.");
+    reload();
+  }
 
   const nothing =
     data.tasks_open === 0 &&
     data.approvals_pending === 0 &&
     data.approvals_to_review === 0 &&
     data.tickets_open === 0 &&
-    data.tickets_assigned === 0;
+    data.tickets_assigned === 0 &&
+    data.onboarding_open === 0;
 
   return (
     <div className="mb-5">
@@ -97,6 +108,31 @@ export default function MyWork() {
                 <Row key={t.id} label={t.subject} meta={`${t.category} · ${t.status.replace("_", " ")}`} />
               ))}
             </Panel>
+          )}
+          {data.my_onboarding_tasks.length > 0 && (
+            <div className="card">
+              <div className="spread mb-2">
+                <h4 className="m-0 inline-flex items-center gap-1.5">
+                  <UserCheck size={15} /> My onboarding actions
+                </h4>
+              </div>
+              <div className="flex flex-col">
+                {data.my_onboarding_tasks.slice(0, 6).map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2 last:border-0"
+                  >
+                    <span className="truncate text-sm font-medium">{t.title}</span>
+                    <button
+                      className="btn-sm btn-primary inline-flex flex-none items-center gap-1"
+                      onClick={() => completeOnboarding(t.id)}
+                    >
+                      <CheckSquare size={13} /> Done
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

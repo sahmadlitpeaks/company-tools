@@ -28,6 +28,7 @@ MODULES: list[tuple[str, str]] = [
     ("service_desk", "Service Desk"),
     ("knowledge", "Knowledge Base"),
     ("announcements", "Announcements"),
+    ("people_ops", "Onboarding & Offboarding"),
     ("qrcodes", "QR Codes"),
     ("landing_pages", "Landing Pages"),
     ("signatures", "Email Signatures"),

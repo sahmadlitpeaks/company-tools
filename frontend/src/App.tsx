@@ -19,6 +19,7 @@ import KnowledgePage from "./pages/KnowledgePage";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
 import LeavePage from "./pages/LeavePage";
 import AuditPage from "./pages/AuditPage";
+import PeopleOpsPage from "./pages/PeopleOpsPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -110,6 +111,10 @@ export default function App() {
           <Route
             path="/announcements"
             element={<Protected module="announcements"><AnnouncementsPage /></Protected>}
+          />
+          <Route
+            path="/people-ops"
+            element={<Protected module="people_ops"><PeopleOpsPage /></Protected>}
           />
           <Route
             path="/crm"

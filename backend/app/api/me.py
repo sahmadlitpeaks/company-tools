@@ -3,17 +3,20 @@
 Open to any active user; it only ever returns the caller's own items, so it is
 not module-gated (a user without a given module simply sees nothing there).
 """
-from datetime import date
+import uuid
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.approvals import _serialize as ser_approval
+from app.api.people import _maybe_complete, _task_out
 from app.api.tasks import _serialize as ser_task
 from app.api.service_desk import _serialize as ser_ticket
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.models.people import OnboardingJourney, OnboardingTask
 from app.models.user import User
 from app.models.workplace import (
     Announcement,
@@ -171,4 +174,40 @@ async def my_work(
     )
     out.announcements_unread = max(published - read, 0)
 
+    # --- Onboarding/offboarding actions assigned to me (pending) ---
+    ob_tasks = (
+        await db.execute(
+            select(OnboardingTask)
+            .join(OnboardingJourney, OnboardingTask.journey_id == OnboardingJourney.id)
+            .where(
+                OnboardingTask.owner_id == user.id,
+                OnboardingTask.status == "pending",
+                OnboardingJourney.status == "in_progress",
+            )
+            .order_by(OnboardingTask.sort.asc())
+        )
+    ).scalars().all()
+    out.onboarding_open = len(ob_tasks)
+    onames = await user_names(db, {t.owner_id for t in ob_tasks})
+    out.my_onboarding_tasks = [_task_out(t, onames) for t in ob_tasks]
+
     return out
+
+
+@router.post("/onboarding-tasks/{task_id}/done", response_model=dict)
+async def complete_onboarding_task(
+    task_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Let an assigned owner tick off their checklist item from My Work,
+    without needing access to the full People-ops module."""
+    task = await db.get(OnboardingTask, task_id)
+    if not task or task.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.status = "done"
+    task.done_by_id = user.id
+    task.done_at = datetime.now(timezone.utc)
+    await _maybe_complete(db, task.journey_id, user)
+    await db.commit()
+    return {"ok": True}

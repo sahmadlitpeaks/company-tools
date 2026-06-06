@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.people import JourneyTaskOut
+
 
 # ---- Tasks ----
 class TaskCreate(BaseModel):
@@ -204,10 +206,12 @@ class WorkSummary(BaseModel):
     tickets_open: int = 0
     tickets_assigned: int = 0
     announcements_unread: int = 0
+    onboarding_open: int = 0
     my_tasks: list[TaskOut] = []
     my_approvals: list[ApprovalOut] = []
     review_approvals: list[ApprovalOut] = []
     my_tickets: list[TicketOut] = []
+    my_onboarding_tasks: list[JourneyTaskOut] = []
 
 
 class AttachmentOut(BaseModel):

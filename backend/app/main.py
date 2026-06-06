@@ -22,6 +22,7 @@ from app.api import (
     landing,
     leave,
     me as me_api,
+    people,
     notifications,
     products,
     qrcodes,
@@ -125,6 +126,7 @@ app.include_router(leave.router, prefix=api_prefix, dependencies=_mod("approvals
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
 app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))
+app.include_router(people.router, prefix=api_prefix, dependencies=_mod("people_ops"))
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

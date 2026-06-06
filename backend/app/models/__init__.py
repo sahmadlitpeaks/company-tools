@@ -24,6 +24,7 @@ from app.models.tracked_asset import (  # noqa: F401
 from app.models.activity import ActivityLog  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.docversion import DocVersion  # noqa: F401
+from app.models.people import OnboardingJourney, OnboardingTask  # noqa: F401
 from app.models.workplace import (  # noqa: F401
     Announcement,
     AnnouncementRead,

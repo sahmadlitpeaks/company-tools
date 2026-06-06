@@ -648,6 +648,8 @@ export interface WorkSummary {
   my_approvals: Approval[];
   review_approvals: Approval[];
   my_tickets: Ticket[];
+  onboarding_open: number;
+  my_onboarding_tasks: JourneyTask[];
 }
 
 export interface Attachment {
@@ -706,4 +708,56 @@ export interface AuditPage {
   actions: string[];
   entity_types: string[];
   has_more: boolean;
+}
+
+// ---- People ops (onboarding / offboarding) ----
+export interface JourneyTask {
+  id: string;
+  journey_id: string;
+  title: string;
+  category: string;
+  status: string;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  done_by_id?: string | null;
+  done_by_name?: string | null;
+  done_at?: string | null;
+  sort: number;
+}
+
+export interface TargetAccess {
+  id: string;
+  name?: string | null;
+  email: string;
+  status: string;
+  role: string;
+  is_admin: boolean;
+  effective_permissions: string[];
+}
+
+export interface AssignedAsset {
+  id: string;
+  asset_tag: string;
+  name: string;
+}
+
+export interface Journey {
+  id: string;
+  kind: string;
+  status: string;
+  note?: string | null;
+  target_user_id?: string | null;
+  target_name?: string | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  total_tasks: number;
+  done_tasks: number;
+}
+
+export interface JourneyDetail extends Journey {
+  tasks: JourneyTask[];
+  target?: TargetAccess | null;
+  assigned_assets: AssignedAsset[];
 }

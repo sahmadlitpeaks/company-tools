@@ -257,3 +257,71 @@ async def test_leave_balance(client, auth):
     # whos-out window (depends on current date; just ensure it returns a list).
     out = await client.get("/api/leave/whos-out?days=400", headers=auth)
     assert out.status_code == 200 and isinstance(out.json(), list)
+
+
+# ---- People ops: onboarding / offboarding ----
+async def test_onboarding_journey(client, auth):
+    hdr, uid = await _member(client, auth, email="newhire@agholding.net")
+    # HR starts onboarding for the new hire, announcing it.
+    j = await client.post(
+        "/api/people/journeys",
+        headers=auth,
+        json={"kind": "onboarding", "target_user_id": uid, "announce": True},
+    )
+    assert j.status_code == 201
+    jid = j.json()["id"]
+    assert j.json()["total_tasks"] >= 1
+
+    # Announcement was posted to the channel.
+    feed = (await client.get("/api/announcements", headers=auth)).json()
+    assert any("newhire" in (a["title"].lower()) or "welcome" in a["title"].lower() for a in feed)
+
+    # Detail shows the target's access summary + checklist.
+    detail = (await client.get(f"/api/people/journeys/{jid}", headers=auth)).json()
+    assert detail["target"]["email"] == "newhire@agholding.net"
+    assert detail["target"]["status"] == "active"
+    assert len(detail["tasks"]) == detail["total_tasks"]
+
+    # Assign a checklist item to the new hire and complete the rest as HR.
+    first = detail["tasks"][0]["id"]
+    await client.patch(f"/api/people/tasks/{first}", headers=auth, json={"owner_id": uid})
+    # New hire sees it in My Work and can tick it off without the module.
+    work = (await client.get("/api/me/work", headers=hdr)).json()
+    assert work["onboarding_open"] >= 1
+    done = await client.post(f"/api/me/onboarding-tasks/{first}/done", headers=hdr)
+    assert done.status_code == 200
+
+
+async def test_offboarding_revokes_access(client, auth):
+    hdr, uid = await _member(client, auth, email="leaver@agholding.net")
+    j = (await client.post(
+        "/api/people/journeys",
+        headers=auth,
+        json={"kind": "offboarding", "target_user_id": uid},
+    )).json()
+    # Admin revokes the leaver's access from the journey.
+    res = await client.post(
+        f"/api/people/journeys/{j['id']}/access", headers=auth, json={"action": "revoke_access"}
+    )
+    assert res.status_code == 200 and res.json()["target"]["status"] == "disabled"
+    # The disabled user can no longer use the app.
+    assert (await client.get("/api/auth/me", headers=hdr)).status_code == 403
+
+
+async def test_people_ops_is_gated(client, auth):
+    hdr, uid = await _member(client, auth, email="rep@agholding.net")
+    # Member (no people_ops) can't browse journeys.
+    assert (await client.get("/api/people/journeys", headers=hdr)).status_code == 403
+
+
+async def test_journey_autocompletes(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    j = (await client.post(
+        "/api/people/journeys", headers=auth,
+        json={"kind": "onboarding", "target_user_id": me["id"]},
+    )).json()
+    detail = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
+    for t in detail["tasks"]:
+        await client.patch(f"/api/people/tasks/{t['id']}", headers=auth, json={"status": "done"})
+    after = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
+    assert after["status"] == "completed"
