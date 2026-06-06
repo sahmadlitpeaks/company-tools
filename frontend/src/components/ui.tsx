@@ -347,6 +347,34 @@ export function PageHead({
   );
 }
 
+export type Metric = { value: ReactNode; label: string; sub?: string };
+
+/** A single dashboard metric bar: equal columns with hairline dividers that
+ * wrap cleanly and never clip the figures (unlike cramped individual cards). */
+export function MetricStrip({ items }: { items: Metric[] }) {
+  return (
+    <div className="card overflow-hidden !p-0">
+      <div
+        className="grid gap-px"
+        style={{
+          background: "var(--border)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+        }}
+      >
+        {items.map((it, i) => (
+          <div key={i} className="flex flex-col gap-1 bg-[var(--surface)] px-4 py-3.5">
+            <div className="text-xl font-bold leading-none -tracking-[0.02em] [font-variant-numeric:tabular-nums]">
+              {it.value}
+            </div>
+            <div className="text-[12px] font-medium text-ink-muted">{it.label}</div>
+            {it.sub && <div className="text-[11px] text-ink-muted/80">{it.sub}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Loading() {
   return <div className="empty">Loading…</div>;
 }

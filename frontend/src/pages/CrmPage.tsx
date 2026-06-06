@@ -7,6 +7,7 @@ import {
   Empty,
   ErrorState,
   ListSkeleton,
+  MetricStrip,
   Modal,
   PageHead,
   useToast,
@@ -28,15 +29,6 @@ function money(v?: string | null): string {
   return Number.isNaN(n)
     ? String(v)
     : n.toLocaleString(undefined, { style: "currency", currency: "AED" });
-}
-
-function Stat({ value, label }: { value: React.ReactNode; label: string }) {
-  return (
-    <div className="card stat">
-      <div className="value">{value}</div>
-      <div className="label">{label}</div>
-    </div>
-  );
 }
 
 function LeadModal({
@@ -268,11 +260,15 @@ export default function CrmPage() {
         }
       />
 
-      <div className="grid cols-4" style={{ marginBottom: 18 }}>
-        <Stat value={summary.data?.total ?? "—"} label="Total leads" />
-        <Stat value={summary.data?.by_status?.new ?? 0} label="New" />
-        <Stat value={summary.data ? money(summary.data.open_value) : "—"} label="Open pipeline" />
-        <Stat value={summary.data ? money(summary.data.won_value) : "—"} label="Won value" />
+      <div style={{ marginBottom: 18 }}>
+        <MetricStrip
+          items={[
+            { value: summary.data?.total ?? "—", label: "Total leads" },
+            { value: summary.data?.by_status?.new ?? 0, label: "New" },
+            { value: summary.data ? money(summary.data.open_value) : "—", label: "Open pipeline" },
+            { value: summary.data ? money(summary.data.won_value) : "—", label: "Won value" },
+          ]}
+        />
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>

@@ -13,6 +13,7 @@ import {
   Empty,
   ErrorState,
   ListSkeleton,
+  MetricStrip,
   MiniBars,
   Modal,
   PageHead,
@@ -37,16 +38,6 @@ const STATUS_BADGE: Record<string, string> = {
 const money = (v: string | number) =>
   Number(v).toLocaleString(undefined, { style: "currency", currency: "AED", maximumFractionDigits: 0 });
 const num = (v: number) => v.toLocaleString();
-
-function Stat({ value, label, sub }: { value: React.ReactNode; label: string; sub?: string }) {
-  return (
-    <div className="card stat">
-      <div className="value">{value}</div>
-      <div className="label">{label}</div>
-      {sub && <div className="text-xs text-ink-muted">{sub}</div>}
-    </div>
-  );
-}
 
 function ChannelTable({ rows }: { rows: (CampaignKpis & { channel: string })[] }) {
   if (rows.length === 0) return <Empty message="No channel data yet." />;
@@ -157,13 +148,15 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
         <ListSkeleton rows={4} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <Stat value={money(k.spend)} label="Spend" />
-            <Stat value={num(k.impressions)} label="Impressions" />
-            <Stat value={`${k.ctr}%`} label="CTR" sub={`${num(k.clicks)} clicks`} />
-            <Stat value={num(k.conversions)} label="Conversions" sub={`CPA ${money(k.cpa)}`} />
-            <Stat value={`${k.roas}×`} label="ROAS" sub={money(k.revenue)} />
-          </div>
+          <MetricStrip
+            items={[
+              { value: money(k.spend), label: "Spend" },
+              { value: num(k.impressions), label: "Impressions" },
+              { value: `${k.ctr}%`, label: "CTR", sub: `${num(k.clicks)} clicks` },
+              { value: num(k.conversions), label: "Conversions", sub: `CPA ${money(k.cpa)}` },
+              { value: `${k.roas}×`, label: "ROAS", sub: money(k.revenue) },
+            ]}
+          />
 
           {bd.data!.series.length > 0 && (
             <div className="card mt-4">
@@ -297,14 +290,16 @@ export default function CampaignsPage() {
         <ListSkeleton rows={3} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat value={money(t.spend)} label="Total spend" />
-            <Stat value={num(t.impressions)} label="Impressions" />
-            <Stat value={num(t.clicks)} label="Clicks" sub={`${t.ctr}% CTR`} />
-            <Stat value={num(t.conversions)} label="Conversions" sub={`CPA ${money(t.cpa)}`} />
-            <Stat value={money(t.revenue)} label="Revenue" />
-            <Stat value={`${t.roas}×`} label="ROAS" />
-          </div>
+          <MetricStrip
+            items={[
+              { value: money(t.spend), label: "Total spend" },
+              { value: num(t.impressions), label: "Impressions" },
+              { value: num(t.clicks), label: "Clicks", sub: `${t.ctr}% CTR` },
+              { value: num(t.conversions), label: "Conversions", sub: `CPA ${money(t.cpa)}` },
+              { value: money(t.revenue), label: "Revenue" },
+              { value: `${t.roas}×`, label: "ROAS" },
+            ]}
+          />
 
           <div className="card mt-4">
             <h3 className="mt-0">Performance by channel</h3>
