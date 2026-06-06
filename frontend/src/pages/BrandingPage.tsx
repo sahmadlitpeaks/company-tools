@@ -421,25 +421,38 @@ export default function BrandingPage() {
       ) : brands.length === 0 ? (
         <Empty icon="🏢" message="No brands yet" hint="Create your first company brand to get started." />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[210px_1fr]">
-          <div className="card !p-2">
-            {brands.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => setSelectedId(b.id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg border-0 px-3 py-2.5 text-left ${
-                  b.id === selectedId ? "bg-brand-50" : "bg-transparent hover:bg-slate-50"
-                }`}
-              >
-                {b.logo_url ? (
-                  <img src={b.logo_url} alt="" className="h-6 w-6 flex-none rounded object-contain" />
-                ) : (
-                  <span className="h-5 w-5 flex-none rounded-full ring-1 ring-black/10" style={{ background: b.primary_color }} />
-                )}
-                <span className="flex-1 truncate font-semibold">{b.name}</span>
-                {b.is_default && <span className="badge">default</span>}
-              </button>
-            ))}
+        <div className="space-y-4">
+          {/* Brand selector */}
+          <div className="flex flex-wrap gap-2">
+            {brands.map((b) => {
+              const active = b.id === selectedId;
+              return (
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedId(b.id)}
+                  className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                    active
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-[var(--border)] bg-white text-ink hover:border-brand-400"
+                  }`}
+                >
+                  {b.logo_url ? (
+                    <img src={b.logo_url} alt="" className="h-5 w-5 flex-none rounded bg-white object-contain" />
+                  ) : (
+                    <span
+                      className="h-3.5 w-3.5 flex-none rounded-full ring-1 ring-black/10"
+                      style={{ background: b.primary_color }}
+                    />
+                  )}
+                  <span className="truncate">{b.name}</span>
+                  {b.is_default && (
+                    <span className={`text-[10px] font-medium ${active ? "text-white/70" : "text-ink-muted"}`}>
+                      default
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {selected ? (

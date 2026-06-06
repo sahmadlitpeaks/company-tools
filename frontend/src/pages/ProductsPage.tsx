@@ -229,23 +229,32 @@ export default function ProductsPage() {
           }
         />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[210px_1fr]">
-          {/* Product list */}
-          <div className="card !p-2">
-            {data.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedId(p.id)}
-                className={`flex w-full flex-col items-start gap-0.5 rounded-lg border-0 px-3 py-2.5 text-left ${
-                  p.id === selectedId
-                    ? "bg-brand-50 text-brand-800"
-                    : "bg-transparent hover:bg-slate-50"
-                }`}
-              >
-                <span className="font-semibold">{p.name}</span>
-                {p.sku && <span className="text-xs text-ink-muted">SKU: {p.sku}</span>}
-              </button>
-            ))}
+        <div className="space-y-4">
+          {/* Product selector */}
+          <div className="flex flex-wrap gap-2">
+            {data.map((p) => {
+              const active = p.id === selectedId;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors ${
+                    active
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-[var(--border)] bg-white text-ink hover:border-brand-400"
+                  }`}
+                >
+                  {p.name}
+                  {p.sku && (
+                    <span
+                      className={`ml-1.5 text-xs font-normal ${active ? "text-white/70" : "text-ink-muted"}`}
+                    >
+                      {p.sku}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Selected product's brochures */}
