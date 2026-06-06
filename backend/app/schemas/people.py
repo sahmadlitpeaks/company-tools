@@ -7,9 +7,37 @@ from pydantic import BaseModel, ConfigDict
 class JourneyCreate(BaseModel):
     kind: str  # onboarding | offboarding
     target_user_id: uuid.UUID
+    brand_id: uuid.UUID | None = None
     note: str | None = None
     announce: bool = False
     announce_message: str | None = None
+
+
+class AccessGrantCreate(BaseModel):
+    name: str
+    system: str | None = None
+    username: str | None = None
+    notes: str | None = None
+
+
+class AccessGrantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    name: str
+    system: str | None = None
+    username: str | None = None
+    notes: str | None = None
+    status: str
+    granted_by_id: uuid.UUID | None = None
+    revoked_by_id: uuid.UUID | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime
+
+
+class AssignAssetIn(BaseModel):
+    asset_id: uuid.UUID
 
 
 class TaskCreate(BaseModel):
@@ -66,6 +94,8 @@ class JourneyOut(BaseModel):
     note: str | None = None
     target_user_id: uuid.UUID | None = None
     target_name: str | None = None
+    brand_id: uuid.UUID | None = None
+    brand_name: str | None = None
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
     completed_at: datetime | None = None
@@ -78,6 +108,7 @@ class JourneyDetail(JourneyOut):
     tasks: list[JourneyTaskOut] = []
     target: TargetAccess | None = None
     assigned_assets: list[AssignedAsset] = []
+    access_grants: list[AccessGrantOut] = []
 
 
 class AccessAction(BaseModel):

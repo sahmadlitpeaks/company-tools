@@ -748,6 +748,8 @@ export interface Journey {
   note?: string | null;
   target_user_id?: string | null;
   target_name?: string | null;
+  brand_id?: string | null;
+  brand_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   completed_at?: string | null;
@@ -756,8 +758,21 @@ export interface Journey {
   done_tasks: number;
 }
 
+export interface AccessGrant {
+  id: string;
+  user_id: string;
+  name: string;
+  system?: string | null;
+  username?: string | null;
+  notes?: string | null;
+  status: string;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
 export interface JourneyDetail extends Journey {
   tasks: JourneyTask[];
   target?: TargetAccess | null;
   assigned_assets: AssignedAsset[];
+  access_grants: AccessGrant[];
 }

@@ -22,6 +22,10 @@ class OnboardingJourney(UUIDMixin, TimestampMixin, Base):
     # in_progress | completed | cancelled
     status: Mapped[str] = mapped_column(String(16), default="in_progress", index=True)
     note: Mapped[str | None] = mapped_column(Text)
+    # Sub-company / branch the person belongs to.
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -55,6 +59,35 @@ class OnboardingTask(UUIDMixin, TimestampMixin, Base):
     sort: Mapped[int] = mapped_column(Integer, default=0)
 
     journey: Mapped["OnboardingJourney"] = relationship(back_populates="tasks")
+
+
+class AccessGrant(UUIDMixin, TimestampMixin, Base):
+    """An account/system access a person holds (Google, Facebook, ERP portal…).
+
+    Granted during onboarding, surfaced and revoked during offboarding.
+    """
+
+    __tablename__ = "access_grants"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    journey_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("onboarding_journeys.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    system: Mapped[str | None] = mapped_column(String(64))
+    username: Mapped[str | None] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text)
+    # active | revoked
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    granted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # Built-in default checklists (used when a journey is created).

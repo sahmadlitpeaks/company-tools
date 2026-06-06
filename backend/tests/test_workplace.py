@@ -325,3 +325,82 @@ async def test_journey_autocompletes(client, auth):
         await client.patch(f"/api/people/tasks/{t['id']}", headers=auth, json={"status": "done"})
     after = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
     assert after["status"] == "completed"
+
+
+async def test_onboarding_assets_access_and_pdf(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    # A branch + an available asset.
+    brand = (await client.post("/api/brands", headers=auth, json={"name": "Agiomix"})).json()
+    asset = (await client.post(
+        "/api/asset-tracker", headers=auth,
+        json={"asset_tag": "OB-LAP-1", "name": "MacBook Air"},
+    )).json()
+
+    j = (await client.post(
+        "/api/people/journeys", headers=auth,
+        json={"kind": "onboarding", "target_user_id": me["id"], "brand_id": brand["id"]},
+    )).json()
+    assert j["brand_name"] == brand["name"]
+
+    # Assignable assets surfaced to HR.
+    avail = (await client.get("/api/people/assignable-assets", headers=auth)).json()
+    assert any(a["asset_tag"] == "OB-LAP-1" for a in avail)
+
+    # Assign the laptop (checks out in the tracker) + record an access grant.
+    d = (await client.post(
+        f"/api/people/journeys/{j['id']}/assets", headers=auth,
+        json={"asset_id": asset["id"]},
+    )).json()
+    assert any(a["asset_tag"] == "OB-LAP-1" for a in d["assigned_assets"])
+    # Tracker reflects the checkout.
+    tracked = (await client.get(f"/api/asset-tracker/{asset['id']}", headers=auth)).json()
+    assert tracked["status"] == "assigned" and tracked["assigned_to_id"] == me["id"]
+
+    g = await client.post(
+        f"/api/people/journeys/{j['id']}/grants", headers=auth,
+        json={"name": "Google Workspace", "system": "google", "username": "me@agholding.net"},
+    )
+    assert g.status_code == 201
+
+    detail = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
+    assert any(x["name"] == "Google Workspace" and x["status"] == "active" for x in detail["access_grants"])
+
+    # PDF hard copy.
+    pdf = await client.get(f"/api/people/journeys/{j['id']}/report.pdf", headers=auth)
+    assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content[:4] == b"%PDF"
+
+
+async def test_offboarding_revoke_grant_and_return_asset(client, auth):
+    hdr, uid = await _member(client, auth, email="exiting@agholding.net")
+    # Give them an asset + access via an onboarding first.
+    asset = (await client.post(
+        "/api/asset-tracker", headers=auth, json={"asset_tag": "OB-LAP-2", "name": "Dell"}
+    )).json()
+    onj = (await client.post(
+        "/api/people/journeys", headers=auth,
+        json={"kind": "onboarding", "target_user_id": uid},
+    )).json()
+    await client.post(f"/api/people/journeys/{onj['id']}/assets", headers=auth, json={"asset_id": asset["id"]})
+    grant = (await client.post(
+        f"/api/people/journeys/{onj['id']}/grants", headers=auth, json={"name": "Facebook Business"}
+    )).json()
+
+    # Offboarding surfaces both for removal.
+    off = (await client.post(
+        "/api/people/journeys", headers=auth,
+        json={"kind": "offboarding", "target_user_id": uid},
+    )).json()
+    detail = (await client.get(f"/api/people/journeys/{off['id']}", headers=auth)).json()
+    assert any(a["asset_tag"] == "OB-LAP-2" for a in detail["assigned_assets"])
+    assert any(g["name"] == "Facebook Business" for g in detail["access_grants"])
+
+    # IT revokes access + collects the asset.
+    rv = await client.post(f"/api/people/grants/{grant['id']}/revoke", headers=auth)
+    assert rv.json()["status"] == "revoked"
+    ret = await client.post(
+        f"/api/people/journeys/{off['id']}/assets/{asset['id']}/return", headers=auth
+    )
+    assert not any(a["asset_tag"] == "OB-LAP-2" for a in ret.json()["assigned_assets"])
+    tracked = (await client.get(f"/api/asset-tracker/{asset['id']}", headers=auth)).json()
+    assert tracked["status"] == "available"

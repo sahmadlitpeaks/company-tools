@@ -2,14 +2,25 @@ import { useState } from "react";
 import {
   Boxes,
   Check,
+  FileDown,
+  KeyRound,
   Lock,
   Plus,
+  RotateCcw,
   Trash2,
   UserMinus,
   UserPlus,
 } from "lucide-react";
-import { api } from "../api/client";
-import type { Journey, JourneyDetail, JourneyTask, User } from "../api/types";
+import { api, downloadFile } from "../api/client";
+import type {
+  AccessGrant,
+  AssignedAsset,
+  Brand,
+  Journey,
+  JourneyDetail,
+  JourneyTask,
+  User,
+} from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
@@ -128,7 +139,9 @@ function StartModal({
 }) {
   const { notify } = useToast();
   const users = useFetch<User[]>("/api/users");
+  const brands = useFetch<Brand[]>("/api/brands");
   const [targetId, setTargetId] = useState("");
+  const [brandId, setBrandId] = useState("");
   const [note, setNote] = useState("");
   const [announce, setAnnounce] = useState(kind === "onboarding");
   const [busy, setBusy] = useState(false);
@@ -140,7 +153,13 @@ function StartModal({
     try {
       await api("/api/people/journeys", {
         method: "POST",
-        body: { kind, target_user_id: targetId, note: note || null, announce },
+        body: {
+          kind,
+          target_user_id: targetId,
+          brand_id: brandId || null,
+          note: note || null,
+          announce,
+        },
       });
       notify(`${kind === "onboarding" ? "Onboarding" : "Offboarding"} started.`);
       onSaved();
@@ -160,6 +179,17 @@ function StartModal({
             {(users.data ?? []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.display_name ?? u.email}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Branch / sub-company</label>
+          <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+            <option value="">—</option>
+            {(brands.data ?? []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
               </option>
             ))}
           </select>
@@ -190,8 +220,42 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
   const { notify } = useToast();
   const detail = useFetch<JourneyDetail>(`/api/people/journeys/${id}`);
   const users = useFetch<User[]>("/api/users");
+  const assignable = useFetch<AssignedAsset[]>("/api/people/assignable-assets");
   const [newItem, setNewItem] = useState("");
+  const [assetPick, setAssetPick] = useState("");
+  const [grant, setGrant] = useState({ name: "", system: "", username: "" });
   const d = detail.data;
+
+  async function assignAsset() {
+    if (!assetPick) return;
+    await api(`/api/people/journeys/${id}/assets`, { method: "POST", body: { asset_id: assetPick } });
+    setAssetPick("");
+    detail.reload();
+    assignable.reload();
+    onChanged();
+  }
+  async function returnAsset(a: AssignedAsset) {
+    await api(`/api/people/journeys/${id}/assets/${a.id}/return`, { method: "POST" });
+    detail.reload();
+    assignable.reload();
+  }
+  async function addGrant() {
+    if (!grant.name.trim()) return;
+    await api(`/api/people/journeys/${id}/grants`, {
+      method: "POST",
+      body: { name: grant.name, system: grant.system || null, username: grant.username || null },
+    });
+    setGrant({ name: "", system: "", username: "" });
+    detail.reload();
+  }
+  async function revokeGrant(g: AccessGrant) {
+    await api(`/api/people/grants/${g.id}/revoke`, { method: "POST" });
+    detail.reload();
+  }
+  async function deleteGrant(g: AccessGrant) {
+    await api(`/api/people/grants/${g.id}`, { method: "DELETE" });
+    detail.reload();
+  }
 
   async function toggle(t: JourneyTask) {
     await api(`/api/people/tasks/${t.id}`, {
@@ -229,6 +293,20 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
         <Loading />
       ) : (
         <>
+          <div className="spread mb-3">
+            <div className="muted text-sm">
+              {d.brand_name && <>Branch: <strong>{d.brand_name}</strong> · </>}
+              <span className={`badge ${d.kind === "onboarding" ? "green" : "amber"}`}>{d.kind}</span>
+            </div>
+            <button
+              className="btn-sm inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => downloadFile(`/api/people/journeys/${id}/report.pdf`, `${d.kind}-record.pdf`)}
+            >
+              <FileDown size={14} /> PDF record
+            </button>
+          </div>
+
           {/* Access panel */}
           {d.target && (
             <div className="card mb-4" style={{ padding: 14, background: "var(--surface-2)" }}>
@@ -265,19 +343,94 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
             </div>
           )}
 
-          {/* Assigned assets to collect/grant */}
-          {d.assigned_assets.length > 0 && (
-            <div className="mb-4">
-              <h4 className="mb-2 inline-flex items-center gap-1.5">
-                <Boxes size={15} /> Assigned equipment
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
+          {/* Equipment (linked to the Asset Tracker) */}
+          <div className="mb-4">
+            <h4 className="mb-2 inline-flex items-center gap-1.5">
+              <Boxes size={15} /> Equipment
+            </h4>
+            {d.assigned_assets.length === 0 ? (
+              <p className="muted text-sm">No equipment assigned.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
                 {d.assigned_assets.map((a) => (
-                  <span key={a.id} className="badge amber">{a.asset_tag} · {a.name}</span>
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                    style={{ background: "var(--surface-2)" }}
+                  >
+                    <span className="text-sm font-medium">{a.asset_tag} · {a.name}</span>
+                    <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => returnAsset(a)}>
+                      <RotateCcw size={12} /> Return
+                    </button>
+                  </div>
                 ))}
               </div>
+            )}
+            <div className="row mt-2" style={{ alignItems: "flex-end" }}>
+              <div className="field" style={{ marginBottom: 0, flex: 4 }}>
+                <select value={assetPick} onChange={(e) => setAssetPick(e.target.value)}>
+                  <option value="">Assign an available asset…</option>
+                  {(assignable.data ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.asset_tag} · {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={assignAsset}>
+                <Plus size={14} /> Assign
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Account / system access */}
+          <div className="mb-4">
+            <h4 className="mb-2 inline-flex items-center gap-1.5">
+              <KeyRound size={15} /> Account & system access
+            </h4>
+            {d.access_grants.length === 0 ? (
+              <p className="muted text-sm">No access recorded.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {d.access_grants.map((g) => (
+                  <div
+                    key={g.id}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                    style={{ background: "var(--surface-2)" }}
+                  >
+                    <span className="min-w-0 text-sm">
+                      <span className="font-medium">{g.name}</span>
+                      {(g.username || g.system) && (
+                        <span className="muted"> · {g.username || g.system}</span>
+                      )}
+                    </span>
+                    <span className="flex flex-none items-center gap-2">
+                      <span className={`badge ${g.status === "active" ? "green" : ""}`}>{g.status}</span>
+                      {g.status === "active" && (
+                        <button className="btn-sm btn-danger inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => revokeGrant(g)}>
+                          <Lock size={12} /> Revoke
+                        </button>
+                      )}
+                      <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => deleteGrant(g)}>
+                        <Trash2 size={12} />
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="row mt-2" style={{ alignItems: "flex-end" }}>
+              <div className="field" style={{ marginBottom: 0, flex: 2 }}>
+                <input placeholder="Access (e.g. Google Workspace)" value={grant.name} onChange={(e) => setGrant((g) => ({ ...g, name: e.target.value }))} />
+              </div>
+              <div className="field" style={{ marginBottom: 0, flex: 2 }}>
+                <input placeholder="Username / system" value={grant.username} onChange={(e) => setGrant((g) => ({ ...g, username: e.target.value }))} />
+              </div>
+              <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={addGrant}>
+                <Plus size={14} /> Add
+              </button>
+            </div>
+          </div>
 
           {/* Checklist */}
           <div className="spread mb-2">
