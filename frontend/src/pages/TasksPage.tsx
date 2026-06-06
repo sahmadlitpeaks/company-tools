@@ -14,6 +14,7 @@ import { api } from "../api/client";
 import type { Task, TaskComment, TaskDetail, TaskItem, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { Loading, Modal, PageHead, useToast } from "../components/ui";
+import SavedViews from "../components/SavedViews";
 
 const COLUMNS = [
   { key: "todo", label: "To do" },
@@ -89,6 +90,14 @@ export default function TasksPage() {
     tasks.reload();
   }
 
+  function applyView(p: string) {
+    const u = new URLSearchParams(p);
+    setMine(u.get("mine") === "true");
+    setPriority(u.get("priority") || "");
+    setAssignee(u.get("assignee_id") || "");
+    setDue(u.get("due") || "");
+  }
+
   return (
     <div>
       <PageHead
@@ -107,6 +116,7 @@ export default function TasksPage() {
 
       {/* Filters */}
       <div className="card mb-4">
+        <SavedViews surface="tasks" currentParams={qs} onApply={applyView} />
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
             <label>View</label>

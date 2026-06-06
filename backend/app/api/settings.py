@@ -138,6 +138,60 @@ async def put_security(
     return {"allowed_email_domains": await get_allowed_domains(db)}
 
 
+class SLAConfigIn(BaseModel):
+    work_start: int | None = None       # hour, 0–23
+    work_end: int | None = None         # hour, 1–24
+    tz_offset: int | None = None        # hours east of UTC
+    workdays: str | None = None         # e.g. "sun,mon,tue,wed,thu"
+    holidays: str | None = None         # comma-separated ISO dates
+
+
+def _sla_payload(cfg) -> dict:
+    rev = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
+    order = [6, 0, 1, 2, 3, 4, 5]
+    return {
+        "work_start": cfg.start_h,
+        "work_end": cfg.end_h,
+        "tz_offset": cfg.tz_offset,
+        "workdays": ",".join(rev[d] for d in order if d in cfg.workdays),
+        "holidays": ",".join(sorted(d.isoformat() for d in cfg.holidays)),
+    }
+
+
+@router.get("/sla")
+async def get_sla(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
+    from app.services.sla import get_sla_config
+
+    return _sla_payload(await get_sla_config(db))
+
+
+@router.put("/sla")
+async def put_sla(
+    payload: SLAConfigIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    from app.services.sla import get_sla_config
+
+    if payload.work_start is not None and not 0 <= payload.work_start <= 23:
+        raise HTTPException(status_code=422, detail="work_start must be 0–23")
+    if payload.work_end is not None and not 1 <= payload.work_end <= 24:
+        raise HTTPException(status_code=422, detail="work_end must be 1–24")
+    values: dict[str, str | None] = {}
+    if payload.work_start is not None:
+        values["sla_work_start"] = str(payload.work_start)
+    if payload.work_end is not None:
+        values["sla_work_end"] = str(payload.work_end)
+    if payload.tz_offset is not None:
+        values["sla_tz_offset"] = str(payload.tz_offset)
+    if payload.workdays is not None:
+        values["sla_workdays"] = payload.workdays.strip() or None
+    if payload.holidays is not None:
+        values["sla_holidays"] = payload.holidays.strip() or None
+    await set_many(db, values)
+    return _sla_payload(await get_sla_config(db))
+
+
 class AzureConfigIn(BaseModel):
     tenant_id: str | None = None
     client_id: str | None = None

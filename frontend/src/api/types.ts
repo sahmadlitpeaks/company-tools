@@ -607,6 +607,14 @@ export interface ActivityEntry {
   created_at: string;
 }
 
+export interface SavedView {
+  id: string;
+  surface: string;
+  name: string;
+  params: string;
+  created_at: string;
+}
+
 export interface Approval {
   id: string;
   type: string;

@@ -7,6 +7,7 @@ import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import Attachments from "../components/Attachments";
+import SavedViews from "../components/SavedViews";
 import { hm } from "./WorkLogPage";
 
 const CATEGORIES = ["it", "facilities", "hr", "finance", "other"];
@@ -72,6 +73,15 @@ export default function ServiceDeskPage() {
     tickets.reload();
   }
 
+  function applyView(p: string) {
+    const u = new URLSearchParams(p);
+    setScope((u.get("scope") as typeof scope) || "all");
+    setStatus(u.get("status") || "");
+    setPriority(u.get("priority") || "");
+    setOverdue(u.get("overdue") === "true");
+    setSort(u.get("sort") || "recent");
+  }
+
   return (
     <div>
       <PageHead
@@ -85,6 +95,7 @@ export default function ServiceDeskPage() {
       />
 
       <div className="card mb-4">
+        <SavedViews surface="tickets" currentParams={qs} onApply={applyView} />
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ marginBottom: 0 }}>
             <label>Show</label>

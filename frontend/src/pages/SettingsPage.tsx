@@ -32,6 +32,14 @@ export default function SettingsPage() {
   const [savingAppearance, setSavingAppearance] = useState(false);
   const [bamboo, setBamboo] = useState({ subdomain: "", api_key: "", key_set: false });
   const [savingBamboo, setSavingBamboo] = useState(false);
+  const [sla, setSla] = useState({
+    work_start: 9,
+    work_end: 18,
+    tz_offset: 4,
+    workdays: "sun,mon,tue,wed,thu",
+    holidays: "",
+  });
+  const [savingSla, setSavingSla] = useState(false);
 
   const callbackHint =
     typeof window !== "undefined"
@@ -60,8 +68,24 @@ export default function SettingsPage() {
     api<{ subdomain: string | null; key_set: boolean }>("/api/settings/bamboo")
       .then((b) => setBamboo({ subdomain: b.subdomain ?? "", api_key: "", key_set: b.key_set }))
       .catch(() => {});
+    api<typeof sla>("/api/settings/sla")
+      .then(setSla)
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveSla() {
+    setSavingSla(true);
+    try {
+      const r = await api<typeof sla>("/api/settings/sla", { method: "PUT", body: sla });
+      setSla(r);
+      notify("SLA working hours saved. New tickets use these targets.");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Save failed", "error");
+    } finally {
+      setSavingSla(false);
+    }
+  }
 
   async function saveBamboo() {
     setSavingBamboo(true);
@@ -238,6 +262,72 @@ export default function SettingsPage() {
               onClick={saveSecurity}
             >
               {savingSec ? "Saving…" : "Save access control"}
+            </button>
+          </div>
+
+          <div className="card">
+            <div className="spread mb-3">
+              <h3 className="m-0 flex items-center gap-2">
+                <span className="text-xl">⏱️</span> Service-desk SLA hours
+              </h3>
+            </div>
+            <p className="muted mt-0 text-sm">
+              SLA targets are measured in <strong>working hours</strong>: urgent 4h, high 24h,
+              normal 72h, low 120h. Define the work week below so deadlines skip evenings,
+              weekends and holidays.
+            </p>
+            <div className="row">
+              <div className="field">
+                <label>Work start (hour)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={sla.work_start}
+                  onChange={(e) => setSla((s) => ({ ...s, work_start: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="field">
+                <label>Work end (hour)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  value={sla.work_end}
+                  onChange={(e) => setSla((s) => ({ ...s, work_end: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="field">
+                <label>UTC offset (hours)</label>
+                <input
+                  type="number"
+                  min={-12}
+                  max={14}
+                  value={sla.tz_offset}
+                  onChange={(e) => setSla((s) => ({ ...s, tz_offset: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>Working days</label>
+              <input
+                value={sla.workdays}
+                onChange={(e) => setSla((s) => ({ ...s, workdays: e.target.value }))}
+                placeholder="sun,mon,tue,wed,thu"
+              />
+              <p className="muted mt-1 text-xs">Comma-separated day names (mon…sun).</p>
+            </div>
+            <div className="field">
+              <label>Public holidays</label>
+              <input
+                value={sla.holidays}
+                onChange={(e) => setSla((s) => ({ ...s, holidays: e.target.value }))}
+                placeholder="2026-12-02, 2026-12-03"
+              />
+              <p className="muted mt-1 text-xs">Comma-separated ISO dates; these are skipped too.</p>
+            </div>
+            <button className="btn-primary flex-none" disabled={savingSla} onClick={saveSla}>
+              {savingSla ? "Saving…" : "Save SLA hours"}
             </button>
           </div>
 

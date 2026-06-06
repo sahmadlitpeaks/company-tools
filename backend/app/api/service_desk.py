@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select
@@ -22,6 +22,8 @@ from app.schemas.workplace import (
 from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_names
+from app.services.sla import apply_sla
+from app.services.sla_alerts import run_sla_alerts
 
 router = APIRouter(prefix="/tickets", tags=["service-desk"])
 
@@ -30,27 +32,12 @@ STATUSES = {"open", "in_progress", "resolved", "closed"}
 PRIORITIES = {"low", "normal", "high", "urgent"}
 OPEN_STATUSES = {"open", "in_progress"}
 
-# SLA targets in hours by priority: (first-response, resolution).
-SLA_HOURS: dict[str, tuple[int, int]] = {
-    "urgent": (1, 4),
-    "high": (4, 24),
-    "normal": (8, 72),
-    "low": (24, 120),
-}
 # Priority ordering for sorting (urgent first).
 _PRIO_RANK = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
 
 
 def _is_agent(user: User) -> bool:
     return user.is_admin or user.role == "manager"
-
-
-def _apply_sla(ticket: Ticket, base: datetime | None = None) -> None:
-    """(Re)compute SLA due dates from the ticket priority."""
-    base = base or datetime.now(timezone.utc)
-    resp_h, res_h = SLA_HOURS.get(ticket.priority, SLA_HOURS["normal"])
-    ticket.sla_response_due = base + timedelta(hours=resp_h)
-    ticket.sla_resolution_due = base + timedelta(hours=res_h)
 
 
 async def _next_number(db: AsyncSession) -> int:
@@ -159,7 +146,7 @@ async def create_ticket(
         raise HTTPException(status_code=422, detail="Invalid priority")
     ticket = Ticket(**payload.model_dump(), requester_id=user.id)
     ticket.number = await _next_number(db)
-    _apply_sla(ticket)
+    await apply_sla(db, ticket)
     db.add(ticket)
     # Notify managers/admins that a new ticket landed.
     agents = (
@@ -268,7 +255,7 @@ async def update_ticket(
         and data["priority"] != prev_priority
         and ticket.status in OPEN_STATUSES
     ):
-        _apply_sla(ticket, base=ticket.created_at or datetime.now(timezone.utc))
+        await apply_sla(db, ticket, base=ticket.created_at or datetime.now(timezone.utc))
 
     if new_status is not None:
         if new_status in {"resolved", "closed"}:
@@ -371,6 +358,17 @@ async def add_comment(
     out = TicketCommentOut.model_validate(comment)
     out.author_name = user.display_name or user.email
     return out
+
+
+@router.post("/sla-sweep")
+async def sla_sweep(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Run SLA breach / at-risk checks now (also runs on a schedule)."""
+    if not _is_agent(user):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    return await run_sla_alerts(db)
 
 
 @router.delete("/{ticket_id}", status_code=204)
