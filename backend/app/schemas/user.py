@@ -40,5 +40,19 @@ class UserUpdate(BaseModel):
     permissions: list[str] | None = None
 
 
+class UserCreate(BaseModel):
+    """Manually add an employee who isn't (yet) in Azure."""
+
+    email: str
+    display_name: str | None = None
+    job_title: str | None = None
+    department: str | None = None
+    mobile_phone: str | None = None
+    business_phone: str | None = None
+    office_location: str | None = None
+    role: str = "member"
+    status: str = "active"
+
+
 class ManagedBrandsUpdate(BaseModel):
     brand_ids: list[uuid.UUID] = []

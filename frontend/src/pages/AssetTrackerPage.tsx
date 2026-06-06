@@ -19,6 +19,7 @@ import {
   Loading,
   Modal,
   PageHead,
+  PromptModal,
   bytes,
   useToast,
 } from "../components/ui";
@@ -837,6 +838,8 @@ export default function AssetTrackerPage() {
   const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [showReports, setShowReports] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [settingLocation, setSettingLocation] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const query = useMemo(() => {
     const p = new URLSearchParams();
@@ -873,7 +876,6 @@ export default function AssetTrackerPage() {
   async function bulk(action: string, value?: string) {
     const ids = [...selected];
     if (!ids.length) return;
-    if (action === "delete" && !confirm(`Delete ${ids.length} asset(s)?`)) return;
     try {
       await api("/api/asset-tracker/bulk", {
         method: "POST",
@@ -1010,19 +1012,13 @@ export default function AssetTrackerPage() {
           <button className="btn-sm" onClick={() => bulk("checkin")}>
             Check in
           </button>
-          <button
-            className="btn-sm"
-            onClick={() => {
-              const v = prompt("Set location to:");
-              if (v !== null) bulk("set_location", v);
-            }}
-          >
+          <button className="btn-sm" onClick={() => setSettingLocation(true)}>
             Set location
           </button>
           <button className="btn-sm" onClick={() => bulk("retire")}>
             Retire
           </button>
-          <button className="btn-sm btn-danger" onClick={() => bulk("delete")}>
+          <button className="btn-sm btn-danger" onClick={() => setConfirmBulkDelete(true)}>
             Delete
           </button>
         </div>
@@ -1142,6 +1138,28 @@ export default function AssetTrackerPage() {
           danger
           onConfirm={() => remove(deleting)}
           onClose={() => setDeleting(null)}
+        />
+      )}
+      {confirmBulkDelete && (
+        <ConfirmModal
+          title="Delete assets"
+          message={`Delete ${selected.size} asset(s)? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => bulk("delete")}
+          onClose={() => setConfirmBulkDelete(false)}
+        />
+      )}
+      {settingLocation && (
+        <PromptModal
+          title="Set location"
+          label="New location"
+          placeholder="e.g. HQ — 3rd floor"
+          submitLabel="Apply"
+          onSubmit={async (v) => {
+            await bulk("set_location", v);
+          }}
+          onClose={() => setSettingLocation(false)}
         />
       )}
     </div>

@@ -421,7 +421,7 @@ export default function BrandingPage() {
       ) : brands.length === 0 ? (
         <Empty icon="🏢" message="No brands yet" hint="Create your first company brand to get started." />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[280px_1fr]">
+        <div className="grid items-start gap-4 lg:grid-cols-[210px_1fr]">
           <div className="card !p-2">
             {brands.map((b) => (
               <button

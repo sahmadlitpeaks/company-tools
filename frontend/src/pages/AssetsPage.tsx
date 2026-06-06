@@ -8,6 +8,7 @@ import type { Asset, Folder } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   AuthImage,
+  ConfirmModal,
   Empty,
   ListSkeleton,
   PageHead,
@@ -45,6 +46,8 @@ export default function AssetsPage() {
   const [reading, setReading] = useState<Asset | null>(null);
   const [versioning, setVersioning] = useState<Asset | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folderQuery = folderId ? `?parent_id=${folderId}` : "";
@@ -80,7 +83,6 @@ export default function AssetsPage() {
   async function bulk(action: "delete" | "share" | "unshare") {
     const ids = [...selected];
     if (!ids.length) return;
-    if (action === "delete" && !confirm(`Delete ${ids.length} file(s)?`)) return;
     try {
       await api("/api/assets/bulk", { method: "POST", body: { ids, action } });
       notify(`${action[0].toUpperCase()}${action.slice(1)} applied to ${ids.length} file(s).`);
@@ -89,6 +91,12 @@ export default function AssetsPage() {
     } catch (e) {
       notify(e instanceof Error ? e.message : "Bulk action failed", "error");
     }
+  }
+
+  async function deleteFolder(f: Folder) {
+    await api(`/api/assets/folders/${f.id}`, { method: "DELETE" });
+    notify("Folder deleted.");
+    folders.reload();
   }
 
   async function createFolder(name: string) {
@@ -176,7 +184,7 @@ export default function AssetsPage() {
           </button>
           <button
             className="btn-sm btn-danger inline-flex items-center gap-1.5"
-            onClick={() => bulk("delete")}
+            onClick={() => setConfirmDelete(true)}
           >
             <Trash2 size={14} /> Delete
           </button>
@@ -219,7 +227,18 @@ export default function AssetsPage() {
                   </td>
                   <td><span className="badge amber">Folder</span></td>
                   <td className="muted">—</td>
-                  <td className="text-right font-medium text-brand-600">Open ›</td>
+                  <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-2">
+                      <button className="btn-sm" onClick={() => open(f)}>Open ›</button>
+                      <button
+                        className="btn-sm btn-danger"
+                        title="Delete folder"
+                        onClick={() => setDeletingFolder(f)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {assets.data?.map((a) => (
@@ -335,6 +354,26 @@ export default function AssetsPage() {
           submitLabel="Create folder"
           onSubmit={createFolder}
           onClose={() => setNewFolderOpen(false)}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete files"
+          message={`Delete ${selected.size} file(s)? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => bulk("delete")}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
+      {deletingFolder && (
+        <ConfirmModal
+          title="Delete folder"
+          message={`Delete "${deletingFolder.name}" and everything inside it? This can't be undone.`}
+          confirmLabel="Delete folder"
+          danger
+          onConfirm={() => deleteFolder(deletingFolder)}
+          onClose={() => setDeletingFolder(null)}
         />
       )}
     </div>

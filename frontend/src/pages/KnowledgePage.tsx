@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { Article, ArticleSummary } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmModal, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function KnowledgePage() {
   const { notify } = useToast();
@@ -124,12 +124,12 @@ function ArticleViewer({
 }) {
   const { user } = useAuth();
   const { data } = useFetch<Article>(`/api/knowledge/${id}`);
+  const [confirming, setConfirming] = useState(false);
   const canEdit =
     !!data &&
     (user?.is_admin || user?.role === "manager" || data.author_id === user?.id);
 
   async function remove() {
-    if (!confirm("Delete this article?")) return;
     await api(`/api/knowledge/${id}`, { method: "DELETE" });
     onDeleted();
   }
@@ -151,7 +151,7 @@ function ArticleViewer({
           </div>
           {canEdit && (
             <div className="row mt-4" style={{ justifyContent: "flex-end", gap: 8 }}>
-              <button className="btn btn-danger inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={remove}>
+              <button className="btn btn-danger inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setConfirming(true)}>
                 <Trash2 size={14} /> Delete
               </button>
               <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => onEdit(data)}>
@@ -160,6 +160,16 @@ function ArticleViewer({
             </div>
           )}
         </>
+      )}
+      {confirming && (
+        <ConfirmModal
+          title="Delete article"
+          message="Delete this article? This can't be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={remove}
+          onClose={() => setConfirming(false)}
+        />
       )}
     </Modal>
   );

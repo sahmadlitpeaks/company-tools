@@ -145,6 +145,28 @@ function StartModal({
   const [note, setNote] = useState("");
   const [announce, setAnnounce] = useState(kind === "onboarding");
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [emp, setEmp] = useState({ display_name: "", email: "", job_title: "", department: "", mobile_phone: "" });
+  const setE = (k: string, v: string) => setEmp((f) => ({ ...f, [k]: v }));
+
+  async function createEmployee() {
+    if (!emp.email.trim()) {
+      notify("Email is required", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      const u = await api<User>("/api/users", { method: "POST", body: emp });
+      await users.reload();
+      setTargetId(u.id);
+      setCreating(false);
+      notify("Employee added.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Couldn't add employee", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,15 +195,54 @@ function StartModal({
     <Modal title={kind === "onboarding" ? "Start onboarding" : "Start offboarding"} onClose={onClose}>
       <form onSubmit={submit}>
         <div className="field">
-          <label>Employee *</label>
-          <select required value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-            <option value="">Select employee…</option>
-            {(users.data ?? []).map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.display_name ?? u.email}
-              </option>
-            ))}
-          </select>
+          <div className="spread">
+            <label className="!mb-0">Employee *</label>
+            <button
+              type="button"
+              className="!border-0 !bg-transparent !p-0 text-xs font-medium text-brand-600"
+              onClick={() => setCreating((c) => !c)}
+            >
+              {creating ? "Pick existing" : "+ New employee (not in Azure)"}
+            </button>
+          </div>
+          {!creating ? (
+            <select required={!creating} value={targetId} onChange={(e) => setTargetId(e.target.value)} className="mt-1.5">
+              <option value="">Select employee…</option>
+              {(users.data ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name ?? u.email}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="mt-1.5 rounded-xl p-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+              <div className="row">
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <input placeholder="Full name" value={emp.display_name} onChange={(e) => setE("display_name", e.target.value)} />
+                </div>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <input type="email" placeholder="Email *" value={emp.email} onChange={(e) => setE("email", e.target.value)} />
+                </div>
+              </div>
+              <div className="row">
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <input placeholder="Job title" value={emp.job_title} onChange={(e) => setE("job_title", e.target.value)} />
+                </div>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <input placeholder="Department" value={emp.department} onChange={(e) => setE("department", e.target.value)} />
+                </div>
+              </div>
+              <div className="field" style={{ marginBottom: 8 }}>
+                <input placeholder="Phone" value={emp.mobile_phone} onChange={(e) => setE("mobile_phone", e.target.value)} />
+              </div>
+              <button type="button" className="btn-sm btn-primary" disabled={busy} onClick={createEmployee}>
+                {busy ? "Adding…" : "Add & select"}
+              </button>
+              {targetId && (
+                <span className="muted ml-2 text-xs">✓ Added — continue below.</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="field">
           <label>Branch / sub-company</label>

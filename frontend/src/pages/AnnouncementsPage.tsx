@@ -5,13 +5,14 @@ import { api } from "../api/client";
 import type { Announcement } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmModal, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const { notify } = useToast();
   const feed = useFetch<Announcement[]>("/api/announcements");
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<Announcement | null>(null);
   const canPost = user?.is_admin || user?.role === "manager";
   const [params, setParams] = useSearchParams();
   useEffect(() => {
@@ -27,7 +28,6 @@ export default function AnnouncementsPage() {
     feed.reload();
   }
   async function remove(a: Announcement) {
-    if (!confirm("Delete this announcement?")) return;
     await api(`/api/announcements/${a.id}`, { method: "DELETE" });
     notify("Deleted.");
     feed.reload();
@@ -77,7 +77,7 @@ export default function AnnouncementsPage() {
                     </span>
                   )}
                   {(user?.is_admin || a.author_id === user?.id) && (
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => remove(a)}>
+                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => setDeleting(a)}>
                       <Trash2 size={13} />
                     </button>
                   )}
@@ -101,6 +101,16 @@ export default function AnnouncementsPage() {
             feed.reload();
             setAdding(false);
           }}
+        />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title="Delete announcement"
+          message={`Delete "${deleting.title}"? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => remove(deleting)}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

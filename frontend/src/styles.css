@@ -272,9 +272,13 @@
     background: var(--surface-2);
   }
   .btn-primary {
-    @apply border-brand-600 bg-brand-600 text-white hover:border-brand-700 hover:bg-brand-700;
+    @apply border-brand-600 bg-brand-600 text-white;
   }
+  /* Keep coloured variants readable on hover (don't fall back to the light
+     generic hover, which would leave white text on a near-white background). */
   .btn-primary:hover {
+    border-color: var(--brand-700);
+    background: var(--brand-700);
     box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .btn-danger {
@@ -283,12 +287,19 @@
     background: var(--surface);
   }
   .btn-danger:hover {
+    border-color: color-mix(in srgb, var(--danger) 50%, var(--surface));
     background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+    color: var(--danger);
   }
   .btn-danger-solid {
     @apply cursor-pointer rounded-[10px] px-3.5 py-2 font-semibold text-white;
     border: 1px solid var(--danger);
     background: var(--danger);
+  }
+  .btn-danger-solid:hover {
+    border-color: color-mix(in srgb, var(--danger) 80%, black);
+    background: color-mix(in srgb, var(--danger) 80%, black);
+    color: #fff;
   }
   .btn-sm {
     @apply text-[13px];

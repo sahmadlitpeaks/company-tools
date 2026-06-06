@@ -141,3 +141,23 @@ async def test_audit_admin_only(client, auth):
     mid = await _member_id(client, auth)
     await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
     assert (await client.get("/api/audit", headers=hdr)).status_code == 403
+
+
+async def test_create_employee_manual(client, auth):
+    r = await client.post(
+        "/api/users",
+        headers=auth,
+        json={"email": "Newjoiner@AGHolding.net", "display_name": "New Joiner", "job_title": "Analyst", "department": "Finance"},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["email"] == "newjoiner@agholding.net" and body["status"] == "active"
+    # Duplicate rejected.
+    dup = await client.post("/api/users", headers=auth, json={"email": "newjoiner@agholding.net"})
+    assert dup.status_code == 409
+    # Member can't create users.
+    token = await _member_token(client)
+    hdr = {"Authorization": f"Bearer {token}"}
+    mid = await _member_id(client, auth)
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    assert (await client.post("/api/users", headers=hdr, json={"email": "x@agholding.net"})).status_code == 403

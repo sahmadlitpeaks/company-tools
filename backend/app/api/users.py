@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
 from app.models.brand import Brand
 from app.models.user import User
-from app.schemas.user import ManagedBrandsUpdate, UserOut, UserUpdate
+from app.schemas.user import ManagedBrandsUpdate, UserCreate, UserOut, UserUpdate
 from app.services.activity import record
 from app.services.app_settings import get_azure_config
 from app.services.users import sync_all_users_from_graph
@@ -49,6 +49,50 @@ async def list_users(
         )
     result = await db.execute(stmt.limit(500))
     return result.scalars().all()
+
+
+@router.post("", response_model=UserOut, status_code=201)
+async def create_user(
+    payload: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Manually add an employee not yet synced from Azure (e.g. a new joiner)."""
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=422, detail="Email is required")
+    if payload.role not in ROLES:
+        raise HTTPException(status_code=422, detail="Invalid role")
+    if payload.status not in STATUSES:
+        raise HTTPException(status_code=422, detail="Invalid status")
+    existing = (
+        await db.execute(select(User).where(User.email == email))
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="A user with this email exists")
+    user = User(
+        email=email,
+        display_name=payload.display_name or email.split("@")[0],
+        job_title=payload.job_title,
+        department=payload.department,
+        mobile_phone=payload.mobile_phone,
+        business_phone=payload.business_phone,
+        office_location=payload.office_location,
+        role=payload.role,
+        is_admin=payload.role == "admin",
+        status=payload.status,
+    )
+    db.add(user)
+    record(
+        db,
+        user=admin,
+        action="created",
+        entity_type="user",
+        summary=f"Added employee {email}",
+    )
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 @router.get("/{user_id}", response_model=UserOut)

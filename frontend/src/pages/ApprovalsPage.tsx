@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { Approval, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, Loading, Modal, PageHead, PromptModal, useToast } from "../components/ui";
 import Attachments from "../components/Attachments";
 
 const TYPES = ["leave", "expense", "purchase", "document", "access", "general"];
@@ -31,6 +31,7 @@ export default function ApprovalsPage() {
   const list = useFetch<Approval[]>(`/api/approvals?scope=${scope}`);
   const [adding, setAdding] = useState(false);
   const [attachOf, setAttachOf] = useState<Approval | null>(null);
+  const [rejecting, setRejecting] = useState<Approval | null>(null);
   const canReview = user?.is_admin || user?.role === "manager";
   const [params, setParams] = useSearchParams();
   useEffect(() => {
@@ -40,9 +41,7 @@ export default function ApprovalsPage() {
     }
   }, [params, setParams]);
 
-  async function decide(a: Approval, status: "approved" | "rejected") {
-    const note =
-      status === "rejected" ? prompt("Reason (optional):") ?? "" : "";
+  async function decide(a: Approval, status: "approved" | "rejected", note?: string) {
     await api(`/api/approvals/${a.id}/decision`, {
       method: "POST",
       body: { status, note: note || null },
@@ -130,7 +129,7 @@ export default function ApprovalsPage() {
                           <button className="btn-sm btn-primary inline-flex items-center gap-1" onClick={() => decide(a, "approved")}>
                             <Check size={14} /> Approve
                           </button>
-                          <button className="btn-sm btn-danger inline-flex items-center gap-1" onClick={() => decide(a, "rejected")}>
+                          <button className="btn-sm btn-danger inline-flex items-center gap-1" onClick={() => setRejecting(a)}>
                             <X size={14} /> Reject
                           </button>
                         </>
@@ -163,6 +162,18 @@ export default function ApprovalsPage() {
         <Modal title={`Attachments — ${attachOf.title}`} onClose={() => setAttachOf(null)} maxWidth={460}>
           <Attachments entityType="approval" entityId={attachOf.id} />
         </Modal>
+      )}
+      {rejecting && (
+        <PromptModal
+          title="Reject request"
+          label="Reason (optional)"
+          placeholder="Let them know why…"
+          submitLabel="Reject"
+          onSubmit={async (note) => {
+            await decide(rejecting, "rejected", note);
+          }}
+          onClose={() => setRejecting(null)}
+        />
       )}
     </div>
   );

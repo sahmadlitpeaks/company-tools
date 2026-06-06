@@ -229,7 +229,7 @@ export default function ProductsPage() {
           }
         />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[300px_1fr]">
+        <div className="grid items-start gap-4 lg:grid-cols-[210px_1fr]">
           {/* Product list */}
           <div className="card !p-2">
             {data.map((p) => (
