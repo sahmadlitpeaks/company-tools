@@ -1,19 +1,13 @@
 import pytest
 
+from helpers import make_member
+
 pytestmark = pytest.mark.asyncio
 
 
 async def _member(client, auth, email="mo@agholding.net", status="active"):
-    """Create a second (member) user via dev-login, then activate them."""
-    token = (
-        await client.post("/api/auth/dev-login", params={"email": email})
-    ).json()["access_token"]
-    users = (await client.get("/api/users", headers=auth)).json()
-    uid = next(u["id"] for u in users if u["email"] == email)
-    await client.patch(
-        f"/api/users/{uid}", headers=auth, json={"status": status, "role": "member"}
-    )
-    return {"Authorization": f"Bearer {token}"}, uid
+    """Create a second (member) user with a password, then activate + log in."""
+    return await make_member(client, auth, email, status=status)
 
 
 # ---- Tasks ----

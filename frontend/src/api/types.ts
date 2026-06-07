@@ -16,6 +16,7 @@ export interface User {
   avatar_url?: string | null;
   is_active: boolean;
   is_admin: boolean;
+  must_change_password?: boolean;
   role: string;
   status: string;
   permissions?: string[] | null;

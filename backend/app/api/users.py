@@ -9,9 +9,16 @@ from app.auth.azure import fetch_graph_users, get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
+from app.core.security import hash_password
 from app.models.brand import Brand
 from app.models.user import User
-from app.schemas.user import ManagedBrandsUpdate, UserCreate, UserOut, UserUpdate
+from app.schemas.user import (
+    ManagedBrandsUpdate,
+    SetPasswordIn,
+    UserCreate,
+    UserOut,
+    UserUpdate,
+)
 from app.services.activity import record
 from app.services.app_settings import get_azure_config, get_bamboo_config
 from app.services.integrations import provision_azure_user, push_bamboo_employee
@@ -110,6 +117,13 @@ async def create_user(
         is_admin=payload.role == "admin",
         status=payload.status,
     )
+    if payload.password:
+        if len(payload.password) < 8:
+            raise HTTPException(
+                status_code=422, detail="Password must be at least 8 characters"
+            )
+        user.password_hash = hash_password(payload.password)
+        user.must_change_password = True
     db.add(user)
     record(
         db,
@@ -121,6 +135,29 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/{user_id}/set-password")
+async def set_password(
+    user_id: uuid.UUID,
+    payload: SetPasswordIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Set or reset a user's local password (they must change it on next login)."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if len(payload.password or "") < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    user.password_hash = hash_password(payload.password)
+    user.must_change_password = True
+    record(
+        db, user=admin, action="updated", entity_type="user", entity_id=user.id,
+        summary=f"Reset password for {user.display_name or user.email}",
+    )
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/{user_id}/sync-azure")

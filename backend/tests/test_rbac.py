@@ -1,16 +1,12 @@
 import pytest
 
+from helpers import MEMBER_PW, make_member
+
 pytestmark = pytest.mark.asyncio
 
 
-async def _member_token(client) -> str:
-    r = await client.post("/api/auth/dev-login", params={"email": "bob@agholding.net"})
-    return r.json()["access_token"]
-
-
-async def _member_id(client, auth) -> str:
-    users = (await client.get("/api/users", headers=auth)).json()
-    return next(u["id"] for u in users if u["email"] == "bob@agholding.net")
+async def _member(client, auth, **kw):
+    return await make_member(client, auth, "bob@agholding.net", **kw)
 
 
 async def test_first_user_is_admin(client, auth):
@@ -20,23 +16,21 @@ async def test_first_user_is_admin(client, auth):
     assert "crm" in me["effective_permissions"]
 
 
-async def test_new_user_is_pending_and_blocked(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    # Pending account can't touch anything that needs a real session.
+async def test_pending_user_cannot_sign_in_or_use_app(client, auth):
+    hdr, mid = await _member(client, auth)  # active member with a live token
+    # Suspend them — every request with the existing token is now blocked.
+    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "pending"})
     assert (await client.get("/api/auth/me", headers=hdr)).status_code == 403
     assert (await client.get("/api/cards", headers=hdr)).status_code == 403
+    # And they can't obtain a fresh token while not active.
+    login = await client.post(
+        "/api/auth/login", json={"email": "bob@agholding.net", "password": MEMBER_PW}
+    )
+    assert login.status_code == 403
 
 
 async def test_member_module_gating(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-
-    # Approve as an active member.
-    await client.patch(
-        f"/api/users/{mid}", headers=auth, json={"status": "active", "role": "member"}
-    )
+    hdr, mid = await _member(client, auth)
 
     # Member defaults include cards but not CRM / asset tracker.
     assert (await client.get("/api/cards", headers=hdr)).status_code == 200
@@ -50,9 +44,7 @@ async def test_member_module_gating(client, auth):
 
 
 async def test_admin_grants_extra_module(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
+    hdr, mid = await _member(client, auth)
 
     # Grant an explicit permission set that adds CRM.
     await client.patch(
@@ -66,20 +58,14 @@ async def test_admin_grants_extra_module(client, auth):
 
 
 async def test_disabled_user_blocked(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     assert (await client.get("/api/cards", headers=hdr)).status_code == 200
     await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "disabled"})
     assert (await client.get("/api/cards", headers=hdr)).status_code == 403
 
 
 async def test_non_admin_cannot_manage_users(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     # A member may not change roles/permissions.
     r = await client.patch(
         f"/api/users/{mid}", headers=hdr, json={"role": "admin"}
@@ -119,10 +105,7 @@ async def test_appearance_default_and_admin_update(client, auth):
 
 
 async def test_appearance_update_is_admin_only(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     # Member can read the default but not change it.
     assert (await client.get("/api/settings/appearance", headers=hdr)).status_code == 200
     assert (
@@ -136,10 +119,7 @@ async def test_audit_admin_only(client, auth):
     page = (await client.get("/api/audit", headers=auth)).json()
     assert "items" in page and "actions" in page
     # Member is blocked.
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     assert (await client.get("/api/audit", headers=hdr)).status_code == 403
 
 
@@ -160,10 +140,7 @@ async def test_create_employee_manual(client, auth):
     )
     assert dup.status_code == 409
     # Member can't create users.
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     assert (await client.post("/api/users", headers=hdr, json={"email": "x@agholding.net"})).status_code == 403
 
 
@@ -222,10 +199,7 @@ async def test_marketing_integrations_config(client, auth):
     assert (await client.put("/api/settings/integrations/myspace", headers=auth, json={"values": {}})).status_code == 404
 
     # Admin-only.
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     assert (await client.get("/api/settings/integrations", headers=hdr)).status_code == 403
 
 
@@ -257,9 +231,6 @@ async def test_demo_seed_and_clear(client, auth):
 
 
 async def test_demo_admin_only(client, auth):
-    token = await _member_token(client)
-    hdr = {"Authorization": f"Bearer {token}"}
-    mid = await _member_id(client, auth)
-    await client.patch(f"/api/users/{mid}", headers=auth, json={"status": "active"})
+    hdr, mid = await _member(client, auth)
     assert (await client.get("/api/demo/status", headers=hdr)).status_code == 403
     assert (await client.post("/api/demo/seed", headers=hdr)).status_code == 403

@@ -240,6 +240,7 @@ export default function DirectoryPage() {
   const [syncing, setSyncing] = useState(false);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
+  const [adding, setAdding] = useState(false);
   const { data, loading, error, reload } = useFetch<User[]>(
     `/api/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
   );
@@ -278,9 +279,14 @@ export default function DirectoryPage() {
         subtitle="Synced from Azure Entra ID into the platform database."
         action={
           user?.is_admin && (
-            <button className="btn-primary" onClick={sync} disabled={syncing}>
-              {syncing ? "Syncing…" : "Sync from Entra ID"}
-            </button>
+            <div className="flex gap-2">
+              <button className="btn" onClick={sync} disabled={syncing}>
+                {syncing ? "Syncing…" : "Sync from Entra ID"}
+              </button>
+              <button className="btn-primary" onClick={() => setAdding(true)}>
+                Add user
+              </button>
+            </div>
           )
         }
       />
@@ -387,6 +393,108 @@ export default function DirectoryPage() {
           onSaved={reload}
         />
       )}
+
+      {adding && (
+        <AddUserModal
+          onClose={() => setAdding(false)}
+          onSaved={() => {
+            setAdding(false);
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { notify } = useToast();
+  const [form, setForm] = useState({
+    display_name: "",
+    email: "",
+    role: "member",
+    password: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (form.password && form.password.length < 8) {
+      notify("Password must be at least 8 characters.", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/users", {
+        method: "POST",
+        body: {
+          display_name: form.display_name.trim(),
+          email: form.email.trim().toLowerCase() || null,
+          role: form.role,
+          status: "active",
+          password: form.password || null,
+        },
+      });
+      notify("User added.");
+      onSaved();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Add user" onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="field">
+          <label>Full name *</label>
+          <input
+            required
+            value={form.display_name}
+            onChange={(e) => set("display_name", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Email *</label>
+          <input
+            type="email"
+            required
+            placeholder="person@agholding.net"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Role</label>
+          <select value={form.role} onChange={(e) => set("role", e.target.value)}>
+            <option value="member">Member</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Initial password</label>
+          <input
+            type="text"
+            placeholder="Set a temporary password (optional)"
+            value={form.password}
+            onChange={(e) => set("password", e.target.value)}
+          />
+          <p className="muted mt-1 text-xs">
+            If set, the user signs in with this and is prompted to change it on first login.
+            Leave blank for SSO-only users.
+          </p>
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
+            {busy ? "Adding…" : "Add user"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     RUN_SCHEDULER: bool = True
     # Escape hatch to allow demo-data seeding even in production (default: off).
     ALLOW_DEMO_SEED: bool = False
+    # Bootstrap admin, created on first start when there are no users yet. The
+    # account is forced to change its password on first login.
+    DEFAULT_ADMIN_EMAIL: str = "admin@agholding.net"
+    DEFAULT_ADMIN_PASSWORD: str = "admin"
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg://platform:platform@localhost:5432/platform"

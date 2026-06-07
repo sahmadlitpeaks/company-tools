@@ -24,6 +24,7 @@ class UserOut(BaseModel):
     bamboo_id: str | None = None
     is_active: bool
     is_admin: bool
+    must_change_password: bool = False
     role: str = "member"
     status: str = "active"
     permissions: list[str] | None = None
@@ -69,6 +70,13 @@ class UserCreate(BaseModel):
     nationality: str | None = None
     role: str = "member"
     status: str = "active"
+    # Optional initial password so the new user can sign in without SSO. They'll
+    # be prompted to change it on first login.
+    password: str | None = None
+
+
+class SetPasswordIn(BaseModel):
+    password: str
 
 
 class ManagedBrandsUpdate(BaseModel):

@@ -6,6 +6,7 @@ import pytest
 from app.core.database import AsyncSessionLocal
 from app.models.workplace import Ticket
 from app.services.sla import SLAConfig, business_deadline
+from helpers import make_member
 
 pytestmark = pytest.mark.asyncio
 
@@ -59,11 +60,7 @@ async def test_sla_alerts_notify_and_dedup(client, auth):
 
 
 async def test_sla_sweep_requires_agent(client, auth):
-    token = (await client.post("/api/auth/dev-login", params={"email": "mo@agholding.net"})).json()["access_token"]
-    users = (await client.get("/api/users", headers=auth)).json()
-    uid = next(u["id"] for u in users if u["email"] == "mo@agholding.net")
-    await client.patch(f"/api/users/{uid}", headers=auth, json={"status": "active", "role": "member"})
-    hdr = {"Authorization": f"Bearer {token}"}
+    hdr, _ = await make_member(client, auth, "mo@agholding.net")
     assert (await client.post("/api/tickets/sla-sweep", headers=hdr)).status_code == 403
 
 
@@ -116,9 +113,5 @@ async def test_saved_views_crud(client, auth):
 
 async def test_saved_views_are_per_user(client, auth):
     await client.post("/api/views", headers=auth, json={"surface": "tickets", "name": "Mine", "params": ""})
-    token = (await client.post("/api/auth/dev-login", params={"email": "vu@agholding.net"})).json()["access_token"]
-    users = (await client.get("/api/users", headers=auth)).json()
-    uid = next(u["id"] for u in users if u["email"] == "vu@agholding.net")
-    await client.patch(f"/api/users/{uid}", headers=auth, json={"status": "active"})
-    hdr = {"Authorization": f"Bearer {token}"}
+    hdr, _ = await make_member(client, auth, "vu@agholding.net")
     assert (await client.get("/api/views?surface=tickets", headers=hdr)).json() == []

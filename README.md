@@ -67,7 +67,18 @@ Then open **http://localhost:8080** — that's it. nginx serves the built SPA an
 reverse-proxies the API, so the whole app lives on a single origin (no CORS, no
 `.env` editing). Data persists in the `pgdata` and `media` volumes.
 
-In `development` (the default) a local **dev-login** is available without Azure.
+On a fresh database a **default administrator** is created automatically so you
+can sign in without Azure:
+
+- **Email:** `admin@agholding.net`
+- **Password:** `admin`
+
+You'll be prompted to change this password on first login. Override the seed via
+`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` (see `.env.example`). There is no
+public sign-up: after the first admin exists, new users are either **added by an
+admin** (Employee Directory → *Add user*) or provisioned via **Azure SSO**
+(landing as *pending* until an admin approves them).
+
 To customise the port, secrets, Azure SSO or SMTP, copy `.env.example` to `.env`
 and edit it before running compose.
 

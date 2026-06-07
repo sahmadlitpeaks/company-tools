@@ -19,9 +19,15 @@ from app.main import app  # noqa: E402
 
 @pytest_asyncio.fixture
 async def client():
+    from app.core.database import AsyncSessionLocal
+    from app.services.bootstrap import ensure_default_admin
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    # Seed the bootstrap admin the way production startup does.
+    async with AsyncSessionLocal() as db:
+        await ensure_default_admin(db)
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -29,6 +35,9 @@ async def client():
 
 @pytest_asyncio.fixture
 async def auth(client):
-    r = await client.post("/api/auth/dev-login", params={"email": "admin@agholding.net"})
+    r = await client.post(
+        "/api/auth/login",
+        json={"email": "admin@agholding.net", "password": "admin"},
+    )
     token = r.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

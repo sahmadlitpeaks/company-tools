@@ -5,17 +5,18 @@ import { useToast } from "../components/ui";
 
 interface AuthConfig {
   azure: boolean;
-  dev_login: boolean;
+  password: boolean;
 }
 
 export default function LoginPage() {
-  const { login, devLogin } = useAuth();
+  const { login, passwordLogin } = useAuth();
   const { notify } = useToast();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   // The production build is static, so DEV-flag detection won't work — ask the
   // backend at runtime which sign-in options to show.
-  const [config, setConfig] = useState<AuthConfig>({ azure: true, dev_login: false });
+  const [config, setConfig] = useState<AuthConfig>({ azure: true, password: true });
 
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export default function LoginPage() {
     api<AuthConfig>("/api/auth/config", { auth: false })
       .then(setConfig)
       .catch(() => {
-        /* keep defaults (show Microsoft sign-in) */
+        /* keep defaults (show both sign-in options) */
       });
     const err = new URLSearchParams(window.location.search).get("error");
     if (err === "pending_approval")
@@ -36,12 +37,12 @@ export default function LoginPage() {
       );
   }, []);
 
-  async function handleDev(e: React.FormEvent) {
+  async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
+    if (!email || !password) return;
     setBusy(true);
     try {
-      await devLogin(email);
+      await passwordLogin(email, password);
     } catch (err) {
       notify(err instanceof Error ? err.message : "Login failed", "error");
     } finally {
@@ -85,9 +86,7 @@ export default function LoginPage() {
             <span className="font-bold">AG Holding</span>
           </div>
           <h2 className="mt-2">Welcome back</h2>
-          <p className="muted mt-1">
-            Sign in with your company Microsoft account to continue.
-          </p>
+          <p className="muted mt-1">Sign in to continue.</p>
 
           {notice && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
@@ -95,34 +94,55 @@ export default function LoginPage() {
             </div>
           )}
 
-          {config.azure && (
-            <button
-              className="btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3"
-              onClick={login}
-            >
-              <span aria-hidden>⊞</span> Sign in with Microsoft
-            </button>
-          )}
-
-          {config.dev_login && (
-            <form onSubmit={handleDev} className="mt-6">
-              <div className="mb-3 flex items-center gap-3 text-xs text-ink-muted">
-                <span className="h-px flex-1 bg-[var(--border)]" />
-                developer login (local only)
-                <span className="h-px flex-1 bg-[var(--border)]" />
-              </div>
-              <div className="flex gap-2">
+          {config.password && (
+            <form onSubmit={handlePassword} className="mt-5 space-y-3">
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Email</label>
                 <input
                   type="email"
+                  autoComplete="username"
                   placeholder="you@agholding.net"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  required
                 />
-                <button className="btn flex-none" disabled={busy}>
-                  {busy ? "…" : "Go"}
-                </button>
               </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Password</label>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <button
+                className="btn-primary flex w-full items-center justify-center gap-2 py-3"
+                disabled={busy}
+              >
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
             </form>
+          )}
+
+          {config.azure && (
+            <>
+              {config.password && (
+                <div className="my-4 flex items-center gap-3 text-xs text-ink-muted">
+                  <span className="h-px flex-1 bg-[var(--border)]" />
+                  or
+                  <span className="h-px flex-1 bg-[var(--border)]" />
+                </div>
+              )}
+              <button
+                className="btn flex w-full items-center justify-center gap-2 py-3"
+                onClick={login}
+              >
+                <span aria-hidden>⊞</span> Sign in with Microsoft
+              </button>
+            </>
           )}
         </div>
       </div>

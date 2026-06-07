@@ -23,6 +23,7 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   Share2,
+  KeyRound,
   Sliders,
   Stamp,
   Sun,
@@ -37,6 +38,7 @@ import BrandSwitcher from "../brand/BrandSwitcher";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
 import CommandPalette from "./CommandPalette";
+import { ChangePasswordModal } from "./ChangePassword";
 import AppearanceModal from "../theme/AppearanceModal";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -139,6 +141,7 @@ export default function Layout() {
   });
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -259,6 +262,15 @@ export default function Layout() {
                 >
                   <Sliders size={15} /> Appearance
                 </button>
+                <button
+                  className="profile-menu-item flex items-center gap-2"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setPasswordOpen(true);
+                  }}
+                >
+                  <KeyRound size={15} /> Change password
+                </button>
                 <button className="profile-menu-item" onClick={logout}>
                   Sign out
                 </button>
@@ -272,6 +284,7 @@ export default function Layout() {
         </main>
       </div>
       {appearanceOpen && <AppearanceModal onClose={() => setAppearanceOpen(false)} />}
+      {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
    </BrandProvider>

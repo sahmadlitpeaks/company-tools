@@ -78,6 +78,15 @@ if settings.RUN_SCHEDULER:
     start_scheduler(app)
 
 
+@app.on_event("startup")
+async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tests
+    from app.core.database import AsyncSessionLocal
+    from app.services.bootstrap import ensure_default_admin
+
+    async with AsyncSessionLocal() as db:
+        await ensure_default_admin(db)
+
+
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
     return {"status": "ok", "app": settings.APP_NAME}

@@ -44,6 +44,12 @@ class User(UUIDMixin, TimestampMixin, Base):
     # External system ids for sync.
     bamboo_id: Mapped[str | None] = mapped_column(String(64))
 
+    # Local password sign-in (for users not coming via Azure SSO). Encoded
+    # PBKDF2 hash; null means the user can only sign in via SSO.
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    # Force a password change on next login (e.g. the seeded default admin).
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # admin | manager | member

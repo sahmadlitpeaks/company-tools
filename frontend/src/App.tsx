@@ -3,6 +3,7 @@ import { useAuth } from "./auth/AuthContext";
 import Protected from "./auth/Protected";
 import Layout from "./components/Layout";
 import { Loading } from "./components/ui";
+import { ForcePasswordChange } from "./components/ChangePassword";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import DashboardPage from "./pages/DashboardPage";
@@ -59,6 +60,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </>
+      ) : user.must_change_password ? (
+        <Route path="*" element={<ForcePasswordChange />} />
       ) : (
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
