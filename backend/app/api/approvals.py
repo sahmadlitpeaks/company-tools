@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.models.hr import LeaveType
 from app.models.user import User
 from app.models.workplace import ApprovalRequest
 from app.schemas.workplace import ApprovalCreate, ApprovalDecision, ApprovalOut
@@ -26,12 +27,24 @@ def _can_decide(user: User, req: ApprovalRequest) -> bool:
     return req.approver_id == user.id
 
 
-def _serialize(req: ApprovalRequest, names: dict) -> ApprovalOut:
+def _serialize(req: ApprovalRequest, names: dict, types: dict | None = None) -> ApprovalOut:
     out = ApprovalOut.model_validate(req)
     out.requester_name = names.get(req.requester_id) if req.requester_id else None
     out.approver_name = names.get(req.approver_id) if req.approver_id else None
     out.decided_by_name = names.get(req.decided_by_id) if req.decided_by_id else None
+    if req.leave_type_id and types:
+        out.leave_type_name = types.get(req.leave_type_id)
     return out
+
+
+async def _leave_type_names(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(select(LeaveType.id, LeaveType.name).where(LeaveType.id.in_(ids)))
+    ).all()
+    return {r[0]: r[1] for r in rows}
 
 
 @router.get("", response_model=list[ApprovalOut])
@@ -64,7 +77,8 @@ async def list_approvals(
         | {r.approver_id for r in reqs}
         | {r.decided_by_id for r in reqs},
     )
-    return [_serialize(r, names) for r in reqs]
+    types = await _leave_type_names(db, {r.leave_type_id for r in reqs})
+    return [_serialize(r, names, types) for r in reqs]
 
 
 @router.post("", response_model=ApprovalOut, status_code=201)
@@ -75,6 +89,8 @@ async def create_approval(
 ):
     if payload.type not in TYPES:
         raise HTTPException(status_code=422, detail="Invalid type")
+    if payload.leave_type_id and not await db.get(LeaveType, payload.leave_type_id):
+        raise HTTPException(status_code=404, detail="Leave type not found")
     req = ApprovalRequest(**payload.model_dump(), requester_id=user.id)
     db.add(req)
     if req.approver_id:

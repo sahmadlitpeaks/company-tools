@@ -100,6 +100,7 @@ class ApprovalCreate(BaseModel):
     amount: Decimal | None = None
     start_date: date | None = None
     end_date: date | None = None
+    leave_type_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None = None
     brand_id: uuid.UUID | None = None
 
@@ -119,6 +120,8 @@ class ApprovalOut(BaseModel):
     amount: Decimal | None = None
     start_date: date | None = None
     end_date: date | None = None
+    leave_type_id: uuid.UUID | None = None
+    leave_type_name: str | None = None
     status: str
     requester_id: uuid.UUID | None = None
     requester_name: str | None = None
@@ -322,25 +325,4 @@ class AnnouncementOut(BaseModel):
     read_count: int = 0
     created_at: datetime
 
-
-# ---- Leave ----
-class LeaveBalanceOut(BaseModel):
-    user_id: uuid.UUID
-    user_name: str | None = None
-    year: int
-    entitlement_days: int
-    used_days: int
-    remaining_days: int
-
-
-class LeaveEntitlementIn(BaseModel):
-    entitlement_days: int
-    year: int | None = None
-
-
-class WhosOutItem(BaseModel):
-    user_id: uuid.UUID | None = None
-    user_name: str | None = None
-    title: str
-    start_date: date | None = None
-    end_date: date | None = None
+# ---- Leave schemas now live in app/schemas/leave.py ----

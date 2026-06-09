@@ -100,11 +100,16 @@ if settings.RUN_SCHEDULER:
 @app.on_event("startup")
 async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tests
     from app.core.database import AsyncSessionLocal
-    from app.services.bootstrap import ensure_default_admin, ensure_default_departments
+    from app.services.bootstrap import (
+        ensure_default_admin,
+        ensure_default_departments,
+        ensure_default_leave_types,
+    )
 
     async with AsyncSessionLocal() as db:
         await ensure_default_admin(db)
         await ensure_default_departments(db)
+        await ensure_default_leave_types(db)
 
 
 @app.get("/health", tags=["meta"])

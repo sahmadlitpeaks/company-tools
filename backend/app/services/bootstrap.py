@@ -74,6 +74,34 @@ async def ensure_default_departments(db: AsyncSession) -> int:
     return created
 
 
+# (name, color, paid, default_days, carryover_max)
+DEFAULT_LEAVE_TYPES: list[tuple[str, str, bool, int, int]] = [
+    ("Annual", "#6366f1", True, 25, 5),
+    ("Sick", "#f59e0b", True, 10, 0),
+    ("Unpaid", "#94a3b8", False, 0, 0),
+    ("Parental", "#ec4899", True, 0, 0),
+]
+
+
+async def ensure_default_leave_types(db: AsyncSession) -> int:
+    """Seed the default leave types once (only if none exist yet)."""
+    from app.models.hr import LeaveType
+
+    count = await db.scalar(select(func.count(LeaveType.id)))
+    if count and count > 0:
+        return 0
+    for i, (name, color, paid, default_days, carryover) in enumerate(DEFAULT_LEAVE_TYPES):
+        db.add(
+            LeaveType(
+                name=name, color=color, paid=paid, default_days=default_days,
+                carryover_max=carryover, sort=i,
+            )
+        )
+    await db.commit()
+    log.info("Seeded %s default leave types", len(DEFAULT_LEAVE_TYPES))
+    return len(DEFAULT_LEAVE_TYPES)
+
+
 async def ensure_default_admin(db: AsyncSession) -> User | None:
     email = (settings.DEFAULT_ADMIN_EMAIL or "admin@agholding.net").strip().lower()
     password = settings.DEFAULT_ADMIN_PASSWORD or "admin"

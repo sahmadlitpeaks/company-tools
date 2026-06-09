@@ -703,6 +703,8 @@ export interface Approval {
   amount?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  leave_type_id?: string | null;
+  leave_type_name?: string | null;
   status: string;
   requester_id?: string | null;
   requester_name?: string | null;
@@ -809,6 +811,29 @@ export interface Announcement {
   created_at: string;
 }
 
+export interface LeaveType {
+  id: string;
+  name: string;
+  color: string;
+  paid: boolean;
+  default_days: number;
+  carryover_max: number;
+  active: boolean;
+  sort: number;
+}
+
+export interface LeaveTypeBalance {
+  leave_type_id: string;
+  name: string;
+  color: string;
+  paid: boolean;
+  entitlement_days: number;
+  accrued_days: number;
+  used_days: number;
+  pending_days: number;
+  remaining_days: number;
+}
+
 export interface LeaveBalance {
   user_id: string;
   user_name?: string | null;
@@ -816,12 +841,21 @@ export interface LeaveBalance {
   entitlement_days: number;
   used_days: number;
   remaining_days: number;
+  by_type: LeaveTypeBalance[];
+}
+
+export interface Holiday {
+  id: string;
+  day: string;
+  name: string;
 }
 
 export interface WhosOutItem {
   user_id?: string | null;
   user_name?: string | null;
   title: string;
+  leave_type_name?: string | null;
+  color?: string | null;
   start_date?: string | null;
   end_date?: string | null;
 }

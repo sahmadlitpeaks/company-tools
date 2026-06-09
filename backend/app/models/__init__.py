@@ -27,7 +27,12 @@ from app.models.notification import Notification  # noqa: F401
 from app.models.saved_view import SavedView  # noqa: F401
 from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent  # noqa: F401
 from app.models.subscription import Subscription, SubscriptionSeat  # noqa: F401
-from app.models.hr import EmploymentEvent, HrDocument  # noqa: F401
+from app.models.hr import (  # noqa: F401
+    EmploymentEvent,
+    Holiday,
+    HrDocument,
+    LeaveType,
+)
 from app.models.docversion import DocVersion  # noqa: F401
 from app.models.people import (  # noqa: F401
     AccessGrant,

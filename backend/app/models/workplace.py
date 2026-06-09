@@ -97,6 +97,10 @@ class ApprovalRequest(UUIDMixin, TimestampMixin, Base):
     amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
+    # For type=leave: which leave category (null = the default annual type).
+    leave_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("leave_types.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     # pending | approved | rejected | cancelled
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
@@ -220,6 +224,10 @@ class LeaveBalance(UUIDMixin, TimestampMixin, Base):
     )
     year: Mapped[int] = mapped_column(Integer, index=True)
     entitlement_days: Mapped[int] = mapped_column(Integer, default=25)
+    # Per leave type (null = the default annual type, for legacy rows).
+    leave_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("leave_types.id", ondelete="CASCADE"), index=True, nullable=True
+    )
 
 
 # --------------------------------------------------------------------------

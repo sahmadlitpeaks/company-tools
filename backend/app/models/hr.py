@@ -7,7 +7,7 @@ increments of the HR module.
 import uuid
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -79,3 +79,28 @@ class HrDocument(UUIDMixin, TimestampMixin, Base):
     uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class LeaveType(UUIDMixin, TimestampMixin, Base):
+    """A category of leave (Annual, Sick, Unpaid, …) with its yearly default."""
+
+    __tablename__ = "leave_types"
+
+    name: Mapped[str] = mapped_column(String(80), index=True)
+    color: Mapped[str] = mapped_column(String(16), default="#6366f1")
+    paid: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Annual entitlement granted by default (can be overridden per employee).
+    default_days: Mapped[int] = mapped_column(Integer, default=0)
+    # Max days that can roll over to next year (informational).
+    carryover_max: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Holiday(UUIDMixin, TimestampMixin, Base):
+    """A company-wide public holiday (excluded from leave-day counts)."""
+
+    __tablename__ = "holidays"
+
+    day: Mapped[date] = mapped_column(Date, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
