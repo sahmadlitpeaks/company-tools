@@ -46,6 +46,7 @@ class PhoneLineOut(PhoneLineBase):
     status: str
     assigned_to_id: uuid.UUID | None = None
     assigned_to_name: str | None = None
+    assigned_to_title: str | None = None
     bill_count: int = 0
     created_at: datetime
 

@@ -108,14 +108,19 @@ def _book_value(asset: TrackedAsset) -> Decimal | None:
     return value.quantize(Decimal("0.01"))
 
 
-async def _names(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+async def _names(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Map user ids -> {"name", "title"} (title is the staff job title/position)."""
     ids = {i for i in ids if i}
     if not ids:
         return {}
     rows = (
-        await db.execute(select(User.id, User.display_name, User.email).where(User.id.in_(ids)))
+        await db.execute(
+            select(User.id, User.display_name, User.email, User.job_title).where(
+                User.id.in_(ids)
+            )
+        )
     ).all()
-    return {r[0]: (r[1] or r[2]) for r in rows}
+    return {r[0]: {"name": (r[1] or r[2]), "title": r[3]} for r in rows}
 
 
 async def _attachment_counts(
@@ -140,7 +145,9 @@ def _serialize(
     counts: dict[uuid.UUID, int] | None = None,
 ) -> TrackedAssetOut:
     out = TrackedAssetOut.model_validate(asset)
-    out.assigned_to_name = names.get(asset.assigned_to_id) if asset.assigned_to_id else None
+    lab = (names.get(asset.assigned_to_id) or {}) if asset.assigned_to_id else {}
+    out.assigned_to_name = lab.get("name")
+    out.assigned_to_title = lab.get("title")
     out.current_book_value = _book_value(asset)
     out.attachment_count = (counts or {}).get(asset.id, 0)
     return out
@@ -720,8 +727,10 @@ async def list_events(
     result = []
     for e in events:
         out = AssetEventOut.model_validate(e)
-        out.user_name = names.get(e.user_id) if e.user_id else None
-        out.performed_by_name = names.get(e.performed_by_id) if e.performed_by_id else None
+        out.user_name = (names.get(e.user_id) or {}).get("name") if e.user_id else None
+        out.performed_by_name = (
+            (names.get(e.performed_by_id) or {}).get("name") if e.performed_by_id else None
+        )
         result.append(out)
     return result
 
@@ -752,7 +761,7 @@ async def assignment_history(
         if e.event_type == "checkout":
             open_span = AssignmentSpan(
                 user_id=e.user_id,
-                user_name=names.get(e.user_id) if e.user_id else None,
+                user_name=(names.get(e.user_id) or {}).get("name") if e.user_id else None,
                 checked_out_at=e.created_at,
                 note=e.note,
             )

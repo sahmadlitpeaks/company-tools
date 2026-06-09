@@ -56,6 +56,7 @@ class TrackedAssetOut(TrackedAssetBase):
     status: str
     assigned_to_id: uuid.UUID | None = None
     assigned_to_name: str | None = None
+    assigned_to_title: str | None = None
     # Straight-line depreciated value as of today (None if cost/life unknown).
     current_book_value: Decimal | None = None
     disposal_date: date | None = None

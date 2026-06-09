@@ -386,6 +386,7 @@ export interface PhoneLine {
   status: string;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
+  assigned_to_title?: string | null;
   brand_id?: string | null;
   contract_start?: string | null;
   contract_end?: string | null;
@@ -441,6 +442,7 @@ export interface TrackedAsset {
   brand_id?: string | null;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
+  assigned_to_title?: string | null;
   purchase_date?: string | null;
   purchase_cost?: string | null;
   vendor?: string | null;

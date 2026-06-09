@@ -96,9 +96,16 @@ async def test_phone_csv_migration(client, auth):
     assert body["created"] == 2
     assert any("number is required" in e for e in body["errors"])
 
+    # The assignee's position/title is surfaced alongside their name.
+    await client.patch(f"/api/users/{uid}", headers=auth, json={"job_title": "Sales Manager"})
+
     lines = (await client.get("/api/phone-lines", headers=auth)).json()
     imported = next(ln for ln in lines if ln["number"] == "+971500001111")
     assert imported["status"] == "assigned" and imported["assigned_to_id"] == uid
+    assert imported["assigned_to_title"] == "Sales Manager"
+
+    detail = (await client.get(f"/api/phone-lines/{imported['id']}", headers=auth)).json()
+    assert detail["assigned_to_title"] == "Sales Manager"
 
     # Re-importing the same number updates instead of duplicating.
     csv2 = "number,carrier,monthly_cost\n+971500001111,NewCarrier,99\n"

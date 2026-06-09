@@ -30,7 +30,7 @@ from app.schemas.phone import (
 )
 from app.services.activity import record
 from app.services.notify import notify_user
-from app.services.people import user_names
+from app.services.people import user_labels
 
 router = APIRouter(prefix="/phone-lines", tags=["phone-lines"])
 
@@ -92,7 +92,9 @@ async def _bill_counts(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID,
 
 def _serialize(line: PhoneLine, names: dict, counts: dict | None = None) -> PhoneLineOut:
     out = PhoneLineOut.model_validate(line)
-    out.assigned_to_name = names.get(line.assigned_to_id) if line.assigned_to_id else None
+    lab = (names.get(line.assigned_to_id) or {}) if line.assigned_to_id else {}
+    out.assigned_to_name = lab.get("name")
+    out.assigned_to_title = lab.get("title")
     out.bill_count = (counts or {}).get(line.id, 0)
     return out
 
@@ -118,7 +120,7 @@ async def list_lines(
             | PhoneLine.plan_name.ilike(like)
         )
     lines = (await db.execute(stmt)).scalars().all()
-    names = await user_names(db, {ln.assigned_to_id for ln in lines})
+    names = await user_labels(db, {ln.assigned_to_id for ln in lines})
     counts = await _bill_counts(db, {ln.id for ln in lines})
     return [_serialize(ln, names, counts) for ln in lines]
 
@@ -348,7 +350,7 @@ async def create_line(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 
@@ -367,15 +369,19 @@ async def get_line(
     ids = {line.assigned_to_id}
     for e in line.events:
         ids |= {e.user_id, e.performed_by_id}
-    names = await user_names(db, ids)
+    names = await user_labels(db, ids)
     detail = PhoneLineDetail.model_validate(line)
-    detail.assigned_to_name = names.get(line.assigned_to_id) if line.assigned_to_id else None
+    alab = (names.get(line.assigned_to_id) or {}) if line.assigned_to_id else {}
+    detail.assigned_to_name = alab.get("name")
+    detail.assigned_to_title = alab.get("title")
     detail.bill_count = len(line.bills)
     detail.events = []
     for e in line.events:
         eo = PhoneLineEventOut.model_validate(e)
-        eo.user_name = names.get(e.user_id) if e.user_id else None
-        eo.performed_by_name = names.get(e.performed_by_id) if e.performed_by_id else None
+        eo.user_name = (names.get(e.user_id) or {}).get("name") if e.user_id else None
+        eo.performed_by_name = (
+            (names.get(e.performed_by_id) or {}).get("name") if e.performed_by_id else None
+        )
         detail.events.append(eo)
     detail.bills = [PhoneBillOut.model_validate(b) for b in line.bills]
     return detail
@@ -418,7 +424,7 @@ async def update_line(
         )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     counts = await _bill_counts(db, {line.id})
     return _serialize(line, names, counts)
 
@@ -456,7 +462,7 @@ async def assign(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 
@@ -520,7 +526,7 @@ async def set_status(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 

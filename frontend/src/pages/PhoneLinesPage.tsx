@@ -176,7 +176,18 @@ export default function PhoneLinesPage() {
                     {l.data_allowance && <span className="muted text-xs"> · {l.data_allowance}</span>}
                   </td>
                   <td>{fmtMoney(l.monthly_cost)}</td>
-                  <td>{l.assigned_to_name ?? <span className="muted">—</span>}</td>
+                  <td>
+                    {l.assigned_to_name ? (
+                      <div className="leading-tight">
+                        <div>{l.assigned_to_name}</div>
+                        {l.assigned_to_title && (
+                          <div className="muted text-xs">{l.assigned_to_title}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td><span className={`badge ${STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span></td>
                   <td className="text-right font-medium text-brand-600">Open ›</td>
                 </tr>
@@ -382,6 +393,7 @@ function LineDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
             {l.assigned_to_name && (
               <span className="muted inline-flex items-center gap-1 text-xs">
                 <Smartphone size={12} /> {l.assigned_to_name}
+                {l.assigned_to_title && ` · ${l.assigned_to_title}`}
               </span>
             )}
           </div>

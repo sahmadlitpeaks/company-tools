@@ -160,10 +160,14 @@ async def test_asset_csv_migration_with_assignee(client, auth):
     assert body["created"] == 2
     assert any("required" in e for e in body["errors"])
 
+    await client.patch(f"/api/users/{uid}", headers=auth, json={"job_title": "IT Technician"})
+
     assets = (await client.get("/api/asset-tracker", headers=auth)).json()
     a = next(x for x in assets if x["asset_tag"] == "MIG-1")
     # An assignee in the CSV flips an "available" row to "assigned".
     assert a["assigned_to_id"] == uid and a["status"] == "assigned"
+    # The holder's position/title shows alongside their name.
+    assert a["assigned_to_title"] == "IT Technician"
 
     # The category was auto-registered so rollups stay clean.
     cats = [c["name"] for c in (await client.get("/api/asset-tracker/categories", headers=auth)).json()]

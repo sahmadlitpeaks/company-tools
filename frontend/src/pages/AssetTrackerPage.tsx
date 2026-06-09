@@ -398,7 +398,10 @@ function AssetDetailModal({
         <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
           <StatusBadge status={current.status} />
           {current.assigned_to_name && (
-            <span className="muted">Assigned to {current.assigned_to_name}</span>
+            <span className="muted">
+              Assigned to {current.assigned_to_name}
+              {current.assigned_to_title && ` · ${current.assigned_to_title}`}
+            </span>
           )}
         </div>
         <button
@@ -1088,7 +1091,18 @@ export default function AssetTrackerPage() {
                   <td>
                     <StatusBadge status={a.status} />
                   </td>
-                  <td>{a.assigned_to_name ?? "—"}</td>
+                  <td>
+                    {a.assigned_to_name ? (
+                      <div className="leading-tight">
+                        <div>{a.assigned_to_name}</div>
+                        {a.assigned_to_title && (
+                          <div className="muted text-xs">{a.assigned_to_title}</div>
+                        )}
+                      </div>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>{money(a.current_book_value)}</td>
                   <td>
                     <div className="row" style={{ gap: 6 }}>
