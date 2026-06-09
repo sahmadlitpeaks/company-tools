@@ -102,6 +102,25 @@ class AssignedPhone(BaseModel):
     number: str
 
 
+class ProvisionSuggestion(BaseModel):
+    """A thing peers in the same department commonly have that a new hire lacks."""
+
+    kind: str  # subscription | access
+    ref_id: uuid.UUID | None = None  # subscription_id for subscriptions
+    label: str
+    detail: str | None = None  # vendor / system
+    peer_count: int = 0
+    peer_total: int = 0
+
+
+class ProvisionSuggestions(BaseModel):
+    department_name: str | None = None
+    peer_total: int = 0
+    auto_covered: list[PersonSubscription] = []
+    subscriptions: list[ProvisionSuggestion] = []
+    access: list[ProvisionSuggestion] = []
+
+
 class JourneyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

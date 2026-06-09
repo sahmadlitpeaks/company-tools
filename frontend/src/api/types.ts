@@ -1060,3 +1060,36 @@ export interface Profile {
   can_manage: boolean;
   can_see_sensitive: boolean;
 }
+
+export interface SpendBucket {
+  label: string;
+  monthly: string;
+  count: number;
+}
+
+export interface SubscriptionReport {
+  monthly_total: string;
+  annual_total: string;
+  active_seats: number;
+  by_department: SpendBucket[];
+  by_vendor: SpendBucket[];
+  by_billing_cycle: SpendBucket[];
+  top: SpendBucket[];
+}
+
+export interface ProvisionSuggestion {
+  kind: string;
+  ref_id?: string | null;
+  label: string;
+  detail?: string | null;
+  peer_count: number;
+  peer_total: number;
+}
+
+export interface ProvisionSuggestions {
+  department_name?: string | null;
+  peer_total: number;
+  auto_covered: PersonSubscription[];
+  subscriptions: ProvisionSuggestion[];
+  access: ProvisionSuggestion[];
+}

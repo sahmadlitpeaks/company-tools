@@ -1,16 +1,23 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Boxes,
   CheckSquare,
   KeyRound,
   ListChecks,
+  Pencil,
   Smartphone,
   UserRound,
   Wallet,
 } from "lucide-react";
-import type { Profile } from "../api/types";
+import { api } from "../api/client";
+import type { Department, Profile } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead } from "../components/ui";
+import { useAuth } from "../auth/AuthContext";
+import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+
+const ROLES = ["member", "manager", "admin"];
+const USER_STATUSES = ["active", "invited", "suspended", "offboarding", "departed"];
 
 const STATUS_BADGE: Record<string, string> = {
   active: "green",
@@ -30,7 +37,8 @@ function badge(s?: string | null) {
 export default function ProfilePage() {
   const { id } = useParams();
   const path = id ? `/api/profiles/${id}` : "/api/profiles/me";
-  const { data: p, loading, error } = useFetch<Profile>(path);
+  const { data: p, loading, error, reload } = useFetch<Profile>(path);
+  const [editing, setEditing] = useState(false);
 
   if (loading) return <Loading />;
   if (error || !p)
@@ -38,7 +46,24 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <PageHead title={p.name ?? p.email ?? "Profile"} subtitle={p.job_title ?? undefined} />
+      <PageHead
+        title={p.name ?? p.email ?? "Profile"}
+        subtitle={p.job_title ?? undefined}
+        action={
+          p.can_manage ? (
+            <button className="btn inline-flex items-center gap-1.5" onClick={() => setEditing(true)}>
+              <Pencil size={15} /> Edit
+            </button>
+          ) : undefined
+        }
+      />
+      {editing && (
+        <EditProfileModal
+          profile={p}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); reload(); }}
+        />
+      )}
 
       <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
         {/* Identity card */}
@@ -148,6 +173,120 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function EditProfileModal({
+  profile,
+  onClose,
+  onSaved,
+}: {
+  profile: Profile;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { notify } = useToast();
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
+  const departments = useFetch<Department[]>(isAdmin ? "/api/departments" : null);
+  const [f, setF] = useState({
+    job_title: profile.job_title ?? "",
+    hr_department: profile.hr_department ?? "",
+    office_location: profile.office_location ?? "",
+    mobile_phone: profile.mobile_phone ?? "",
+    business_phone: profile.business_phone ?? "",
+    personal_email: profile.personal_email ?? "",
+    nationality: profile.nationality ?? "",
+    passport_no: profile.passport_no ?? "",
+    role: profile.role,
+    status: profile.status,
+    department_id: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> = {
+        job_title: f.job_title || null,
+        hr_department: f.hr_department || null,
+        office_location: f.office_location || null,
+        mobile_phone: f.mobile_phone || null,
+        business_phone: f.business_phone || null,
+      };
+      if (profile.can_see_sensitive) {
+        body.personal_email = f.personal_email || null;
+        body.nationality = f.nationality || null;
+        body.passport_no = f.passport_no || null;
+      }
+      if (isAdmin) {
+        body.role = f.role;
+        body.status = f.status;
+        if (f.department_id) body.department_id = f.department_id;
+      }
+      await api(`/api/profiles/${profile.id}`, { method: "PATCH", body });
+      notify("Profile updated.");
+      onSaved();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Edit ${profile.name ?? profile.email}`} onClose={onClose} maxWidth={560}>
+      <form onSubmit={save}>
+        <div className="row">
+          <div className="field"><label>Job title</label><input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} /></div>
+          <div className="field"><label>Department (label)</label><input value={f.hr_department} onChange={(e) => set("hr_department", e.target.value)} /></div>
+        </div>
+        <div className="field"><label>Office location</label><input value={f.office_location} onChange={(e) => set("office_location", e.target.value)} /></div>
+        <div className="row">
+          <div className="field"><label>Mobile</label><input value={f.mobile_phone} onChange={(e) => set("mobile_phone", e.target.value)} /></div>
+          <div className="field"><label>Work phone</label><input value={f.business_phone} onChange={(e) => set("business_phone", e.target.value)} /></div>
+        </div>
+        {profile.can_see_sensitive && (
+          <>
+            <div className="field"><label>Personal email</label><input value={f.personal_email} onChange={(e) => set("personal_email", e.target.value)} /></div>
+            <div className="row">
+              <div className="field"><label>Nationality</label><input value={f.nationality} onChange={(e) => set("nationality", e.target.value)} /></div>
+              <div className="field"><label>Passport</label><input value={f.passport_no} onChange={(e) => set("passport_no", e.target.value)} /></div>
+            </div>
+          </>
+        )}
+        {isAdmin && (
+          <div className="row">
+            <div className="field">
+              <label>Role</label>
+              <select value={f.role} onChange={(e) => set("role", e.target.value)}>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Status</label>
+              <select value={f.status} onChange={(e) => set("status", e.target.value)}>
+                {USER_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Access department</label>
+              <select value={f.department_id} onChange={(e) => set("department_id", e.target.value)}>
+                <option value="">Keep current</option>
+                {(departments.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

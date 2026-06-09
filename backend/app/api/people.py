@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.brand import Brand
+from app.models.department import Department
 from app.models.people import (
     DEFAULT_OFFBOARDING,
     DEFAULT_ONBOARDING,
@@ -17,6 +18,7 @@ from app.models.people import (
     OnboardingTask,
 )
 from app.models.phone_line import PhoneLine
+from app.models.subscription import Subscription, SubscriptionSeat
 from app.models.tracked_asset import AssetEvent, TrackedAsset
 from app.models.user import User
 from app.models.workplace import Announcement
@@ -32,6 +34,8 @@ from app.schemas.people import (
     JourneyOut,
     JourneyTaskOut,
     PersonSubscription,
+    ProvisionSuggestion,
+    ProvisionSuggestions,
     TargetAccess,
     TaskCreate,
     TaskUpdate,
@@ -282,6 +286,124 @@ async def get_journey(
                 )
             )
     return detail
+
+
+@router.get("/journeys/{journey_id}/suggestions", response_model=ProvisionSuggestions)
+async def provision_suggestions(
+    journey_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """What to provision for a new hire: subscriptions & access that a majority
+    of their department peers hold but they don't yet, plus the dept/company
+    subscriptions they're already auto-covered by."""
+    j = await _get_journey(db, journey_id)
+    target = await db.get(User, j.target_user_id) if j.target_user_id else None
+    if not target:
+        raise HTTPException(status_code=400, detail="Journey has no employee")
+
+    out = ProvisionSuggestions()
+    for entry in await person_subscriptions(db, target):
+        if entry["source"] != "seat":
+            sub = entry["subscription"]
+            out.auto_covered.append(
+                PersonSubscription(
+                    subscription_id=sub.id, name=sub.name, vendor=sub.vendor,
+                    source=entry["source"],
+                )
+            )
+    if not target.department_id:
+        return out
+
+    dept = await db.get(Department, target.department_id)
+    out.department_name = dept.name if dept else None
+    peers = (
+        await db.execute(
+            select(User).where(
+                User.department_id == target.department_id,
+                User.id != target.id,
+                User.status == "active",
+            )
+        )
+    ).scalars().all()
+    out.peer_total = len(peers)
+    if not peers:
+        return out
+    peer_ids = {p.id for p in peers}
+
+    # Subscriptions the target is already seated on (skip these).
+    target_subs = {
+        s.subscription_id
+        for s in (
+            await db.execute(
+                select(SubscriptionSeat).where(
+                    SubscriptionSeat.user_id == target.id,
+                    SubscriptionSeat.status == "active",
+                )
+            )
+        ).scalars().all()
+    }
+    holders: dict[uuid.UUID, set] = {}
+    for sub_id, uid in (
+        await db.execute(
+            select(SubscriptionSeat.subscription_id, SubscriptionSeat.user_id).where(
+                SubscriptionSeat.user_id.in_(peer_ids),
+                SubscriptionSeat.status == "active",
+            )
+        )
+    ).all():
+        holders.setdefault(sub_id, set()).add(uid)
+    suggest_ids = [
+        sid for sid, who in holders.items()
+        if sid not in target_subs and 2 * len(who) >= len(peers)
+    ]
+    if suggest_ids:
+        subs = (
+            await db.execute(select(Subscription).where(Subscription.id.in_(suggest_ids)))
+        ).scalars().all()
+        for sub in subs:
+            out.subscriptions.append(
+                ProvisionSuggestion(
+                    kind="subscription", ref_id=sub.id, label=sub.name,
+                    detail=sub.vendor, peer_count=len(holders[sub.id]),
+                    peer_total=len(peers),
+                )
+            )
+        out.subscriptions.sort(key=lambda s: s.peer_count, reverse=True)
+
+    # Account / system access common among peers.
+    target_access = {
+        g.name.lower()
+        for g in (
+            await db.execute(
+                select(AccessGrant).where(
+                    AccessGrant.user_id == target.id, AccessGrant.status == "active"
+                )
+            )
+        ).scalars().all()
+    }
+    access_holders: dict[str, set] = {}
+    display: dict[str, str] = {}
+    for name, uid in (
+        await db.execute(
+            select(AccessGrant.name, AccessGrant.user_id).where(
+                AccessGrant.user_id.in_(peer_ids), AccessGrant.status == "active"
+            )
+        )
+    ).all():
+        key = name.lower()
+        access_holders.setdefault(key, set()).add(uid)
+        display.setdefault(key, name)
+    for key, who in access_holders.items():
+        if key not in target_access and 2 * len(who) >= len(peers):
+            out.access.append(
+                ProvisionSuggestion(
+                    kind="access", label=display[key], peer_count=len(who),
+                    peer_total=len(peers),
+                )
+            )
+    out.access.sort(key=lambda s: s.peer_count, reverse=True)
+    return out
 
 
 @router.post("/journeys/{journey_id}/tasks", response_model=JourneyTaskOut, status_code=201)

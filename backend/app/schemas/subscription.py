@@ -84,3 +84,19 @@ class SubscriptionSummary(BaseModel):
     by_status: dict[str, int] = {}
     monthly_spend: Decimal = Decimal("0")
     renewing_soon: int = 0
+
+
+class SpendBucket(BaseModel):
+    label: str
+    monthly: Decimal = Decimal("0")
+    count: int = 0
+
+
+class SubscriptionReport(BaseModel):
+    monthly_total: Decimal = Decimal("0")
+    annual_total: Decimal = Decimal("0")
+    active_seats: int = 0
+    by_department: list[SpendBucket] = []
+    by_vendor: list[SpendBucket] = []
+    by_billing_cycle: list[SpendBucket] = []
+    top: list[SpendBucket] = []

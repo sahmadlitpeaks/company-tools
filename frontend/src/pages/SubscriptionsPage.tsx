@@ -1,8 +1,26 @@
-import { useMemo, useState } from "react";
-import { CalendarClock, Plus, Trash2, UserMinus, Wallet } from "lucide-react";
-import { api } from "../api/client";
-import type { Department, Subscription, SubscriptionSummary, User } from "../api/types";
+import { useMemo, useRef, useState } from "react";
+import {
+  BellRing,
+  CalendarClock,
+  Download,
+  FileText,
+  Plus,
+  Trash2,
+  Upload,
+  UserMinus,
+  Wallet,
+} from "lucide-react";
+import { api, downloadFile } from "../api/client";
+import type {
+  Department,
+  SpendBucket,
+  Subscription,
+  SubscriptionReport,
+  SubscriptionSummary,
+  User,
+} from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const STATUSES = ["active", "trial", "paused", "cancelled", "expired"];
@@ -30,8 +48,13 @@ const CYCLE_LABEL: Record<string, string> = {
 };
 
 export default function SubscriptionsPage() {
+  const { notify } = useToast();
+  const { user } = useAuth();
+  const isAdmin = !!user?.is_admin;
+  const [tab, setTab] = useState<"list" | "report">("list");
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
+  const importRef = useRef<HTMLInputElement>(null);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
@@ -40,12 +63,45 @@ export default function SubscriptionsPage() {
   }, [status, q]);
   const subs = useFetch<Subscription[]>(`/api/subscriptions${qs ? `?${qs}` : ""}`);
   const summary = useFetch<SubscriptionSummary>("/api/subscriptions/summary");
+  const renewals = useFetch<Subscription[]>("/api/subscriptions/renewals?days=30");
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
   function reloadAll() {
     subs.reload();
     summary.reload();
+    renewals.reload();
+  }
+
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await api<{ created: number; updated: number; errors: string[] }>(
+        "/api/subscriptions/import",
+        { method: "POST", form: fd },
+      );
+      const errs = res.errors.length ? ` (${res.errors.length} skipped)` : "";
+      notify(`Imported: ${res.created} new, ${res.updated} updated${errs}.`);
+      reloadAll();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Import failed", "error");
+    }
+    if (importRef.current) importRef.current.value = "";
+  }
+
+  async function remindOwners() {
+    try {
+      const res = await api<{ reminders_sent: number }>(
+        "/api/subscriptions/renewals/notify?days=30",
+        { method: "POST" },
+      );
+      notify(`Sent ${res.reminders_sent} renewal reminder(s).`);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
   }
 
   const s = summary.data;
@@ -55,11 +111,39 @@ export default function SubscriptionsPage() {
         title="Subscriptions"
         subtitle="SaaS & tools the company pays for — billing, renewals and who holds a seat."
         action={
-          <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-            <Plus size={15} /> New subscription
-          </button>
+          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/subscriptions/template.csv", "subscriptions-template.csv").catch(
+                  () => notify("Download failed", "error"),
+                )
+              }
+            >
+              <FileText size={15} /> Template
+            </button>
+            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => importRef.current?.click()}>
+              <Upload size={15} /> Import
+            </button>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/subscriptions/export.csv", "subscriptions.csv").catch(() =>
+                  notify("Export failed", "error"),
+                )
+              }
+            >
+              <Download size={15} /> Export
+            </button>
+            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
+              <Plus size={15} /> New
+            </button>
+          </div>
         }
       />
+      <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
 
       {s && (
         <div className="grid mb-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
@@ -70,6 +154,47 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Renewing-soon banner */}
+      {(renewals.data?.length ?? 0) > 0 && (
+        <div className="card mb-4" style={{ borderColor: "var(--amber-300, #fcd34d)" }}>
+          <div className="spread mb-2">
+            <h4 className="m-0 inline-flex items-center gap-2">
+              <CalendarClock size={16} /> Renewing in the next 30 days ({renewals.data!.length})
+            </h4>
+            {isAdmin && (
+              <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={remindOwners}>
+                <BellRing size={13} /> Remind owners
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            {renewals.data!.slice(0, 6).map((r) => (
+              <button
+                key={r.id}
+                className="flex items-center justify-between rounded-lg px-2 py-1 text-left text-sm hover:bg-slate-50"
+                onClick={() => setOpenId(r.id)}
+              >
+                <span className="font-medium">{r.name}</span>
+                <span className="muted">{r.end_date} · {money(r.monthly_cost, r.currency)}/mo</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4 flex gap-2">
+        <button className={`btn-sm ${tab === "list" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto" }} onClick={() => setTab("list")}>
+          Subscriptions
+        </button>
+        <button className={`btn-sm ${tab === "report" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto" }} onClick={() => setTab("report")}>
+          Spend report
+        </button>
+      </div>
+
+      {tab === "report" ? (
+        <SpendReport />
+      ) : (
+      <>
       <div className="card mb-4">
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ marginBottom: 0, flex: 3 }}>
@@ -138,12 +263,65 @@ export default function SubscriptionsPage() {
           </table>
         )}
       </div>
+      </>
+      )}
 
       {adding && (
         <SubscriptionModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); reloadAll(); }} />
       )}
       {openId && (
         <SubscriptionDetail id={openId} onClose={() => setOpenId(null)} onChanged={reloadAll} />
+      )}
+    </div>
+  );
+}
+
+function SpendReport() {
+  const { data, loading } = useFetch<SubscriptionReport>("/api/subscriptions/report");
+  if (loading) return <Loading />;
+  if (!data) return <Empty message="No spend data." />;
+  const max = (rows: { monthly: string }[]) =>
+    Math.max(1, ...rows.map((r) => Number(r.monthly)));
+  return (
+    <div className="space-y-4">
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+        <Metric icon={<Wallet size={16} />} label="Monthly total" value={money(data.monthly_total)} />
+        <Metric icon={<Wallet size={16} />} label="Annual total" value={money(data.annual_total)} />
+        <Metric label="Active seats" value={data.active_seats} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <BarCard title="By department" rows={data.by_department} max={max(data.by_department)} />
+        <BarCard title="By vendor" rows={data.by_vendor} max={max(data.by_vendor)} />
+        <BarCard title="By billing cycle" rows={data.by_billing_cycle} max={max(data.by_billing_cycle)} />
+        <BarCard title="Top subscriptions" rows={data.top} max={max(data.top)} />
+      </div>
+    </div>
+  );
+}
+
+function BarCard({ title, rows, max }: { title: string; rows: SpendBucket[]; max: number }) {
+  return (
+    <div className="card">
+      <h4 className="mb-2 mt-0">{title}</h4>
+      {rows.length === 0 ? (
+        <p className="muted text-sm">No data.</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <div key={r.label}>
+              <div className="flex justify-between text-sm">
+                <span className="truncate">{r.label} <span className="muted text-xs">· {r.count}</span></span>
+                <span className="font-medium">{money(r.monthly)}</span>
+              </div>
+              <div className="mt-0.5 h-1.5 rounded-full bg-slate-100">
+                <div
+                  className="h-1.5 rounded-full bg-brand-500"
+                  style={{ width: `${(Number(r.monthly) / max) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

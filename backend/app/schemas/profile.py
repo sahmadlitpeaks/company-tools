@@ -4,6 +4,21 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 
+class ProfileUpdate(BaseModel):
+    job_title: str | None = None
+    hr_department: str | None = None  # free-text label -> user.department
+    office_location: str | None = None
+    mobile_phone: str | None = None
+    business_phone: str | None = None
+    personal_email: str | None = None
+    nationality: str | None = None
+    passport_no: str | None = None
+    # Admin-only fields below; ignored for non-admin editors.
+    department_id: uuid.UUID | None = None
+    role: str | None = None
+    status: str | None = None
+
+
 class ProfileItem(BaseModel):
     id: uuid.UUID
     label: str

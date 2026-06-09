@@ -24,8 +24,17 @@ from app.schemas.profile import (
     ProfileOut,
     ProfileSubscription,
     ProfileTask,
+    ProfileUpdate,
 )
+from app.services.activity import record
 from app.services.subscriptions import person_subscriptions
+
+# Fields any manager/HR editor may change vs. admin-only ones.
+_HR_FIELDS = {
+    "job_title", "office_location", "mobile_phone", "business_phone",
+    "personal_email", "nationality", "passport_no",
+}
+_ADMIN_FIELDS = {"department_id", "role", "status"}
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -172,4 +181,36 @@ async def get_profile(
     target = await db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
+    return await _build(db, viewer, target)
+
+
+@router.patch("/{user_id}", response_model=ProfileOut)
+async def update_profile(
+    user_id: uuid.UUID,
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    _, can_manage, _ = _can_view(viewer, target)
+    if not can_manage:
+        raise HTTPException(status_code=403, detail="You can't edit this profile")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "hr_department" in data:
+        target.department = data.pop("hr_department")
+    for field in list(data):
+        if field in _ADMIN_FIELDS and not viewer.is_admin:
+            data.pop(field)  # silently ignore admin-only fields for HR editors
+            continue
+        if field in _HR_FIELDS or field in _ADMIN_FIELDS:
+            setattr(target, field, data[field])
+    record(
+        db, user=viewer, action="updated", entity_type="user", entity_id=target.id,
+        summary=f"Updated profile for {target.display_name or target.email}",
+    )
+    await db.commit()
+    await db.refresh(target)
     return await _build(db, viewer, target)

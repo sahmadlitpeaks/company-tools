@@ -21,6 +21,8 @@ import type {
   Journey,
   JourneyDetail,
   JourneyTask,
+  ProvisionSuggestion,
+  ProvisionSuggestions,
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -343,6 +345,29 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
   const [assetPick, setAssetPick] = useState("");
   const [grant, setGrant] = useState({ name: "", system: "", username: "" });
   const d = detail.data;
+  const suggestions = useFetch<ProvisionSuggestions>(
+    d?.kind === "onboarding" ? `/api/people/journeys/${id}/suggestions` : null,
+  );
+
+  async function provisionSub(s: ProvisionSuggestion) {
+    if (!s.ref_id || !d?.target_user_id) return;
+    await api(`/api/subscriptions/${s.ref_id}/seats`, {
+      method: "POST",
+      body: { user_ids: [d.target_user_id] },
+    });
+    suggestions.reload();
+    detail.reload();
+    onChanged();
+  }
+  async function provisionAccess(s: ProvisionSuggestion) {
+    await api(`/api/people/journeys/${id}/grants`, {
+      method: "POST",
+      body: { name: s.label },
+    });
+    suggestions.reload();
+    detail.reload();
+    onChanged();
+  }
 
   async function assignAsset() {
     if (!assetPick) return;
@@ -624,6 +649,55 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
               </div>
             </div>
           )}
+
+          {/* Onboarding: suggested provisioning from department peers */}
+          {d.kind === "onboarding" &&
+            ((suggestions.data?.subscriptions.length ?? 0) > 0 ||
+              (suggestions.data?.access.length ?? 0) > 0) && (
+              <div className="mb-4">
+                <h4 className="mb-2 inline-flex items-center gap-1.5">
+                  <UserPlus size={15} /> Suggested for {suggestions.data?.department_name ?? "this department"}
+                </h4>
+                <p className="muted mb-2 text-xs">
+                  Commonly held by peers in the same department but not yet provisioned.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {suggestions.data!.subscriptions.map((s) => (
+                    <div
+                      key={`sub-${s.ref_id}`}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                      style={{ background: "var(--surface-2)" }}
+                    >
+                      <span className="min-w-0 text-sm">
+                        <Wallet size={12} className="mr-1 inline" />
+                        <span className="font-medium">{s.label}</span>
+                        {s.detail && <span className="muted"> · {s.detail}</span>}
+                        <span className="muted"> · {s.peer_count}/{s.peer_total} peers</span>
+                      </span>
+                      <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => provisionSub(s)}>
+                        <Plus size={12} /> Seat
+                      </button>
+                    </div>
+                  ))}
+                  {suggestions.data!.access.map((s) => (
+                    <div
+                      key={`acc-${s.label}`}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                      style={{ background: "var(--surface-2)" }}
+                    >
+                      <span className="min-w-0 text-sm">
+                        <KeyRound size={12} className="mr-1 inline" />
+                        <span className="font-medium">{s.label}</span>
+                        <span className="muted"> · {s.peer_count}/{s.peer_total} peers</span>
+                      </span>
+                      <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => provisionAccess(s)}>
+                        <Plus size={12} /> Add access
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {/* Checklist */}
           <div className="spread mb-2">

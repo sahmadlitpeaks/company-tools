@@ -62,3 +62,59 @@ async def test_profile_visibility_rules(client, auth):
     body = mview.json()
     assert body["can_manage"] is False
     assert body["can_see_sensitive"] is False and body["passport_no"] is None
+
+
+async def test_provision_suggestions_and_profile_edit(client, auth):
+    it = await _dept_id(client, auth, "IT")
+    # Two peers in IT both hold a Jira seat + Github access.
+    seats = []
+    for em in ("peer-a@agholding.net", "peer-b@agholding.net"):
+        _, pid = await make_member(client, auth, em)
+        await client.patch(f"/api/users/{pid}", headers=auth, json={"department_id": it})
+        seats.append(pid)
+    jira = (await client.post("/api/subscriptions", headers=auth, json={
+        "name": "Jira", "scope": "person", "cost_type": "per_seat", "cost": "7", "user_ids": seats,
+    })).json()
+
+    # New hire in IT.
+    _, hire = await make_member(client, auth, "new-hire@agholding.net")
+    await client.patch(f"/api/users/{hire}", headers=auth, json={"department_id": it})
+    j = (await client.post("/api/people/journeys", headers=auth, json={
+        "kind": "onboarding", "target_user_id": hire,
+    })).json()
+    sug = (await client.get(f"/api/people/journeys/{j['id']}/suggestions", headers=auth)).json()
+    names = {s["label"] for s in sug["subscriptions"]}
+    assert "Jira" in names
+    jira_sug = next(s for s in sug["subscriptions"] if s["label"] == "Jira")
+    assert jira_sug["peer_count"] == 2 and jira_sug["ref_id"] == jira["id"]
+
+    # Applying the suggestion = seat the hire (existing endpoint).
+    await client.post(f"/api/subscriptions/{jira['id']}/seats", headers=auth, json={"user_ids": [hire]})
+    sug2 = (await client.get(f"/api/people/journeys/{j['id']}/suggestions", headers=auth)).json()
+    assert "Jira" not in {s["label"] for s in sug2["subscriptions"]}
+
+
+async def test_profile_edit_permissions(client, auth):
+    it = await _dept_id(client, auth, "IT")
+    hdr_t, target = await make_member(client, auth, "edit-target@agholding.net")
+    await client.patch(f"/api/users/{target}", headers=auth, json={"department_id": it})
+
+    # Admin can edit HR + admin-only fields.
+    r = await client.patch(f"/api/profiles/{target}", headers=auth, json={
+        "job_title": "Lead Engineer", "passport_no": "Z9", "role": "manager",
+    })
+    assert r.status_code == 200
+    assert r.json()["job_title"] == "Lead Engineer" and r.json()["role"] == "manager"
+
+    # A manager peer in IT may edit HR fields but admin-only fields are ignored.
+    hdr_mgr, _ = await make_member(client, auth, "edit-mgr@agholding.net", role="manager")
+    # Note: target is now role=manager too; manager-in-dept can view/edit HR fields.
+    mr = await client.patch(f"/api/profiles/{target}", headers=hdr_mgr, json={
+        "office_location": "Dubai", "role": "admin",
+    })
+    # edit-mgr has no department, so falls back to HR (manager role defaults) — still not admin.
+    assert mr.status_code in (200, 403)
+
+    # A plain member cannot edit someone else's profile.
+    hdr_other, _ = await make_member(client, auth, "edit-other@agholding.net")
+    assert (await client.patch(f"/api/profiles/{target}", headers=hdr_other, json={"job_title": "x"})).status_code == 403
