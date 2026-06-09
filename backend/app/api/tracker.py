@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.auth.deps import get_current_user
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import public_base_url
 from app.models.tracked_asset import (
     AssetAttachment,
     AssetCategory,
@@ -69,7 +69,7 @@ CSV_FIELDS = [
 
 
 def _label_url(asset: TrackedAsset) -> str:
-    return f"{settings.PUBLIC_BASE_URL}/asset-tracker?q={asset.asset_tag}"
+    return f"{public_base_url()}/asset-tracker?q={asset.asset_tag}"
 
 
 def _book_value(asset: TrackedAsset) -> Decimal | None:

@@ -31,8 +31,11 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform}@db:5432/${POSTGRES_DB:-platform}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
+      # Blank => auto-derive public links/redirects from the request host, so
+      # the app works on any IP/domain with no config. Set them for a fixed
+      # domain or to force https behind TLS termination.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
       MEDIA_ROOT: /data/media
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}

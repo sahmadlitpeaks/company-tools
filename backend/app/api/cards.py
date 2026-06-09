@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import public_base_url
 from app.models.card import CardScan, DigitalCard, Lead
 from app.models.user import User
 from app.schemas.card import (
@@ -39,7 +39,7 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
 
 
 def _card_url(slug: str) -> str:
-    return f"{settings.PUBLIC_BASE_URL}/c/{slug}"
+    return f"{public_base_url()}/c/{slug}"
 
 
 @router.get("", response_model=list[CardOut])

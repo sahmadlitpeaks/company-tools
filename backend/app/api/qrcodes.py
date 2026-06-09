@@ -8,8 +8,8 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 
 from app.auth.deps import get_current_user
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import public_base_url
 from app.models.qrcode import QRCode
 from app.models.user import User
 from app.schemas.common import QRCodeCreate, QRCodeOut, QRCodeUpdate
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/qrcodes", tags=["qr-codes"])
 def _encoded_value(qr: QRCode) -> str:
     """What the rendered QR encodes: a tracked redirect when dynamic."""
     if qr.dynamic:
-        return f"{settings.PUBLIC_BASE_URL}/q/{qr.id}"
+        return f"{public_base_url()}/q/{qr.id}"
     return qr.target_url
 
 

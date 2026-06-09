@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.urls import public_base_url
 from app.models.shortlink import LinkClick, ShortLink
 from app.models.user import User
 from app.services import crypto
@@ -77,7 +77,7 @@ async def get_or_create_share_link(
 
 
 def share_url(code: str) -> str:
-    return f"{settings.PUBLIC_BASE_URL}/s/{code}"
+    return f"{public_base_url()}/s/{code}"
 
 
 def enforce_access(

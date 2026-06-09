@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.azure import build_oauth, fetch_graph_me
 from app.auth.deps import get_current_user
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
+from app.core.urls import frontend_base_url
 from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.activity import record
@@ -138,7 +138,7 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
     allowed = await get_allowed_domains(db)
     if not email_domain_allowed(email, allowed):
         return RedirectResponse(
-            f"{settings.FRONTEND_BASE_URL}/login?error=domain_not_allowed"
+            f"{frontend_base_url()}/login?error=domain_not_allowed"
         )
 
     first = await _is_first_user(db)
@@ -152,7 +152,7 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     if user.status == "pending":
         return RedirectResponse(
-            f"{settings.FRONTEND_BASE_URL}/login?error=pending_approval"
+            f"{frontend_base_url()}/login?error=pending_approval"
         )
 
     app_token = create_access_token(
@@ -160,7 +160,7 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         extra={"email": user.email, "name": user.display_name},
     )
     # Hand the token back to the SPA.
-    redirect = f"{settings.FRONTEND_BASE_URL}/auth/callback#token={app_token}"
+    redirect = f"{frontend_base_url()}/auth/callback#token={app_token}"
     return RedirectResponse(redirect)
 
 
