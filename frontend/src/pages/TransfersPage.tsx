@@ -3,8 +3,9 @@ import { api } from "../api/client";
 import type { SecureTransfer, SecureTransferCreated } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
+  ConfirmModal,
   Empty,
-  Loading,
+  ListSkeleton,
   Modal,
   PageHead,
   bytes,
@@ -60,6 +61,7 @@ export default function TransfersPage() {
   });
   const [busy, setBusy] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<SecureTransfer | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +97,6 @@ export default function TransfersPage() {
   }
 
   async function revoke(t: SecureTransfer) {
-    if (!confirm(`Revoke and delete the file sent to ${t.recipient_email}?`)) return;
     await api(`/api/transfers/${t.id}`, { method: "DELETE" });
     notify("File revoked and deleted.");
     reload();
@@ -107,19 +108,28 @@ export default function TransfersPage() {
         title="Secure Transfers"
         subtitle="Send a file via an encrypted, single-use link that self-destructs after download."
       />
-      <div className="grid cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Send a file securely</h3>
+          <h3 className="mt-0">Send a file securely</h3>
           <form onSubmit={submit}>
             <div className="field">
               <label>File *</label>
               <button
                 type="button"
-                className="btn"
-                style={{ width: "100%" }}
                 onClick={() => fileRef.current?.click()}
+                className={`flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
+                  fileName
+                    ? "border-brand-300 bg-brand-50"
+                    : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50"
+                }`}
               >
-                {fileName || "Choose file…"}
+                <span className="text-2xl">{fileName ? "📎" : "⬆️"}</span>
+                <span className="font-semibold text-ink">
+                  {fileName || "Click to choose a file"}
+                </span>
+                <span className="text-xs text-ink-muted">
+                  Encrypted on upload · up to 100&nbsp;MB
+                </span>
               </button>
               <input
                 ref={fileRef}
@@ -188,24 +198,32 @@ export default function TransfersPage() {
           </form>
         </div>
 
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>How it works</h3>
-          <ol className="muted" style={{ lineHeight: 1.8, paddingLeft: 18 }}>
-            <li>Your file is <strong>encrypted</strong> the moment it's uploaded.</li>
-            <li>The decryption key lives only in the share link — never in our database.</li>
-            <li>We email the link to the recipient (or you copy &amp; send it).</li>
-            <li>On download the file is decrypted and, by default,
-              <strong> permanently deleted</strong>.</li>
-            <li>Links also self-expire after the window you choose.</li>
-          </ol>
+        <div className="card bg-gradient-to-br from-slate-50 to-white">
+          <h3 className="mt-0">How it works</h3>
+          <ul className="space-y-3">
+            {[
+              ["🔐", <>Your file is <strong>encrypted</strong> the moment it's uploaded.</>],
+              ["🔑", <>The decryption key lives only in the share link — never in our database.</>],
+              ["✉️", <>We email the link to the recipient (or you copy &amp; send it).</>],
+              ["🔥", <>On download it's decrypted and, by default, <strong>permanently deleted</strong>.</>],
+              ["⏱", <>Links also self-expire after the window you choose.</>],
+            ].map(([icon, text], i) => (
+              <li key={i} className="flex gap-3">
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white shadow-card">
+                  {icon}
+                </span>
+                <span className="pt-1 text-sm text-ink-muted">{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
 
-      <h3 style={{ marginTop: 24 }}>Sent files</h3>
+      <h3 className="mt-6">Sent files</h3>
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty message="You haven't sent any secure files yet." />
+        <Empty icon="🔒" message="No secure transfers yet" hint="Send an encrypted, single-use file using the form above." />
       ) : (
         <div className="card">
           <table>
@@ -242,7 +260,7 @@ export default function TransfersPage() {
                     {!t.is_consumed && (
                       <button
                         className="btn-sm btn-danger"
-                        onClick={() => revoke(t)}
+                        onClick={() => setRevoking(t)}
                       >
                         Revoke
                       </button>
@@ -256,6 +274,16 @@ export default function TransfersPage() {
       )}
 
       {shareUrl && <ShareResult url={shareUrl} onClose={() => setShareUrl(null)} />}
+      {revoking && (
+        <ConfirmModal
+          title="Revoke transfer"
+          message={`Revoke and permanently delete the file sent to ${revoking.recipient_email}? The share link will stop working immediately.`}
+          confirmLabel="Revoke & delete"
+          danger
+          onConfirm={() => revoke(revoking)}
+          onClose={() => setRevoking(null)}
+        />
+      )}
     </div>
   );
 }

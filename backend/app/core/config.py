@@ -17,6 +17,17 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173"
     PUBLIC_BASE_URL: str = "http://localhost:8000"
     FRONTEND_BASE_URL: str = "http://localhost:5173"
+    # Comma-separated email domains allowed to sign in (empty = allow any).
+    # New accounts still land in "pending" until an admin approves them.
+    ALLOWED_EMAIL_DOMAINS: str = ""
+    # Run the in-process background scheduler (asset warranty/maintenance alerts).
+    RUN_SCHEDULER: bool = True
+    # Escape hatch to allow demo-data seeding even in production (default: off).
+    ALLOW_DEMO_SEED: bool = False
+    # Bootstrap admin, created on first start when there are no users yet. The
+    # account is forced to change its password on first login.
+    DEFAULT_ADMIN_EMAIL: str = "admin@agholding.net"
+    DEFAULT_ADMIN_PASSWORD: str = "admin"
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg://platform:platform@localhost:5432/platform"
@@ -46,6 +57,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def allowed_domains(self) -> list[str]:
+        return [
+            d.strip().lstrip("@").lower()
+            for d in self.ALLOWED_EMAIL_DOMAINS.split(",")
+            if d.strip()
+        ]
 
     @property
     def azure_discovery_url(self) -> str:

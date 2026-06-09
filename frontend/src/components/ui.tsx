@@ -2,9 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
+import { X } from "lucide-react";
+import { apiBlob } from "../api/client";
 
 /* ---------- Toast ---------- */
 interface ToastState {
@@ -39,22 +44,284 @@ export function Modal({
   title,
   onClose,
   children,
+  maxWidth,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  maxWidth?: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const node = ref.current;
+    const focusable = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
+    // Focus the first field (skip the close button) for a natural start.
+    const items = focusable();
+    (items[1] ?? items[0])?.focus();
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const f = focusable();
+      if (f.length === 0) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={maxWidth ? { maxWidth } : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="spread" style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>{title}</h3>
-          <button className="btn-sm" onClick={onClose}>
-            ✕
+          <button
+            className="btn-sm grid place-items-center"
+            aria-label="Close dialog"
+            onClick={onClose}
+          >
+            <X size={16} />
           </button>
         </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+/* ---------- Confirm dialog (replaces window.confirm) ---------- */
+export function ConfirmModal({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  danger = false,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    try {
+      await onConfirm();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="muted" style={{ marginTop: -4, marginBottom: 18 }}>
+        {message}
+      </div>
+      <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          className={danger ? "btn-danger-solid" : "btn-primary"}
+          style={{ flex: "0 0 auto" }}
+          disabled={busy}
+          onClick={go}
+        >
+          {busy ? "…" : confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Single-input prompt (replaces window.prompt) ---------- */
+export function PromptModal({
+  title,
+  label,
+  placeholder,
+  defaultValue = "",
+  submitLabel = "Create",
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  label: string;
+  placeholder?: string;
+  defaultValue?: string;
+  submitLabel?: string;
+  onSubmit: (value: string) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(defaultValue);
+  const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = value.trim();
+    if (!v) return;
+    setBusy(true);
+    try {
+      await onSubmit(v);
+      onClose();
+    } catch {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="field">
+          <label>{label}</label>
+          <input
+            autoFocus
+            value={value}
+            placeholder={placeholder}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            style={{ flex: "0 0 auto" }}
+            disabled={busy || !value.trim()}
+          >
+            {busy ? "…" : submitLabel}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ---------- Auth-protected image ---------- */
+/** Loads an image behind auth (token attached) and renders it as a blob URL. */
+export function AuthImage({
+  path,
+  alt,
+  width,
+  height,
+  style,
+}: {
+  path: string;
+  alt: string;
+  width: number;
+  height: number;
+  style?: CSSProperties;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setSrc(null);
+    setFailed(false);
+    apiBlob(path)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => active && setFailed(true));
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [path]);
+
+  if (failed) {
+    return (
+      <div className="img-fallback" style={{ width, height, ...style }} title="Unavailable">
+        ⚠
+      </div>
+    );
+  }
+  if (!src) {
+    return <div className="img-skeleton" style={{ width, height, ...style }} />;
+  }
+  return <img src={src} alt={alt} width={width} height={height} style={style} />;
+}
+
+/* ---------- Mini bar chart (no deps) ---------- */
+export function MiniBars({
+  data,
+  color = "var(--brand)",
+  height = 90,
+  label,
+}: {
+  data: { date: string; count: number }[];
+  color?: string;
+  height?: number;
+  label?: string;
+}) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const total = data.reduce((s, d) => s + d.count, 0);
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 3,
+          height,
+        }}
+      >
+        {data.map((d) => (
+          <div
+            key={d.date}
+            title={`${d.date}: ${d.count}`}
+            style={{
+              flex: 1,
+              height: `${Math.max(3, (d.count / max) * 100)}%`,
+              background: color,
+              opacity: d.count === 0 ? 0.18 : 1,
+              borderRadius: 3,
+              transition: "height 0.2s ease",
+            }}
+          />
+        ))}
+      </div>
+      {label && (
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          {label} · {total} in {data.length} days
+        </div>
+      )}
     </div>
   );
 }
@@ -80,8 +347,52 @@ export function PageHead({
   );
 }
 
+export type Metric = { value: ReactNode; label: string; sub?: string };
+
+/** A single dashboard metric bar: equal columns with hairline dividers that
+ * wrap cleanly and never clip the figures (unlike cramped individual cards). */
+export function MetricStrip({ items }: { items: Metric[] }) {
+  return (
+    <div className="card overflow-hidden !p-0">
+      <div
+        className="grid gap-px"
+        style={{
+          background: "var(--border)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+        }}
+      >
+        {items.map((it, i) => (
+          <div key={i} className="flex flex-col gap-1 bg-[var(--surface)] px-4 py-3.5">
+            <div className="text-xl font-bold leading-none -tracking-[0.02em] [font-variant-numeric:tabular-nums]">
+              {it.value}
+            </div>
+            <div className="text-[12px] font-medium text-ink-muted">{it.label}</div>
+            {it.sub && <div className="text-[11px] text-ink-muted/80">{it.sub}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Loading() {
   return <div className="empty">Loading…</div>;
+}
+
+/** Shimmering placeholder bar. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`img-skeleton ${className}`} />;
+}
+
+/** A stack of skeleton rows for table/list loading states. */
+export function ListSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="img-skeleton h-11 w-full rounded-lg" />
+      ))}
+    </div>
+  );
 }
 
 export function ErrorBox({ message }: { message: string }) {
@@ -92,8 +403,47 @@ export function ErrorBox({ message }: { message: string }) {
   );
 }
 
-export function Empty({ message }: { message: string }) {
-  return <div className="empty">{message}</div>;
+/** Full-panel error state with a retry action. */
+export function ErrorState({
+  message,
+  onRetry,
+}: {
+  message?: string | null;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="card flex flex-col items-center gap-2 py-10 text-center">
+      <div className="text-4xl">⚠️</div>
+      <div className="font-semibold text-ink">Couldn't load this</div>
+      {message && <div className="max-w-sm text-sm text-ink-muted">{message}</div>}
+      {onRetry && (
+        <button className="btn mt-2" onClick={onRetry}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function Empty({
+  message,
+  icon,
+  hint,
+  action,
+}: {
+  message: string;
+  icon?: ReactNode;
+  hint?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="empty flex flex-col items-center gap-2">
+      {icon && <div className="text-4xl opacity-70">{icon}</div>}
+      <div className="font-semibold text-ink">{message}</div>
+      {hint && <div className="max-w-sm text-sm text-ink-muted">{hint}</div>}
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
 }
 
 export function bytes(n: number): string {

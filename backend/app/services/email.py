@@ -32,6 +32,25 @@ def send_email(to: str, subject: str, html: str) -> bool:
     return True
 
 
+def notification_email_html(title: str, body: str | None, link: str | None) -> str:
+    note = f"<p style='color:#334155'>{body}</p>" if body else ""
+    button = (
+        f"<p style='margin:24px 0'>"
+        f"<a href='{link}' style='background:#0b5cab;color:#fff;padding:12px 24px;"
+        f"border-radius:8px;text-decoration:none;font-weight:700'>Open</a></p>"
+        if link
+        else ""
+    )
+    return f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#0b5cab">{title}</h2>
+      {note}
+      {button}
+      <p style="color:#64748b;font-size:13px">AG Holding — Internal Platform</p>
+    </div>
+    """
+
+
 def transfer_email_html(sender: str, message: str | None, link: str) -> str:
     note = f"<p>{message}</p>" if message else ""
     return f"""

@@ -17,11 +17,20 @@ platform's own PostgreSQL database on first login.
 | 7 | **Email Signatures** | Generate branded HTML email signatures from a template + user data. |
 | 8 | **URL Shortener** | Branded short links with click analytics for campaigns. |
 | 9 | **Secure Transfers** | Send a file via an encrypted, single-use link that self-destructs after download (optional password + expiry). |
+| 10 | **Asset Tracker** | Track physical/IT assets (tag, category, location), assign & check-out/check-in to employees, record purchase/warranty info, straight-line depreciation and a maintenance log. |
+
+Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
+
+**Multi-brand:** the platform is brand-aware. Define each company brand (AG Holding,
+Agiomix, Timepiece, …) in **Admin → Brands** with its logo, colours and contact
+details; a brand switcher in the header sets the active brand, which themes email
+signatures (and progressively the other modules). Content tables carry a
+`brand_id` so items can be scoped and filtered per brand.
 
 ## Tech stack
 
 - **Backend:** FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, Authlib (OIDC).
-- **Frontend:** React 18 + Vite + TypeScript, MSAL (Azure auth), TanStack Query, React Router.
+- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, MSAL (Azure auth), TanStack Query, React Router.
 - **Auth:** Azure Entra ID OIDC → backend issues a short-lived app JWT session.
 
 ## Quick start (local dev)
@@ -48,12 +57,30 @@ npm run dev
 Backend runs on http://localhost:8000 (docs at `/docs`), frontend on
 http://localhost:5173.
 
-## Or run everything with Docker
+## Or run everything with Docker (one command, one URL)
 
 ```bash
-cp backend/.env.example backend/.env   # fill values
 docker compose up --build
 ```
+
+Then open **http://localhost:8080** — that's it. nginx serves the built SPA and
+reverse-proxies the API, so the whole app lives on a single origin (no CORS, no
+`.env` editing). Data persists in the `pgdata` and `media` volumes.
+
+On a fresh database a **default administrator** is created automatically so you
+can sign in without Azure:
+
+- **Email:** `admin@agholding.net`
+- **Password:** `admin`
+
+You'll be prompted to change this password on first login. Override the seed via
+`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` (see `.env.example`). There is no
+public sign-up: after the first admin exists, new users are either **added by an
+admin** (Employee Directory → *Add user*) or provisioned via **Azure SSO**
+(landing as *pending* until an admin approves them).
+
+To customise the port, secrets, Azure SSO or SMTP, copy `.env.example` to `.env`
+and edit it before running compose.
 
 ## Azure app registration
 

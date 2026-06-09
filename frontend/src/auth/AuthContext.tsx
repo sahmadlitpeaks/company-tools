@@ -14,9 +14,12 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: () => void;
-  devLogin: (email: string) => Promise<void>;
+  passwordLogin: (email: string, password: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
+  /** Whether the current user may access a permission module. */
+  can: (module: string) => boolean;
 }
 
 const AuthCtx = createContext<AuthState | undefined>(undefined);
@@ -51,13 +54,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${API_BASE_URL}/api/auth/login`;
   }, []);
 
-  const devLogin = useCallback(
-    async (email: string) => {
-      const res = await api<{ access_token: string }>(
-        `/api/auth/dev-login?email=${encodeURIComponent(email)}`,
-        { method: "POST", auth: false },
-      );
+  const passwordLogin = useCallback(
+    async (email: string, password: string) => {
+      const res = await api<{ access_token: string }>("/api/auth/login", {
+        method: "POST",
+        auth: false,
+        body: { email, password },
+      });
       tokenStore.set(res.access_token);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      await api("/api/auth/change-password", {
+        method: "POST",
+        body: { current_password: currentPassword, new_password: newPassword },
+      });
       await refresh();
     },
     [refresh],
@@ -68,9 +83,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const can = useCallback(
+    (module: string) =>
+      !!user && (user.is_admin || user.effective_permissions.includes(module)),
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, devLogin, logout, refresh }),
-    [user, loading, login, devLogin, logout, refresh],
+    () => ({ user, loading, login, passwordLogin, changePassword, logout, refresh, can }),
+    [user, loading, login, passwordLogin, changePassword, logout, refresh, can],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

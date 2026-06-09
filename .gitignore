@@ -20,3 +20,9 @@ media/
 node_modules/
 dist/
 .vite/
+
+# Test artifacts
+.pytest_cache/
+test-results/
+playwright-report/
+.playwright/

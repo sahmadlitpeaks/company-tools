@@ -131,16 +131,37 @@ async def main() -> None:
         print("qrcodes OK — persisted + preview")
 
         # ---- landing pages feature #6 ----
+        # Publishing requires real (non-placeholder) content.
+        import json as _json
+
+        blocks = _json.dumps(
+            [
+                {
+                    "type": "hero",
+                    "heading": "Summer Promo is here",
+                    "buttonText": "Shop now",
+                    "buttonUrl": "https://agholding.net/summer",
+                },
+                {"type": "text", "text": "Real supporting copy about the promotion."},
+            ]
+        )
+        # A placeholder page must be rejected on publish.
+        bad = await c.post(
+            "/api/landing-pages",
+            headers=h,
+            json={"title": "Bad", "status": "published", "blocks": "[]"},
+        )
+        assert bad.status_code == 422, bad.text
         page = (
             await c.post(
                 "/api/landing-pages",
                 headers=h,
-                json={"title": "Summer Promo", "status": "published"},
+                json={"title": "Summer Promo", "status": "published", "blocks": blocks},
             )
         ).json()
         pp = await c.get(f"/api/public/landing-pages/{page['slug']}")
         assert pp.status_code == 200 and pp.json()["view_count"] == 1
-        print("landing OK — slug:", page["slug"])
+        print("landing OK — slug:", page["slug"], "| publish guard enforced")
 
         # ---- email signatures feature #7 ----
         tmpl = (

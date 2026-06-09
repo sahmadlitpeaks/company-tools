@@ -1,0 +1,46 @@
+"""Create in-app notifications (adds to the session; caller commits).
+
+Email delivery is intentionally handled by the caller (so it can run in a
+threadpool after commit) — this module only owns the in-app record + dedup.
+"""
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.notification import Notification
+
+
+async def notify_user(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    title: str,
+    body: str | None = None,
+    link: str | None = None,
+    category: str = "info",
+    dedup_key: str | None = None,
+) -> Notification | None:
+    """Queue an in-app notification. Returns None if deduped."""
+    if dedup_key:
+        existing = (
+            await db.execute(
+                select(Notification).where(
+                    Notification.user_id == user_id,
+                    Notification.dedup_key == dedup_key,
+                    Notification.is_read.is_(False),
+                )
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return None
+    n = Notification(
+        user_id=user_id,
+        title=title,
+        body=body,
+        link=link,
+        category=category,
+        dedup_key=dedup_key,
+    )
+    db.add(n)
+    return n

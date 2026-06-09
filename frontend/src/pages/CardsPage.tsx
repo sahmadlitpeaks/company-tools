@@ -1,10 +1,13 @@
-import { useState } from "react";
-import { api, apiUrl } from "../api/client";
+import { useRef, useState } from "react";
+import { api, downloadFile } from "../api/client";
 import type { DigitalCard, Lead } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
+  AuthImage,
+  ConfirmModal,
   Empty,
   ErrorBox,
+  ListSkeleton,
   Loading,
   Modal,
   PageHead,
@@ -33,10 +36,16 @@ function CardForm({
     accent_color: "#0b5cab",
   });
   const [busy, setBusy] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.full_name.trim()) {
+      setNameError("Full name is required.");
+      return;
+    }
+    setNameError(null);
     setBusy(true);
     try {
       await api<DigitalCard>("/api/cards", { method: "POST", body: form });
@@ -52,14 +61,24 @@ function CardForm({
 
   return (
     <Modal title="New digital card" onClose={onClose}>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} noValidate>
         <div className="field">
-          <label>Full name *</label>
+          <label htmlFor="card-full-name">Full name *</label>
           <input
-            required
+            id="card-full-name"
             value={form.full_name}
-            onChange={(e) => set("full_name", e.target.value)}
+            aria-invalid={!!nameError}
+            aria-describedby={nameError ? "card-full-name-err" : undefined}
+            onChange={(e) => {
+              set("full_name", e.target.value);
+              if (nameError) setNameError(null);
+            }}
           />
+          {nameError && (
+            <div id="card-full-name-err" className="mt-1 text-xs text-red-600">
+              {nameError}
+            </div>
+          )}
         </div>
         <div className="row">
           <div className="field">
@@ -129,6 +148,89 @@ function CardForm({
   );
 }
 
+function PhotoButton({ card, onDone }: { card: DigitalCard; onDone: () => void }) {
+  const { notify } = useToast();
+  const ref = useRef<HTMLInputElement>(null);
+  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await api(`/api/cards/${card.id}/photo`, { method: "POST", form: fd });
+      notify("Photo updated.");
+      onDone();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
+    if (ref.current) ref.current.value = "";
+  }
+  return (
+    <>
+      <button
+        className="btn-sm"
+        style={{ flex: "0 0 auto" }}
+        onClick={() => ref.current?.click()}
+      >
+        Photo
+      </button>
+      <input ref={ref} type="file" accept="image/*" hidden onChange={upload} />
+    </>
+  );
+}
+
+function DownloadModal({ card, onClose }: { card: DigitalCard; onClose: () => void }) {
+  const { notify } = useToast();
+  const safe = card.slug || "card";
+  const items: { label: string; hint: string; path: string; file: string }[] = [
+    {
+      label: "Contact file (vCard)",
+      hint: "Import into phone / Outlook contacts",
+      path: `/api/cards/${card.id}/vcard`,
+      file: `${safe}.vcf`,
+    },
+    {
+      label: "QR code (PNG)",
+      hint: "Square QR image for print",
+      path: `/api/cards/${card.id}/qr.png`,
+      file: `${safe}-qr.png`,
+    },
+    {
+      label: "Card image (PNG)",
+      hint: "Full business card as an image",
+      path: `/api/cards/${card.id}/card.png`,
+      file: `${safe}.png`,
+    },
+    {
+      label: "Card (PDF)",
+      hint: "Print-ready PDF",
+      path: `/api/cards/${card.id}/card.pdf`,
+      file: `${safe}.pdf`,
+    },
+  ];
+  return (
+    <Modal title={`Download — ${card.full_name}`} onClose={onClose}>
+      <div className="row" style={{ flexDirection: "column", gap: 8 }}>
+        {items.map((it) => (
+          <button
+            key={it.label}
+            className="btn"
+            style={{ width: "100%", textAlign: "left" }}
+            onClick={() =>
+              downloadFile(it.path, it.file).catch(() =>
+                notify("Download failed", "error"),
+              )
+            }
+          >
+            <div style={{ fontWeight: 600 }}>{it.label}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{it.hint}</div>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 function LeadsModal({ card, onClose }: { card: DigitalCard; onClose: () => void }) {
   const { data, loading } = useFetch<Lead[]>(`/api/cards/${card.id}/leads`);
   return (
@@ -169,9 +271,10 @@ export default function CardsPage() {
   const { data, loading, error, reload } = useFetch<DigitalCard[]>("/api/cards");
   const [creating, setCreating] = useState(false);
   const [leadsFor, setLeadsFor] = useState<DigitalCard | null>(null);
+  const [downloadFor, setDownloadFor] = useState<DigitalCard | null>(null);
+  const [deleting, setDeleting] = useState<DigitalCard | null>(null);
 
   async function remove(card: DigitalCard) {
-    if (!confirm(`Delete card for ${card.full_name}?`)) return;
     await api(`/api/cards/${card.id}`, { method: "DELETE" });
     notify("Card deleted.");
     reload();
@@ -195,11 +298,20 @@ export default function CardsPage() {
         }
       />
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : error ? (
         <ErrorBox message={error} />
       ) : !data || data.length === 0 ? (
-        <Empty message="You haven't created any digital cards yet." />
+        <Empty
+          icon="💳"
+          message="No digital cards yet"
+          hint="Create a shareable business card with a QR code and lead capture."
+          action={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + New card
+            </button>
+          }
+        />
       ) : (
         <div className="grid cols-3">
           {data.map((card) => (
@@ -213,11 +325,11 @@ export default function CardsPage() {
                     background: card.accent_color,
                   }}
                 />
-                <img
+                <AuthImage
                   alt="QR"
                   width={72}
                   height={72}
-                  src={apiUrl(`/api/cards/${card.id}/qr.png`)}
+                  path={`/api/cards/${card.id}/qr.png`}
                   style={{ border: "1px solid var(--border)", borderRadius: 8 }}
                 />
               </div>
@@ -243,6 +355,14 @@ export default function CardsPage() {
                 >
                   Copy link
                 </button>
+                <PhotoButton card={card} onDone={reload} />
+                <button
+                  className="btn-sm"
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => setDownloadFor(card)}
+                >
+                  Download
+                </button>
                 <button
                   className="btn-sm"
                   style={{ flex: "0 0 auto" }}
@@ -253,7 +373,7 @@ export default function CardsPage() {
                 <button
                   className="btn-sm btn-danger"
                   style={{ flex: "0 0 auto" }}
-                  onClick={() => remove(card)}
+                  onClick={() => setDeleting(card)}
                 >
                   Delete
                 </button>
@@ -266,6 +386,19 @@ export default function CardsPage() {
       {creating && <CardForm onClose={() => setCreating(false)} onSaved={reload} />}
       {leadsFor && (
         <LeadsModal card={leadsFor} onClose={() => setLeadsFor(null)} />
+      )}
+      {downloadFor && (
+        <DownloadModal card={downloadFor} onClose={() => setDownloadFor(null)} />
+      )}
+      {deleting && (
+        <ConfirmModal
+          title="Delete digital card"
+          message={`Delete the card for ${deleting.full_name}? This can't be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => remove(deleting)}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </div>
   );

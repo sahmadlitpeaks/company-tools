@@ -28,6 +28,12 @@ class AssetOut(BaseModel):
     file_path: str
     content_type: str | None = None
     size_bytes: int
+    version: int = 1
+    is_public: bool = False
+    share_code: str | None = None
+    share_expires_at: datetime | None = None
+    share_require_lead: bool = False
+    share_has_passcode: bool = False
     created_at: datetime
 
 
@@ -87,7 +93,112 @@ class BrochureOut(BaseModel):
     content_type: str | None = None
     size_bytes: int
     download_count: int
+    version: int = 1
+    is_public: bool = False
+    share_code: str | None = None
+    share_expires_at: datetime | None = None
+    share_require_lead: bool = False
+    share_has_passcode: bool = False
     created_at: datetime
+
+
+class ShareSettings(BaseModel):
+    """Optional access controls supplied when sharing a document."""
+
+    expires_in_days: int | None = None
+    passcode: str | None = None  # None = leave as-is, "" = clear
+    require_lead: bool = False
+
+
+class ShareInfo(BaseModel):
+    """Result of sharing / unsharing a document."""
+
+    is_public: bool
+    share_code: str | None = None
+    share_url: str | None = None
+    expires_at: datetime | None = None
+    require_lead: bool = False
+    has_passcode: bool = False
+
+
+class BrandBrief(BaseModel):
+    """Just enough brand identity to skin the public viewer."""
+
+    name: str
+    logo_url: str | None = None
+    primary_color: str = "#0b5cab"
+    website: str | None = None
+    tagline: str | None = None
+
+
+class PublicDocMeta(BaseModel):
+    """Metadata + access flags for the public flipbook viewer."""
+
+    id: uuid.UUID
+    kind: str  # "brochure" | "asset"
+    title: str
+    content_type: str | None = None
+    size_bytes: int
+    requires_passcode: bool = False
+    requires_lead: bool = False
+    brand: BrandBrief | None = None
+
+
+class LeadCapture(BaseModel):
+    """A visitor's details, captured before a gated download."""
+
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    company: str | None = None
+
+
+class DocVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    version: int
+    content_type: str | None = None
+    size_bytes: int
+    note: str | None = None
+    created_at: datetime
+
+
+class SharedDocOut(BaseModel):
+    """A row in the "Shared with clients" dashboard."""
+
+    kind: str  # "brochure" | "asset"
+    id: uuid.UUID
+    title: str
+    share_code: str
+    share_url: str
+    public_url: str
+    opens: int
+    downloads: int
+    last_opened: datetime | None = None
+    expires_at: datetime | None = None
+    require_lead: bool = False
+    has_passcode: bool = False
+    created_at: datetime
+
+
+class SearchHit(BaseModel):
+    kind: str  # "brochure" | "asset" | "product"
+    id: uuid.UUID
+    title: str
+    subtitle: str | None = None
+    href: str  # in-app route
+
+
+class SearchResults(BaseModel):
+    query: str
+    hits: list[SearchHit]
+
+
+class BulkAssetAction(BaseModel):
+    ids: list[uuid.UUID]
+    action: str  # "delete" | "move" | "share" | "unshare"
+    folder_id: uuid.UUID | None = None
 
 
 # ---- QR codes (feature #5) ----
@@ -96,7 +207,15 @@ class QRCodeCreate(BaseModel):
     target_url: str
     fill_color: str = "#000000"
     back_color: str = "#ffffff"
+    dynamic: bool = True
     product_id: uuid.UUID | None = None
+
+
+class QRCodeUpdate(BaseModel):
+    label: str | None = None
+    target_url: str | None = None
+    fill_color: str | None = None
+    back_color: str | None = None
 
 
 class QRCodeOut(BaseModel):
@@ -108,6 +227,7 @@ class QRCodeOut(BaseModel):
     fill_color: str
     back_color: str
     scan_count: int
+    dynamic: bool
     product_id: uuid.UUID | None = None
     created_at: datetime
 
@@ -144,6 +264,21 @@ class LandingOut(BaseModel):
     theme: str
     status: str
     view_count: int
+    created_at: datetime
+
+
+class LandingLeadCreate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    message: str | None = None
+
+
+class LandingLeadOut(LandingLeadCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    page_id: uuid.UUID
     created_at: datetime
 
 

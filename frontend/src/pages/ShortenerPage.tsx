@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { api, API_BASE_URL } from "../api/client";
+import { api } from "../api/client";
 import type { ShortLink } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, PageHead, useToast } from "../components/ui";
+import { Empty, ListSkeleton, PageHead, useToast } from "../components/ui";
 
 export default function ShortenerPage() {
   const { notify } = useToast();
@@ -35,7 +35,9 @@ export default function ShortenerPage() {
   }
 
   function copy(code: string) {
-    void navigator.clipboard.writeText(`${API_BASE_URL}/s/${code}`);
+    // Short links live under the app's own origin (nginx proxies /s/ to the
+    // backend), so build the URL from the current location.
+    void navigator.clipboard.writeText(`${window.location.origin}/s/${code}`);
     notify("Short link copied.");
   }
 
@@ -81,9 +83,9 @@ export default function ShortenerPage() {
       </div>
 
       {loading ? (
-        <Loading />
+        <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty message="No short links yet." />
+        <Empty icon="🔗" message="No short links yet" hint="Shorten a destination URL above to start tracking clicks." />
       ) : (
         <div className="card">
           <table>

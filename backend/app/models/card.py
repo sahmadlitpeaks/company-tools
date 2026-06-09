@@ -15,6 +15,9 @@ class DigitalCard(UUIDMixin, TimestampMixin, Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     # Public, human-friendly slug used in the share URL: /c/{slug}
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
 

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,10 @@ from app.schemas.card import (
     LeadCreate,
     LeadOut,
 )
+from app.services.activity import record
+from app.services.card_render import build_vcard, render_card_pdf, render_card_png
 from app.services.qrcodes import generate_qr_png
+from app.services.storage import media_url, save_upload
 from app.services.utils import slugify
 
 router = APIRouter(prefix="/cards", tags=["digital-cards"])
@@ -61,6 +64,14 @@ async def create_card(
     slug = await _unique_slug(db, payload.slug or payload.full_name)
     card = DigitalCard(owner_id=user.id, slug=slug, **data)
     db.add(card)
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="card",
+        entity_id=card.id,
+        summary=f"Created digital card for {card.full_name}",
+    )
     await db.commit()
     await db.refresh(card)
     return card
@@ -121,6 +132,68 @@ async def card_qr(
     return Response(content=png, media_type="image/png")
 
 
+async def _owned_card(db: AsyncSession, card_id: uuid.UUID, user: User) -> DigitalCard:
+    card = await db.get(DigitalCard, card_id)
+    if not card or card.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return card
+
+
+@router.post("/{card_id}/photo", response_model=CardOut)
+async def upload_card_photo(
+    card_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    rel_path, _ = await save_upload(file, subdir="cards")
+    card.photo_url = media_url(rel_path)
+    await db.commit()
+    await db.refresh(card)
+    return card
+
+
+@router.get("/{card_id}/vcard")
+async def card_vcard(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    filename = f"{card.slug or 'contact'}.vcf"
+    return Response(
+        content=build_vcard(card),
+        media_type="text/vcard; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{card_id}/card.png")
+async def card_image(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    return Response(content=render_card_png(card, _card_url(card.slug)), media_type="image/png")
+
+
+@router.get("/{card_id}/card.pdf")
+async def card_pdf(
+    card_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    card = await _owned_card(db, card_id, user)
+    filename = f"{card.slug or 'card'}.pdf"
+    return Response(
+        content=render_card_pdf(card, _card_url(card.slug)),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/{card_id}/leads", response_model=list[LeadOut])
 async def card_leads(
     card_id: uuid.UUID,
@@ -179,6 +252,25 @@ async def submit_lead(
         raise HTTPException(status_code=403, detail="Lead capture disabled")
     lead = Lead(card_id=card.id, **payload.model_dump())
     db.add(lead)
+    await db.flush()
+    # Mirror into the unified CRM inbox.
+    from app.models.crm import CrmLead
+
+    db.add(
+        CrmLead(
+            brand_id=card.brand_id,
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            company=lead.company,
+            notes=lead.message,
+            source="card",
+            source_detail=card.slug,
+            status="new",
+            origin_type="card_lead",
+            origin_id=str(lead.id),
+        )
+    )
     await db.commit()
     await db.refresh(lead)
     return lead

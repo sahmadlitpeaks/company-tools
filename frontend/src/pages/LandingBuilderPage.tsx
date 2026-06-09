@@ -12,6 +12,7 @@ import {
 } from "../landing/blocks";
 import { BlockList, BlockView } from "../landing/BlockRenderer";
 import { Loading, useToast } from "../components/ui";
+import { useBrand } from "../brand/BrandContext";
 
 const PALETTE: BlockType[] = [
   "hero",
@@ -20,8 +21,11 @@ const PALETTE: BlockType[] = [
   "image",
   "features",
   "cta",
+  "form",
   "spacer",
 ];
+
+const LEAD_FIELDS = ["name", "email", "phone", "message"] as const;
 
 /** Wrap rendered blocks in a minimal HTML document for the public route. */
 function exportHtml(title: string, blocks: Block[]): string {
@@ -36,6 +40,7 @@ export default function LandingBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { notify } = useToast();
+  const { active } = useBrand();
 
   const [page, setPage] = useState<LandingPage | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -61,6 +66,10 @@ export default function LandingBuilderPage() {
 
   function addBlock(type: BlockType) {
     const block = createBlock(type);
+    // Seed new hero/CTA blocks with the active brand's colour.
+    if (active && (block.type === "hero" || block.type === "cta")) {
+      block.bg = active.primary_color;
+    }
     setBlocks((b) => [...b, block]);
     setSelectedId(block.id);
   }
@@ -147,9 +156,9 @@ export default function LandingBuilderPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 300px", gap: 16 }}>
+      <div className="grid gap-4 lg:grid-cols-[240px_1fr_280px]">
         {/* ---- Left: block list + palette ---- */}
-        <div className="card" style={{ alignSelf: "start" }}>
+        <div className="card self-start lg:sticky lg:top-[84px]">
           <h4 style={{ margin: "0 0 10px" }}>Blocks</h4>
           {blocks.length === 0 && (
             <div className="muted" style={{ fontSize: 13 }}>
@@ -208,12 +217,14 @@ export default function LandingBuilderPage() {
         </div>
 
         {/* ---- Middle: live preview ---- */}
-        <div
-          className="card"
-          style={{ padding: 0, overflow: "hidden", minHeight: 400 }}
-        >
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-slate-100 p-3 shadow-card">
+          <div className="min-h-[420px] overflow-hidden rounded-lg bg-white shadow-soft">
           {blocks.length === 0 ? (
-            <div className="empty">Your page preview will appear here.</div>
+            <div className="empty">
+              <div className="text-4xl opacity-70">🧱</div>
+              <div className="mt-2 font-semibold text-ink">Your page preview appears here</div>
+              <div className="text-sm text-ink-muted">Add a block from the panel on the left.</div>
+            </div>
           ) : (
             blocks.map((b) => (
               <div
@@ -230,10 +241,11 @@ export default function LandingBuilderPage() {
               </div>
             ))
           )}
+          </div>
         </div>
 
         {/* ---- Right: inspector ---- */}
-        <div className="card" style={{ alignSelf: "start" }}>
+        <div className="card self-start lg:sticky lg:top-[84px]">
           <h4 style={{ margin: "0 0 10px" }}>
             {selected ? `Edit: ${BLOCK_LABELS[selected.type]}` : "Inspector"}
           </h4>
@@ -412,6 +424,53 @@ function BlockEditor({
           >
             + Add feature
           </button>
+        </>
+      );
+    case "form":
+      return (
+        <>
+          <Text label="Heading" value={block.heading} onChange={(v) => patch({ heading: v })} />
+          <Text
+            label="Subheading"
+            area
+            value={block.subheading}
+            onChange={(v) => patch({ subheading: v })}
+          />
+          <div className="field">
+            <label>Fields to collect</label>
+            {LEAD_FIELDS.map((f) => (
+              <label
+                key={f}
+                style={{ display: "flex", gap: 8, fontWeight: 400, textTransform: "capitalize" }}
+              >
+                <input
+                  type="checkbox"
+                  style={{ width: "auto" }}
+                  checked={block.fields.includes(f)}
+                  onChange={(e) =>
+                    patch({
+                      fields: e.target.checked
+                        ? [...block.fields, f]
+                        : block.fields.filter((x) => x !== f),
+                    })
+                  }
+                />
+                {f}
+              </label>
+            ))}
+          </div>
+          <Text
+            label="Button text"
+            value={block.buttonText}
+            onChange={(v) => patch({ buttonText: v })}
+          />
+          <Text
+            label="Success message"
+            area
+            value={block.successMessage}
+            onChange={(v) => patch({ successMessage: v })}
+          />
+          <Color label="Background" value={block.bg} onChange={(v) => patch({ bg: v })} />
         </>
       );
     case "spacer":
