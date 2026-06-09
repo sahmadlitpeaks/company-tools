@@ -11,6 +11,7 @@ import {
   ListChecks,
   Pencil,
   Smartphone,
+  Target,
   Trash2,
   UserRound,
   Wallet,
@@ -21,6 +22,7 @@ import type {
   CompensationSummary,
   Department,
   HrDocument,
+  PerformanceGoal,
   Profile,
   ProfileEvent,
   User,
@@ -54,6 +56,8 @@ function badge(s?: string | null) {
 
 export default function ProfilePage() {
   const { id } = useParams();
+  const { user: viewer } = useAuth();
+  const viewerId = viewer?.id;
   const path = id ? `/api/profiles/${id}` : "/api/profiles/me";
   const { data: p, loading, error, reload } = useFetch<Profile>(path);
   const [editing, setEditing] = useState(false);
@@ -218,6 +222,8 @@ export default function ProfilePage() {
             </Section>
           )}
 
+          <GoalsSection userId={p.id} canEdit={p.can_manage || p.id === viewerId} />
+
           {p.can_see_sensitive && (
             <CompensationSection userId={p.id} canManage={p.can_manage} />
           )}
@@ -241,6 +247,112 @@ const DOC_CATEGORIES = [
 ];
 const COMP_TYPES = ["salary", "bonus", "allowance", "adjustment"];
 const PAY_PERIODS = ["annual", "monthly", "hourly"];
+const GOAL_STATUSES = ["open", "in_progress", "done", "cancelled"];
+
+function GoalsSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const { notify } = useToast();
+  const goals = useFetch<PerformanceGoal[]>(`/api/performance/goals/by-user/${userId}`);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ title: "", due_date: "", description: "" });
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    try {
+      await api(`/api/performance/goals/by-user/${userId}`, {
+        method: "POST",
+        body: { title: form.title.trim(), due_date: form.due_date || null, description: form.description || null },
+      });
+      setForm({ title: "", due_date: "", description: "" });
+      setAdding(false);
+      goals.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+  async function patch(id: string, body: Record<string, unknown>) {
+    await api(`/api/performance/goals/${id}`, { method: "PATCH", body });
+    goals.reload();
+  }
+  async function del(id: string) {
+    await api(`/api/performance/goals/${id}`, { method: "DELETE" });
+    goals.reload();
+  }
+
+  if (goals.loading) return null;
+  if (!canEdit && (goals.data?.length ?? 0) === 0) return null;
+
+  return (
+    <div className="card">
+      <div className="spread mb-2">
+        <h3 className="m-0 flex items-center gap-2 text-base"><Target size={16} /> Goals</h3>
+        {canEdit && (
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+            {adding ? "Cancel" : "+ Goal"}
+          </button>
+        )}
+      </div>
+      {adding && (
+        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
+          <div className="field"><label>Goal</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Ship the HR module" /></div>
+          <div className="row">
+            <div className="field"><label>Due</label><input type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} /></div>
+          </div>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add goal</button>
+        </form>
+      )}
+      {(goals.data?.length ?? 0) === 0 ? (
+        <Muted>No goals set.</Muted>
+      ) : (
+        <div className="space-y-2">
+          {goals.data!.map((g) => (
+            <div key={g.id} className="rounded-lg border border-slate-100 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{g.title}</span>
+                <div className="flex flex-none items-center gap-2">
+                  {canEdit ? (
+                    <select
+                      className="!w-auto !py-1 text-xs"
+                      value={g.status}
+                      onChange={(e) => patch(g.id, { status: e.target.value })}
+                    >
+                      {GOAL_STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+                    </select>
+                  ) : (
+                    <span className="badge">{g.status.replace("_", " ")}</span>
+                  )}
+                  {canEdit && (
+                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(g.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <div className="h-1.5 flex-1 rounded-full bg-slate-100">
+                  <div className="h-1.5 rounded-full bg-brand-500" style={{ width: `${g.progress}%` }} />
+                </div>
+                {canEdit ? (
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    defaultValue={g.progress}
+                    className="!w-16 !py-0.5 text-xs"
+                    onBlur={(e) => { const v = Number(e.target.value); if (v !== g.progress) patch(g.id, { progress: v }); }}
+                  />
+                ) : (
+                  <span className="muted text-xs">{g.progress}%</span>
+                )}
+              </div>
+              {g.due_date && <div className="muted mt-1 text-xs">Due {g.due_date}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function money(v?: string | null, ccy?: string | null) {
   if (v == null || v === "") return "—";

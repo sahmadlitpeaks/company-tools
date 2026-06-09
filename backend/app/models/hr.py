@@ -145,3 +145,57 @@ class CompensationRecord(UUIDMixin, TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+# ---- Performance (light) ----
+GOAL_STATUSES = {"open", "in_progress", "done", "cancelled"}
+REVIEW_STATUSES = {"pending", "submitted"}
+
+
+class PerformanceGoal(UUIDMixin, TimestampMixin, Base):
+    """A goal/objective for an employee, with simple progress tracking."""
+
+    __tablename__ = "performance_goals"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(512))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    due_date: Mapped[date | None] = mapped_column(Date)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class ReviewCycle(UUIDMixin, TimestampMixin, Base):
+    """A performance review round (e.g. '2026 H1')."""
+
+    __tablename__ = "review_cycles"
+
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    period: Mapped[str | None] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    due_date: Mapped[date | None] = mapped_column(Date)
+
+
+class Review(UUIDMixin, TimestampMixin, Base):
+    """One employee's review within a cycle, written by their reviewer."""
+
+    __tablename__ = "reviews"
+
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("review_cycles.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    rating: Mapped[int | None] = mapped_column(Integer)  # 1-5
+    summary: Mapped[str | None] = mapped_column(Text)
+    submitted_at: Mapped[date | None] = mapped_column(Date)

@@ -34,6 +34,9 @@ from app.models.hr import (  # noqa: F401
     HrDocument,
     LeaveType,
     PayBand,
+    PerformanceGoal,
+    Review,
+    ReviewCycle,
 )
 from app.models.docversion import DocVersion  # noqa: F401
 from app.models.people import (  # noqa: F401

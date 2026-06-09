@@ -1225,3 +1225,41 @@ export interface CompensationSummary {
   band_name?: string | null;
   annualised?: string | null;
 }
+
+export interface PerformanceGoal {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string | null;
+  status: string;
+  progress: number;
+  due_date?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+}
+
+export interface ReviewCycle {
+  id: string;
+  name: string;
+  period?: string | null;
+  status: string;
+  due_date?: string | null;
+  created_at: string;
+  review_count: number;
+  submitted_count: number;
+}
+
+export interface Review {
+  id: string;
+  cycle_id: string;
+  cycle_name?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  status: string;
+  rating?: number | null;
+  summary?: string | null;
+  submitted_at?: string | null;
+  created_at: string;
+}

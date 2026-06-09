@@ -29,6 +29,7 @@ from app.api import (
     notifications,
     compensation,
     hr_documents,
+    performance,
     phones,
     profiles,
     subscriptions,
@@ -143,6 +144,7 @@ app.include_router(me_api.router, prefix=api_prefix)
 app.include_router(profiles.router, prefix=api_prefix)
 app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(compensation.router, prefix=api_prefix)
+app.include_router(performance.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.
