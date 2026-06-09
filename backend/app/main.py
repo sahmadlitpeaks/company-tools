@@ -65,6 +65,20 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _capture_request_base(request, call_next):
+    """Record the public origin of each request so generated links (QR, short
+    links, card pages, SSO redirects) use the host the app was actually reached
+    on — unless PUBLIC_BASE_URL / FRONTEND_BASE_URL are set explicitly."""
+    from app.core.urls import set_request_base
+
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if host:
+        set_request_base(f"{proto}://{host}")
+    return await call_next(request)
+
+
 # Serve uploaded media (dev only — front a CDN/object store in prod).
 ensure_media_root()
 app.mount(

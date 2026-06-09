@@ -70,6 +70,34 @@ async def test_change_password_flow(client, auth):
     ).status_code == 200
 
 
+async def test_public_base_url_resolver():
+    from app.core.urls import frontend_base_url, public_base_url, set_request_base
+
+    # With nothing explicit, the per-request host is used (trailing slash dropped).
+    set_request_base("http://203.0.113.5:8080")
+    assert public_base_url() == "http://203.0.113.5:8080"
+    assert frontend_base_url() == "http://203.0.113.5:8080"
+    set_request_base(None)
+
+
+async def test_generated_links_use_request_host(client, auth):
+    # Simulate the app being reached at an IP behind nginx (forwarded headers).
+    fwd = {
+        **auth,
+        "X-Forwarded-Proto": "http",
+        "X-Forwarded-Host": "203.0.113.5:8080",
+    }
+    r = await client.post(
+        "/api/transfers",
+        headers=fwd,
+        files={"file": ("note.txt", b"hello", "text/plain")},
+        data={"recipient_email": "x@agholding.net"},
+    )
+    assert r.status_code == 201
+    # The share link points at the host the request came in on, not localhost.
+    assert r.json()["share_url"].startswith("http://203.0.113.5:8080/t/")
+
+
 async def test_unknown_api_route_404(client, auth):
     r = await client.get("/api/does-not-exist", headers=auth)
     assert r.status_code == 404

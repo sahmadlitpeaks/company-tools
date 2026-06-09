@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.auth.deps import get_current_user
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import frontend_base_url
 from app.models.transfer import SecureTransfer
 from app.models.user import User
 from app.schemas.transfer import (
@@ -125,7 +125,7 @@ async def create_transfer(
     db.add(transfer)
     await db.flush()
 
-    share_url = f"{settings.FRONTEND_BASE_URL}/t/{token}"
+    share_url = f"{frontend_base_url()}/t/{token}"
 
     # Best-effort email to the recipient (no-op if SMTP not configured).
     try:

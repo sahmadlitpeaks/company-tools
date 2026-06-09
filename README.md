@@ -67,6 +67,12 @@ Then open **http://localhost:8080** — that's it. nginx serves the built SPA an
 reverse-proxies the API, so the whole app lives on a single origin (no CORS, no
 `.env` editing). Data persists in the `pgdata` and `media` volumes.
 
+Deploying to a server? Just point a browser at `http://<your-server-ip>:8080`
+(or map port 80). Public links (QR codes, short links, card pages) and SSO
+redirects **auto-derive from the host you reach the app on**, so no extra config
+is needed. To pin a fixed domain or force https behind TLS, set
+`PUBLIC_BASE_URL` / `FRONTEND_BASE_URL` (see `.env.example`).
+
 On a fresh database a **default administrator** is created automatically so you
 can sign in without Azure:
 

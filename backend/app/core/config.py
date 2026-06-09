@@ -15,8 +15,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me"
     # Comma-separated string; use the `cors_origins` property for the parsed list.
     BACKEND_CORS_ORIGINS: str = "http://localhost:5173"
-    PUBLIC_BASE_URL: str = "http://localhost:8000"
-    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    # Public base URLs. Leave blank to auto-derive from the incoming request
+    # (works on any host/IP behind the bundled nginx); set them for a fixed
+    # domain or to force https.
+    PUBLIC_BASE_URL: str = ""
+    FRONTEND_BASE_URL: str = ""
     # Comma-separated email domains allowed to sign in (empty = allow any).
     # New accounts still land in "pending" until an admin approves them.
     ALLOWED_EMAIL_DOMAINS: str = ""
