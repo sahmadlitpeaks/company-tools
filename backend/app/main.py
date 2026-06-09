@@ -27,6 +27,7 @@ from app.api import (
     me as me_api,
     people,
     notifications,
+    hr_documents,
     phones,
     profiles,
     subscriptions,
@@ -134,6 +135,7 @@ app.include_router(demo.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)
 app.include_router(profiles.router, prefix=api_prefix)
+app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.

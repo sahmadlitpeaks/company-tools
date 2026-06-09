@@ -4,6 +4,8 @@ import {
   Boxes,
   CalendarClock,
   CheckSquare,
+  Download,
+  FileText,
   KeyRound,
   ListChecks,
   Pencil,
@@ -12,8 +14,8 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
-import { api } from "../api/client";
-import type { Department, Profile, ProfileEvent, User } from "../api/types";
+import { api, downloadFile } from "../api/client";
+import type { Department, HrDocument, Profile, ProfileEvent, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
@@ -208,10 +210,127 @@ export default function ProfilePage() {
           )}
 
           {p.can_see_sensitive && (
+            <DocumentsSection userId={p.id} canManage={p.can_manage} />
+          )}
+
+          {p.can_see_sensitive && (
             <EmploymentHistory userId={p.id} canManage={p.can_manage} events={p.events} onChange={reload} />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+const DOC_CATEGORIES = [
+  "contract", "offer_letter", "nda", "passport", "visa",
+  "national_id", "certificate", "policy", "payslip", "other",
+];
+
+function DocumentsSection({ userId, canManage }: { userId: string; canManage: boolean }) {
+  const { notify } = useToast();
+  const docs = useFetch<HrDocument[]>(`/api/hr-documents/by-user/${userId}`);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ title: "", category: "contract", issue_date: "", expiry_date: "" });
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function upload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file || !form.title.trim()) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("title", form.title.trim());
+      fd.append("category", form.category);
+      if (form.issue_date) fd.append("issue_date", form.issue_date);
+      if (form.expiry_date) fd.append("expiry_date", form.expiry_date);
+      await api(`/api/hr-documents/by-user/${userId}`, { method: "POST", form: fd });
+      setForm({ title: "", category: "contract", issue_date: "", expiry_date: "" });
+      setFile(null);
+      setAdding(false);
+      docs.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Upload failed", "error");
+    }
+    setBusy(false);
+  }
+  async function del(id: string) {
+    await api(`/api/hr-documents/${id}`, { method: "DELETE" });
+    docs.reload();
+  }
+
+  return (
+    <div className="card">
+      <div className="spread mb-2">
+        <h3 className="m-0 flex items-center gap-2 text-base"><FileText size={16} /> Documents</h3>
+        {canManage && (
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+            {adding ? "Cancel" : "+ Upload"}
+          </button>
+        )}
+      </div>
+      {adding && (
+        <form onSubmit={upload} className="mb-3 rounded-lg border border-slate-200 p-2">
+          <div className="row">
+            <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></div>
+            <div className="field">
+              <label>Category</label>
+              <select value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
+                {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="row">
+            <div className="field"><label>Issue date</label><input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
+            <div className="field"><label>Expiry date</label><input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
+          </div>
+          <div className="field"><label>File</label><input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy || !file}>{busy ? "Uploading…" : "Upload"}</button>
+        </form>
+      )}
+      {docs.loading ? (
+        <Loading />
+      ) : (docs.data?.length ?? 0) === 0 ? (
+        <Muted>No documents.</Muted>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {docs.data!.map((d) => {
+            const expSoon = d.days_to_expiry != null && d.days_to_expiry <= 30;
+            const expired = d.days_to_expiry != null && d.days_to_expiry < 0;
+            return (
+              <div key={d.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium">
+                    <span className="badge mr-1">{d.category.replace("_", " ")}</span>{d.title}
+                  </div>
+                  {d.expiry_date && (
+                    <div className={`text-xs ${expired ? "text-rose-600" : expSoon ? "text-amber-600" : "muted"}`}>
+                      {expired ? "Expired " : "Expires "}{d.expiry_date}
+                      {d.days_to_expiry != null && !expired ? ` (${d.days_to_expiry}d)` : ""}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-none gap-1">
+                  <button
+                    className="btn-sm inline-flex items-center gap-1"
+                    style={{ flex: "0 0 auto" }}
+                    onClick={() => downloadFile(`/api/hr-documents/${d.id}/download`, d.title).catch(() => notify("Download failed", "error"))}
+                  >
+                    <Download size={13} />
+                  </button>
+                  {canManage && (
+                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(d.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

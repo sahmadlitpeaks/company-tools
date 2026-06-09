@@ -1140,3 +1140,19 @@ export interface ProvisionSuggestions {
   subscriptions: ProvisionSuggestion[];
   access: ProvisionSuggestion[];
 }
+
+export interface HrDocument {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  title: string;
+  category: string;
+  content_type?: string | null;
+  size_bytes: number;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  notes?: string | null;
+  uploaded_by_id?: string | null;
+  created_at: string;
+  days_to_expiry?: number | null;
+}

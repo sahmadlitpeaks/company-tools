@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  BellRing,
   Boxes,
+  CalendarClock,
   Check,
   Cloud,
   FileDown,
@@ -18,6 +21,7 @@ import type {
   AccessGrant,
   AssignedAsset,
   Brand,
+  HrDocument,
   Journey,
   JourneyDetail,
   JourneyTask,
@@ -43,9 +47,23 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function PeopleOpsPage() {
+  const { notify } = useToast();
   const journeys = useFetch<Journey[]>("/api/people/journeys");
+  const expiring = useFetch<HrDocument[]>("/api/hr-documents/expiring?days=60");
   const [start, setStart] = useState<"onboarding" | "offboarding" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  async function remindExpiring() {
+    try {
+      const res = await api<{ reminders_sent: number }>(
+        "/api/hr-documents/expiring/notify?days=60",
+        { method: "POST" },
+      );
+      notify(`Sent ${res.reminders_sent} document reminder(s).`);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
 
   return (
     <div>
@@ -63,6 +81,36 @@ export default function PeopleOpsPage() {
           </div>
         }
       />
+
+      {(expiring.data?.length ?? 0) > 0 && (
+        <div className="card mb-4" style={{ borderColor: "var(--amber-300, #fcd34d)" }}>
+          <div className="spread mb-2">
+            <h4 className="m-0 inline-flex items-center gap-2">
+              <CalendarClock size={16} /> Documents expiring soon ({expiring.data!.length})
+            </h4>
+            <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={remindExpiring}>
+              <BellRing size={13} /> Remind HR
+            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {expiring.data!.slice(0, 8).map((d) => {
+              const expired = d.days_to_expiry != null && d.days_to_expiry < 0;
+              return (
+                <Link
+                  key={d.id}
+                  to={`/people/${d.user_id}`}
+                  className="flex items-center justify-between rounded-lg px-2 py-1 text-sm hover:bg-slate-50"
+                >
+                  <span><span className="badge mr-1">{d.category.replace("_", " ")}</span>{d.title} · {d.user_name}</span>
+                  <span className={expired ? "text-rose-600" : "text-amber-600"}>
+                    {expired ? "expired " : "expires "}{d.expiry_date}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         {journeys.loading ? (

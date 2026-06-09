@@ -43,3 +43,39 @@ class EmploymentEvent(UUIDMixin, TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+# Categories of HR document held against an employee.
+DOCUMENT_CATEGORIES = {
+    "contract",
+    "offer_letter",
+    "nda",
+    "passport",
+    "visa",
+    "national_id",
+    "certificate",
+    "policy",
+    "payslip",
+    "other",
+}
+
+
+class HrDocument(UUIDMixin, TimestampMixin, Base):
+    """A file held against an employee's HR record, optionally with an expiry."""
+
+    __tablename__ = "hr_documents"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(512))
+    category: Mapped[str] = mapped_column(String(24), default="other", index=True)
+    file_path: Mapped[str] = mapped_column(String(1024))
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(default=0)
+    issue_date: Mapped[date | None] = mapped_column(Date)
+    expiry_date: Mapped[date | None] = mapped_column(Date, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
