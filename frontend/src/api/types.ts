@@ -1263,3 +1263,30 @@ export interface Review {
   submitted_at?: string | null;
   created_at: string;
 }
+
+export interface HrCountItem {
+  label: string;
+  count: number;
+}
+
+export interface HrJoiner {
+  id: string;
+  name?: string | null;
+  job_title?: string | null;
+  hire_date?: string | null;
+}
+
+export interface HrOverview {
+  headcount: number;
+  on_leave_today: number;
+  pending_leave: number;
+  docs_expiring: number;
+  contracts_expiring: number;
+  probation_ending: number;
+  open_review_cycles: number;
+  open_journeys: number;
+  by_department: HrCountItem[];
+  by_employment_type: HrCountItem[];
+  recent_joiners: HrJoiner[];
+  upcoming_joiners: HrJoiner[];
+}

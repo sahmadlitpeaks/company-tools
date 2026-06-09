@@ -46,7 +46,7 @@ router = APIRouter(prefix="/profiles", tags=["profiles"])
 def _can_view(viewer: User, target: User) -> tuple[bool, bool, bool]:
     """Return (can_view, can_manage, can_see_sensitive) for viewer→target."""
     is_self = viewer.id == target.id
-    is_hr = viewer.is_admin or "people_ops" in viewer.effective_permissions
+    is_hr = viewer.is_admin or "hr" in viewer.effective_permissions
     is_dept_manager = (
         viewer.role == "manager"
         and viewer.department_id is not None

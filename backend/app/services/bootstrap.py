@@ -43,8 +43,8 @@ DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
     ("IT", "Assets, phone lines and the service desk.", _BASE + [
         "asset_tracker", "subscriptions", "transfers", "shortener", "qrcodes",
     ]),
-    ("HR", "People operations and onboarding.", _BASE + [
-        "people_ops", "directory",
+    ("HR", "People operations, records and onboarding.", _BASE + [
+        "hr", "people_ops", "directory",
     ]),
     ("Finance", "Approvals and expense oversight.", _BASE + [
         "products", "shared", "subscriptions",

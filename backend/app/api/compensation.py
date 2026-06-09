@@ -38,7 +38,7 @@ _HOURS_PER_YEAR = Decimal("2080")
 
 
 def _is_hr(user: User) -> bool:
-    return user.is_admin or "people_ops" in user.effective_permissions
+    return user.is_admin or "hr" in user.effective_permissions
 
 
 def _annualised(amount: Decimal, period: str) -> Decimal:

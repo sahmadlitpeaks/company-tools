@@ -39,7 +39,7 @@ router = APIRouter(prefix="/performance", tags=["hr"])
 
 
 def _is_hr(user: User) -> bool:
-    return user.is_admin or "people_ops" in user.effective_permissions
+    return user.is_admin or "hr" in user.effective_permissions
 
 
 async def _can_view_person(db: AsyncSession, viewer: User, target_id: uuid.UUID) -> bool:

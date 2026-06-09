@@ -26,7 +26,7 @@ router = APIRouter(prefix="/hr-documents", tags=["hr"])
 
 
 def _is_hr(user: User) -> bool:
-    return user.is_admin or "people_ops" in user.effective_permissions
+    return user.is_admin or "hr" in user.effective_permissions
 
 
 def _parse_date(v: str | None):

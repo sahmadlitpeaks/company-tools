@@ -30,6 +30,7 @@ MODULES: list[tuple[str, str]] = [
     ("knowledge", "Knowledge Base"),
     ("announcements", "Announcements"),
     ("people_ops", "Onboarding & Offboarding"),
+    ("hr", "People / HR"),
     ("worklog", "Work Log"),
     ("workspace", "My Docs"),
     ("qrcodes", "QR Codes"),
@@ -113,3 +114,12 @@ def require_module(module: str):
         return user
 
     return _guard
+
+
+def is_hr(user: User) -> bool:
+    """True for HR administrators — admins or holders of the ``hr`` module.
+
+    HR staff can view everyone's sensitive records (documents, compensation),
+    edit any profile, and manage leave types, holidays and review cycles.
+    """
+    return user.is_admin or "hr" in user.effective_permissions
