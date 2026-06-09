@@ -81,6 +81,7 @@ class TaskOut(BaseModel):
     brand_id: uuid.UUID | None = None
     completed_at: datetime | None = None
     created_at: datetime
+    onboarding_task_id: uuid.UUID | None = None
     subtasks_total: int = 0
     subtasks_done: int = 0
     comment_count: int = 0

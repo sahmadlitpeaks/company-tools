@@ -58,9 +58,20 @@ class User(UUIDMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     # Explicit per-user module grants; null = use the role's defaults.
     permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Access department (drives base permissions). Distinct from the free-text
+    # `department` HR label above.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    # Per-person overrides layered on top of the department's permissions.
+    extra_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    revoked_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     managed_brands: Mapped[list["object"]] = relationship(
         "Brand", secondary=user_brands, lazy="selectin"
+    )
+    access_department: Mapped["object"] = relationship(
+        "Department", lazy="selectin"
     )
 
     @property
@@ -68,9 +79,19 @@ class User(UUIDMixin, TimestampMixin, Base):
         return [b.id for b in self.managed_brands]
 
     @property
+    def department_name(self) -> str | None:
+        return self.access_department.name if self.access_department else None
+
+    @property
     def effective_permissions(self) -> list[str]:
         from app.core.permissions import resolve_permissions
 
+        dept = self.access_department
         return resolve_permissions(
-            role=self.role, is_admin=self.is_admin, permissions=self.permissions
+            role=self.role,
+            is_admin=self.is_admin,
+            permissions=self.permissions,
+            department_perms=dept.permissions if dept else None,
+            extra=self.extra_permissions,
+            revoked=self.revoked_permissions,
         )

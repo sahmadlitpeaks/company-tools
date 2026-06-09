@@ -71,25 +71,40 @@ ROLE_DEFAULTS: dict[str, list[str]] = {
 
 
 def resolve_permissions(
-    *, role: str, is_admin: bool, permissions: list[str] | None
+    *,
+    role: str,
+    is_admin: bool,
+    permissions: list[str] | None = None,
+    department_perms: list[str] | None = None,
+    extra: list[str] | None = None,
+    revoked: list[str] | None = None,
 ) -> list[str]:
-    """Compute a user's effective module list."""
+    """Compute a user's effective module list.
+
+    Admins get everything. Otherwise the base set is the user's explicit
+    ``permissions`` (legacy override) if set, else their department's
+    permissions, else the role defaults. Per-person ``extra`` grants are added
+    and ``revoked`` modules removed; the dashboard is always included.
+    """
     if is_admin or role == "admin":
         return list(ALL_MODULES)
     if permissions is not None:
-        # Only keep keys we still recognise.
-        return [p for p in permissions if p in set(ALL_MODULES)]
-    return list(ROLE_DEFAULTS.get(role, MEMBER_DEFAULTS))
+        base = set(permissions)
+    elif department_perms is not None:
+        base = set(department_perms)
+    else:
+        base = set(ROLE_DEFAULTS.get(role, MEMBER_DEFAULTS))
+    base |= set(extra or [])
+    base -= set(revoked or [])
+    base.add("dashboard")
+    return [m for m in ALL_MODULES if m in base]
 
 
 def require_module(module: str):
     """Router/route dependency: 403 unless the user may use ``module``."""
 
     async def _guard(user: User = Depends(get_current_user)) -> User:
-        allowed = resolve_permissions(
-            role=user.role, is_admin=user.is_admin, permissions=user.permissions
-        )
-        if module not in allowed:
+        if module not in user.effective_permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this area",

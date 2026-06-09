@@ -37,6 +37,11 @@ class Task(UUIDMixin, TimestampMixin, Base):
         ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When set, this task mirrors an onboarding/offboarding checklist item and
+    # stays in sync with it.
+    onboarding_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("onboarding_tasks.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     items: Mapped[list["TaskItem"]] = relationship(
         back_populates="task",

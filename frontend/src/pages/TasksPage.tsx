@@ -203,6 +203,9 @@ export default function TasksPage() {
                           <span className={`badge ${PRIO_BADGE[t.priority] ?? ""}`}>{t.priority}</span>
                         )}
                       </div>
+                      {t.onboarding_task_id && (
+                        <span className="badge blue mt-1 inline-block">checklist</span>
+                      )}
 
                       {t.subtasks_total > 0 && (
                         <div className="mt-2">

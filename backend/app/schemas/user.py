@@ -28,6 +28,10 @@ class UserOut(BaseModel):
     role: str = "member"
     status: str = "active"
     permissions: list[str] | None = None
+    department_id: uuid.UUID | None = None
+    department_name: str | None = None
+    extra_permissions: list[str] | None = None
+    revoked_permissions: list[str] | None = None
     effective_permissions: list[str] = []
     managed_brand_ids: list[uuid.UUID] = []
     created_at: datetime
@@ -50,6 +54,9 @@ class UserUpdate(BaseModel):
     role: str | None = None
     status: str | None = None
     permissions: list[str] | None = None
+    department_id: uuid.UUID | None = None
+    extra_permissions: list[str] | None = None
+    revoked_permissions: list[str] | None = None
 
 
 class UserCreate(BaseModel):

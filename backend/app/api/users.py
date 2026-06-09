@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
 from app.core.security import hash_password
 from app.models.brand import Brand
+from app.models.department import Department
 from app.models.user import User
 from app.schemas.user import (
     ManagedBrandsUpdate,
@@ -240,12 +241,18 @@ async def update_user(
         user.is_admin = data["role"] == "admin"
     if "status" in data and data["status"] not in STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
-    if data.get("permissions") is not None:
-        invalid = set(data["permissions"]) - set(ALL_MODULES)
-        if invalid:
-            raise HTTPException(
-                status_code=422, detail=f"Unknown modules: {', '.join(sorted(invalid))}"
-            )
+    for key in ("permissions", "extra_permissions", "revoked_permissions"):
+        if data.get(key) is not None:
+            invalid = set(data[key]) - set(ALL_MODULES)
+            if invalid:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown modules: {', '.join(sorted(invalid))}",
+                )
+    if data.get("department_id") is not None:
+        dept = await db.get(Department, data["department_id"])
+        if not dept:
+            raise HTTPException(status_code=404, detail="Department not found")
     for field, value in data.items():
         setattr(user, field, value)
     record(

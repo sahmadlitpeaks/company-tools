@@ -20,14 +20,15 @@ from app.main import app  # noqa: E402
 @pytest_asyncio.fixture
 async def client():
     from app.core.database import AsyncSessionLocal
-    from app.services.bootstrap import ensure_default_admin
+    from app.services.bootstrap import ensure_default_admin, ensure_default_departments
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    # Seed the bootstrap admin the way production startup does.
+    # Seed the bootstrap admin + departments the way production startup does.
     async with AsyncSessionLocal() as db:
         await ensure_default_admin(db)
+        await ensure_default_departments(db)
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

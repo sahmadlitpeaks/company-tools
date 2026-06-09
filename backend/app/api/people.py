@@ -37,6 +37,7 @@ from app.schemas.people import (
 from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.onboarding_pdf import render_journey_report
+from app.services.onboarding_sync import remove_linked_task, sync_linked_task
 from app.services.people import user_names
 
 router = APIRouter(prefix="/people", tags=["people-ops"])
@@ -279,13 +280,15 @@ async def add_task(
         sort=sort,
     )
     db.add(task)
+    await db.flush()
+    await sync_linked_task(db, task, user.id)
     if task.owner_id and task.owner_id != user.id:
         await notify_user(
             db,
             user_id=task.owner_id,
             title=f"{j.kind.title()} action assigned to you",
             body=task.title,
-            link="/",
+            link="/tasks",
             category="people_ops",
         )
     await db.commit()
@@ -325,9 +328,10 @@ async def update_task(
             user_id=task.owner_id,
             title=f"{(j.kind if j else 'Onboarding').title()} action assigned to you",
             body=task.title,
-            link="/",
+            link="/tasks",
             category="people_ops",
         )
+    await sync_linked_task(db, task, user.id)
     await _maybe_complete(db, task.journey_id, user)
     await db.commit()
     await db.refresh(task)
@@ -343,6 +347,7 @@ async def delete_task(
 ):
     task = await db.get(OnboardingTask, task_id)
     if task:
+        await remove_linked_task(db, task.id)
         await db.delete(task)
         await db.commit()
 

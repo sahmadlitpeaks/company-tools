@@ -15,6 +15,7 @@ from app.api.people import _maybe_complete, _task_out
 from app.api.tasks import _serialize as ser_task
 from app.api.service_desk import _serialize as ser_ticket
 from app.auth.deps import get_current_user
+from app.services.onboarding_sync import sync_linked_task
 from app.core.database import get_db
 from app.models.people import OnboardingJourney, OnboardingTask
 from app.models.user import User
@@ -208,6 +209,7 @@ async def complete_onboarding_task(
     task.status = "done"
     task.done_by_id = user.id
     task.done_at = datetime.now(timezone.utc)
+    await sync_linked_task(db, task, user.id)
     await _maybe_complete(db, task.journey_id, user)
     await db.commit()
     return {"ok": True}

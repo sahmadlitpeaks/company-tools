@@ -20,6 +20,7 @@ from app.api import (
     cards,
     crm,
     demo,
+    departments,
     knowledge,
     landing,
     leave,
@@ -96,10 +97,11 @@ if settings.RUN_SCHEDULER:
 @app.on_event("startup")
 async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tests
     from app.core.database import AsyncSessionLocal
-    from app.services.bootstrap import ensure_default_admin
+    from app.services.bootstrap import ensure_default_admin, ensure_default_departments
 
     async with AsyncSessionLocal() as db:
         await ensure_default_admin(db)
+        await ensure_default_departments(db)
 
 
 @app.get("/health", tags=["meta"])
@@ -125,6 +127,7 @@ app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(audit.router, prefix=api_prefix)
 app.include_router(activity.router, prefix=api_prefix)
 app.include_router(views.router, prefix=api_prefix)
+app.include_router(departments.router, prefix=api_prefix)
 app.include_router(demo.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)

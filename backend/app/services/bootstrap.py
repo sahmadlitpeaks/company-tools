@@ -19,9 +19,59 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import hash_password
+from app.models.department import Department
 from app.models.user import User
 
 log = logging.getLogger("bootstrap")
+
+# Everyday modules every department gets.
+_BASE = [
+    "dashboard", "directory", "tasks", "approvals", "service_desk",
+    "knowledge", "announcements", "worklog", "workspace",
+]
+# Default departments and the modules they grant on top of (or beyond) the base.
+DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
+    ("Management", "Leadership — full access to every module.", ["__all__"]),
+    ("Marketing", "Brand, campaigns and creative tooling.", _BASE + [
+        "cards", "marketing_assets", "branding", "products", "shared",
+        "campaigns", "crm", "qrcodes", "landing_pages", "signatures",
+        "shortener", "transfers",
+    ]),
+    ("Sales", "Leads, decks and outreach.", _BASE + [
+        "crm", "cards", "products", "shared", "campaigns", "shortener", "transfers",
+    ]),
+    ("IT", "Assets, phone lines and the service desk.", _BASE + [
+        "asset_tracker", "transfers", "shortener", "qrcodes",
+    ]),
+    ("HR", "People operations and onboarding.", _BASE + [
+        "people_ops", "directory",
+    ]),
+    ("Finance", "Approvals and expense oversight.", _BASE + [
+        "products", "shared",
+    ]),
+    ("Operations", "Day-to-day running and assets.", _BASE + [
+        "asset_tracker", "products", "shared", "transfers", "qrcodes",
+    ]),
+]
+
+
+async def ensure_default_departments(db: AsyncSession) -> int:
+    """Seed the default departments once (only if none exist yet)."""
+    from app.core.permissions import ALL_MODULES
+
+    count = await db.scalar(select(func.count(Department.id)))
+    if count and count > 0:
+        return 0
+    created = 0
+    for name, description, perms in DEFAULT_DEPARTMENTS:
+        resolved = list(ALL_MODULES) if perms == ["__all__"] else [
+            p for p in perms if p in set(ALL_MODULES)
+        ]
+        db.add(Department(name=name, description=description, permissions=resolved))
+        created += 1
+    await db.commit()
+    log.info("Seeded %s default departments", created)
+    return created
 
 
 async def ensure_default_admin(db: AsyncSession) -> User | None:

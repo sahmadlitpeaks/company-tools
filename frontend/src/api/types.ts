@@ -20,8 +20,21 @@ export interface User {
   role: string;
   status: string;
   permissions?: string[] | null;
+  department_id?: string | null;
+  department_name?: string | null;
+  extra_permissions?: string[] | null;
+  revoked_permissions?: string[] | null;
   effective_permissions: string[];
   managed_brand_ids: string[];
+  created_at: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  description?: string | null;
+  permissions: string[];
+  member_count: number;
   created_at: string;
 }
 
@@ -626,6 +639,7 @@ export interface Task {
   brand_id?: string | null;
   completed_at?: string | null;
   created_at: string;
+  onboarding_task_id?: string | null;
   subtasks_total: number;
   subtasks_done: number;
   comment_count: number;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import type { ModuleCatalogue, User } from "../api/types";
+import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
@@ -36,21 +36,20 @@ function AccessModal({
 }) {
   const { notify } = useToast();
   const { data: cat } = useFetch<ModuleCatalogue>("/api/users/modules");
+  const { data: departments } = useFetch<Department[]>("/api/departments");
   const [role, setRole] = useState(u.role);
   const [status, setStatus] = useState(u.status);
-  const [useDefaults, setUseDefaults] = useState(
-    u.permissions === null || u.permissions === undefined,
-  );
-  const [perms, setPerms] = useState<Set<string>>(
-    new Set(u.effective_permissions),
-  );
+  const [deptId, setDeptId] = useState(u.department_id ?? "");
+  // What the person should end up with — we derive grant/revoke diffs on save.
+  const [desired, setDesired] = useState<Set<string>>(new Set(u.effective_permissions));
   const [busy, setBusy] = useState(false);
 
-  const roleDefaults = new Set(cat?.role_defaults[role] ?? []);
-  const shown = useDefaults ? roleDefaults : perms;
+  // Base permissions implied by the chosen department (or the role default).
+  const dept = departments?.find((d) => d.id === deptId);
+  const base = new Set(dept ? dept.permissions : cat?.role_defaults[role] ?? []);
 
   function toggle(key: string) {
-    setPerms((s) => {
+    setDesired((s) => {
       const n = new Set(s);
       n.has(key) ? n.delete(key) : n.add(key);
       return n;
@@ -60,12 +59,17 @@ function AccessModal({
   async function save() {
     setBusy(true);
     try {
+      const extra = [...desired].filter((k) => !base.has(k));
+      const revoked = [...base].filter((k) => !desired.has(k));
       await api(`/api/users/${u.id}`, {
         method: "PATCH",
         body: {
           role,
           status,
-          permissions: useDefaults ? null : [...perms],
+          department_id: deptId || null,
+          permissions: null, // department + grants/revokes now drive access
+          extra_permissions: extra,
+          revoked_permissions: revoked,
         },
       });
       notify("Access updated.");
@@ -83,9 +87,9 @@ function AccessModal({
     <Modal
       title={`Access — ${u.display_name ?? u.email}`}
       onClose={onClose}
-      maxWidth={560}
+      maxWidth={580}
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <label className="field">
           <span className="mb-1 block text-sm font-medium">Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
@@ -102,6 +106,15 @@ function AccessModal({
             <option value="disabled">Disabled</option>
           </select>
         </label>
+        <label className="field">
+          <span className="mb-1 block text-sm font-medium">Department</span>
+          <select value={deptId} onChange={(e) => setDeptId(e.target.value)} disabled={isAdminRole}>
+            <option value="">None</option>
+            {(departments ?? []).map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {isAdminRole ? (
@@ -110,33 +123,32 @@ function AccessModal({
         </p>
       ) : (
         <>
-          <label className="mt-2 flex items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="!w-auto"
-              checked={useDefaults}
-              onChange={(e) => setUseDefaults(e.target.checked)}
-            />
-            Use the {role} role's default modules
-          </label>
+          <p className="muted mt-1 text-sm">
+            Base access comes from the {dept ? <strong>{dept.name}</strong> : `${role} role`}.
+            Tick to grant extra modules to this person, or untick to revoke.
+          </p>
           <div className="mt-3 grid grid-cols-2 gap-1.5">
-            {cat?.modules.map((m) => (
-              <label
-                key={m.key}
-                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                  useDefaults ? "opacity-60" : "hover:bg-slate-50"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="!w-auto"
-                  disabled={useDefaults}
-                  checked={shown.has(m.key)}
-                  onChange={() => toggle(m.key)}
-                />
-                {m.label}
-              </label>
-            ))}
+            {cat?.modules.map((m) => {
+              const inBase = base.has(m.key);
+              const on = desired.has(m.key);
+              const tag = on && !inBase ? "granted" : !on && inBase ? "revoked" : null;
+              return (
+                <label
+                  key={m.key}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    className="!w-auto"
+                    checked={on}
+                    onChange={() => toggle(m.key)}
+                  />
+                  <span className="flex-1">{m.label}</span>
+                  {tag === "granted" && <span className="badge green">+grant</span>}
+                  {tag === "revoked" && <span className="badge red">revoked</span>}
+                </label>
+              );
+            })}
           </div>
         </>
       )}

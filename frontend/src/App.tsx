@@ -26,6 +26,8 @@ import MyDocsPage from "./pages/MyDocsPage";
 import HubPage from "./pages/HubPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import PhoneLinesPage from "./pages/PhoneLinesPage";
+import DepartmentsPage from "./pages/DepartmentsPage";
+import BrandsPage from "./pages/BrandsPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import CrmPage from "./pages/CrmPage";
@@ -167,6 +169,14 @@ export default function App() {
           <Route
             path="/transfers"
             element={<Protected module="transfers"><TransfersPage /></Protected>}
+          />
+          <Route
+            path="/brands"
+            element={<Protected adminOnly><BrandsPage /></Protected>}
+          />
+          <Route
+            path="/departments"
+            element={<Protected adminOnly><DepartmentsPage /></Protected>}
           />
           <Route
             path="/audit"

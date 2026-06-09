@@ -169,7 +169,7 @@ export default function SettingsPage() {
       {!status ? (
         <ListSkeleton rows={5} />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
           <div className="card">
             <div className="spread mb-3">
               <h3 className="m-0 flex items-center gap-2">
