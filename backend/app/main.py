@@ -28,6 +28,8 @@ from app.api import (
     people,
     notifications,
     phones,
+    profiles,
+    subscriptions,
     products,
     qrcodes,
     service_desk,
@@ -131,6 +133,7 @@ app.include_router(departments.router, prefix=api_prefix)
 app.include_router(demo.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)
+app.include_router(profiles.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.
@@ -153,6 +156,7 @@ app.include_router(shortener.router, prefix=api_prefix, dependencies=_mod("short
 app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("transfers"))
 app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
 app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
+app.include_router(subscriptions.router, prefix=api_prefix, dependencies=_mod("subscriptions"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))

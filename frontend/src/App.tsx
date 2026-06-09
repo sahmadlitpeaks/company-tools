@@ -26,6 +26,8 @@ import MyDocsPage from "./pages/MyDocsPage";
 import HubPage from "./pages/HubPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import PhoneLinesPage from "./pages/PhoneLinesPage";
+import SubscriptionsPage from "./pages/SubscriptionsPage";
+import ProfilePage from "./pages/ProfilePage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import BrandsPage from "./pages/BrandsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -101,6 +103,12 @@ export default function App() {
             path="/phone-lines"
             element={<Protected module="asset_tracker"><PhoneLinesPage /></Protected>}
           />
+          <Route
+            path="/subscriptions"
+            element={<Protected module="subscriptions"><SubscriptionsPage /></Protected>}
+          />
+          <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
+          <Route path="/people/:id" element={<Protected><ProfilePage /></Protected>} />
           <Route
             path="/tasks"
             element={<Protected module="tasks"><TasksPage /></Protected>}

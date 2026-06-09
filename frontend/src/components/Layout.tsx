@@ -31,7 +31,9 @@ import {
   Stamp,
   Sun,
   UserCog,
+  UserRound,
   Users,
+  Wallet,
   BookText,
   type LucideIcon,
 } from "lucide-react";
@@ -61,6 +63,7 @@ type NavEntry =
 const NAV: NavEntry[] = [
   { section: "Overview" },
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, module: "dashboard" },
+  { to: "/profile", label: "My Profile", icon: UserRound },
   { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
   { section: "Marketing" },
   { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards" },
@@ -82,6 +85,7 @@ const NAV: NavEntry[] = [
   { section: "Operations" },
   { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
   { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker" },
+  { to: "/subscriptions", label: "Subscriptions", icon: Wallet, module: "subscriptions" },
   { section: "Tools" },
   { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes" },
   { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate, module: "landing_pages" },

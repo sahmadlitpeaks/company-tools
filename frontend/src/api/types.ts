@@ -893,11 +893,27 @@ export interface AccessGrant {
   created_at: string;
 }
 
+export interface AssignedPhone {
+  id: string;
+  number: string;
+}
+
+export interface PersonSubscription {
+  subscription_id: string;
+  name: string;
+  vendor?: string | null;
+  source: string; // seat | department | company
+  seat_id?: string | null;
+  seat_status?: string | null;
+}
+
 export interface JourneyDetail extends Journey {
   tasks: JourneyTask[];
   target?: TargetAccess | null;
   assigned_assets: AssignedAsset[];
+  assigned_phones: AssignedPhone[];
   access_grants: AccessGrant[];
+  subscriptions: PersonSubscription[];
 }
 
 // ---- Work log + quick docs ----
@@ -938,4 +954,109 @@ export interface WorkspaceItem {
   shared: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubscriptionSeat {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  user_title?: string | null;
+  status: string;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  name: string;
+  vendor?: string | null;
+  plan?: string | null;
+  url?: string | null;
+  status: string;
+  scope: string; // company | department | person
+  department_id?: string | null;
+  department_name?: string | null;
+  cost_type: string; // flat | per_seat
+  cost?: string | null;
+  currency: string;
+  billing_cycle: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  auto_renew: boolean;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  brand_id?: string | null;
+  notes?: string | null;
+  active_seats: number;
+  monthly_cost?: string | null;
+  seats: SubscriptionSeat[];
+  created_at: string;
+}
+
+export interface SubscriptionSummary {
+  total: number;
+  by_status: Record<string, number>;
+  monthly_spend: string;
+  renewing_soon: number;
+}
+
+export interface ProfileItem {
+  id: string;
+  label: string;
+  sub?: string | null;
+  status?: string | null;
+}
+
+export interface ProfileSubscription {
+  subscription_id: string;
+  name: string;
+  vendor?: string | null;
+  source: string; // seat | department | company
+  seat_status?: string | null;
+}
+
+export interface ProfileTask {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string | null;
+  due_date?: string | null;
+}
+
+export interface ProfileJourney {
+  id: string;
+  kind: string;
+  status: string;
+  total_tasks: number;
+  done_tasks: number;
+  created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  job_title?: string | null;
+  role: string;
+  status: string;
+  is_admin: boolean;
+  department_name?: string | null;
+  hr_department?: string | null;
+  office_location?: string | null;
+  mobile_phone?: string | null;
+  business_phone?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  personal_email?: string | null;
+  nationality?: string | null;
+  passport_no?: string | null;
+  modules: string[];
+  access_grants: ProfileItem[];
+  subscriptions: ProfileSubscription[];
+  assets: ProfileItem[];
+  phones: ProfileItem[];
+  open_tasks: ProfileTask[];
+  journeys: ProfileJourney[];
+  can_manage: boolean;
+  can_see_sensitive: boolean;
 }

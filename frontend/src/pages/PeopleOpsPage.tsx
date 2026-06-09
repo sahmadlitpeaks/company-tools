@@ -11,6 +11,7 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
+  Wallet,
 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type {
@@ -373,6 +374,10 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
     await api(`/api/people/grants/${g.id}`, { method: "DELETE" });
     detail.reload();
   }
+  async function revokeSeat(seatId: string) {
+    await api(`/api/subscriptions/seats/${seatId}/revoke`, { method: "POST" });
+    detail.reload();
+  }
 
   async function toggle(t: JourneyTask) {
     await api(`/api/people/tasks/${t.id}`, {
@@ -578,6 +583,47 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
               </button>
             </div>
           </div>
+
+          {/* Subscriptions the person is covered by */}
+          {d.subscriptions.length > 0 && (
+            <div className="mb-4">
+              <h4 className="mb-2 inline-flex items-center gap-1.5">
+                <Wallet size={15} /> Subscriptions to review
+              </h4>
+              <div className="flex flex-col gap-1.5">
+                {d.subscriptions.map((s) => (
+                  <div
+                    key={s.subscription_id + s.source}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                    style={{ background: "var(--surface-2)" }}
+                  >
+                    <span className="min-w-0 text-sm">
+                      <span className="font-medium">{s.name}</span>
+                      {s.vendor && <span className="muted"> · {s.vendor}</span>}
+                      <span className="muted"> · {s.source === "seat" ? "personal seat" : `${s.source}-wide`}</span>
+                    </span>
+                    <span className="flex flex-none items-center gap-2">
+                      {s.source === "seat" ? (
+                        s.seat_status === "active" ? (
+                          <button
+                            className="btn-sm btn-danger inline-flex items-center gap-1"
+                            style={{ flex: "0 0 auto" }}
+                            onClick={() => revokeSeat(s.seat_id!)}
+                          >
+                            <Lock size={12} /> Revoke seat
+                          </button>
+                        ) : (
+                          <span className="badge red">revoked</span>
+                        )
+                      ) : (
+                        <span className="badge">shared</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Checklist */}
           <div className="spread mb-2">

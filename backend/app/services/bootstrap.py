@@ -41,16 +41,16 @@ DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
         "crm", "cards", "products", "shared", "campaigns", "shortener", "transfers",
     ]),
     ("IT", "Assets, phone lines and the service desk.", _BASE + [
-        "asset_tracker", "transfers", "shortener", "qrcodes",
+        "asset_tracker", "subscriptions", "transfers", "shortener", "qrcodes",
     ]),
     ("HR", "People operations and onboarding.", _BASE + [
         "people_ops", "directory",
     ]),
     ("Finance", "Approvals and expense oversight.", _BASE + [
-        "products", "shared",
+        "products", "shared", "subscriptions",
     ]),
     ("Operations", "Day-to-day running and assets.", _BASE + [
-        "asset_tracker", "products", "shared", "transfers", "qrcodes",
+        "asset_tracker", "subscriptions", "products", "shared", "transfers", "qrcodes",
     ]),
 ]
 

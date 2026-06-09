@@ -85,6 +85,23 @@ class AssignedAsset(BaseModel):
     name: str
 
 
+class PersonSubscription(BaseModel):
+    """A subscription the offboarding target is covered by."""
+
+    subscription_id: uuid.UUID
+    name: str
+    vendor: str | None = None
+    # seat | department | company  (only `seat` is individually revocable)
+    source: str
+    seat_id: uuid.UUID | None = None
+    seat_status: str | None = None
+
+
+class AssignedPhone(BaseModel):
+    id: uuid.UUID
+    number: str
+
+
 class JourneyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -108,7 +125,9 @@ class JourneyDetail(JourneyOut):
     tasks: list[JourneyTaskOut] = []
     target: TargetAccess | None = None
     assigned_assets: list[AssignedAsset] = []
+    assigned_phones: list[AssignedPhone] = []
     access_grants: list[AccessGrantOut] = []
+    subscriptions: list[PersonSubscription] = []
 
 
 class AccessAction(BaseModel):

@@ -8,7 +8,6 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.core.permissions import resolve_permissions
 from app.models.brand import Brand
 from app.models.people import (
     DEFAULT_OFFBOARDING,
@@ -17,6 +16,7 @@ from app.models.people import (
     OnboardingJourney,
     OnboardingTask,
 )
+from app.models.phone_line import PhoneLine
 from app.models.tracked_asset import AssetEvent, TrackedAsset
 from app.models.user import User
 from app.models.workplace import Announcement
@@ -26,10 +26,12 @@ from app.schemas.people import (
     AccessGrantOut,
     AssignAssetIn,
     AssignedAsset,
+    AssignedPhone,
     JourneyCreate,
     JourneyDetail,
     JourneyOut,
     JourneyTaskOut,
+    PersonSubscription,
     TargetAccess,
     TaskCreate,
     TaskUpdate,
@@ -39,6 +41,7 @@ from app.services.notify import notify_user
 from app.services.onboarding_pdf import render_journey_report
 from app.services.onboarding_sync import remove_linked_task, sync_linked_task
 from app.services.people import user_names
+from app.services.subscriptions import person_subscriptions
 
 router = APIRouter(prefix="/people", tags=["people-ops"])
 
@@ -238,11 +241,7 @@ async def get_journey(
             status=target.status,
             role=target.role,
             is_admin=target.is_admin,
-            effective_permissions=resolve_permissions(
-                role=target.role,
-                is_admin=target.is_admin,
-                permissions=target.permissions,
-            ),
+            effective_permissions=target.effective_permissions,
         )
         assets = (
             await db.execute(
@@ -252,6 +251,14 @@ async def get_journey(
         detail.assigned_assets = [
             AssignedAsset(id=a.id, asset_tag=a.asset_tag, name=a.name) for a in assets
         ]
+        phones = (
+            await db.execute(
+                select(PhoneLine).where(PhoneLine.assigned_to_id == target.id)
+            )
+        ).scalars().all()
+        detail.assigned_phones = [
+            AssignedPhone(id=p.id, number=p.number) for p in phones
+        ]
         grants = (
             await db.execute(
                 select(AccessGrant)
@@ -260,6 +267,20 @@ async def get_journey(
             )
         ).scalars().all()
         detail.access_grants = [AccessGrantOut.model_validate(g) for g in grants]
+        # Subscriptions the leaver is covered by (personal seats are revocable).
+        for entry in await person_subscriptions(db, target):
+            sub = entry["subscription"]
+            seat = entry["seat"]
+            detail.subscriptions.append(
+                PersonSubscription(
+                    subscription_id=sub.id,
+                    name=sub.name,
+                    vendor=sub.vendor,
+                    source=entry["source"],
+                    seat_id=seat.id if seat else None,
+                    seat_status=seat.status if seat else None,
+                )
+            )
     return detail
 
 

@@ -23,6 +23,7 @@ MODULES: list[tuple[str, str]] = [
     ("crm", "Leads (CRM)"),
     ("campaigns", "Campaign Studio"),
     ("asset_tracker", "Asset Tracker"),
+    ("subscriptions", "Subscriptions"),
     ("tasks", "Tasks"),
     ("approvals", "Approvals"),
     ("service_desk", "Service Desk"),

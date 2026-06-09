@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -346,7 +347,12 @@ export default function DirectoryPage() {
                         {initials(u.display_name, u.email ?? undefined)}
                       </span>
                       <div className="min-w-0">
-                        <div className="font-semibold">{u.display_name ?? "—"}</div>
+                        <Link
+                          to={`/people/${u.id}`}
+                          className="font-semibold hover:text-brand-600 hover:underline"
+                        >
+                          {u.display_name ?? "—"}
+                        </Link>
                         <div className="muted text-xs">{u.job_title ?? "—"}</div>
                       </div>
                     </div>
