@@ -24,6 +24,7 @@ from app.models.tracked_asset import (  # noqa: F401
 from app.models.activity import ActivityLog  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.saved_view import SavedView  # noqa: F401
+from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent  # noqa: F401
 from app.models.docversion import DocVersion  # noqa: F401
 from app.models.people import (  # noqa: F401
     AccessGrant,

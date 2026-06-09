@@ -36,6 +36,7 @@ from app.models.tracked_asset import (
     AssetLocation,
     TrackedAsset,
 )
+from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent
 from app.models.transfer import SecureTransfer
 from app.models.user import User
 from app.models.workplace import (
@@ -94,6 +95,7 @@ _MODELS = {
     "crm_lead": CrmLead,
     "campaign": Campaign,
     "tracked_asset": TrackedAsset,
+    "phone_line": PhoneLine,
     "asset_category": AssetCategory,
     "asset_location": AssetLocation,
     "user": User,
@@ -303,6 +305,27 @@ async def seed_demo(db: AsyncSession) -> dict:
     db.add(ev)
     await db.flush()
     m.add("asset_event", ev)
+
+    # ---- Phone lines (numbers, packages, assignment history + billing) ----
+    line1 = PhoneLine(number="+971501234567", carrier="Etisalat", plan_name="Business 20GB",
+                      sim_number="8997100000000001", monthly_cost="120", data_allowance="20 GB",
+                      status="assigned", assigned_to_id=sales1.id,
+                      contract_start=today - timedelta(days=200),
+                      contract_end=today + timedelta(days=165))
+    line2 = PhoneLine(number="+971559876543", carrier="du", plan_name="Smart 12GB",
+                      sim_number="8997100000000002", monthly_cost="85", data_allowance="12 GB",
+                      status="available")
+    db.add(line1)
+    db.add(line2)
+    await db.flush()
+    m.add("phone_line", line1)
+    m.add("phone_line", line2)
+    # History + a couple of bills on the assigned line (cascade-deleted with it).
+    db.add(PhoneLineEvent(line_id=line1.id, event_type="assigned", user_id=sales1.id,
+                          note="Assigned on joining", performed_by_id=it.id))
+    db.add(PhoneBill(line_id=line1.id, period="2026-04", amount="124.50", data_used="18 GB", status="paid"))
+    db.add(PhoneBill(line_id=line1.id, period="2026-05", amount="131.00", data_used="21 GB", status="unpaid"))
+    await db.flush()
 
     # ---- Tasks (with a checklist, a comment and a recurring one) ----
     task_spec = [

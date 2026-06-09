@@ -25,6 +25,7 @@ import WorkLogPage from "./pages/WorkLogPage";
 import MyDocsPage from "./pages/MyDocsPage";
 import HubPage from "./pages/HubPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
+import PhoneLinesPage from "./pages/PhoneLinesPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import CrmPage from "./pages/CrmPage";
@@ -93,6 +94,10 @@ export default function App() {
           <Route
             path="/asset-tracker"
             element={<Protected module="asset_tracker"><AssetTrackerPage /></Protected>}
+          />
+          <Route
+            path="/phone-lines"
+            element={<Protected module="asset_tracker"><PhoneLinesPage /></Protected>}
           />
           <Route
             path="/tasks"

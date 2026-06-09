@@ -26,6 +26,7 @@ from app.api import (
     me as me_api,
     people,
     notifications,
+    phones,
     products,
     qrcodes,
     service_desk,
@@ -148,6 +149,7 @@ app.include_router(signatures.router, prefix=api_prefix, dependencies=_mod("sign
 app.include_router(shortener.router, prefix=api_prefix, dependencies=_mod("shortener"))
 app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("transfers"))
 app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
+app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
