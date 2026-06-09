@@ -362,6 +362,59 @@ export interface ShortLink {
   created_at: string;
 }
 
+export interface PhoneLine {
+  id: string;
+  number: string;
+  carrier?: string | null;
+  plan_name?: string | null;
+  sim_number?: string | null;
+  monthly_cost?: string | null;
+  data_allowance?: string | null;
+  status: string;
+  assigned_to_id?: string | null;
+  assigned_to_name?: string | null;
+  brand_id?: string | null;
+  contract_start?: string | null;
+  contract_end?: string | null;
+  notes?: string | null;
+  bill_count: number;
+  created_at: string;
+}
+
+export interface PhoneLineEvent {
+  id: string;
+  line_id: string;
+  event_type: string;
+  user_id?: string | null;
+  user_name?: string | null;
+  note?: string | null;
+  performed_by_name?: string | null;
+  created_at: string;
+}
+
+export interface PhoneBill {
+  id: string;
+  line_id: string;
+  period: string;
+  amount?: string | null;
+  data_used?: string | null;
+  status: string;
+  note?: string | null;
+  created_at: string;
+}
+
+export interface PhoneLineDetail extends PhoneLine {
+  events: PhoneLineEvent[];
+  bills: PhoneBill[];
+}
+
+export interface PhoneSummary {
+  total: number;
+  by_status: Record<string, number>;
+  assigned: number;
+  monthly_cost: string;
+}
+
 export interface TrackedAsset {
   id: string;
   asset_tag: string;
