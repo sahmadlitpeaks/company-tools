@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.urls import public_base_url
+from app.models.brand import Brand
 from app.models.tracked_asset import (
     AssetAttachment,
     AssetCategory,
@@ -59,6 +60,8 @@ CSV_FIELDS = [
     "location",
     "condition",
     "serial_number",
+    "assigned_to_email",
+    "brand",
     "vendor",
     "purchase_date",
     "purchase_cost",
@@ -66,6 +69,25 @@ CSV_FIELDS = [
     "useful_life_years",
     "notes",
 ]
+
+# One illustrative row for the downloadable migration template.
+CSV_SAMPLE = {
+    "asset_tag": "AT-0001",
+    "name": "MacBook Pro 14\"",
+    "category": "Laptop",
+    "status": "assigned",
+    "location": "HQ - London",
+    "condition": "good",
+    "serial_number": "C02XL0ABJGH5",
+    "assigned_to_email": "person@agholding.net",
+    "brand": "",
+    "vendor": "Apple",
+    "purchase_date": "2024-03-15",
+    "purchase_cost": "2400.00",
+    "warranty_expiry": "2027-03-15",
+    "useful_life_years": "4",
+    "notes": "Migrated from old system",
+}
 
 
 def _label_url(asset: TrackedAsset) -> str:
@@ -334,6 +356,37 @@ async def delete_location(
         await db.commit()
 
 
+async def _emails_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(User.id, User.email).where(User.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+async def _brand_names_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Brand.id, Brand.name).where(Brand.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+@router.get("/template.csv")
+async def template_csv(_: User = Depends(get_current_user)):
+    """A header row plus one example row to fill in when migrating."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    writer.writerow(CSV_SAMPLE)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="assets-template.csv"'},
+    )
+
+
 @router.get("/export.csv")
 async def export_csv(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
@@ -341,6 +394,8 @@ async def export_csv(
     assets = (
         await db.execute(select(TrackedAsset).order_by(TrackedAsset.asset_tag))
     ).scalars().all()
+    emails = await _emails_by_id(db, {a.assigned_to_id for a in assets})
+    brands = await _brand_names_by_id(db, {a.brand_id for a in assets})
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
     writer.writeheader()
@@ -354,6 +409,8 @@ async def export_csv(
                 "location": a.location or "",
                 "condition": a.condition or "",
                 "serial_number": a.serial_number or "",
+                "assigned_to_email": emails.get(a.assigned_to_id, ""),
+                "brand": brands.get(a.brand_id, ""),
                 "vendor": a.vendor or "",
                 "purchase_date": a.purchase_date.isoformat() if a.purchase_date else "",
                 "purchase_cost": a.purchase_cost if a.purchase_cost is not None else "",
@@ -399,6 +456,15 @@ async def import_csv(
     """Bulk create/update assets from a CSV (matched by asset_tag)."""
     raw = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(raw))
+    # Resolve assignees / brands by name once for the whole file.
+    users = {
+        e.lower(): i
+        for i, e in (await db.execute(select(User.id, User.email))).all()
+    }
+    brands = {
+        n.lower(): i
+        for i, n in (await db.execute(select(Brand.id, Brand.name))).all()
+    }
     created = updated = 0
     errors: list[str] = []
     for i, row in enumerate(reader, start=2):
@@ -416,6 +482,14 @@ async def import_csv(
         condition = (row.get("condition") or "").strip() or None
         if condition and condition not in CONDITIONS:
             condition = None
+        email = (row.get("assigned_to_email") or "").strip().lower()
+        assigned_to_id = users.get(email) if email else None
+        if email and not assigned_to_id:
+            errors.append(f"Row {i}: unknown assignee '{email}' (left unassigned)")
+        brand_name = (row.get("brand") or "").strip().lower()
+        brand_id = brands.get(brand_name) if brand_name else None
+        if assigned_to_id and status == "available":
+            status = "assigned"
         values = dict(
             name=name,
             category=(row.get("category") or "").strip() or None,
@@ -423,6 +497,8 @@ async def import_csv(
             location=(row.get("location") or "").strip() or None,
             condition=condition,
             serial_number=(row.get("serial_number") or "").strip() or None,
+            assigned_to_id=assigned_to_id,
+            brand_id=brand_id,
             vendor=(row.get("vendor") or "").strip() or None,
             purchase_date=_parse_date(row.get("purchase_date", "")),
             purchase_cost=_parse_decimal(row.get("purchase_cost", "")),

@@ -926,6 +926,17 @@ export default function AssetTrackerPage() {
             <button
               className="btn"
               style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/asset-tracker/template.csv", "assets-template.csv").catch(
+                  () => notify("Download failed", "error"),
+                )
+              }
+            >
+              Template
+            </button>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
               onClick={() => importRef.current?.click()}
             >
               Import CSV

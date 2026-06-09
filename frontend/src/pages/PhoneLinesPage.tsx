@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   CreditCard,
+  Download,
+  FileText,
   History,
   Phone,
   Plus,
   Smartphone,
   Trash2,
+  Upload,
   UserCheck,
   UserX,
 } from "lucide-react";
-import { api } from "../api/client";
+import { api, downloadFile } from "../api/client";
 import type {
   PhoneBill,
   PhoneLine,
@@ -42,10 +45,31 @@ export default function PhoneLinesPage() {
   const summary = useFetch<PhoneSummary>("/api/phone-lines/summary");
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const { notify } = useToast();
+  const importRef = useRef<HTMLInputElement>(null);
 
   function reloadAll() {
     lines.reload();
     summary.reload();
+  }
+
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await api<{ created: number; updated: number; errors: string[] }>(
+        "/api/phone-lines/import",
+        { method: "POST", form: fd },
+      );
+      const errs = res.errors.length ? ` (${res.errors.length} skipped)` : "";
+      notify(`Imported: ${res.created} new, ${res.updated} updated${errs}.`);
+      reloadAll();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Import failed", "error");
+    }
+    if (importRef.current) importRef.current.value = "";
   }
 
   const s = summary.data;
@@ -55,9 +79,41 @@ export default function PhoneLinesPage() {
         title="Phone Lines"
         subtitle="Track mobile numbers, who holds them, packages and billing."
         action={
-          <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-            <Plus size={15} /> Add line
-          </button>
+          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/phone-lines/template.csv", "phone-lines-template.csv").catch(
+                  () => notify("Download failed", "error"),
+                )
+              }
+            >
+              <FileText size={15} /> Template
+            </button>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => importRef.current?.click()}
+            >
+              <Upload size={15} /> Import
+            </button>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() =>
+                downloadFile("/api/phone-lines/export.csv", "phone-lines.csv").catch(() =>
+                  notify("Export failed", "error"),
+                )
+              }
+            >
+              <Download size={15} /> Export
+            </button>
+            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
+              <Plus size={15} /> Add line
+            </button>
+            <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+          </div>
         }
       />
 
