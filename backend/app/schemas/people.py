@@ -1,7 +1,41 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
+
+
+class EmploymentEventCreate(BaseModel):
+    event_type: str = "note"
+    effective_date: date | None = None
+    title: str
+    detail: str | None = None
+
+
+class EmploymentEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    event_type: str
+    effective_date: date
+    title: str
+    detail: str | None = None
+    created_by_id: uuid.UUID | None = None
+    created_by_name: str | None = None
+    created_at: datetime
+
+
+class OrgNode(BaseModel):
+    id: uuid.UUID
+    name: str | None = None
+    job_title: str | None = None
+    avatar_url: str | None = None
+    department_name: str | None = None
+    report_count: int = 0
+    reports: list["OrgNode"] = []
+
+
+OrgNode.model_rebuild()
 
 
 class JourneyCreate(BaseModel):

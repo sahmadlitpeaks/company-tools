@@ -14,6 +14,16 @@ export interface User {
   mobile_phone?: string | null;
   business_phone?: string | null;
   avatar_url?: string | null;
+  date_of_birth?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  employment_type?: string | null;
+  hire_date?: string | null;
+  probation_end_date?: string | null;
+  contract_end_date?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   is_active: boolean;
   is_admin: boolean;
   must_change_password?: boolean;
@@ -1047,9 +1057,20 @@ export interface Profile {
   business_phone?: string | null;
   avatar_url?: string | null;
   created_at: string;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  employment_type?: string | null;
+  hire_date?: string | null;
+  probation_end_date?: string | null;
+  contract_end_date?: string | null;
+  direct_reports: ProfileItem[];
   personal_email?: string | null;
   nationality?: string | null;
   passport_no?: string | null;
+  date_of_birth?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   modules: string[];
   access_grants: ProfileItem[];
   subscriptions: ProfileSubscription[];
@@ -1057,8 +1078,34 @@ export interface Profile {
   phones: ProfileItem[];
   open_tasks: ProfileTask[];
   journeys: ProfileJourney[];
+  events: ProfileEvent[];
   can_manage: boolean;
   can_see_sensitive: boolean;
+}
+
+export interface ProfileEvent {
+  id: string;
+  event_type: string;
+  effective_date: string;
+  title: string;
+  detail?: string | null;
+  created_at: string;
+}
+
+export interface EmploymentEvent extends ProfileEvent {
+  user_id: string;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+}
+
+export interface OrgNode {
+  id: string;
+  name?: string | null;
+  job_title?: string | null;
+  avatar_url?: string | null;
+  department_name?: string | null;
+  report_count: number;
+  reports: OrgNode[];
 }
 
 export interface SpendBucket {

@@ -10,6 +10,7 @@ from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.brand import Brand
 from app.models.department import Department
+from app.models.hr import EMPLOYMENT_EVENT_TYPES, EmploymentEvent
 from app.models.people import (
     DEFAULT_OFFBOARDING,
     DEFAULT_ONBOARDING,
@@ -29,10 +30,13 @@ from app.schemas.people import (
     AssignAssetIn,
     AssignedAsset,
     AssignedPhone,
+    EmploymentEventCreate,
+    EmploymentEventOut,
     JourneyCreate,
     JourneyDetail,
     JourneyOut,
     JourneyTaskOut,
+    OrgNode,
     PersonSubscription,
     ProvisionSuggestion,
     ProvisionSuggestions,
@@ -724,3 +728,108 @@ async def _maybe_complete(
                 link="/people-ops",
                 category="people_ops",
             )
+
+
+# --------------------------------------------------------------------------
+# HR: org chart + employment history
+# --------------------------------------------------------------------------
+@router.get("/org-chart", response_model=list[OrgNode])
+async def org_chart(
+    root_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Reporting tree. Top level is everyone without a manager (or the given
+    root). Inactive/departed people are excluded."""
+    users = (
+        await db.execute(
+            select(User).where(User.status != "departed").order_by(User.display_name)
+        )
+    ).scalars().all()
+    children: dict[uuid.UUID, list[User]] = {}
+    for u in users:
+        children.setdefault(u.manager_id, []).append(u)
+
+    def build(u: User) -> OrgNode:
+        kids = children.get(u.id, [])
+        return OrgNode(
+            id=u.id,
+            name=u.display_name,
+            job_title=u.job_title,
+            avatar_url=u.avatar_url,
+            department_name=u.department_name,
+            report_count=len(kids),
+            reports=[build(k) for k in kids],
+        )
+
+    if root_id:
+        root = await db.get(User, root_id)
+        return [build(root)] if root else []
+    return [build(u) for u in children.get(None, [])]
+
+
+@router.get("/{user_id}/events", response_model=list[EmploymentEventOut])
+async def list_events(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    events = (
+        await db.execute(
+            select(EmploymentEvent)
+            .where(EmploymentEvent.user_id == user_id)
+            .order_by(EmploymentEvent.effective_date.desc(), EmploymentEvent.created_at.desc())
+        )
+    ).scalars().all()
+    names = await user_names(db, {e.created_by_id for e in events})
+    out = []
+    for e in events:
+        item = EmploymentEventOut.model_validate(e)
+        item.created_by_name = names.get(e.created_by_id)
+        out.append(item)
+    return out
+
+
+@router.post("/{user_id}/events", response_model=EmploymentEventOut, status_code=201)
+async def add_event(
+    user_id: uuid.UUID,
+    payload: EmploymentEventCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not await db.get(User, user_id):
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.event_type not in EMPLOYMENT_EVENT_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid event type")
+    if not (payload.title or "").strip():
+        raise HTTPException(status_code=422, detail="Title is required")
+    event = EmploymentEvent(
+        user_id=user_id,
+        event_type=payload.event_type,
+        effective_date=payload.effective_date or datetime.now(timezone.utc).date(),
+        title=payload.title.strip(),
+        detail=payload.detail,
+        created_by_id=user.id,
+    )
+    db.add(event)
+    record(
+        db, user=user, action="created", entity_type="user", entity_id=user_id,
+        summary=f"Added employment event: {event.title}",
+    )
+    await db.commit()
+    await db.refresh(event)
+    out = EmploymentEventOut.model_validate(event)
+    out.created_by_name = user.display_name
+    return out
+
+
+@router.delete("/events/{event_id}", status_code=204)
+async def delete_event(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    event = await db.get(EmploymentEvent, event_id)
+    if event:
+        await db.delete(event)
+        await db.commit()

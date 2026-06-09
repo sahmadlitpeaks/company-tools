@@ -2,22 +2,29 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Boxes,
+  CalendarClock,
   CheckSquare,
   KeyRound,
   ListChecks,
   Pencil,
   Smartphone,
+  Trash2,
   UserRound,
   Wallet,
 } from "lucide-react";
 import { api } from "../api/client";
-import type { Department, Profile } from "../api/types";
+import type { Department, Profile, ProfileEvent, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const ROLES = ["member", "manager", "admin"];
 const USER_STATUSES = ["active", "invited", "suspended", "offboarding", "departed"];
+const EMPLOYMENT_TYPES = ["full_time", "part_time", "contractor", "intern", "temporary"];
+const EVENT_TYPES = [
+  "hired", "promotion", "transfer", "title_change", "manager_change",
+  "contract", "compensation", "leave", "note", "terminated",
+];
 
 const STATUS_BADGE: Record<string, string> = {
   active: "green",
@@ -89,17 +96,46 @@ export default function ProfilePage() {
           <div className="mt-3 space-y-1 text-sm">
             <Row label="Email" value={p.email} />
             <Row label="Department" value={p.department_name ?? p.hr_department} />
+            {p.manager_id ? (
+              <div className="flex justify-between gap-2">
+                <span className="muted">Manager</span>
+                <Link to={`/people/${p.manager_id}`} className="text-right text-brand-600 hover:underline">
+                  {p.manager_name}
+                </Link>
+              </div>
+            ) : null}
             <Row label="Office" value={p.office_location} />
             <Row label="Mobile" value={p.mobile_phone} />
             <Row label="Work phone" value={p.business_phone} />
+            <Row label="Employment" value={p.employment_type?.replace("_", " ")} />
+            <Row label="Hire date" value={p.hire_date} />
+            <Row label="Probation end" value={p.probation_end_date} />
+            <Row label="Contract end" value={p.contract_end_date} />
             {p.can_see_sensitive && (
               <>
                 <Row label="Personal email" value={p.personal_email} />
                 <Row label="Nationality" value={p.nationality} />
                 <Row label="Passport" value={p.passport_no} />
+                <Row label="Date of birth" value={p.date_of_birth} />
+                <Row label="Emergency" value={p.emergency_contact_name} />
+                <Row label="Emergency phone" value={p.emergency_contact_phone} />
+                <Row label="Relationship" value={p.emergency_contact_relationship} />
               </>
             )}
           </div>
+
+          {p.direct_reports.length > 0 && (
+            <div className="mt-3">
+              <div className="muted mb-1 text-xs">Direct reports ({p.direct_reports.length})</div>
+              <div className="flex flex-col gap-0.5">
+                {p.direct_reports.map((r) => (
+                  <Link key={r.id} to={`/people/${r.id}`} className="text-sm text-brand-600 hover:underline">
+                    {r.label} {r.sub && <span className="muted text-xs">· {r.sub}</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-3">
             <div className="muted mb-1 text-xs">Module access ({p.modules.length})</div>
@@ -170,8 +206,104 @@ export default function ProfilePage() {
               ))}
             </Section>
           )}
+
+          {p.can_see_sensitive && (
+            <EmploymentHistory userId={p.id} canManage={p.can_manage} events={p.events} onChange={reload} />
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmploymentHistory({
+  userId,
+  canManage,
+  events,
+  onChange,
+}: {
+  userId: string;
+  canManage: boolean;
+  events: ProfileEvent[];
+  onChange: () => void;
+}) {
+  const { notify } = useToast();
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ event_type: "note", title: "", effective_date: "", detail: "" });
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    try {
+      await api(`/api/people/${userId}/events`, {
+        method: "POST",
+        body: {
+          event_type: form.event_type,
+          title: form.title.trim(),
+          effective_date: form.effective_date || null,
+          detail: form.detail || null,
+        },
+      });
+      setForm({ event_type: "note", title: "", effective_date: "", detail: "" });
+      setAdding(false);
+      onChange();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+  async function del(id: string) {
+    await api(`/api/people/events/${id}`, { method: "DELETE" });
+    onChange();
+  }
+
+  return (
+    <div className="card">
+      <div className="spread mb-2">
+        <h3 className="m-0 flex items-center gap-2 text-base"><CalendarClock size={16} /> Employment history</h3>
+        {canManage && (
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+            {adding ? "Cancel" : "+ Add"}
+          </button>
+        )}
+      </div>
+      {adding && (
+        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
+          <div className="row">
+            <div className="field">
+              <label>Type</label>
+              <select value={form.event_type} onChange={(e) => setForm((p) => ({ ...p, event_type: e.target.value }))}>
+                {EVENT_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Date</label><input type="date" value={form.effective_date} onChange={(e) => setForm((p) => ({ ...p, effective_date: e.target.value }))} /></div>
+          </div>
+          <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Promoted to Senior" /></div>
+          <div className="field"><label>Detail</label><textarea rows={2} value={form.detail} onChange={(e) => setForm((p) => ({ ...p, detail: e.target.value }))} /></div>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add event</button>
+        </form>
+      )}
+      {events.length === 0 ? (
+        <Muted>No history recorded.</Muted>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {events.map((e) => (
+            <div key={e.id} className="flex items-start justify-between gap-2 py-1.5 text-sm">
+              <div className="min-w-0">
+                <div className="font-medium">
+                  <span className="badge mr-1">{e.event_type.replace("_", " ")}</span>
+                  {e.title}
+                </div>
+                <div className="muted text-xs">{e.effective_date}{e.detail ? ` · ${e.detail}` : ""}</div>
+              </div>
+              {canManage && (
+                <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(e.id)}>
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -189,6 +321,7 @@ function EditProfileModal({
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
   const departments = useFetch<Department[]>(isAdmin ? "/api/departments" : null);
+  const people = useFetch<User[]>(isAdmin ? "/api/users" : null);
   const [f, setF] = useState({
     job_title: profile.job_title ?? "",
     hr_department: profile.hr_department ?? "",
@@ -198,6 +331,15 @@ function EditProfileModal({
     personal_email: profile.personal_email ?? "",
     nationality: profile.nationality ?? "",
     passport_no: profile.passport_no ?? "",
+    date_of_birth: profile.date_of_birth ?? "",
+    employment_type: profile.employment_type ?? "",
+    hire_date: profile.hire_date ?? "",
+    probation_end_date: profile.probation_end_date ?? "",
+    contract_end_date: profile.contract_end_date ?? "",
+    emergency_contact_name: profile.emergency_contact_name ?? "",
+    emergency_contact_phone: profile.emergency_contact_phone ?? "",
+    emergency_contact_relationship: profile.emergency_contact_relationship ?? "",
+    manager_id: profile.manager_id ?? "",
     role: profile.role,
     status: profile.status,
     department_id: "",
@@ -215,15 +357,24 @@ function EditProfileModal({
         office_location: f.office_location || null,
         mobile_phone: f.mobile_phone || null,
         business_phone: f.business_phone || null,
+        employment_type: f.employment_type || null,
+        hire_date: f.hire_date || null,
+        probation_end_date: f.probation_end_date || null,
+        contract_end_date: f.contract_end_date || null,
+        emergency_contact_name: f.emergency_contact_name || null,
+        emergency_contact_phone: f.emergency_contact_phone || null,
+        emergency_contact_relationship: f.emergency_contact_relationship || null,
       };
       if (profile.can_see_sensitive) {
         body.personal_email = f.personal_email || null;
         body.nationality = f.nationality || null;
         body.passport_no = f.passport_no || null;
+        body.date_of_birth = f.date_of_birth || null;
       }
       if (isAdmin) {
         body.role = f.role;
         body.status = f.status;
+        body.manager_id = f.manager_id || null;
         if (f.department_id) body.department_id = f.department_id;
       }
       await api(`/api/profiles/${profile.id}`, { method: "PATCH", body });
@@ -247,12 +398,45 @@ function EditProfileModal({
           <div className="field"><label>Mobile</label><input value={f.mobile_phone} onChange={(e) => set("mobile_phone", e.target.value)} /></div>
           <div className="field"><label>Work phone</label><input value={f.business_phone} onChange={(e) => set("business_phone", e.target.value)} /></div>
         </div>
+
+        <div className="row">
+          <div className="field">
+            <label>Employment type</label>
+            <select value={f.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
+              <option value="">—</option>
+              {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
+            </select>
+          </div>
+          <div className="field"><label>Hire date</label><input type="date" value={f.hire_date} onChange={(e) => set("hire_date", e.target.value)} /></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Probation end</label><input type="date" value={f.probation_end_date} onChange={(e) => set("probation_end_date", e.target.value)} /></div>
+          <div className="field"><label>Contract end</label><input type="date" value={f.contract_end_date} onChange={(e) => set("contract_end_date", e.target.value)} /></div>
+        </div>
+        {isAdmin && (
+          <div className="field">
+            <label>Manager</label>
+            <select value={f.manager_id} onChange={(e) => set("manager_id", e.target.value)}>
+              <option value="">— None —</option>
+              {(people.data ?? []).filter((u) => u.id !== profile.id).map((u) => (
+                <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {profile.can_see_sensitive && (
           <>
             <div className="field"><label>Personal email</label><input value={f.personal_email} onChange={(e) => set("personal_email", e.target.value)} /></div>
             <div className="row">
               <div className="field"><label>Nationality</label><input value={f.nationality} onChange={(e) => set("nationality", e.target.value)} /></div>
               <div className="field"><label>Passport</label><input value={f.passport_no} onChange={(e) => set("passport_no", e.target.value)} /></div>
+              <div className="field"><label>Date of birth</label><input type="date" value={f.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)} /></div>
+            </div>
+            <div className="row">
+              <div className="field"><label>Emergency contact</label><input value={f.emergency_contact_name} onChange={(e) => set("emergency_contact_name", e.target.value)} /></div>
+              <div className="field"><label>Contact phone</label><input value={f.emergency_contact_phone} onChange={(e) => set("emergency_contact_phone", e.target.value)} /></div>
+              <div className="field"><label>Relationship</label><input value={f.emergency_contact_relationship} onChange={(e) => set("emergency_contact_relationship", e.target.value)} /></div>
             </div>
           </>
         )}

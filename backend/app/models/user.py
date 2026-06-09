@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, String, Table
+from sqlalchemy import JSON, Boolean, Column, Date, ForeignKey, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -41,8 +41,23 @@ class User(UUIDMixin, TimestampMixin, Base):
     # Extra HR details captured at onboarding.
     passport_no: Mapped[str | None] = mapped_column(String(64))
     nationality: Mapped[str | None] = mapped_column(String(128))
+    date_of_birth: Mapped[object | None] = mapped_column(Date)
     # External system ids for sync.
     bamboo_id: Mapped[str | None] = mapped_column(String(64))
+
+    # ---- HR / employment record ----
+    # Reporting line (self-referential). Distinct from the access department.
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    # full_time | part_time | contractor | intern | temporary
+    employment_type: Mapped[str | None] = mapped_column(String(24))
+    hire_date: Mapped[object | None] = mapped_column(Date)
+    probation_end_date: Mapped[object | None] = mapped_column(Date)
+    contract_end_date: Mapped[object | None] = mapped_column(Date)
+    emergency_contact_name: Mapped[str | None] = mapped_column(String(255))
+    emergency_contact_phone: Mapped[str | None] = mapped_column(String(64))
+    emergency_contact_relationship: Mapped[str | None] = mapped_column(String(64))
 
     # Local password sign-in (for users not coming via Azure SSO). Encoded
     # PBKDF2 hash; null means the user can only sign in via SSO.
@@ -73,6 +88,13 @@ class User(UUIDMixin, TimestampMixin, Base):
     access_department: Mapped["object"] = relationship(
         "Department", lazy="selectin"
     )
+    manager: Mapped["object"] = relationship(
+        "User", remote_side="User.id", foreign_keys=[manager_id], lazy="joined", join_depth=1
+    )
+
+    @property
+    def manager_name(self) -> str | None:
+        return self.manager.display_name if self.manager else None
 
     @property
     def managed_brand_ids(self) -> list[uuid.UUID]:

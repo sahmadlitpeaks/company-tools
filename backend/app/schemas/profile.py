@@ -13,10 +13,29 @@ class ProfileUpdate(BaseModel):
     personal_email: str | None = None
     nationality: str | None = None
     passport_no: str | None = None
+    date_of_birth: date | None = None
+    # Employment record
+    employment_type: str | None = None
+    hire_date: date | None = None
+    probation_end_date: date | None = None
+    contract_end_date: date | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     # Admin-only fields below; ignored for non-admin editors.
+    manager_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
     role: str | None = None
     status: str | None = None
+
+
+class ProfileEvent(BaseModel):
+    id: uuid.UUID
+    event_type: str
+    effective_date: date
+    title: str
+    detail: str | None = None
+    created_at: datetime
 
 
 class ProfileItem(BaseModel):
@@ -67,10 +86,23 @@ class ProfileOut(BaseModel):
     avatar_url: str | None = None
     created_at: datetime
 
+    # Employment record
+    manager_id: uuid.UUID | None = None
+    manager_name: str | None = None
+    employment_type: str | None = None
+    hire_date: date | None = None
+    probation_end_date: date | None = None
+    contract_end_date: date | None = None
+    direct_reports: list[ProfileItem] = []
+
     # Sensitive HR details — only populated for admins/HR or the person.
     personal_email: str | None = None
     nationality: str | None = None
     passport_no: str | None = None
+    date_of_birth: date | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
 
     # Access & belongings
     modules: list[str] = []
@@ -80,6 +112,7 @@ class ProfileOut(BaseModel):
     phones: list[ProfileItem] = []
     open_tasks: list[ProfileTask] = []
     journeys: list[ProfileJourney] = []
+    events: list[ProfileEvent] = []
 
     # What the viewer is allowed to do/see.
     can_manage: bool = False

@@ -13,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.models.hr import EmploymentEvent
 from app.models.people import AccessGrant, OnboardingJourney, OnboardingTask
 from app.models.phone_line import PhoneLine
 from app.models.tracked_asset import TrackedAsset
 from app.models.user import User
 from app.models.workplace import Task
 from app.schemas.profile import (
+    ProfileEvent,
     ProfileItem,
     ProfileJourney,
     ProfileOut,
@@ -32,9 +34,11 @@ from app.services.subscriptions import person_subscriptions
 # Fields any manager/HR editor may change vs. admin-only ones.
 _HR_FIELDS = {
     "job_title", "office_location", "mobile_phone", "business_phone",
-    "personal_email", "nationality", "passport_no",
+    "personal_email", "nationality", "passport_no", "date_of_birth",
+    "employment_type", "hire_date", "probation_end_date", "contract_end_date",
+    "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
 }
-_ADMIN_FIELDS = {"department_id", "role", "status"}
+_ADMIN_FIELDS = {"manager_id", "department_id", "role", "status"}
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -75,6 +79,12 @@ async def _build(db: AsyncSession, viewer: User, target: User) -> ProfileOut:
         avatar_url=target.avatar_url,
         created_at=target.created_at,
         modules=target.effective_permissions,
+        manager_id=target.manager_id,
+        manager_name=target.manager_name,
+        employment_type=target.employment_type,
+        hire_date=target.hire_date,
+        probation_end_date=target.probation_end_date,
+        contract_end_date=target.contract_end_date,
         can_manage=can_manage,
         can_see_sensitive=sensitive,
     )
@@ -82,6 +92,20 @@ async def _build(db: AsyncSession, viewer: User, target: User) -> ProfileOut:
         out.personal_email = target.personal_email
         out.nationality = target.nationality
         out.passport_no = target.passport_no
+        out.date_of_birth = target.date_of_birth
+        out.emergency_contact_name = target.emergency_contact_name
+        out.emergency_contact_phone = target.emergency_contact_phone
+        out.emergency_contact_relationship = target.emergency_contact_relationship
+
+    reports = (
+        await db.execute(
+            select(User).where(User.manager_id == target.id).order_by(User.display_name)
+        )
+    ).scalars().all()
+    out.direct_reports = [
+        ProfileItem(id=r.id, label=r.display_name or r.email or "—", sub=r.job_title, status=r.status)
+        for r in reports
+    ]
 
     grants = (
         await db.execute(
@@ -162,6 +186,23 @@ async def _build(db: AsyncSession, viewer: User, target: User) -> ProfileOut:
                 created_at=j.created_at,
             )
         )
+
+    if sensitive:
+        events = (
+            await db.execute(
+                select(EmploymentEvent)
+                .where(EmploymentEvent.user_id == target.id)
+                .order_by(EmploymentEvent.effective_date.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        out.events = [
+            ProfileEvent(
+                id=e.id, event_type=e.event_type, effective_date=e.effective_date,
+                title=e.title, detail=e.detail, created_at=e.created_at,
+            )
+            for e in events
+        ]
     return out
 
 
@@ -201,6 +242,11 @@ async def update_profile(
     data = payload.model_dump(exclude_unset=True)
     if "hr_department" in data:
         target.department = data.pop("hr_department")
+    if data.get("manager_id") is not None and viewer.is_admin:
+        if data["manager_id"] == target.id:
+            raise HTTPException(status_code=422, detail="A user can't manage themselves")
+        if not await db.get(User, data["manager_id"]):
+            raise HTTPException(status_code=404, detail="Manager not found")
     for field in list(data):
         if field in _ADMIN_FIELDS and not viewer.is_admin:
             data.pop(field)  # silently ignore admin-only fields for HR editors
@@ -212,5 +258,10 @@ async def update_profile(
         summary=f"Updated profile for {target.display_name or target.email}",
     )
     await db.commit()
-    await db.refresh(target)
+    # Re-SELECT so selectin relationships (manager, access dept) repopulate.
+    target = (
+        await db.execute(
+            select(User).where(User.id == target.id).execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     return await _build(db, viewer, target)

@@ -253,6 +253,11 @@ async def update_user(
         dept = await db.get(Department, data["department_id"])
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
+    if data.get("manager_id") is not None:
+        if data["manager_id"] == user.id:
+            raise HTTPException(status_code=422, detail="A user can't manage themselves")
+        if not await db.get(User, data["manager_id"]):
+            raise HTTPException(status_code=404, detail="Manager not found")
     for field, value in data.items():
         setattr(user, field, value)
     record(
@@ -264,8 +269,13 @@ async def update_user(
         summary=f"Updated access for {user.email}",
     )
     await db.commit()
-    await db.refresh(user)
-    return user
+    # Reload via a fresh SELECT so the (selectin) manager relationship is
+    # eagerly populated and never lazy-loads during sync serialization.
+    return (
+        await db.execute(
+            select(User).where(User.id == user.id).execution_options(populate_existing=True)
+        )
+    ).scalar_one()
 
 
 @router.put("/{user_id}/brands", response_model=UserOut)

@@ -28,6 +28,7 @@ import AssetTrackerPage from "./pages/AssetTrackerPage";
 import PhoneLinesPage from "./pages/PhoneLinesPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import ProfilePage from "./pages/ProfilePage";
+import OrgChartPage from "./pages/OrgChartPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import BrandsPage from "./pages/BrandsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -109,6 +110,10 @@ export default function App() {
           />
           <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
           <Route path="/people/:id" element={<Protected><ProfilePage /></Protected>} />
+          <Route
+            path="/org-chart"
+            element={<Protected module="people_ops"><OrgChartPage /></Protected>}
+          />
           <Route
             path="/tasks"
             element={<Protected module="tasks"><TasksPage /></Protected>}
