@@ -7,7 +7,7 @@ increments of the HR module.
 import uuid
 from datetime import date
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -104,3 +104,44 @@ class Holiday(UUIDMixin, TimestampMixin, Base):
 
     day: Mapped[date] = mapped_column(Date, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+
+
+# Kinds of compensation entry.
+COMPENSATION_TYPES = {"salary", "bonus", "allowance", "adjustment"}
+PAY_PERIODS = {"annual", "monthly", "hourly"}
+
+
+class PayBand(UUIDMixin, TimestampMixin, Base):
+    """A salary band/range used as a reference for compensation decisions."""
+
+    __tablename__ = "pay_bands"
+
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    level: Mapped[str | None] = mapped_column(String(40))
+    min_amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    max_amount: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class CompensationRecord(UUIDMixin, TimestampMixin, Base):
+    """A dated compensation entry for an employee (salary, bonus, …)."""
+
+    __tablename__ = "compensation_records"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    record_type: Mapped[str] = mapped_column(String(16), default="salary", index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    # annual | monthly | hourly (for salary; bonuses are one-off amounts)
+    pay_period: Mapped[str] = mapped_column(String(12), default="annual")
+    effective_date: Mapped[date] = mapped_column(Date, index=True, default=date.today)
+    band_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pay_bands.id", ondelete="SET NULL"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

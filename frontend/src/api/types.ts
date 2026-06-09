@@ -1190,3 +1190,38 @@ export interface HrDocument {
   created_at: string;
   days_to_expiry?: number | null;
 }
+
+export interface PayBand {
+  id: string;
+  name: string;
+  level?: string | null;
+  min_amount?: string | null;
+  max_amount?: string | null;
+  currency: string;
+  note?: string | null;
+}
+
+export interface CompensationRecord {
+  id: string;
+  user_id: string;
+  record_type: string;
+  amount: string;
+  currency: string;
+  pay_period: string;
+  effective_date: string;
+  band_id?: string | null;
+  band_name?: string | null;
+  note?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+}
+
+export interface CompensationSummary {
+  user_id: string;
+  amount?: string | null;
+  currency?: string | null;
+  pay_period?: string | null;
+  effective_date?: string | null;
+  band_name?: string | null;
+  annualised?: string | null;
+}

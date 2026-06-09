@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
+  Banknote,
   Boxes,
   CalendarClock,
   CheckSquare,
@@ -15,7 +16,15 @@ import {
   Wallet,
 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
-import type { Department, HrDocument, Profile, ProfileEvent, User } from "../api/types";
+import type {
+  CompensationRecord,
+  CompensationSummary,
+  Department,
+  HrDocument,
+  Profile,
+  ProfileEvent,
+  User,
+} from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
@@ -210,6 +219,10 @@ export default function ProfilePage() {
           )}
 
           {p.can_see_sensitive && (
+            <CompensationSection userId={p.id} canManage={p.can_manage} />
+          )}
+
+          {p.can_see_sensitive && (
             <DocumentsSection userId={p.id} canManage={p.can_manage} />
           )}
 
@@ -226,6 +239,122 @@ const DOC_CATEGORIES = [
   "contract", "offer_letter", "nda", "passport", "visa",
   "national_id", "certificate", "policy", "payslip", "other",
 ];
+const COMP_TYPES = ["salary", "bonus", "allowance", "adjustment"];
+const PAY_PERIODS = ["annual", "monthly", "hourly"];
+
+function money(v?: string | null, ccy?: string | null) {
+  if (v == null || v === "") return "—";
+  const n = Number(v);
+  return `${ccy ?? ""} ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`.trim();
+}
+
+function CompensationSection({ userId, canManage }: { userId: string; canManage: boolean }) {
+  const { notify } = useToast();
+  const current = useFetch<CompensationSummary>(`/api/compensation/current/${userId}`);
+  const records = useFetch<CompensationRecord[]>(`/api/compensation/by-user/${userId}`);
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ record_type: "salary", amount: "", currency: "USD", pay_period: "annual", effective_date: "", note: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!f.amount) return;
+    setBusy(true);
+    try {
+      await api(`/api/compensation/by-user/${userId}`, {
+        method: "POST",
+        body: { ...f, effective_date: f.effective_date || null, amount: f.amount },
+      });
+      setF({ record_type: "salary", amount: "", currency: "USD", pay_period: "annual", effective_date: "", note: "" });
+      setAdding(false);
+      current.reload();
+      records.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+    setBusy(false);
+  }
+  async function del(id: string) {
+    await api(`/api/compensation/${id}`, { method: "DELETE" });
+    current.reload();
+    records.reload();
+  }
+
+  const c = current.data;
+  return (
+    <div className="card">
+      <div className="spread mb-2">
+        <h3 className="m-0 flex items-center gap-2 text-base"><Banknote size={16} /> Compensation</h3>
+        {canManage && (
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+            {adding ? "Cancel" : "+ Record"}
+          </button>
+        )}
+      </div>
+
+      {c?.amount ? (
+        <div className="mb-2">
+          <div className="flex items-end gap-2">
+            <span className="text-2xl font-bold">{money(c.amount, c.currency)}</span>
+            <span className="muted mb-0.5 text-sm">/ {c.pay_period}</span>
+          </div>
+          <div className="muted text-xs">
+            since {c.effective_date}
+            {c.pay_period !== "annual" && c.annualised ? ` · ${money(c.annualised, c.currency)}/yr` : ""}
+            {c.band_name ? ` · ${c.band_name}` : ""}
+          </div>
+        </div>
+      ) : (
+        <Muted>No salary on record.</Muted>
+      )}
+
+      {adding && (
+        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
+          <div className="row">
+            <div className="field">
+              <label>Type</label>
+              <select value={f.record_type} onChange={(e) => setF((p) => ({ ...p, record_type: e.target.value }))}>
+                {COMP_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Amount</label><input type="number" step="0.01" value={f.amount} onChange={(e) => setF((p) => ({ ...p, amount: e.target.value }))} /></div>
+            <div className="field" style={{ maxWidth: 80 }}><label>Currency</label><input value={f.currency} onChange={(e) => setF((p) => ({ ...p, currency: e.target.value.toUpperCase() }))} /></div>
+          </div>
+          <div className="row">
+            <div className="field">
+              <label>Period</label>
+              <select value={f.pay_period} onChange={(e) => setF((p) => ({ ...p, pay_period: e.target.value }))}>
+                {PAY_PERIODS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Effective</label><input type="date" value={f.effective_date} onChange={(e) => setF((p) => ({ ...p, effective_date: e.target.value }))} /></div>
+          </div>
+          <div className="field"><label>Note</label><input value={f.note} onChange={(e) => setF((p) => ({ ...p, note: e.target.value }))} /></div>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        </form>
+      )}
+
+      {(records.data?.length ?? 0) > 0 && (
+        <div className="divide-y divide-slate-100">
+          {records.data!.map((r) => (
+            <div key={r.id} className="flex items-center justify-between py-1.5 text-sm">
+              <div>
+                <span className="badge mr-1">{r.record_type}</span>
+                <span className="font-medium">{money(r.amount, r.currency)}</span>
+                <span className="muted"> / {r.pay_period} · {r.effective_date}</span>
+              </div>
+              {canManage && (
+                <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(r.id)}>
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function DocumentsSection({ userId, canManage }: { userId: string; canManage: boolean }) {
   const { notify } = useToast();
