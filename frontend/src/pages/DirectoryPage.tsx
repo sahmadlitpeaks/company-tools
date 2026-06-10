@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { LayoutGrid, List } from "lucide-react";
 import { api } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -246,6 +247,32 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
+const AVATAR_COLORS = [
+  "#0ea5e9", "#6366f1", "#ec4899", "#f59e0b", "#10b981",
+  "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#3b82f6",
+];
+function colorFor(s: string): string {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function PersonAvatar({ u, size = 64 }: { u: User; size?: number }) {
+  const seed = u.display_name ?? u.email ?? "?";
+  return (
+    <span
+      className="grid flex-none place-items-center overflow-hidden rounded-full font-semibold text-white"
+      style={{ height: size, width: size, background: colorFor(seed), fontSize: size * 0.36 }}
+    >
+      {u.avatar_url ? (
+        <img src={u.avatar_url} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initials(u.display_name, u.email ?? undefined)
+      )}
+    </span>
+  );
+}
+
 export default function DirectoryPage() {
   const { user } = useAuth();
   const { notify } = useToast();
@@ -259,6 +286,16 @@ export default function DirectoryPage() {
   );
   const isAdmin = user?.is_admin;
   const pendingCount = data?.filter((u) => u.status === "pending").length ?? 0;
+  const [deptFilter, setDeptFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+
+  const departments = [...new Set((data ?? []).map((u) => u.department).filter(Boolean))].sort();
+  const filtered = (data ?? []).filter(
+    (u) =>
+      (!deptFilter || u.department === deptFilter) &&
+      (!statusFilter || u.status === statusFilter),
+  );
 
   async function approve(u: User) {
     try {
@@ -310,22 +347,92 @@ export default function DirectoryPage() {
         </div>
       )}
       <div className="card">
-        <input
-          placeholder="Search by name, email, department…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ marginBottom: 14 }}
-        />
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <div className="field" style={{ marginBottom: 0, flex: "1 1 220px" }}>
+            <input
+              placeholder="Search by name, email, department…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+              <option value="">All departments</option>
+              {departments.map((d) => <option key={d} value={d as string}>{d}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+            <button
+              className={`px-2.5 py-1.5 ${view === "grid" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+              onClick={() => setView("grid")}
+              title="Grid view"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              className={`px-2.5 py-1.5 ${view === "list" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+              onClick={() => setView("list")}
+              title="List view"
+            >
+              <List size={16} />
+            </button>
+          </div>
+        </div>
+
         {loading ? (
           <ListSkeleton rows={6} />
         ) : error ? (
           <ErrorBox message={error} />
-        ) : !data || data.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <Empty
             icon="👥"
             message="No employees found"
-            hint="Run a sync to import staff from Azure Entra ID."
+            hint="Adjust filters, or run a sync to import staff from Azure Entra ID."
           />
+        ) : view === "grid" ? (
+          <>
+            <div className="muted mb-2 text-xs">{filtered.length} people</div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))" }}>
+              {filtered.map((u) => (
+                <div key={u.id} className="flex flex-col items-center rounded-xl border border-slate-200 p-4 text-center transition hover:shadow-md">
+                  <Link to={`/people/${u.id}`}><PersonAvatar u={u} size={72} /></Link>
+                  <Link to={`/people/${u.id}`} className="mt-2 font-semibold leading-tight hover:text-brand-600">
+                    {u.display_name ?? "—"}
+                  </Link>
+                  <div className="muted text-xs">{u.job_title ?? "—"}</div>
+                  <div className="muted mt-0.5 text-xs">{u.department ?? "—"}</div>
+                  <div className="mt-2 flex flex-wrap justify-center gap-1">
+                    <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>{u.status}</span>
+                    {u.role !== "member" && <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>}
+                  </div>
+                  {u.email && (
+                    <a href={`mailto:${u.email}`} className="muted mt-2 truncate text-xs hover:text-brand-600" style={{ maxWidth: "100%" }}>
+                      {u.email}
+                    </a>
+                  )}
+                  {isAdmin && (
+                    <div className="mt-2 flex flex-wrap justify-center gap-1">
+                      {u.status === "pending" && (
+                        <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
+                      )}
+                      <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
+                      {u.role === "manager" && (
+                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Brands</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <table>
             <thead>
@@ -339,13 +446,11 @@ export default function DirectoryPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((u) => (
+              {filtered.map((u) => (
                 <tr key={u.id}>
                   <td>
                     <div className="flex items-center gap-2.5">
-                      <span className="avatar !h-8 !w-8 !text-[11px]">
-                        {initials(u.display_name, u.email ?? undefined)}
-                      </span>
+                      <PersonAvatar u={u} size={32} />
                       <div className="min-w-0">
                         <Link
                           to={`/people/${u.id}`}
