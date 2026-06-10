@@ -3,18 +3,25 @@ import { useParams, Link } from "react-router-dom";
 import {
   Banknote,
   Boxes,
+  Briefcase,
+  Building2,
   CalendarClock,
+  CalendarDays,
   CheckSquare,
   Download,
   FileText,
   KeyRound,
   ListChecks,
+  Mail,
+  MapPin,
   Pencil,
+  Phone,
   Sliders,
   Smartphone,
   Target,
   Trash2,
   UserRound,
+  Users,
   Wallet,
 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
@@ -33,7 +40,7 @@ import type {
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, Loading, Modal, useToast } from "../components/ui";
 
 const ROLES = ["member", "manager", "admin"];
 const USER_STATUSES = ["active", "invited", "suspended", "offboarding", "departed"];
@@ -58,6 +65,15 @@ function badge(s?: string | null) {
   return s ? `badge ${STATUS_BADGE[s] ?? ""}` : "badge";
 }
 
+const TABS: { key: string; label: string; sensitive?: boolean }[] = [
+  { key: "personal", label: "Personal" },
+  { key: "job", label: "Job" },
+  { key: "comp", label: "Compensation", sensitive: true },
+  { key: "documents", label: "Documents", sensitive: true },
+  { key: "performance", label: "Performance" },
+  { key: "assets", label: "Assets & Access" },
+];
+
 export default function ProfilePage() {
   const { id } = useParams();
   const { user: viewer } = useAuth();
@@ -65,24 +81,17 @@ export default function ProfilePage() {
   const path = id ? `/api/profiles/${id}` : "/api/profiles/me";
   const { data: p, loading, error, reload } = useFetch<Profile>(path);
   const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState("personal");
 
   if (loading) return <Loading />;
   if (error || !p)
     return <Empty message={error ? "You don't have access to this profile." : "Not found."} />;
 
+  const tabs = TABS.filter((t) => !t.sensitive || p.can_see_sensitive);
+  const canEditGoals = p.can_manage || p.id === viewerId;
+
   return (
     <div>
-      <PageHead
-        title={p.name ?? p.email ?? "Profile"}
-        subtitle={p.job_title ?? undefined}
-        action={
-          p.can_manage ? (
-            <button className="btn inline-flex items-center gap-1.5" onClick={() => setEditing(true)}>
-              <Pencil size={15} /> Edit
-            </button>
-          ) : undefined
-        }
-      />
       {editing && (
         <EditProfileModal
           profile={p}
@@ -91,157 +100,221 @@ export default function ProfilePage() {
         />
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
-        {/* Identity card */}
-        <div className="card">
-          <div className="flex items-center gap-3">
-            <span className="grid h-14 w-14 flex-none place-items-center overflow-hidden rounded-full bg-brand-100 text-brand-700">
-              {p.avatar_url ? (
-                <img src={p.avatar_url} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <UserRound size={26} />
+      {/* Hero header */}
+      <div className="overflow-hidden rounded-2xl shadow-sm">
+        <div
+          className="flex flex-wrap items-center gap-4 px-6 py-5 text-white"
+          style={{ background: "linear-gradient(120deg, var(--brand-600), var(--brand-800))" }}
+        >
+          <Avatar name={p.name} email={p.email} url={p.avatar_url} />
+          <div className="min-w-0">
+            <h1 className="m-0 text-2xl font-bold leading-tight">{p.name ?? p.email}</h1>
+            <div className="text-white/85">
+              {p.job_title ?? "—"}
+              {(p.department_name || p.hr_department) ? ` · ${p.department_name ?? p.hr_department}` : ""}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium capitalize">{p.status}</span>
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">{p.is_admin ? "admin" : p.role}</span>
+              {p.employment_type && (
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium capitalize">
+                  {p.employment_type.replace("_", " ")}
+                </span>
               )}
-            </span>
-            <div className="min-w-0">
-              <div className="font-semibold">{p.name ?? p.email}</div>
-              {p.job_title && <div className="muted text-sm">{p.job_title}</div>}
-              <div className="mt-1 flex flex-wrap gap-1">
-                <span className={badge(p.status)}>{p.status}</span>
-                <span className="badge">{p.is_admin ? "admin" : p.role}</span>
-              </div>
             </div>
           </div>
-
-          <div className="mt-3 space-y-1 text-sm">
-            <Row label="Email" value={p.email} />
-            <Row label="Department" value={p.department_name ?? p.hr_department} />
-            {p.manager_id ? (
-              <div className="flex justify-between gap-2">
-                <span className="muted">Manager</span>
-                <Link to={`/people/${p.manager_id}`} className="text-right text-brand-600 hover:underline">
-                  {p.manager_name}
-                </Link>
-              </div>
-            ) : null}
-            <Row label="Office" value={p.office_location} />
-            <Row label="Mobile" value={p.mobile_phone} />
-            <Row label="Work phone" value={p.business_phone} />
-            <Row label="Employment" value={p.employment_type?.replace("_", " ")} />
-            <Row label="Hire date" value={p.hire_date} />
-            <Row label="Probation end" value={p.probation_end_date} />
-            <Row label="Contract end" value={p.contract_end_date} />
-            {p.can_see_sensitive && (
-              <>
-                <Row label="Personal email" value={p.personal_email} />
-                <Row label="Nationality" value={p.nationality} />
-                <Row label="Passport" value={p.passport_no} />
-                <Row label="Date of birth" value={p.date_of_birth} />
-                <Row label="Emergency" value={p.emergency_contact_name} />
-                <Row label="Emergency phone" value={p.emergency_contact_phone} />
-                <Row label="Relationship" value={p.emergency_contact_relationship} />
-              </>
-            )}
-          </div>
-
-          {p.direct_reports.length > 0 && (
-            <div className="mt-3">
-              <div className="muted mb-1 text-xs">Direct reports ({p.direct_reports.length})</div>
-              <div className="flex flex-col gap-0.5">
-                {p.direct_reports.map((r) => (
-                  <Link key={r.id} to={`/people/${r.id}`} className="text-sm text-brand-600 hover:underline">
-                    {r.label} {r.sub && <span className="muted text-xs">· {r.sub}</span>}
-                  </Link>
-                ))}
-              </div>
-            </div>
+          {p.can_manage && (
+            <button
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={15} /> Edit
+            </button>
           )}
-
-          <div className="mt-3">
-            <div className="muted mb-1 text-xs">Module access ({p.modules.length})</div>
-            <div className="flex flex-wrap gap-1">
-              {p.modules.map((m) => (
-                <span key={m} className="badge">{m}</span>
-              ))}
-            </div>
-          </div>
         </div>
-
-        {/* Belongings & work */}
-        <div className="space-y-4">
-          <Section icon={<Wallet size={16} />} title="Subscriptions" count={p.subscriptions.length}>
-            {p.subscriptions.length === 0 ? (
-              <Muted>No subscriptions.</Muted>
-            ) : (
-              p.subscriptions.map((s) => (
-                <Item
-                  key={s.subscription_id + s.source}
-                  label={s.name}
-                  sub={s.vendor}
-                  right={
-                    <span className="badge">
-                      {s.source === "seat" ? (s.seat_status ?? "seat") : s.source}
-                    </span>
-                  }
-                />
-              ))
-            )}
-          </Section>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Section icon={<Boxes size={16} />} title="Assets" count={p.assets.length}>
-              {p.assets.length === 0 ? <Muted>None assigned.</Muted> : p.assets.map((a) => (
-                <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
-              ))}
-            </Section>
-            <Section icon={<Smartphone size={16} />} title="Phone lines" count={p.phones.length}>
-              {p.phones.length === 0 ? <Muted>None assigned.</Muted> : p.phones.map((a) => (
-                <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
-              ))}
-            </Section>
-          </div>
-
-          <Section icon={<KeyRound size={16} />} title="Access grants" count={p.access_grants.length}>
-            {p.access_grants.length === 0 ? <Muted>No tracked accounts.</Muted> : p.access_grants.map((g) => (
-              <Item key={g.id} label={g.label} sub={g.sub} right={<span className={badge(g.status)}>{g.status}</span>} />
-            ))}
-          </Section>
-
-          <Section icon={<CheckSquare size={16} />} title="Open tasks" count={p.open_tasks.length}>
-            {p.open_tasks.length === 0 ? <Muted>No open tasks.</Muted> : p.open_tasks.map((t) => (
-              <Item key={t.id} label={t.title} sub={t.due_date ? `due ${t.due_date}` : null} right={<span className="badge">{t.status}</span>} />
-            ))}
-          </Section>
-
-          {p.journeys.length > 0 && (
-            <Section icon={<ListChecks size={16} />} title="Onboarding / Offboarding" count={p.journeys.length}>
-              {p.journeys.map((j) => (
-                <Link key={j.id} to="/people-ops" className="block">
-                  <Item
-                    label={j.kind === "offboarding" ? "Offboarding" : "Onboarding"}
-                    sub={`${j.done_tasks}/${j.total_tasks} steps`}
-                    right={<span className={badge(j.status === "completed" ? "active" : "pending")}>{j.status}</span>}
-                  />
-                </Link>
-              ))}
-            </Section>
+        <div className="flex flex-wrap gap-x-6 gap-y-1.5 px-6 py-3 text-sm" style={{ background: "var(--brand-50)" }}>
+          <Fact icon={<Building2 size={14} />} value={p.department_name ?? p.hr_department} />
+          {p.manager_id && (
+            <Fact icon={<Users size={14} />} value={<Link to={`/people/${p.manager_id}`} className="text-brand-700 hover:underline">{p.manager_name}</Link>} />
           )}
-
-          <CustomFieldsSection userId={p.id} />
-          <GoalsSection userId={p.id} canEdit={p.can_manage || p.id === viewerId} />
-
-          {p.can_see_sensitive && (
-            <CompensationSection userId={p.id} canManage={p.can_manage} />
-          )}
-
-          {p.can_see_sensitive && (
-            <DocumentsSection userId={p.id} canManage={p.can_manage} />
-          )}
-
-          {p.can_see_sensitive && (
-            <EmploymentHistory userId={p.id} canManage={p.can_manage} events={p.events} onChange={reload} />
-          )}
+          <Fact icon={<MapPin size={14} />} value={p.office_location} />
+          <Fact icon={<CalendarDays size={14} />} value={p.hire_date ? `Joined ${p.hire_date}` : null} />
+          <Fact icon={<Mail size={14} />} value={p.email} />
+          <Fact icon={<Phone size={14} />} value={p.mobile_phone} />
         </div>
       </div>
+
+      {/* Tabs */}
+      <div className="mt-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition ${
+              tab === t.key
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-ink-muted hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {tab === "personal" && (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <InfoCard icon={<UserRound size={16} />} title="Contact">
+                <Row label="Work email" value={p.email} />
+                <Row label="Mobile" value={p.mobile_phone} />
+                <Row label="Work phone" value={p.business_phone} />
+                <Row label="Office" value={p.office_location} />
+                {p.can_see_sensitive && <Row label="Personal email" value={p.personal_email} />}
+              </InfoCard>
+              {p.can_see_sensitive && (
+                <InfoCard icon={<UserRound size={16} />} title="Personal details">
+                  <Row label="Date of birth" value={p.date_of_birth} />
+                  <Row label="Nationality" value={p.nationality} />
+                  <Row label="Passport" value={p.passport_no} />
+                  <Row label="Emergency contact" value={p.emergency_contact_name} />
+                  <Row label="Emergency phone" value={p.emergency_contact_phone} />
+                  <Row label="Relationship" value={p.emergency_contact_relationship} />
+                </InfoCard>
+              )}
+            </div>
+            <CustomFieldsSection userId={p.id} />
+          </>
+        )}
+
+        {tab === "job" && (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <InfoCard icon={<Briefcase size={16} />} title="Employment">
+                <Row label="Job title" value={p.job_title} />
+                <Row label="Department" value={p.department_name ?? p.hr_department} />
+                <Row label="Employment type" value={p.employment_type?.replace("_", " ")} />
+                <Row label="Hire date" value={p.hire_date} />
+                <Row label="Probation end" value={p.probation_end_date} />
+                <Row label="Contract end" value={p.contract_end_date} />
+              </InfoCard>
+              <InfoCard icon={<Users size={16} />} title="Reporting">
+                {p.manager_id ? (
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="muted">Manager</span>
+                    <Link to={`/people/${p.manager_id}`} className="text-brand-600 hover:underline">{p.manager_name}</Link>
+                  </div>
+                ) : <Row label="Manager" value={null} />}
+                <div className="mt-1">
+                  <div className="muted mb-1 text-xs">Direct reports ({p.direct_reports.length})</div>
+                  {p.direct_reports.length === 0 ? (
+                    <p className="muted text-sm">None.</p>
+                  ) : (
+                    p.direct_reports.map((r) => (
+                      <Link key={r.id} to={`/people/${r.id}`} className="block text-sm text-brand-600 hover:underline">
+                        {r.label} {r.sub && <span className="muted text-xs">· {r.sub}</span>}
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </InfoCard>
+            </div>
+            {p.can_see_sensitive && (
+              <EmploymentHistory userId={p.id} canManage={p.can_manage} events={p.events} onChange={reload} />
+            )}
+          </>
+        )}
+
+        {tab === "comp" && p.can_see_sensitive && (
+          <CompensationSection userId={p.id} canManage={p.can_manage} />
+        )}
+
+        {tab === "documents" && p.can_see_sensitive && (
+          <DocumentsSection userId={p.id} canManage={p.can_manage} />
+        )}
+
+        {tab === "performance" && (
+          <GoalsSection userId={p.id} canEdit={canEditGoals} />
+        )}
+
+        {tab === "assets" && (
+          <>
+            <Section icon={<Wallet size={16} />} title="Subscriptions" count={p.subscriptions.length}>
+              {p.subscriptions.length === 0 ? <Muted>No subscriptions.</Muted> : p.subscriptions.map((s) => (
+                <Item key={s.subscription_id + s.source} label={s.name} sub={s.vendor}
+                  right={<span className="badge">{s.source === "seat" ? (s.seat_status ?? "seat") : s.source}</span>} />
+              ))}
+            </Section>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Section icon={<Boxes size={16} />} title="Assets" count={p.assets.length}>
+                {p.assets.length === 0 ? <Muted>None assigned.</Muted> : p.assets.map((a) => (
+                  <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
+                ))}
+              </Section>
+              <Section icon={<Smartphone size={16} />} title="Phone lines" count={p.phones.length}>
+                {p.phones.length === 0 ? <Muted>None assigned.</Muted> : p.phones.map((a) => (
+                  <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
+                ))}
+              </Section>
+            </div>
+            <Section icon={<KeyRound size={16} />} title="Access grants" count={p.access_grants.length}>
+              {p.access_grants.length === 0 ? <Muted>No tracked accounts.</Muted> : p.access_grants.map((g) => (
+                <Item key={g.id} label={g.label} sub={g.sub} right={<span className={badge(g.status)}>{g.status}</span>} />
+              ))}
+            </Section>
+            <Section icon={<CheckSquare size={16} />} title="Open tasks" count={p.open_tasks.length}>
+              {p.open_tasks.length === 0 ? <Muted>No open tasks.</Muted> : p.open_tasks.map((t) => (
+                <Item key={t.id} label={t.title} sub={t.due_date ? `due ${t.due_date}` : null} right={<span className="badge">{t.status}</span>} />
+              ))}
+            </Section>
+            <Section icon={<KeyRound size={16} />} title="Module access" count={p.modules.length}>
+              <div className="flex flex-wrap gap-1 py-1">
+                {p.modules.map((m) => <span key={m} className="badge">{m}</span>)}
+              </div>
+            </Section>
+            {p.journeys.length > 0 && (
+              <Section icon={<ListChecks size={16} />} title="Onboarding / Offboarding" count={p.journeys.length}>
+                {p.journeys.map((j) => (
+                  <Link key={j.id} to="/people-ops" className="block">
+                    <Item label={j.kind === "offboarding" ? "Offboarding" : "Onboarding"}
+                      sub={`${j.done_tasks}/${j.total_tasks} steps`}
+                      right={<span className={badge(j.status === "completed" ? "active" : "pending")}>{j.status}</span>} />
+                  </Link>
+                ))}
+              </Section>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ name, email, url }: { name?: string | null; email?: string | null; url?: string | null }) {
+  const src = (name || email || "?").trim();
+  const parts = src.split(/\s+/);
+  const init = (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)).toUpperCase();
+  return (
+    <span className="grid h-20 w-20 flex-none place-items-center overflow-hidden rounded-full bg-white/20 text-2xl font-bold text-white ring-4 ring-white/25">
+      {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : init}
+    </span>
+  );
+}
+
+function Fact({ icon, value }: { icon: React.ReactNode; value: React.ReactNode }) {
+  if (!value) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-ink-muted">
+      <span className="text-brand-600">{icon}</span> {value}
+    </span>
+  );
+}
+
+function InfoCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="card">
+      <h3 className="mt-0 mb-2 flex items-center gap-2 text-base">{icon} {title}</h3>
+      <div className="space-y-1 text-sm">{children}</div>
     </div>
   );
 }
