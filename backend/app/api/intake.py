@@ -31,25 +31,39 @@ from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_labels
 
-# Public (no auth) — websites post here.
-public_router = APIRouter(prefix="/public/intake", tags=["intake-public"])
+# Token-authenticated ingest (WordPress etc. post here with the source token).
+public_router = APIRouter(prefix="/intake", tags=["intake-public"])
 # Authenticated management (gated by the `crm` module in main.py).
 router = APIRouter(prefix="/intake", tags=["intake"])
 
 _KNOWN = {"type", "name", "email", "phone", "company", "subject", "message", "page_url"}
 
 
-@public_router.post("/{key}")
-async def submit(key: str, request: Request, db: AsyncSession = Depends(get_db)):
-    """Accept a website form submission. Maps common fields; keeps the rest in
-    ``payload``. Returns ``{ok, id}``."""
+def _bearer_token(request: Request) -> str | None:
+    """Extract the API token from Authorization: Bearer … or X-API-Key."""
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return request.headers.get("x-api-key") or None
+
+
+@public_router.post("/ingest")
+async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
+    """Accept a form submission from a connected system (e.g. WordPress).
+
+    Authenticated by the source's API token in the `Authorization: Bearer <token>`
+    or `X-API-Key` header. Common fields are mapped; the rest go to ``payload``.
+    """
+    token = _bearer_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing API token")
     source = (
         await db.execute(
-            select(IntakeSource).where(IntakeSource.key == key, IntakeSource.active.is_(True))
+            select(IntakeSource).where(IntakeSource.key == token, IntakeSource.active.is_(True))
         )
     ).scalar_one_or_none()
     if not source:
-        raise HTTPException(status_code=404, detail="Unknown or inactive intake source")
+        raise HTTPException(status_code=401, detail="Invalid or inactive API token")
     try:
         body = await request.json()
     except Exception:
@@ -150,6 +164,21 @@ async def update_source(
         raise HTTPException(status_code=404, detail="Source not found")
     for f, v in payload.model_dump(exclude_unset=True).items():
         setattr(s, f, v)
+    await db.commit()
+    await db.refresh(s)
+    return await _source_out(db, s)
+
+
+@router.post("/sources/{source_id}/rotate-key", response_model=SourceOut)
+async def rotate_key(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    s = await db.get(IntakeSource, source_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Source not found")
+    s.key = secrets.token_urlsafe(18)
     await db.commit()
     await db.refresh(s)
     return await _source_out(db, s)

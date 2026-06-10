@@ -215,17 +215,26 @@ function SourcesTab() {
     await api(`/api/intake/sources/${s.id}`, { method: "DELETE" });
     sources.reload();
   }
-  function copy(url: string) {
-    navigator.clipboard?.writeText(url);
-    notify("Endpoint URL copied.");
+  async function rotate(s: IntakeSource) {
+    if (!confirm(`Rotate the API token for "${s.name}"? The old token stops working immediately.`)) return;
+    await api(`/api/intake/sources/${s.id}/rotate-key`, { method: "POST" });
+    sources.reload();
+    notify("Token rotated.");
   }
+  function copy(text: string, what: string) {
+    navigator.clipboard?.writeText(text);
+    notify(`${what} copied.`);
+  }
+
+  const ingestUrl = apiUrl("/api/intake/ingest");
 
   return (
     <div className="card">
       <p className="muted text-sm">
-        Point each website's form to its endpoint below (HTTP POST, JSON body with
-        fields like <code>name, email, phone, subject, message, type</code>). Anything
-        else is kept under the submission's extra fields.
+        Connected systems (e.g. WordPress) POST to <code>{ingestUrl}</code> with the
+        source's API token in an <code>Authorization: Bearer &lt;token&gt;</code> (or
+        <code> X-API-Key</code>) header. JSON body fields like <code>name, email, phone,
+        subject, message, type</code> are mapped; anything else is kept as extra fields.
       </p>
       <form onSubmit={add} className="row my-3" style={{ alignItems: "flex-end" }}>
         <div className="field" style={{ marginBottom: 0, flex: 2 }}><label>Website / form name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Main website – contact form" /></div>
@@ -242,27 +251,26 @@ function SourcesTab() {
         <Empty icon="🔌" message="No websites connected yet." />
       ) : (
         <div className="divide-y divide-slate-100">
-          {sources.data!.map((s) => {
-            const url = apiUrl(`/api/public/intake/${s.key}`);
-            return (
-              <div key={s.id} className="py-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
-                    {s.name} <span className="muted text-xs">· default {s.default_type} · {s.submission_count} received</span>
-                    {!s.active && <span className="badge ml-1">inactive</span>}
-                  </span>
-                  <span className="flex gap-1">
-                    <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => toggle(s)}>{s.active ? "Disable" : "Enable"}</button>
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(s)}><Trash2 size={13} /></button>
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-lg px-2 py-1 text-xs" style={{ background: "var(--surface-2)" }}>{url}</code>
-                  <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => copy(url)}><Copy size={12} /> Copy</button>
-                </div>
+          {sources.data!.map((s) => (
+            <div key={s.id} className="py-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">
+                  {s.name} <span className="muted text-xs">· default {s.default_type} · {s.submission_count} received</span>
+                  {!s.active && <span className="badge ml-1">inactive</span>}
+                </span>
+                <span className="flex gap-1">
+                  <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => rotate(s)}>Rotate token</button>
+                  <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => toggle(s)}>{s.active ? "Disable" : "Enable"}</button>
+                  <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(s)}><Trash2 size={13} /></button>
+                </span>
               </div>
-            );
-          })}
+              <div className="mt-1 flex items-center gap-2">
+                <span className="muted text-xs">Token</span>
+                <code className="flex-1 truncate rounded-lg px-2 py-1 text-xs" style={{ background: "var(--surface-2)" }}>{s.key}</code>
+                <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => copy(s.key, "Token")}><Copy size={12} /> Copy</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -9,24 +9,25 @@ async def test_public_submit_triage_and_convert(client, auth):
         "name": "Main Website", "default_type": "lead",
     })).json()
     assert src["key"]
-    key = src["key"]
+    token = src["key"]
 
-    # Public form submission (no auth) maps known fields + keeps extras.
-    r = await client.post(f"/api/public/intake/{key}", json={
+    # Token-authenticated ingest maps known fields + keeps extras.
+    r = await client.post("/api/intake/ingest", headers={"Authorization": f"Bearer {token}"}, json={
         "name": "Jane Visitor", "email": "jane@acme.com", "phone": "+15551212",
         "company": "Acme", "subject": "Quote please", "message": "I want a demo",
         "page_url": "https://site.com/contact", "budget": "10k",
     })
     assert r.status_code == 200 and r.json()["ok"]
 
-    # A complaint submission with an explicit type.
-    await client.post(f"/api/public/intake/{key}", json={
+    # X-API-Key header also works, with an explicit type.
+    await client.post("/api/intake/ingest", headers={"X-API-Key": token}, json={
         "type": "complaint", "name": "Angry Cat", "email": "cat@acme.com",
         "message": "It broke",
     })
 
-    # Unknown key is rejected.
-    assert (await client.post("/api/public/intake/nope", json={"name": "x"})).status_code == 404
+    # Missing/invalid token = 401.
+    assert (await client.post("/api/intake/ingest", json={"name": "x"})).status_code == 401
+    assert (await client.post("/api/intake/ingest", headers={"Authorization": "Bearer nope"}, json={"name": "x"})).status_code == 401
 
     subs = (await client.get("/api/intake/submissions", headers=auth)).json()
     assert len(subs) == 2
