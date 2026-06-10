@@ -5,6 +5,7 @@ import {
   Boxes,
   CalendarClock,
   Check,
+  ClipboardList,
   Cloud,
   FileDown,
   KeyRound,
@@ -25,6 +26,7 @@ import type {
   Journey,
   JourneyDetail,
   JourneyTask,
+  OnboardingTemplate,
   ProvisionSuggestion,
   ProvisionSuggestions,
   User,
@@ -52,6 +54,7 @@ export default function PeopleOpsPage() {
   const expiring = useFetch<HrDocument[]>("/api/hr-documents/expiring?days=60");
   const [start, setStart] = useState<"onboarding" | "offboarding" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [managingTemplates, setManagingTemplates] = useState(false);
 
   async function remindExpiring() {
     try {
@@ -72,6 +75,9 @@ export default function PeopleOpsPage() {
         subtitle="Run a checklist when someone joins or leaves — access, equipment, accounts and HR."
         action={
           <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setManagingTemplates(true)}>
+              <ClipboardList size={15} /> Templates
+            </button>
             <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setStart("offboarding")}>
               <UserMinus size={15} /> Offboard
             </button>
@@ -166,8 +172,124 @@ export default function PeopleOpsPage() {
       {openId && (
         <JourneyModal id={openId} onClose={() => setOpenId(null)} onChanged={journeys.reload} />
       )}
+      {managingTemplates && <TemplatesModal onClose={() => setManagingTemplates(false)} />}
     </div>
   );
+}
+
+const TASK_CATEGORIES = ["access", "accounts", "equipment", "hr", "other"];
+
+function TemplatesModal({ onClose }: { onClose: () => void }) {
+  const { notify } = useToast();
+  const templates = useFetch<OnboardingTemplate[]>("/api/people/templates?include_inactive=true");
+  const [editing, setEditing] = useState<OnboardingTemplate | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function del(id: string) {
+    if (!confirm("Delete this template?")) return;
+    await api(`/api/people/templates/${id}`, { method: "DELETE" });
+    templates.reload();
+  }
+
+  if (editing || creating) {
+    return (
+      <TemplateEditor
+        template={editing}
+        onClose={() => { setEditing(null); setCreating(false); }}
+        onSaved={() => { setEditing(null); setCreating(false); templates.reload(); }}
+      />
+    );
+  }
+
+  return (
+    <Modal title="Onboarding templates" onClose={onClose} maxWidth={560}>
+      <div className="spread mb-2">
+        <span className="muted text-sm">Reusable checklist packets applied when a journey starts.</span>
+        <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setCreating(true)}>+ New</button>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {(templates.data ?? []).map((t) => (
+          <div key={t.id} className="flex items-center justify-between py-2 text-sm">
+            <span>
+              <span className="font-medium">{t.name}</span>
+              <span className="muted"> · {t.kind} · {t.items.length} steps</span>
+              {!t.active && <span className="badge ml-1">inactive</span>}
+            </span>
+            <span className="flex gap-1">
+              <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditing(t)}>Edit</button>
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(t.id)}><Trash2 size={13} /></button>
+            </span>
+          </div>
+        ))}
+        {(templates.data?.length ?? 0) === 0 && <p className="muted text-sm">No templates yet.</p>}
+      </div>
+    </Modal>
+  );
+
+  function TemplateEditor({ template, onClose, onSaved }: { template: OnboardingTemplate | null; onClose: () => void; onSaved: () => void }) {
+    const [name, setName] = useState(template?.name ?? "");
+    const [kind, setKind] = useState(template?.kind ?? "onboarding");
+    const [items, setItems] = useState<{ title: string; category: string }[]>(
+      template?.items.map((i) => ({ title: i.title, category: i.category })) ?? [{ title: "", category: "other" }],
+    );
+    const [busy, setBusy] = useState(false);
+
+    function setItem(idx: number, patch: Partial<{ title: string; category: string }>) {
+      setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+    }
+
+    async function save() {
+      const cleaned = items.filter((i) => i.title.trim()).map((i, idx) => ({ ...i, title: i.title.trim(), sort: idx }));
+      if (!name.trim() || cleaned.length === 0) {
+        notify("Add a name and at least one step.", "error");
+        return;
+      }
+      setBusy(true);
+      try {
+        if (template) {
+          await api(`/api/people/templates/${template.id}`, { method: "PATCH", body: { name: name.trim(), items: cleaned } });
+        } else {
+          await api("/api/people/templates", { method: "POST", body: { name: name.trim(), kind, items: cleaned } });
+        }
+        onSaved();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Failed", "error");
+        setBusy(false);
+      }
+    }
+
+    return (
+      <Modal title={template ? `Edit ${template.name}` : "New template"} onClose={onClose} maxWidth={560}>
+        <div className="row">
+          <div className="field" style={{ flex: 2 }}><label>Name</label><input value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="field">
+            <label>Kind</label>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={!!template}>
+              <option value="onboarding">onboarding</option>
+              <option value="offboarding">offboarding</option>
+            </select>
+          </div>
+        </div>
+        <label className="mb-1 block text-sm font-medium">Steps</label>
+        <div className="space-y-1">
+          {items.map((it, i) => (
+            <div key={i} className="flex gap-1">
+              <input className="flex-1" placeholder="Step title" value={it.title} onChange={(e) => setItem(i, { title: e.target.value })} />
+              <select className="!w-auto" value={it.category} onChange={(e) => setItem(i, { category: e.target.value })}>
+                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => setItems((arr) => arr.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+        <button className="btn-sm mt-1" style={{ flex: "0 0 auto" }} onClick={() => setItems((arr) => [...arr, { title: "", category: "other" }])}>+ Add step</button>
+        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </Modal>
+    );
+  }
 }
 
 const ORG_COLORS = [
@@ -197,6 +319,8 @@ function StartModal({
   const { notify } = useToast();
   const users = useFetch<User[]>("/api/users");
   const brands = useFetch<Brand[]>("/api/companies");
+  const templates = useFetch<OnboardingTemplate[]>(`/api/people/templates?kind=${kind}`);
+  const [templateId, setTemplateId] = useState("");
   // Onboarding is almost always a brand-new person, so default to that.
   const [mode, setMode] = useState<"new" | "existing">(
     kind === "onboarding" ? "new" : "existing",
@@ -272,6 +396,7 @@ function StartModal({
           company_id: brandId || null,
           note: note || null,
           announce,
+          template_id: templateId || null,
         },
       });
       notify(`${kind === "onboarding" ? "Onboarding" : "Offboarding"} started.`);
@@ -364,6 +489,15 @@ function StartModal({
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Checklist template (packet)</label>
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <option value="">Default checklist</option>
+            {(templates.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.items.length} steps)</option>
             ))}
           </select>
         </div>

@@ -17,6 +17,8 @@ from app.models.people import (
     AccessGrant,
     OnboardingJourney,
     OnboardingTask,
+    OnboardingTemplate,
+    OnboardingTemplateItem,
 )
 from app.models.phone_line import PhoneLine
 from app.models.subscription import Subscription, SubscriptionSeat
@@ -43,6 +45,9 @@ from app.schemas.people import (
     TargetAccess,
     TaskCreate,
     TaskUpdate,
+    TemplateCreate,
+    TemplateOut,
+    TemplateUpdate,
 )
 from app.services.activity import record
 from app.services.notify import notify_user
@@ -130,13 +135,27 @@ async def create_journey(
     db.add(journey)
     await db.flush()
 
-    defaults = DEFAULT_ONBOARDING if payload.kind == "onboarding" else DEFAULT_OFFBOARDING
-    for i, (category, title) in enumerate(defaults):
-        db.add(
-            OnboardingTask(
-                journey_id=journey.id, title=title, category=category, sort=i
+    # Seed the checklist from a chosen template (packet), else the built-in default.
+    template = None
+    if payload.template_id:
+        template = (
+            await db.execute(
+                select(OnboardingTemplate)
+                .options(selectinload(OnboardingTemplate.items))
+                .where(OnboardingTemplate.id == payload.template_id)
             )
-        )
+        ).scalar_one_or_none()
+    if template and template.items:
+        for i, it in enumerate(sorted(template.items, key=lambda x: x.sort)):
+            db.add(OnboardingTask(journey_id=journey.id, title=it.title, category=it.category, sort=i))
+    else:
+        defaults = DEFAULT_ONBOARDING if payload.kind == "onboarding" else DEFAULT_OFFBOARDING
+        for i, (category, title) in enumerate(defaults):
+            db.add(
+                OnboardingTask(
+                    journey_id=journey.id, title=title, category=category, sort=i
+                )
+            )
 
     # Optionally broadcast on the announcements channel.
     if payload.announce:
@@ -833,3 +852,100 @@ async def delete_event(
     if event:
         await db.delete(event)
         await db.commit()
+
+
+# --------------------------------------------------------------------------
+# Onboarding templates (packets)
+# --------------------------------------------------------------------------
+@router.get("/templates", response_model=list[TemplateOut])
+async def list_templates(
+    kind: str | None = None,
+    include_inactive: bool = False,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    stmt = (
+        select(OnboardingTemplate)
+        .options(selectinload(OnboardingTemplate.items))
+        .order_by(OnboardingTemplate.name)
+    )
+    if kind:
+        stmt = stmt.where(OnboardingTemplate.kind == kind)
+    if not include_inactive:
+        stmt = stmt.where(OnboardingTemplate.active.is_(True))
+    return (await db.execute(stmt)).scalars().unique().all()
+
+
+@router.post("/templates", response_model=TemplateOut, status_code=201)
+async def create_template(
+    payload: TemplateCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Name is required")
+    if payload.kind not in KINDS:
+        raise HTTPException(status_code=422, detail="Invalid kind")
+    tpl = OnboardingTemplate(
+        name=payload.name.strip(), kind=payload.kind, description=payload.description
+    )
+    db.add(tpl)
+    await db.flush()
+    for i, it in enumerate(payload.items):
+        db.add(OnboardingTemplateItem(
+            template_id=tpl.id, title=it.title, category=it.category, sort=it.sort or i
+        ))
+    await db.commit()
+    return await _template(db, tpl.id)
+
+
+@router.patch("/templates/{template_id}", response_model=TemplateOut)
+async def update_template(
+    template_id: uuid.UUID,
+    payload: TemplateUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    tpl = await _template(db, template_id)
+    data = payload.model_dump(exclude_unset=True)
+    items = data.pop("items", None)
+    for k, v in data.items():
+        setattr(tpl, k, v)
+    if items is not None:
+        # Replace the item set wholesale.
+        for it in list(tpl.items):
+            await db.delete(it)
+        await db.flush()
+        for i, it in enumerate(items):
+            db.add(OnboardingTemplateItem(
+                template_id=tpl.id, title=it["title"],
+                category=it.get("category", "other"), sort=it.get("sort", i),
+            ))
+    await db.commit()
+    return await _template(db, template_id)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template(
+    template_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    tpl = await db.get(OnboardingTemplate, template_id)
+    if tpl:
+        await db.delete(tpl)
+        await db.commit()
+
+
+async def _template(db: AsyncSession, template_id: uuid.UUID) -> OnboardingTemplate:
+    tpl = (
+        await db.execute(
+            select(OnboardingTemplate)
+            .options(selectinload(OnboardingTemplate.items))
+            .where(OnboardingTemplate.id == template_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return tpl

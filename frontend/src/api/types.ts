@@ -1386,3 +1386,19 @@ export interface HomeFeed {
   celebrations: Celebration[];
   whos_out: WhosOutToday[];
 }
+
+export interface OnboardingTemplateItem {
+  id?: string;
+  title: string;
+  category: string;
+  sort: number;
+}
+
+export interface OnboardingTemplate {
+  id: string;
+  name: string;
+  kind: string;
+  description?: string | null;
+  active: boolean;
+  items: OnboardingTemplateItem[];
+}

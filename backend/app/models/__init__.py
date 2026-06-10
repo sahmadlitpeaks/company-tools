@@ -50,6 +50,8 @@ from app.models.people import (  # noqa: F401
     AccessGrant,
     OnboardingJourney,
     OnboardingTask,
+    OnboardingTemplate,
+    OnboardingTemplateItem,
 )
 from app.models.worklog import WorkLog  # noqa: F401
 from app.models.workspace import WorkspaceItem  # noqa: F401

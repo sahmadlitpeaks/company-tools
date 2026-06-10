@@ -45,6 +45,44 @@ class JourneyCreate(BaseModel):
     note: str | None = None
     announce: bool = False
     announce_message: str | None = None
+    template_id: uuid.UUID | None = None
+
+
+class TemplateItemIn(BaseModel):
+    title: str
+    category: str = "other"
+    sort: int = 0
+
+
+class TemplateItemOut(TemplateItemIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    kind: str = "onboarding"
+    description: str | None = None
+    items: list[TemplateItemIn] = []
+
+
+class TemplateUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    active: bool | None = None
+    items: list[TemplateItemIn] | None = None
+
+
+class TemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    kind: str
+    description: str | None = None
+    active: bool
+    items: list[TemplateItemOut] = []
 
 
 class AccessGrantCreate(BaseModel):
