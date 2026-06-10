@@ -11,7 +11,7 @@ export default function LeavePage() {
   const { notify } = useToast();
   const isAdmin = !!user?.is_admin;
   const balance = useFetch<LeaveBalance>("/api/leave/balance");
-  const out = useFetch<WhosOutItem[]>("/api/leave/whos-out?days=30");
+  const out = useFetch<WhosOutItem[]>("/api/leave/whos-out?days=150");
   const types = useFetch<LeaveType[]>("/api/leave/types");
   const holidays = useFetch<Holiday[]>("/api/leave/holidays");
   const team = useFetch<LeaveBalance[]>(
@@ -75,10 +75,14 @@ export default function LeavePage() {
         )}
       </div>
 
+      <div className="mb-5">
+        <LeaveCalendar whosOut={out.data ?? []} holidays={holidays.data ?? []} />
+      </div>
+
       <div className="grid cols-2">
         <div className="card">
           <h3 className="mt-0 inline-flex items-center gap-2">
-            <CalendarOff size={18} className="text-brand-600" /> Who's out (next 30 days)
+            <CalendarOff size={18} className="text-brand-600" /> Who's out
           </h3>
           {out.loading ? (
             <Loading />
@@ -359,5 +363,106 @@ function LeaveTypesModal({
         <button className="btn-primary mt-2" style={{ flex: "0 0 auto" }}>Add type</button>
       </form>
     </Modal>
+  );
+}
+
+function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function initials(name?: string | null): string {
+  const s = (name || "?").trim().split(/\s+/);
+  return (s.length >= 2 ? s[0][0] + s[1][0] : (name || "?").slice(0, 2)).toUpperCase();
+}
+
+function LeaveCalendar({ whosOut, holidays }: { whosOut: WhosOutItem[]; holidays: Holiday[] }) {
+  const [offset, setOffset] = useState(0);
+  const base = new Date();
+  const view = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const monthLabel = view.toLocaleString(undefined, { month: "long", year: "numeric" });
+
+  // Holiday + leave lookups keyed by ISO day.
+  const holByDay = new Map<string, string>();
+  for (const h of holidays) holByDay.set(h.day, h.name);
+
+  const outByDay = new Map<string, { name: string; color?: string | null }[]>();
+  for (const o of whosOut) {
+    if (!o.start_date) continue;
+    const start = new Date(o.start_date + "T00:00:00");
+    const end = new Date((o.end_date ?? o.start_date) + "T00:00:00");
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        const key = iso(d);
+        const arr = outByDay.get(key) ?? [];
+        arr.push({ name: o.user_name ?? "—", color: o.color });
+        outByDay.set(key, arr);
+      }
+    }
+  }
+
+  // Build the grid: lead with blanks so the 1st lands on the right weekday (Mon start).
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = Monday
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const todayKey = iso(new Date());
+
+  return (
+    <div className="card">
+      <div className="spread mb-3">
+        <h3 className="m-0 inline-flex items-center gap-2"><CalendarOff size={18} className="text-brand-600" /> Team calendar</h3>
+        <div className="inline-flex items-center gap-2">
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset((o) => o - 1)}>‹</button>
+          <span className="min-w-[150px] text-center text-sm font-semibold">{monthLabel}</span>
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset((o) => o + 1)}>›</button>
+          {offset !== 0 && <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset(0)}>Today</button>}
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+          <div key={d} className="muted pb-1 text-center text-xs font-medium">{d}</div>
+        ))}
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />;
+          const key = iso(new Date(year, month, day));
+          const holiday = holByDay.get(key);
+          const people = outByDay.get(key) ?? [];
+          const isToday = key === todayKey;
+          const weekend = (i % 7) >= 5;
+          return (
+            <div
+              key={i}
+              className="min-h-[78px] rounded-lg border p-1.5"
+              style={{
+                borderColor: isToday ? "var(--brand-400)" : "var(--border)",
+                background: holiday ? "var(--brand-50)" : weekend ? "var(--surface-2)" : "var(--surface)",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-xs ${isToday ? "font-bold text-brand-700" : "muted"}`}>{day}</span>
+              </div>
+              {holiday && <div className="truncate text-[10px] font-medium text-brand-700" title={holiday}>🎉 {holiday}</div>}
+              <div className="mt-1 flex flex-wrap gap-0.5">
+                {people.slice(0, 4).map((p, j) => (
+                  <span
+                    key={j}
+                    title={p.name}
+                    className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-semibold text-white"
+                    style={{ background: p.color || "#64748b" }}
+                  >
+                    {initials(p.name)}
+                  </span>
+                ))}
+                {people.length > 4 && <span className="muted text-[10px]">+{people.length - 4}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
