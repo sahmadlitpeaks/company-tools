@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { LayoutGrid, List } from "lucide-react";
-import { api } from "../api/client";
+import { Download, FileText, LayoutGrid, List, Upload } from "lucide-react";
+import { api, downloadFile } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
@@ -278,6 +278,7 @@ export default function DirectoryPage() {
   const { notify } = useToast();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
   const [adding, setAdding] = useState(false);
@@ -322,14 +323,43 @@ export default function DirectoryPage() {
     }
   }
 
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await api<{ created: number; updated: number; errors: string[] }>(
+        "/api/users/import",
+        { method: "POST", form: fd },
+      );
+      const errs = res.errors.length ? ` (${res.errors.length} issue${res.errors.length > 1 ? "s" : ""})` : "";
+      notify(`Imported: ${res.created} new, ${res.updated} updated${errs}.`);
+      reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Import failed", "error");
+    }
+    if (importRef.current) importRef.current.value = "";
+  }
+
   return (
     <div>
+      <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
       <PageHead
         title="Employee Directory"
         subtitle="Synced from Azure Entra ID into the platform database."
         action={
           user?.is_admin && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/template.csv", "employees-template.csv").catch(() => notify("Download failed", "error"))}>
+                <FileText size={15} /> Template
+              </button>
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => importRef.current?.click()}>
+                <Upload size={15} /> Import
+              </button>
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/export.csv", "employees.csv").catch(() => notify("Export failed", "error"))}>
+                <Download size={15} /> Export
+              </button>
               <button className="btn" onClick={sync} disabled={syncing}>
                 {syncing ? "Syncing…" : "Sync from Entra ID"}
               </button>

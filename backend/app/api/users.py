@@ -1,7 +1,11 @@
+import csv
+import io
 import re
 import uuid
+from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,6 +140,159 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+# ---- CSV import / export (employee migration, e.g. from BambooHR) ----------
+CSV_FIELDS = [
+    "email", "display_name", "given_name", "surname", "job_title", "department",
+    "office_location", "mobile_phone", "business_phone", "personal_email",
+    "employment_type", "hire_date", "manager_email", "role", "status",
+]
+
+CSV_SAMPLE = {
+    "email": "person@agholding.net", "display_name": "Jane Doe",
+    "given_name": "Jane", "surname": "Doe", "job_title": "Accountant",
+    "department": "Finance", "office_location": "Dubai", "mobile_phone": "+9715...",
+    "business_phone": "", "personal_email": "jane@example.com",
+    "employment_type": "full_time", "hire_date": "2025-01-15",
+    "manager_email": "manager@agholding.net", "role": "member", "status": "active",
+}
+
+
+def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _parse_date(v: str | None):
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(v)
+    except ValueError:
+        return None
+
+
+@router.get("/template.csv")
+async def employees_template(_: User = Depends(get_current_admin)):
+    return _csv_response([CSV_SAMPLE], "employees-template.csv")
+
+
+@router.get("/export.csv")
+async def export_employees(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    users = (await db.execute(select(User).order_by(User.display_name))).scalars().all()
+    emails = {u.id: u.email for u in users}
+    rows = [
+        {
+            "email": u.email or "",
+            "display_name": u.display_name or "",
+            "given_name": u.given_name or "",
+            "surname": u.surname or "",
+            "job_title": u.job_title or "",
+            "department": u.department or "",
+            "office_location": u.office_location or "",
+            "mobile_phone": u.mobile_phone or "",
+            "business_phone": u.business_phone or "",
+            "personal_email": u.personal_email or "",
+            "employment_type": u.employment_type or "",
+            "hire_date": u.hire_date.isoformat() if u.hire_date else "",
+            "manager_email": emails.get(u.manager_id, "") if u.manager_id else "",
+            "role": u.role,
+            "status": u.status,
+        }
+        for u in users
+    ]
+    return _csv_response(rows, "employees.csv")
+
+
+@router.post("/import")
+async def import_employees(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Bulk create/update employees from CSV (matched by email). Manager links
+    are resolved by manager_email in a second pass so order doesn't matter."""
+    raw = (await file.read()).decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(raw))
+    created = updated = 0
+    errors: list[str] = []
+    seen: list[tuple[str, str]] = []  # (email, manager_email) for pass 2
+
+    for i, row in enumerate(reader, start=2):
+        email = (row.get("email") or "").strip().lower()
+        if not email:
+            errors.append(f"Row {i}: email is required")
+            continue
+        if not _valid_email(email):
+            errors.append(f"Row {i}: invalid email '{email}'")
+            continue
+        role = (row.get("role") or "member").strip().lower()
+        if role not in ROLES:
+            role = "member"
+        status = (row.get("status") or "active").strip().lower()
+        if status not in STATUSES:
+            status = "active"
+        name = (row.get("display_name") or "").strip() or " ".join(
+            filter(None, [(row.get("given_name") or "").strip(), (row.get("surname") or "").strip()])
+        ).strip() or email
+        values = dict(
+            display_name=name,
+            given_name=(row.get("given_name") or "").strip() or None,
+            surname=(row.get("surname") or "").strip() or None,
+            job_title=(row.get("job_title") or "").strip() or None,
+            department=(row.get("department") or "").strip() or None,
+            office_location=(row.get("office_location") or "").strip() or None,
+            mobile_phone=(row.get("mobile_phone") or "").strip() or None,
+            business_phone=(row.get("business_phone") or "").strip() or None,
+            personal_email=(row.get("personal_email") or "").strip().lower() or None,
+            employment_type=(row.get("employment_type") or "").strip() or None,
+            hire_date=_parse_date(row.get("hire_date")),
+            role=role,
+            is_admin=role == "admin",
+            status=status,
+        )
+        existing = (
+            await db.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+        if existing:
+            for k, v in values.items():
+                setattr(existing, k, v)
+            updated += 1
+        else:
+            db.add(User(email=email, **values))
+            created += 1
+        mgr_email = (row.get("manager_email") or "").strip().lower()
+        if mgr_email:
+            seen.append((email, mgr_email))
+
+    await db.flush()
+    # Pass 2: resolve manager links now that everyone exists.
+    for email, mgr_email in seen:
+        u = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        mgr = (await db.execute(select(User).where(User.email == mgr_email))).scalar_one_or_none()
+        if not mgr:
+            errors.append(f"Unknown manager '{mgr_email}' for {email}")
+        elif u and mgr.id != u.id:
+            u.manager_id = mgr.id
+
+    record(
+        db, user=admin, action="created", entity_type="user",
+        summary=f"Imported employees via CSV ({created} new, {updated} updated)",
+    )
+    await db.commit()
+    return {"created": created, "updated": updated, "errors": errors}
 
 
 @router.post("/{user_id}/set-password")
