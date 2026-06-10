@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.department import Department
 from app.models.hr import EMPLOYMENT_EVENT_TYPES, EmploymentEvent
 from app.models.people import (
@@ -68,18 +68,18 @@ def _journey_out(j: OnboardingJourney, names: dict, brands: dict | None = None) 
     o = JourneyOut.model_validate(j)
     o.target_name = names.get(j.target_user_id) if j.target_user_id else None
     o.created_by_name = names.get(j.created_by_id) if j.created_by_id else None
-    o.brand_name = (brands or {}).get(j.brand_id) if j.brand_id else None
+    o.company_name = (brands or {}).get(j.company_id) if j.company_id else None
     tasks = j.__dict__.get("tasks") or []
     o.total_tasks = len(tasks)
     o.done_tasks = sum(1 for t in tasks if t.status == "done")
     return o
 
 
-async def _brand_names(db: AsyncSession, ids: set) -> dict:
+async def _company_names(db: AsyncSession, ids: set) -> dict:
     ids = {i for i in ids if i}
     if not ids:
         return {}
-    rows = (await db.execute(select(Brand.id, Brand.name).where(Brand.id.in_(ids)))).all()
+    rows = (await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()
     return {r[0]: r[1] for r in rows}
 
 
@@ -104,7 +104,7 @@ async def list_journeys(
         db,
         {j.target_user_id for j in journeys} | {j.created_by_id for j in journeys},
     )
-    brands = await _brand_names(db, {j.brand_id for j in journeys})
+    brands = await _company_names(db, {j.company_id for j in journeys})
     return [_journey_out(j, names, brands) for j in journeys]
 
 
@@ -123,7 +123,7 @@ async def create_journey(
     journey = OnboardingJourney(
         kind=payload.kind,
         target_user_id=target.id,
-        brand_id=payload.brand_id,
+        company_id=payload.company_id,
         note=payload.note,
         created_by_id=user.id,
     )
@@ -206,7 +206,7 @@ async def create_journey(
     await db.commit()
     await db.refresh(journey, ["tasks"])
     names = await user_names(db, {journey.target_user_id, journey.created_by_id})
-    brands = await _brand_names(db, {journey.brand_id})
+    brands = await _company_names(db, {journey.company_id})
     return _journey_out(journey, names, brands)
 
 
@@ -236,7 +236,7 @@ async def get_journey(
     names = await user_names(
         db, owner_ids | {j.target_user_id, j.created_by_id}
     )
-    brands = await _brand_names(db, {j.brand_id})
+    brands = await _company_names(db, {j.company_id})
     detail = JourneyDetail(**_journey_out(j, names, brands).model_dump())
     detail.tasks = [_task_out(t, names) for t in j.tasks]
 
@@ -678,7 +678,7 @@ async def journey_report(
 ):
     j = await _get_journey(db, journey_id)
     target = await db.get(User, j.target_user_id) if j.target_user_id else None
-    brand = await db.get(Brand, j.brand_id) if j.brand_id else None
+    brand = await db.get(Company, j.company_id) if j.company_id else None
     assets = (
         await db.execute(
             select(TrackedAsset).where(TrackedAsset.assigned_to_id == j.target_user_id)

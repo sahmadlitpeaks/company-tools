@@ -43,7 +43,7 @@ class UserOut(BaseModel):
     extra_permissions: list[str] | None = None
     revoked_permissions: list[str] | None = None
     effective_permissions: list[str] = []
-    managed_brand_ids: list[uuid.UUID] = []
+    managed_company_ids: list[uuid.UUID] = []
     created_at: datetime
 
 
@@ -106,4 +106,4 @@ class SetPasswordIn(BaseModel):
 
 
 class ManagedBrandsUpdate(BaseModel):
-    brand_ids: list[uuid.UUID] = []
+    company_ids: list[uuid.UUID] = []

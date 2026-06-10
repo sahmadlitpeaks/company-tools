@@ -420,7 +420,7 @@ async def test_journey_autocompletes(client, auth):
 async def test_onboarding_assets_access_and_pdf(client, auth):
     me = (await client.get("/api/auth/me", headers=auth)).json()
     # A branch + an available asset.
-    brand = (await client.post("/api/brands", headers=auth, json={"name": "Agiomix"})).json()
+    brand = (await client.post("/api/companies", headers=auth, json={"name": "Agiomix"})).json()
     asset = (await client.post(
         "/api/asset-tracker", headers=auth,
         json={"asset_tag": "OB-LAP-1", "name": "MacBook Air"},
@@ -428,9 +428,9 @@ async def test_onboarding_assets_access_and_pdf(client, auth):
 
     j = (await client.post(
         "/api/people/journeys", headers=auth,
-        json={"kind": "onboarding", "target_user_id": me["id"], "brand_id": brand["id"]},
+        json={"kind": "onboarding", "target_user_id": me["id"], "company_id": brand["id"]},
     )).json()
-    assert j["brand_name"] == brand["name"]
+    assert j["company_name"] == brand["name"]
 
     # Assignable assets surfaced to HR.
     avail = (await client.get("/api/people/assignable-assets", headers=auth)).json()

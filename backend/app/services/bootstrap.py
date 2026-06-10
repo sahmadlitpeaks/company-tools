@@ -32,7 +32,7 @@ _BASE = [
 # Default departments and the modules they grant on top of (or beyond) the base.
 DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
     ("Management", "Leadership — full access to every module.", ["__all__"]),
-    ("Marketing", "Brand, campaigns and creative tooling.", _BASE + [
+    ("Marketing", "Company, campaigns and creative tooling.", _BASE + [
         "cards", "marketing_assets", "branding", "products", "shared",
         "campaigns", "crm", "qrcodes", "landing_pages", "signatures",
         "shortener", "transfers",

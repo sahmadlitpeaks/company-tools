@@ -16,7 +16,7 @@ class TaskCreate(BaseModel):
     due_date: date | None = None
     recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -27,7 +27,7 @@ class TaskUpdate(BaseModel):
     due_date: date | None = None
     recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class TaskItemCreate(BaseModel):
@@ -78,7 +78,7 @@ class TaskOut(BaseModel):
     assignee_name: str | None = None
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     completed_at: datetime | None = None
     created_at: datetime
     onboarding_task_id: uuid.UUID | None = None
@@ -102,7 +102,7 @@ class ApprovalCreate(BaseModel):
     end_date: date | None = None
     leave_type_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class ApprovalDecision(BaseModel):
@@ -131,7 +131,7 @@ class ApprovalOut(BaseModel):
     decided_by_name: str | None = None
     decided_at: datetime | None = None
     decision_note: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     created_at: datetime
 
 
@@ -142,7 +142,7 @@ class TicketCreate(BaseModel):
     category: str = "it"
     priority: str = "normal"
     asset_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class TicketUpdate(BaseModel):
@@ -153,7 +153,7 @@ class TicketUpdate(BaseModel):
     status: str | None = None
     assignee_id: uuid.UUID | None = None
     asset_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     resolution_note: str | None = None
 
 
@@ -189,7 +189,7 @@ class TicketOut(BaseModel):
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
     asset_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     sla_response_due: datetime | None = None
     sla_resolution_due: datetime | None = None
     first_responded_at: datetime | None = None
@@ -222,7 +222,7 @@ class ArticleCreate(BaseModel):
     body: str = ""
     is_published: bool = True
     pinned: bool = False
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class ArticleUpdate(BaseModel):
@@ -231,7 +231,7 @@ class ArticleUpdate(BaseModel):
     body: str | None = None
     is_published: bool | None = None
     pinned: bool | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class ArticleOut(BaseModel):
@@ -246,7 +246,7 @@ class ArticleOut(BaseModel):
     view_count: int
     author_id: uuid.UUID | None = None
     author_name: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     updated_at: datetime
     created_at: datetime
 

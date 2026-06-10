@@ -15,8 +15,8 @@ class BrandDocument(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "brand_documents"
 
-    brand_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("brands.id", ondelete="CASCADE"), index=True
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255))
     # logo | guideline | font | document | other

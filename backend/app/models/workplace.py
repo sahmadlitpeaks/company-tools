@@ -33,8 +33,8 @@ class Task(UUIDMixin, TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # When set, this task mirrors an onboarding/offboarding checklist item and
@@ -115,8 +115,8 @@ class ApprovalRequest(UUIDMixin, TimestampMixin, Base):
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
 
 
@@ -145,8 +145,8 @@ class Ticket(UUIDMixin, TimestampMixin, Base):
     asset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tracked_assets.id", ondelete="SET NULL"), nullable=True
     )
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     # SLA targets (computed from priority at creation) and timing milestones.
     sla_response_due: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -191,8 +191,8 @@ class Announcement(UUIDMixin, TimestampMixin, Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
 
     reads: Mapped[list["AnnouncementRead"]] = relationship(
@@ -263,6 +263,6 @@ class KnowledgeArticle(UUIDMixin, TimestampMixin, Base):
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )

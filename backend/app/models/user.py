@@ -7,11 +7,11 @@ from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 # Brands a "manager" is allowed to manage (admins manage all; members none).
-user_brands = Table(
-    "user_brands",
+user_companies = Table(
+    "user_companies",
     Base.metadata,
     Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-    Column("brand_id", ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True),
+    Column("company_id", ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -82,8 +82,8 @@ class User(UUIDMixin, TimestampMixin, Base):
     extra_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     revoked_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
-    managed_brands: Mapped[list["object"]] = relationship(
-        "Brand", secondary=user_brands, lazy="selectin"
+    managed_companies: Mapped[list["object"]] = relationship(
+        "Company", secondary=user_companies, lazy="selectin"
     )
     access_department: Mapped["object"] = relationship(
         "Department", lazy="selectin"
@@ -97,8 +97,8 @@ class User(UUIDMixin, TimestampMixin, Base):
         return self.manager.display_name if self.manager else None
 
     @property
-    def managed_brand_ids(self) -> list[uuid.UUID]:
-        return [b.id for b in self.managed_brands]
+    def managed_company_ids(self) -> list[uuid.UUID]:
+        return [b.id for b in self.managed_companies]
 
     @property
     def department_name(self) -> str | None:

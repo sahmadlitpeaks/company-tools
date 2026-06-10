@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent
 from app.models.user import User
 from app.schemas.phone import (
@@ -197,7 +197,7 @@ async def export_csv(
         await db.execute(select(PhoneLine).order_by(PhoneLine.number))
     ).scalars().all()
     emails = await _emails_by_id(db, {ln.assigned_to_id for ln in lines})
-    brands = await _brand_names_by_id(db, {ln.brand_id for ln in lines})
+    brands = await _company_names_by_id(db, {ln.company_id for ln in lines})
     rows = [
         {
             "number": ln.number,
@@ -208,7 +208,7 @@ async def export_csv(
             "monthly_cost": ln.monthly_cost if ln.monthly_cost is not None else "",
             "status": ln.status,
             "assigned_to_email": emails.get(ln.assigned_to_id, ""),
-            "brand": brands.get(ln.brand_id, ""),
+            "brand": brands.get(ln.company_id, ""),
             "contract_start": ln.contract_start.isoformat() if ln.contract_start else "",
             "contract_end": ln.contract_end.isoformat() if ln.contract_end else "",
             "notes": ln.notes or "",
@@ -226,11 +226,11 @@ async def _emails_by_id(db: AsyncSession, ids: set) -> dict:
     return {r[0]: r[1] for r in rows}
 
 
-async def _brand_names_by_id(db: AsyncSession, ids: set) -> dict:
+async def _company_names_by_id(db: AsyncSession, ids: set) -> dict:
     ids = {i for i in ids if i}
     if not ids:
         return {}
-    rows = (await db.execute(select(Brand.id, Brand.name).where(Brand.id.in_(ids)))).all()
+    rows = (await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()
     return {r[0]: r[1] for r in rows}
 
 
@@ -254,7 +254,7 @@ async def import_csv(
     }
     brands = {
         n.lower(): i
-        for i, n in (await db.execute(select(Brand.id, Brand.name))).all()
+        for i, n in (await db.execute(select(Company.id, Company.name))).all()
     }
     created = updated = 0
     errors: list[str] = []
@@ -270,8 +270,8 @@ async def import_csv(
         assigned_to_id = users.get(email) if email else None
         if email and not assigned_to_id:
             errors.append(f"Row {i}: unknown assignee '{email}' (left unassigned)")
-        brand_name = (row.get("brand") or "").strip().lower()
-        brand_id = brands.get(brand_name) if brand_name else None
+        company_name = (row.get("brand") or "").strip().lower()
+        company_id = brands.get(company_name) if company_name else None
         if assigned_to_id and status == "available":
             status = "assigned"
         values = dict(
@@ -282,7 +282,7 @@ async def import_csv(
             monthly_cost=_parse_decimal(row.get("monthly_cost")),
             status=status,
             assigned_to_id=assigned_to_id,
-            brand_id=brand_id,
+            company_id=company_id,
             contract_start=_parse_date(row.get("contract_start")),
             contract_end=_parse_date(row.get("contract_end")),
             notes=(row.get("notes") or "").strip() or None,

@@ -33,7 +33,7 @@ class SubscriptionBase(BaseModel):
     end_date: date | None = None
     auto_renew: bool = True
     owner_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     notes: str | None = None
 
 
@@ -58,7 +58,7 @@ class SubscriptionUpdate(BaseModel):
     end_date: date | None = None
     auto_renew: bool | None = None
     owner_id: uuid.UUID | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     notes: str | None = None
 
 

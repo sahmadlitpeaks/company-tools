@@ -1,7 +1,7 @@
 """Import all models so Alembic's autogenerate can see them."""
 from app.models.user import User  # noqa: F401
 from app.models.department import Department  # noqa: F401
-from app.models.brand import Brand  # noqa: F401
+from app.models.company import Company  # noqa: F401
 from app.models.brand_document import BrandDocument, BrandDocumentVersion  # noqa: F401
 from app.models.app_setting import AppSetting  # noqa: F401
 from app.models.crm import CrmLead  # noqa: F401

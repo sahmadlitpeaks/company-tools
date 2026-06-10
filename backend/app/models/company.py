@@ -7,17 +7,17 @@ from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 # Stable id of the seeded default brand (also referenced by the migration).
-DEFAULT_BRAND_ID = uuid.UUID("b5a4d000-0000-4000-8000-000000000001")
+DEFAULT_COMPANY_ID = uuid.UUID("b5a4d000-0000-4000-8000-000000000001")
 
 
-class Brand(UUIDMixin, TimestampMixin, Base):
+class Company(UUIDMixin, TimestampMixin, Base):
     """A company brand/identity (e.g. AG Holding, Agiomix, Timepiece).
 
     The canonical brand record that other modules reference for logo, colours,
     company name, website and contact details.
     """
 
-    __tablename__ = "brands"
+    __tablename__ = "companies"
 
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))

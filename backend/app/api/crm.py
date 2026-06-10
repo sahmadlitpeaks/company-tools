@@ -44,7 +44,7 @@ def _serialize(lead: CrmLead, names: dict[uuid.UUID, str]) -> CrmLeadOut:
 async def list_leads(
     status: str | None = None,
     source: str | None = None,
-    brand_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     q: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -54,8 +54,8 @@ async def list_leads(
         stmt = stmt.where(CrmLead.status == status)
     if source:
         stmt = stmt.where(CrmLead.source == source)
-    if brand_id:
-        stmt = stmt.where(CrmLead.brand_id == brand_id)
+    if company_id:
+        stmt = stmt.where(CrmLead.company_id == company_id)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(

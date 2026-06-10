@@ -49,7 +49,7 @@ async def sync_linked_task(
                 title=title,
                 assignee_id=ot.owner_id,
                 created_by_id=(journey.created_by_id if journey else None) or actor_id,
-                brand_id=journey.brand_id if journey else None,
+                company_id=journey.company_id if journey else None,
                 status=status,
                 priority="normal",
                 onboarding_task_id=ot.id,

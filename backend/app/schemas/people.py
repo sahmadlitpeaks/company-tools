@@ -41,7 +41,7 @@ OrgNode.model_rebuild()
 class JourneyCreate(BaseModel):
     kind: str  # onboarding | offboarding
     target_user_id: uuid.UUID
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     note: str | None = None
     announce: bool = False
     announce_message: str | None = None
@@ -164,8 +164,8 @@ class JourneyOut(BaseModel):
     note: str | None = None
     target_user_id: uuid.UUID | None = None
     target_name: str | None = None
-    brand_id: uuid.UUID | None = None
-    brand_name: str | None = None
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
     completed_at: datetime | None = None

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.department import Department
 from app.models.subscription import (
     BILLING_CYCLES,
@@ -555,8 +555,8 @@ async def create_subscription(
     _validate(data)
     if not (payload.name or "").strip():
         raise HTTPException(status_code=422, detail="Name is required")
-    if payload.brand_id and not await db.get(Brand, payload.brand_id):
-        raise HTTPException(status_code=404, detail="Brand not found")
+    if payload.company_id and not await db.get(Company, payload.company_id):
+        raise HTTPException(status_code=404, detail="Company not found")
     if payload.department_id and not await db.get(Department, payload.department_id):
         raise HTTPException(status_code=404, detail="Department not found")
     sub = Subscription(**data)

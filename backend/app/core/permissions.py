@@ -17,7 +17,7 @@ MODULES: list[tuple[str, str]] = [
     ("directory", "Employee Directory"),
     ("cards", "Digital Cards"),
     ("marketing_assets", "Marketing Assets"),
-    ("branding", "Brand Center"),
+    ("branding", "Company Center"),
     ("products", "Products & Brochures"),
     ("shared", "Shared Links"),
     ("crm", "Leads (CRM)"),

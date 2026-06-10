@@ -252,7 +252,7 @@ async def update_task(
             priority=task.priority,
             recurrence=task.recurrence,
             assignee_id=task.assignee_id,
-            brand_id=task.brand_id,
+            company_id=task.company_id,
             created_by_id=task.created_by_id,
             due_date=_advance(base, task.recurrence),
             status="todo",

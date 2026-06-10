@@ -111,15 +111,15 @@ async def record_open(
 
 
 async def default_brand_brief(db: AsyncSession):
-    """Brand identity used to skin public viewers (the default brand)."""
-    from app.models.brand import Brand
+    """Company identity used to skin public viewers (the default brand)."""
+    from app.models.company import Company
     from app.schemas.common import BrandBrief
 
     brand = (
         await db.execute(
-            select(Brand)
-            .where(Brand.is_active.is_(True))
-            .order_by(Brand.is_default.desc(), Brand.created_at.asc())
+            select(Company)
+            .where(Company.is_active.is_(True))
+            .order_by(Company.is_default.desc(), Company.created_at.asc())
         )
     ).scalars().first()
     if not brand:

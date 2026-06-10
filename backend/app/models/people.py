@@ -23,8 +23,8 @@ class OnboardingJourney(UUIDMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="in_progress", index=True)
     note: Mapped[str | None] = mapped_column(Text)
     # Sub-company / branch the person belongs to.
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -60,7 +60,7 @@ async def upload_kit_asset(
 ):
     kit = await db.get(BrandKit, kit_id)
     if not kit:
-        raise HTTPException(status_code=404, detail="Brand kit not found")
+        raise HTTPException(status_code=404, detail="Company kit not found")
     rel_path, size = await save_upload(file, subdir="branding")
     asset = BrandAsset(
         brand_kit_id=kit_id,

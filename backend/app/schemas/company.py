@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
-class BrandBase(BaseModel):
+class CompanyBase(BaseModel):
     name: str
     slug: str | None = None
     logo_url: str | None = None
@@ -24,11 +24,11 @@ class BrandBase(BaseModel):
     is_active: bool = True
 
 
-class BrandCreate(BrandBase):
+class CompanyCreate(CompanyBase):
     pass
 
 
-class BrandUpdate(BaseModel):
+class CompanyUpdate(BaseModel):
     name: str | None = None
     logo_url: str | None = None
     icon_url: str | None = None
@@ -47,7 +47,7 @@ class BrandUpdate(BaseModel):
     is_active: bool | None = None
 
 
-class BrandOut(BrandBase):
+class CompanyOut(CompanyBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

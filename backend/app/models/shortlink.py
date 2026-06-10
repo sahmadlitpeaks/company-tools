@@ -30,8 +30,8 @@ class ShortLink(UUIDMixin, TimestampMixin, Base):
     )
     passcode_hash: Mapped[str | None] = mapped_column(String(255))
     require_lead: Mapped[bool] = mapped_column(Boolean, default=False)
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
 
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(

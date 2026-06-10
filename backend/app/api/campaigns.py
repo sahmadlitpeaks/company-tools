@@ -67,14 +67,14 @@ def _aggregate(rows) -> tuple:
 
 @router.get("", response_model=list[CampaignOut])
 async def list_campaigns(
-    brand_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     stmt = select(Campaign).order_by(Campaign.created_at.desc())
-    if brand_id:
-        stmt = stmt.where(Campaign.brand_id == brand_id)
+    if company_id:
+        stmt = stmt.where(Campaign.company_id == company_id)
     if status:
         stmt = stmt.where(Campaign.status == status)
     campaigns = (await db.execute(stmt)).scalars().all()
@@ -142,13 +142,13 @@ async def delete_campaign(
 
 @router.get("/overview", response_model=CampaignOverview)
 async def overview(
-    brand_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     cstmt = select(Campaign)
-    if brand_id:
-        cstmt = cstmt.where(Campaign.brand_id == brand_id)
+    if company_id:
+        cstmt = cstmt.where(Campaign.company_id == company_id)
     campaigns = (await db.execute(cstmt)).scalars().all()
     ids = {c.id for c in campaigns}
     metrics = [

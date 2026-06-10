@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.app_setting import AppSetting
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.brand_document import BrandDocument, BrandDocumentVersion
 from app.models.branding import BrandAsset, BrandKit
 from app.models.card import CardScan, DigitalCard, Lead
@@ -121,7 +121,7 @@ _MODELS = {
     "asset_category": AssetCategory,
     "asset_location": AssetLocation,
     "user": User,
-    "brand": Brand,
+    "brand": Company,
 }
 _DELETE_ORDER = list(_MODELS.keys())  # already child→parent
 
@@ -165,7 +165,7 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("demo-timepiece", "Timepiece", "#7c3aed"),
         ("demo-grilltime", "Grill Time", "#ea580c"),
     ]:
-        b = Brand(slug=slug, name=name, primary_color=colour, accent_color=colour)
+        b = Company(slug=slug, name=name, primary_color=colour, accent_color=colour)
         db.add(b)
         brands.append(b)
     await db.flush()
@@ -292,7 +292,7 @@ async def seed_demo(db: AsyncSession) -> dict:
         m.add(key, obj)
 
     # ---- Marketing assets ----
-    folders = [Folder(name=n, created_by_id=mkt.id) for n in ("Brand Guidelines", "Campaign 2026")]
+    folders = [Folder(name=n, created_by_id=mkt.id) for n in ("Company Guidelines", "Campaign 2026")]
     for f in folders:
         db.add(f)
     await db.flush()
@@ -301,7 +301,7 @@ async def seed_demo(db: AsyncSession) -> dict:
     assets = [
         Asset(folder_id=folders[0].id, name="Logo Pack.zip", file_path="demo/logo-pack.zip",
               content_type="application/zip", size_bytes=2_400_000, uploaded_by_id=mkt.id),
-        Asset(folder_id=folders[0].id, name="Brand Manual.pdf", file_path="demo/brand-manual.pdf",
+        Asset(folder_id=folders[0].id, name="Company Manual.pdf", file_path="demo/brand-manual.pdf",
               content_type="application/pdf", size_bytes=5_100_000, uploaded_by_id=mkt.id),
         Asset(folder_id=folders[1].id, name="Hero Banner.png", file_path="demo/hero.png",
               content_type="image/png", size_bytes=820_000, uploaded_by_id=mkt.id),
@@ -355,8 +355,8 @@ async def seed_demo(db: AsyncSession) -> dict:
         m.add("crm_lead", lead)
 
     # ---- Campaigns + metrics ----
-    camp = Campaign(name="Ramadan 2026", objective="awareness", status="active", brand_id=brands[0].id)
-    camp2 = Campaign(name="Summer Launch", objective="conversions", status="completed", brand_id=brands[1].id)
+    camp = Campaign(name="Ramadan 2026", objective="awareness", status="active", company_id=brands[0].id)
+    camp2 = Campaign(name="Summer Launch", objective="conversions", status="completed", company_id=brands[1].id)
     db.add(camp)
     db.add(camp2)
     await db.flush()
@@ -527,7 +527,7 @@ async def seed_demo(db: AsyncSession) -> dict:
 
     # ---- My docs ----
     for who, kind, title, url, body in [
-        (mkt.id, "link", "Brand drive (OneDrive)", "https://onedrive.example.com/brand", None),
+        (mkt.id, "link", "Company drive (OneDrive)", "https://onedrive.example.com/brand", None),
         (mkt.id, "note", "Campaign checklist", None, "1. Brief\n2. Creatives\n3. Launch\n4. Report"),
         (it.id, "link", "Server runbook", "https://wiki.example.com/runbook", None),
     ]:
@@ -565,9 +565,9 @@ async def seed_demo(db: AsyncSession) -> dict:
         (it, "demo-bilal-hussain", "IT Support", None, "#0b5cab"),
     ]
     cards = []
-    for owner, slug, title, brand_id, colour in card_spec:
+    for owner, slug, title, company_id, colour in card_spec:
         c = DigitalCard(
-            owner_id=owner.id, brand_id=brand_id, slug=slug, full_name=owner.display_name,
+            owner_id=owner.id, company_id=company_id, slug=slug, full_name=owner.display_name,
             title=title, company="AG Holding", email=owner.email, phone=owner.mobile_phone,
             whatsapp=owner.mobile_phone, website="https://agholding.net",
             linkedin=f"https://linkedin.com/in/{slug}", accent_color=colour,
@@ -617,9 +617,9 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("demo-grilltime-launch", "Grill Time Launch", brands[2].id, "draft", 0),
     ]
     pages = []
-    for slug, title, brand_id, status, views in lp_spec:
+    for slug, title, company_id, status, views in lp_spec:
         p = LandingPage(
-            slug=slug, brand_id=brand_id, title=title,
+            slug=slug, company_id=company_id, title=title,
             description=f"{title} landing page.",
             blocks=json.dumps([
                 {"type": "hero", "heading": title, "subheading": "Limited time only."},
@@ -658,9 +658,9 @@ async def seed_demo(db: AsyncSession) -> dict:
     for st in (await db.execute(select(SecureTransfer).where(SecureTransfer.sender_id.in_([mkt_mgr.id, hr.id])))).scalars().all():
         m.add("secure_transfer", st)
 
-    # ---- Brand kits (+ downloadable assets) ----
+    # ---- Company kits (+ downloadable assets) ----
     kit = BrandKit(
-        name="Agiomix Brand Kit", description="Primary brand guidelines & assets.",
+        name="Agiomix Company Kit", description="Primary brand guidelines & assets.",
         guidelines_url="https://agholding.net/brand", logo_url="demo/agiomix-logo.svg",
         primary_colors=json.dumps([{"name": "Primary", "hex": "#0d9488"},
                                    {"name": "Ink", "hex": "#0f172a"}]),
@@ -669,7 +669,7 @@ async def seed_demo(db: AsyncSession) -> dict:
     db.add(kit)
     await db.flush()
     m.add("brand_kit", kit)
-    for name, cat in [("Logo (SVG)", "logo"), ("Letterhead", "template"), ("Brand Font", "font")]:
+    for name, cat in [("Logo (SVG)", "logo"), ("Letterhead", "template"), ("Company Font", "font")]:
         db.add(BrandAsset(brand_kit_id=kit.id, name=name, category=cat,
                           file_path=f"demo/{name.lower().replace(' ', '-')}",
                           content_type="application/octet-stream", size_bytes=64_000))
@@ -677,8 +677,8 @@ async def seed_demo(db: AsyncSession) -> dict:
     for ba in (await db.execute(select(BrandAsset).where(BrandAsset.brand_kit_id == kit.id))).scalars().all():
         m.add("brand_asset", ba)
 
-    # ---- Brand documents (versioned) ----
-    doc = BrandDocument(brand_id=brands[0].id, name="Brand Guidelines", category="guideline",
+    # ---- Company documents (versioned) ----
+    doc = BrandDocument(company_id=brands[0].id, name="Company Guidelines", category="guideline",
                         current_version=2)
     db.add(doc)
     await db.flush()
@@ -694,10 +694,10 @@ async def seed_demo(db: AsyncSession) -> dict:
 
     # ---- People ops: onboarding & offboarding journeys ----
     onj = OnboardingJourney(kind="onboarding", target_user_id=pending.id, status="in_progress",
-                            brand_id=brands[0].id, created_by_id=hr.id,
+                            company_id=brands[0].id, created_by_id=hr.id,
                             note="New Operations coordinator starting next week.")
     offj = OnboardingJourney(kind="offboarding", target_user_id=sales2.id, status="in_progress",
-                             brand_id=brands[1].id, created_by_id=hr.id,
+                             company_id=brands[1].id, created_by_id=hr.id,
                              note="Moving on at end of month.")
     db.add(onj)
     db.add(offj)

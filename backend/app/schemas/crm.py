@@ -16,7 +16,7 @@ class CrmLeadCreate(BaseModel):
     owner_id: uuid.UUID | None = None
     value: Decimal | None = None
     notes: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class CrmLeadUpdate(BaseModel):
@@ -28,14 +28,14 @@ class CrmLeadUpdate(BaseModel):
     owner_id: uuid.UUID | None = None
     value: Decimal | None = None
     notes: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class CrmLeadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     name: str | None = None
     email: str | None = None
     phone: str | None = None

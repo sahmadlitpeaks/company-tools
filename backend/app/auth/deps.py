@@ -65,10 +65,10 @@ async def get_current_manager(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-def can_manage_brand(user: User, brand_id: uuid.UUID | None) -> bool:
+def can_manage_company(user: User, company_id: uuid.UUID | None) -> bool:
     """Admins manage everything; managers only their assigned brands."""
     if user.is_admin:
         return True
-    if user.role != "manager" or brand_id is None:
+    if user.role != "manager" or company_id is None:
         return False
-    return brand_id in set(user.managed_brand_ids)
+    return company_id in set(user.managed_company_ids)

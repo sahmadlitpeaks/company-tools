@@ -14,7 +14,7 @@ from app.api import (
     assets,
     audit,
     analytics,
-    brands,
+    companies,
     branding,
     campaigns,
     cards,
@@ -134,7 +134,7 @@ def _mod(key: str):
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
-app.include_router(brands.router, prefix=api_prefix)
+app.include_router(companies.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(audit.router, prefix=api_prefix)
 app.include_router(activity.router, prefix=api_prefix)

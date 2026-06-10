@@ -10,7 +10,7 @@ from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
 from app.core.security import hash_password
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User
 from app.schemas.user import (
@@ -279,7 +279,7 @@ async def update_user(
 
 
 @router.put("/{user_id}/brands", response_model=UserOut)
-async def set_managed_brands(
+async def set_managed_companies(
     user_id: uuid.UUID,
     payload: ManagedBrandsUpdate,
     db: AsyncSession = Depends(get_db),
@@ -290,9 +290,9 @@ async def set_managed_brands(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     brands = (
-        await db.execute(select(Brand).where(Brand.id.in_(payload.brand_ids)))
+        await db.execute(select(Company).where(Company.id.in_(payload.company_ids)))
     ).scalars().all()
-    user.managed_brands = list(brands)
+    user.managed_companies = list(brands)
     await db.commit()
     await db.refresh(user)
     return user
