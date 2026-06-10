@@ -191,7 +191,7 @@ function StartModal({
 }) {
   const { notify } = useToast();
   const users = useFetch<User[]>("/api/users");
-  const brands = useFetch<Brand[]>("/api/brands");
+  const brands = useFetch<Brand[]>("/api/companies");
   // Onboarding is almost always a brand-new person, so default to that.
   const [mode, setMode] = useState<"new" | "existing">(
     kind === "onboarding" ? "new" : "existing",
@@ -264,7 +264,7 @@ function StartModal({
         body: {
           kind,
           target_user_id: target,
-          brand_id: brandId || null,
+          company_id: brandId || null,
           note: note || null,
           announce,
         },
@@ -510,7 +510,7 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
         <>
           <div className="spread mb-3">
             <div className="muted text-sm">
-              {d.brand_name && <>Branch: <strong>{d.brand_name}</strong> · </>}
+              {d.company_name && <>Branch: <strong>{d.company_name}</strong> · </>}
               <span className={`badge ${d.kind === "onboarding" ? "green" : "amber"}`}>{d.kind}</span>
             </div>
             <button

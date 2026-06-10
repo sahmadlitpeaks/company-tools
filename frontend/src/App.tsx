@@ -33,7 +33,7 @@ import PerformancePage from "./pages/PerformancePage";
 import HrDashboardPage from "./pages/HrDashboardPage";
 import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
-import BrandsPage from "./pages/BrandsPage";
+import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import CrmPage from "./pages/CrmPage";
@@ -190,8 +190,8 @@ export default function App() {
             element={<Protected module="transfers"><TransfersPage /></Protected>}
           />
           <Route
-            path="/brands"
-            element={<Protected adminOnly><BrandsPage /></Protected>}
+            path="/companies"
+            element={<Protected adminOnly><CompaniesPage /></Protected>}
           />
           <Route
             path="/departments"

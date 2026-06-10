@@ -1,26 +1,26 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { api, apiUrl } from "../api/client";
-import type { Brand } from "../api/types";
+import type { Company } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
-export default function BrandsPage() {
+export default function CompaniesPage() {
   const { notify } = useToast();
-  const brands = useFetch<Brand[]>("/api/brands");
-  const [editing, setEditing] = useState<Brand | null>(null);
+  const companies = useFetch<Company[]>("/api/companies");
+  const [editing, setEditing] = useState<Company | null>(null);
   const [adding, setAdding] = useState(false);
 
-  async function remove(b: Brand) {
+  async function remove(b: Company) {
     if (b.is_default) {
-      notify("The default brand can't be deleted.", "error");
+      notify("The default company can't be deleted.", "error");
       return;
     }
-    if (!confirm(`Delete the “${b.name}” brand?`)) return;
+    if (!confirm(`Delete the “${b.name}” company?`)) return;
     try {
-      await api(`/api/brands/${b.id}`, { method: "DELETE" });
-      notify("Brand deleted.");
-      brands.reload();
+      await api(`/api/companies/${b.id}`, { method: "DELETE" });
+      notify("Company deleted.");
+      companies.reload();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
     }
@@ -29,22 +29,22 @@ export default function BrandsPage() {
   return (
     <div>
       <PageHead
-        title="Brands"
-        subtitle="The companies / sub-brands content can be scoped to."
+        title="Companys"
+        subtitle="The companies / sub-companies content can be scoped to."
         action={
           <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-            <Plus size={15} /> New brand
+            <Plus size={15} /> New company
           </button>
         }
       />
 
-      {brands.loading ? (
+      {companies.loading ? (
         <Loading />
-      ) : (brands.data?.length ?? 0) === 0 ? (
-        <Empty message="No brands yet." />
+      ) : (companies.data?.length ?? 0) === 0 ? (
+        <Empty message="No companies yet." />
       ) : (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))" }}>
-          {brands.data!.map((b) => (
+          {companies.data!.map((b) => (
             <div key={b.id} className="card">
               <div className="flex items-center gap-3">
                 <span
@@ -81,8 +81,8 @@ export default function BrandsPage() {
       )}
 
       {(adding || editing) && (
-        <BrandModal
-          brand={editing}
+        <CompanyModal
+          company={editing}
           onClose={() => {
             setAdding(false);
             setEditing(null);
@@ -90,7 +90,7 @@ export default function BrandsPage() {
           onSaved={() => {
             setAdding(false);
             setEditing(null);
-            brands.reload();
+            companies.reload();
           }}
         />
       )}
@@ -98,15 +98,15 @@ export default function BrandsPage() {
   );
 }
 
-function BrandModal({ brand, onClose, onSaved }: { brand: Brand | null; onClose: () => void; onSaved: () => void }) {
+function CompanyModal({ company, onClose, onSaved }: { company: Company | null; onClose: () => void; onSaved: () => void }) {
   const { notify } = useToast();
   const [form, setForm] = useState({
-    name: brand?.name ?? "",
-    tagline: brand?.tagline ?? "",
-    website: brand?.website ?? "",
-    email_domain: brand?.email_domain ?? "",
-    primary_color: brand?.primary_color ?? "#0b5cab",
-    accent_color: brand?.accent_color ?? "#0b5cab",
+    name: company?.name ?? "",
+    tagline: company?.tagline ?? "",
+    website: company?.website ?? "",
+    email_domain: company?.email_domain ?? "",
+    primary_color: company?.primary_color ?? "#0b5cab",
+    accent_color: company?.accent_color ?? "#0b5cab",
   });
   const [logo, setLogo] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -124,15 +124,15 @@ function BrandModal({ brand, onClose, onSaved }: { brand: Brand | null; onClose:
         primary_color: form.primary_color,
         accent_color: form.accent_color,
       };
-      const saved = brand
-        ? await api<Brand>(`/api/brands/${brand.id}`, { method: "PATCH", body })
-        : await api<Brand>("/api/brands", { method: "POST", body });
+      const saved = company
+        ? await api<Company>(`/api/companies/${company.id}`, { method: "PATCH", body })
+        : await api<Company>("/api/companies", { method: "POST", body });
       if (logo) {
         const fd = new FormData();
         fd.append("file", logo);
-        await api(`/api/brands/${saved.id}/logo`, { method: "POST", form: fd });
+        await api(`/api/companies/${saved.id}/logo`, { method: "POST", form: fd });
       }
-      notify(brand ? "Brand updated." : "Brand created.");
+      notify(company ? "Company updated." : "Company created.");
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
@@ -141,7 +141,7 @@ function BrandModal({ brand, onClose, onSaved }: { brand: Brand | null; onClose:
   }
 
   return (
-    <Modal title={brand ? `Edit ${brand.name}` : "New brand"} onClose={onClose}>
+    <Modal title={company ? `Edit ${company.name}` : "New company"} onClose={onClose}>
       <form onSubmit={save}>
         <div className="field">
           <label>Name *</label>
@@ -158,7 +158,7 @@ function BrandModal({ brand, onClose, onSaved }: { brand: Brand | null; onClose:
           </div>
           <div className="field">
             <label>Email domain</label>
-            <input placeholder="brand.com" value={form.email_domain} onChange={(e) => set("email_domain", e.target.value)} />
+            <input placeholder="company.com" value={form.email_domain} onChange={(e) => set("email_domain", e.target.value)} />
           </div>
         </div>
         <div className="row">
@@ -178,7 +178,7 @@ function BrandModal({ brand, onClose, onSaved }: { brand: Brand | null; onClose:
         <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
           <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
           <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : brand ? "Save changes" : "Create brand"}
+            {busy ? "Saving…" : company ? "Save changes" : "Create company"}
           </button>
         </div>
       </form>

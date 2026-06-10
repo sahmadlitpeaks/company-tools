@@ -35,7 +35,7 @@ export interface User {
   extra_permissions?: string[] | null;
   revoked_permissions?: string[] | null;
   effective_permissions: string[];
-  managed_brand_ids: string[];
+  managed_company_ids: string[];
   created_at: string;
 }
 
@@ -334,7 +334,7 @@ export interface CampaignKpis {
 
 export interface Campaign {
   id: string;
-  brand_id?: string | null;
+  company_id?: string | null;
   name: string;
   objective?: string | null;
   status: string;
@@ -397,7 +397,7 @@ export interface PhoneLine {
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
   assigned_to_title?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   contract_start?: string | null;
   contract_end?: string | null;
   notes?: string | null;
@@ -449,7 +449,7 @@ export interface TrackedAsset {
   serial_number?: string | null;
   notes?: string | null;
   condition?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
   assigned_to_title?: string | null;
@@ -546,7 +546,7 @@ export interface ActivityItem {
   created_at?: string | null;
 }
 
-export interface Brand {
+export interface Company {
   id: string;
   slug: string;
   name: string;
@@ -569,9 +569,12 @@ export interface Brand {
   created_at: string;
 }
 
+/** @deprecated kept as an alias during the Brand→Company rename. */
+export type Brand = Company;
+
 export interface BrandDocument {
   id: string;
-  brand_id: string;
+  company_id: string;
   name: string;
   category: string;
   current_version: number;
@@ -590,7 +593,7 @@ export interface BrandDocumentVersion {
 
 export interface CrmLead {
   id: string;
-  brand_id?: string | null;
+  company_id?: string | null;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -648,7 +651,7 @@ export interface Task {
   assignee_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   completed_at?: string | null;
   created_at: string;
   onboarding_task_id?: string | null;
@@ -915,8 +918,8 @@ export interface Journey {
   note?: string | null;
   target_user_id?: string | null;
   target_name?: string | null;
-  brand_id?: string | null;
-  brand_name?: string | null;
+  company_id?: string | null;
+  company_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   completed_at?: string | null;
@@ -1029,7 +1032,7 @@ export interface Subscription {
   auto_renew: boolean;
   owner_id?: string | null;
   owner_name?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   notes?: string | null;
   active_seats: number;
   monthly_cost?: string | null;

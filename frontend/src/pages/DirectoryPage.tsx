@@ -183,7 +183,7 @@ function ManageBrandsModal({
 }) {
   const { notify } = useToast();
   const { brands } = useBrand();
-  const [ids, setIds] = useState<string[]>(u.managed_brand_ids ?? []);
+  const [ids, setIds] = useState<string[]>(u.managed_company_ids ?? []);
   const [busy, setBusy] = useState(false);
   function toggle(id: string) {
     setIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -193,9 +193,9 @@ function ManageBrandsModal({
     try {
       await api(`/api/users/${u.id}/brands`, {
         method: "PUT",
-        body: { brand_ids: ids },
+        body: { company_ids: ids },
       });
-      notify("Brand access updated.");
+      notify("Company access updated.");
       onSaved();
       onClose();
     } catch (err) {
@@ -204,9 +204,9 @@ function ManageBrandsModal({
     }
   }
   return (
-    <Modal title={`Brand access — ${u.display_name ?? u.email}`} onClose={onClose}>
+    <Modal title={`Company access — ${u.display_name ?? u.email}`} onClose={onClose}>
       <div className="muted mb-3 text-sm">
-        Choose which brands this manager can manage.
+        Choose which companies this manager can manage.
       </div>
       <div className="flex flex-col gap-1">
         {brands.map((b) => (
@@ -425,7 +425,7 @@ export default function DirectoryPage() {
                       )}
                       <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
                       {u.role === "manager" && (
-                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Brands</button>
+                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
                       )}
                     </div>
                   )}
@@ -485,7 +485,7 @@ export default function DirectoryPage() {
                         )}
                         {u.role === "manager" && (
                           <button className="btn-sm" onClick={() => setManaging(u)}>
-                            Brands ({u.managed_brand_ids?.length ?? 0})
+                            Brands ({u.managed_company_ids?.length ?? 0})
                           </button>
                         )}
                         <button className="btn-sm" onClick={() => setEditingAccess(u)}>

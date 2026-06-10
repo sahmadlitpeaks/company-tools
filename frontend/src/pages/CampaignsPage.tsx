@@ -241,7 +241,7 @@ export default function CampaignsPage() {
   const [detail, setDetail] = useState<Campaign | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Campaign | null>(null);
-  const [form, setForm] = useState({ name: "", objective: "", status: "active", brand_id: "" });
+  const [form, setForm] = useState({ name: "", objective: "", status: "active", company_id: "" });
 
   function reloadAll() {
     overview.reload();
@@ -257,11 +257,11 @@ export default function CampaignsPage() {
         name: form.name,
         objective: form.objective || null,
         status: form.status,
-        brand_id: form.brand_id || active?.id || null,
+        company_id: form.company_id || active?.id || null,
       },
     });
     notify("Campaign created.");
-    setForm({ name: "", objective: "", status: "active", brand_id: "" });
+    setForm({ name: "", objective: "", status: "active", company_id: "" });
     setCreating(false);
     reloadAll();
   }
@@ -396,7 +396,7 @@ export default function CampaignsPage() {
               </div>
               <div className="field">
                 <label>Brand</label>
-                <select value={form.brand_id} onChange={(e) => setForm({ ...form, brand_id: e.target.value })}>
+                <select value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })}>
                   <option value="">{active ? `${active.name} (active)` : "—"}</option>
                   {brands.map((b) => (
                     <option key={b.id} value={b.id}>{b.name}</option>
