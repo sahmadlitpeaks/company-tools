@@ -75,24 +75,24 @@ export default function PerformancePage() {
           ) : (cycles.data?.length ?? 0) === 0 ? (
             <Empty message="No cycles yet." />
           ) : (
-            <table>
-              <thead>
-                <tr><th>Cycle</th><th>Period</th><th>Status</th><th>Progress</th><th></th></tr>
-              </thead>
-              <tbody>
-                {cycles.data!.map((c) => (
-                  <tr key={c.id}>
-                    <td className="font-semibold">{c.name}</td>
-                    <td className="muted">{c.period ?? "—"}</td>
-                    <td><span className={`badge ${c.status === "open" ? "green" : ""}`}>{c.status}</span></td>
-                    <td>{c.submitted_count}/{c.review_count} submitted</td>
-                    <td className="text-right">
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
+              {cycles.data!.map((c) => (
+                <div key={c.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-4">
+                  <Ring done={c.submitted_count} total={c.review_count} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-semibold">{c.name}</span>
+                      <span className={`badge ${c.status === "open" ? "green" : ""}`}>{c.status}</span>
+                    </div>
+                    <div className="muted text-xs">{c.period ?? "—"}</div>
+                    <div className="muted mt-0.5 text-xs">{c.submitted_count}/{c.review_count} submitted</div>
+                    <div className="mt-2">
                       <CycleActions cycle={c} onChange={() => { cycles.reload(); toReview.reload(); }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -100,6 +100,25 @@ export default function PerformancePage() {
       {newCycle && <NewCycleModal onClose={() => setNewCycle(false)} onDone={() => { setNewCycle(false); cycles.reload(); }} />}
       {editing && <ReviewModal review={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); toReview.reload(); }} />}
     </div>
+  );
+}
+
+function Ring({ done, total }: { done: number; total: number }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const r = 18;
+  const circ = 2 * Math.PI * r;
+  return (
+    <span className="relative grid h-12 w-12 flex-none place-items-center">
+      <svg width="48" height="48" className="-rotate-90">
+        <circle cx="24" cy="24" r={r} fill="none" stroke="var(--surface-3)" strokeWidth="5" />
+        <circle
+          cx="24" cy="24" r={r} fill="none" stroke="var(--brand-600)" strokeWidth="5"
+          strokeLinecap="round" strokeDasharray={circ}
+          strokeDashoffset={circ - (pct / 100) * circ}
+        />
+      </svg>
+      <span className="absolute text-[11px] font-bold">{pct}%</span>
+    </span>
   );
 }
 
