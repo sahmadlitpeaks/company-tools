@@ -35,6 +35,7 @@ from app.api import (
     performance,
     phones,
     profiles,
+    reports,
     subscriptions,
     timekeeping,
     products,
@@ -150,6 +151,7 @@ app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(compensation.router, prefix=api_prefix)
 app.include_router(performance.router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
+app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(custom_fields.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 

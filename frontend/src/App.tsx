@@ -34,6 +34,7 @@ import HrDashboardPage from "./pages/HrDashboardPage";
 import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
 import TimePage from "./pages/TimePage";
 import InboxPage from "./pages/InboxPage";
+import ReportsPage from "./pages/ReportsPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -122,6 +123,7 @@ export default function App() {
           <Route path="/performance" element={<Protected><PerformancePage /></Protected>} />
           <Route path="/hr" element={<Protected module="hr"><HrDashboardPage /></Protected>} />
           <Route path="/hr/custom-fields" element={<Protected module="hr"><CustomFieldsAdminPage /></Protected>} />
+          <Route path="/reports" element={<Protected module="hr"><ReportsPage /></Protected>} />
           <Route path="/time" element={<Protected module="attendance"><TimePage /></Protected>} />
           <Route
             path="/tasks"

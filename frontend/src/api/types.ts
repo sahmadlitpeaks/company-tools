@@ -1477,3 +1477,19 @@ export interface IntakeSummary {
   by_status: Record<string, number>;
   by_type: Record<string, number>;
 }
+
+export interface ReportColumn { key: string; label: string; }
+export interface ReportCatalogItem {
+  key: string;
+  title: string;
+  description: string;
+  group: string;
+  sensitive: boolean;
+}
+export interface ReportResult {
+  key: string;
+  title: string;
+  columns: ReportColumn[];
+  rows: Record<string, unknown>[];
+  generated_at: string;
+}
