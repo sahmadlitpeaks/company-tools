@@ -28,6 +28,7 @@ from app.api import (
     people,
     notifications,
     compensation,
+    custom_fields,
     hr,
     hr_documents,
     performance,
@@ -147,6 +148,7 @@ app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(compensation.router, prefix=api_prefix)
 app.include_router(performance.router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
+app.include_router(custom_fields.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.

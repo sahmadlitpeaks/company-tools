@@ -38,6 +38,12 @@ from app.models.hr import (  # noqa: F401
     Review,
     ReviewCycle,
 )
+from app.models.custom_fields import (  # noqa: F401
+    CustomFieldDef,
+    CustomFieldValue,
+    CustomTableDef,
+    CustomTableRow,
+)
 from app.models.docversion import DocVersion  # noqa: F401
 from app.models.people import (  # noqa: F401
     AccessGrant,
