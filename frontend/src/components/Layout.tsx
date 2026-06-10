@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Boxes,
   ChevronDown,
+  Clock,
   CreditCard,
   FolderOpen,
   HeartHandshake,
@@ -73,6 +74,7 @@ const NAV: NavEntry[] = [
   { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops" },
   { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
   { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
+  { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance" },
   { to: "/performance", label: "Performance", icon: Target },
   { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr" },
   { section: "Marketing" },

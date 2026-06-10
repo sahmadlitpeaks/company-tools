@@ -35,6 +35,7 @@ from app.api import (
     phones,
     profiles,
     subscriptions,
+    timekeeping,
     products,
     qrcodes,
     service_desk,
@@ -172,6 +173,7 @@ app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("trans
 app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
 app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
 app.include_router(subscriptions.router, prefix=api_prefix, dependencies=_mod("subscriptions"))
+app.include_router(timekeeping.router, prefix=api_prefix, dependencies=_mod("attendance"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))

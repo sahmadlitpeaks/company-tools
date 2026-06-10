@@ -1402,3 +1402,37 @@ export interface OnboardingTemplate {
   active: boolean;
   items: OnboardingTemplateItem[];
 }
+
+export interface TimeEntry {
+  id: string;
+  user_id: string;
+  work_date: string;
+  clock_in?: string | null;
+  clock_out?: string | null;
+  minutes: number;
+  kind: string;
+  note?: string | null;
+  source: string;
+}
+
+export interface Timesheet {
+  id?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  week_start: string;
+  status: string;
+  submitted_at?: string | null;
+  decided_by_id?: string | null;
+  decided_at?: string | null;
+  note?: string | null;
+  total_minutes: number;
+  entries: TimeEntry[];
+}
+
+export interface TimeSummary {
+  open_entry?: TimeEntry | null;
+  today_minutes: number;
+  week_minutes: number;
+  week_status: string;
+  pending_approvals: number;
+}
