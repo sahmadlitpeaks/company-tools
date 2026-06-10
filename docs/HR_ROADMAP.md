@@ -1,192 +1,232 @@
-# HR Platform Roadmap — BambooHR Parity
+# HR Platform — BambooHR Parity Program
 
-Status: **planning** (no code yet). Build order reflects agreed priority.
-Each wave ships as its own increment(s): models + migration + gated API +
-tests + frontend, suite green, committed and pushed — same rhythm as the
-existing HR module (records, documents, leave, compensation, performance,
-HR dashboard).
+Status: **planning**. Goal: full functional parity with BambooHR so we can
+replace it. This supersedes the earlier 4-wave draft, which was only a subset.
 
-Conventions reused across every wave:
-- **Storage**: `app/services/storage.py` (resumes, signed PDFs, offer letters).
-- **PDF**: existing report renderer for signed docs / report exports.
-- **Notifications**: `notify_user` (+ dedup) for invites, approvals, reminders.
-- **Activity log**: `record(...)` on every mutation.
-- **Approvals pattern**: reuse for timesheet + offer sign-off where natural.
-- **People journeys**: onboarding conversion + packets hook in here.
-- **Permissions**: new module keys gate routers; sensitive data uses the
-  `is_hr()` helper + reporting-line manager checks (as today).
+Each wave ships as its own increment(s): models + migration + permission-gated
+API + tests + frontend, suite green, committed & pushed — same rhythm as the
+HR module already delivered (records, documents, leave, compensation,
+performance, HR dashboard, `hr` permission).
+
+Legend: ✅ done · ⚠️ partial · ❌ missing
 
 ---
 
-## Wave 1 — Time tracking / attendance  (priority 1, ~5–7d)
+## 1. Full capability matrix (every BambooHR area)
 
-**Goal.** Daily hours / clock in–out, weekly timesheets with submit→approve,
-overtime vs. expected hours, holiday- and leave-aware.
+### Core HRIS
+| Capability | Status | Wave |
+|---|---|---|
+| Employee records / database | ✅ | — |
+| Employee self-service portal | ✅ | — |
+| Org chart | ✅ | — |
+| Company directory | ✅ | — |
+| **Custom fields** (admin-defined) | ❌ | P1 |
+| **Custom tables** (education, dependents, prior employment, visas…) | ❌ | P1 |
+| **Field-level permissions / custom access levels** | ❌ | P1 |
+| **Standard profile tabs** (Personal/Job/Time-off/Docs/Benefits/Training/Notes/Assets) | ⚠️ | P1 |
+| Employee bulk import/export | ⚠️ (some CSV) | P1 |
+| Audit trail | ✅ (activity log) | P1 (field-level) |
+| **Configurable approval workflows** (multi-step routing) | ⚠️ (single approver) | P1 |
+| Notes & private manager notes | ❌ | P1 |
 
-**Permission:** new module `attendance`.
+### Time off
+| Capability | Status | Wave |
+|---|---|---|
+| Multiple leave policies & types | ✅ | — |
+| **Accrual schedules** (monthly/anniversary, waiting period, caps) | ⚠️ (annual default) | P2 |
+| **Carryover automation / year-end rollover** | ⚠️ (field only) | P2 |
+| **Half-day / hourly leave** | ❌ | P2 |
+| Holiday calendar | ✅ | — |
+| **Blackout dates / policy assignment by group** | ❌ | P2 |
+| Balances + history + projected balance | ⚠️ | P2 |
+| Team calendar / iCal feed | ⚠️ (who's-out) | P2 |
 
-**Data model** (`app/models/timekeeping.py`)
-- `WorkSchedule` — `user_id?` (null = company default), `hours_per_week`,
-  `days` (json: which weekdays), `daily_hours`. One default seeded.
-- `Timesheet` — `user_id`, `period_start`, `period_end` (weekly),
-  `status` (open|submitted|approved|rejected), `submitted_at`,
-  `decided_by_id`, `decided_at`, `note`.
-- `TimeEntry` — `user_id`, `timesheet_id?`, `work_date`, `clock_in`,
-  `clock_out`, `break_minutes`, `hours` (stored), `kind` (work|overtime|
-  remote), `note`, `source` (clock|manual).
+### Time tracking
+| Capability | Status | Wave |
+|---|---|---|
+| Clock in/out, daily hours | ❌ | P3 |
+| Weekly **timesheets** + submit/approve | ❌ | P3 |
+| Overtime, expected-hours schedules | ❌ | P3 |
+| Project/task hours | ⚠️ (worklog) | P3 |
+| Reminders for missing time | ❌ | P3 |
 
-**API** (`/time`)
-- `POST /time/clock-in`, `POST /time/clock-out` (toggle open entry for today).
-- `GET /time/entries?from&to&user_id`, `POST/PATCH/DELETE /time/entries`.
-- `GET /time/timesheets?user_id&status`, `POST /time/timesheets/submit`
-  (current week), `POST /time/timesheets/{id}/decision` (approve|reject).
-- `GET /time/summary` — hours this week, overtime, missing days, and (for
-  managers) timesheets awaiting approval.
+### Documents & signing
+| Capability | Status | Wave |
+|---|---|---|
+| Employee document storage | ✅ | — |
+| Expiry tracking & alerts | ✅ | — |
+| **Folders / categories / company files** | ⚠️ | P4 |
+| **E-signature + audit trail** | ❌ | P4 |
+| **Document templates + bulk send / acknowledgements** | ❌ | P4 |
 
-**Visibility.** Self manages own entries; reporting-line manager approves
-reports' timesheets; `is_hr()` sees all. Leave days + company holidays are
-excluded from "expected hours" so they don't read as missing.
+### Hiring / Onboarding
+| Capability | Status | Wave |
+|---|---|---|
+| Onboarding / offboarding checklists | ✅ | — |
+| Auto-provision suggestions | ✅ | — |
+| **Onboarding packets / templates** (tasks+docs+signatures) | ❌ | P5 |
+| **Preboarding / new-hire self-onboarding** (fill info before day 1) | ❌ | P5 |
+| Welcome emails / "get to know you" | ❌ | P5 |
+| **ATS**: job openings | ❌ | P6 |
+| **ATS**: careers site + applications | ❌ | P6 |
+| **ATS**: candidate pipeline (kanban) | ❌ | P6 |
+| **ATS**: interview scheduling + scorecards | ❌ | P6 |
+| **ATS**: offer letters + e-sign → hire→onboard | ❌ | P6 |
+| Job-board distribution (Indeed/LinkedIn) | ❌ | P6 (adapter, optional) |
 
-**Integrations.** HR dashboard tiles (avg hours, unsubmitted timesheets);
-feeds Wave 4 reporting; notifications on submit/decision.
+### Compensation & Payroll
+| Capability | Status | Wave |
+|---|---|---|
+| Salary history & pay changes | ✅ | — |
+| Pay bands / ranges | ✅ | — |
+| Bonuses / allowances | ✅ | — |
+| **Total compensation / total-rewards statement** | ❌ | P7 |
+| **Pay-change approval workflow** | ❌ | P7 |
+| **Payslips / pay stubs** (generate+store PDF, YTD) | ❌ | P8 |
+| **Earnings & deductions, pay schedules** | ❌ | P8 |
+| Payroll export to provider (CSV/API) | ❌ | P8 |
+| Tax calculation & filing | ❌ | out of scope (integrate) |
 
-**Frontend.** "Time" page under People: weekly grid + clock widget + submit;
-manager "to approve" queue. Profile shows a small hours summary.
+### Benefits
+| Capability | Status | Wave |
+|---|---|---|
+| **Benefit plans & classes** | ❌ | P9 |
+| **Enrollment + open-enrollment windows** | ❌ | P9 |
+| **Dependents / beneficiaries** | ❌ | P9 (table in P1) |
+| **Costs (employer/employee) + deductions → payroll** | ❌ | P9 |
 
-**Tests.** clock toggle, weekly totals, holiday/leave exclusion, submit→approve
-flow, manager-only approval, self vs other visibility.
+### Performance & Engagement
+| Capability | Status | Wave |
+|---|---|---|
+| Goals + progress | ✅ | — |
+| Review cycles + manager reviews | ✅ (light) | P10 |
+| **Self + peer + 360 assessments** | ❌ | P10 |
+| **1:1 meeting notes** | ❌ | P10 |
+| **Continuous feedback / kudos / praise** | ❌ | P10 / P12 |
+| Performance trends / heatmap | ❌ | P10 |
+| **eNPS + custom surveys** | ❌ | P12 |
 
-**Open questions.** (a) Clock in/out *and* manual entry, or manual only?
-(b) Weekly or bi-weekly/monthly periods? (c) Track against projects/tasks
-(link to existing worklog) or plain hours?
+### Reporting & Analytics
+| Capability | Status | Wave |
+|---|---|---|
+| HR dashboard | ✅ | — |
+| **Standard report library** (headcount, turnover, tenure, comp, time-off, time, hiring funnel, EEO/diversity) | ❌ | P11 |
+| **Custom report builder** + saved/shared | ❌ | P11 |
+| **Scheduled & exported reports** (CSV/PDF/email) | ❌ | P11 |
+| Workforce planning / headcount trends | ❌ | P11 |
 
----
-
-## Wave 2 — Recruiting / ATS  (priority 2, ~2–3wk — split in two)
-
-**Goal.** Job openings → candidate pipeline → interviews & feedback → offer →
-convert to employee (+ onboarding).
-
-**Permission:** new module `recruiting`. Candidate PII treated as sensitive.
-
-### 2a. Jobs, candidates, pipeline (~1–1.5wk)
-**Data model** (`app/models/recruiting.py`)
-- `JobOpening` — title, `department_id`, location, `employment_type`,
-  description, `status` (draft|open|on_hold|closed|filled), `openings`,
-  `hiring_manager_id`, `created_by_id`, `posted_at`.
-- `Candidate` — `job_id`, name, email, phone, `resume_path`, source,
-  `stage` (applied|screen|interview|offer|hired|rejected), `status`
-  (active|hired|rejected|withdrawn), `rating`, `created_at`.
-- `CandidateActivity` — `candidate_id`, type (note|stage_change), body,
-  `author_id`, `created_at`.
-
-**API** (`/recruiting`): jobs CRUD; candidates CRUD + résumé upload; move
-stage; activity notes. `GET /recruiting/jobs/{id}/pipeline` returns
-candidates grouped by stage (kanban).
-
-**Frontend.** Recruiting section: jobs list, job detail with **kanban**
-pipeline (drag across stages), candidate drawer (résumé, activity, rating).
-
-### 2b. Interviews, offers, conversion, public board (~1–1.5wk)
-**Data model**
-- `Interview` — `candidate_id`, `scheduled_at`, duration, mode, location/link.
-- `InterviewFeedback` — `interview_id`, `reviewer_id`, rating,
-  recommendation (yes|no|maybe), notes.
-- `Offer` — `candidate_id`, amount, currency, `start_date`,
-  `status` (draft|sent|accepted|declined), `letter_path`.
-
-**API.** interviews CRUD + feedback; offers CRUD; **`POST /recruiting/candidates/{id}/convert`** → creates a `User` (status invited, dept/title carried over), links `candidate.user_id`, optionally starts an onboarding journey (Wave links to people module + packets from Wave 3).
-
-**Public (optional sub-phase).** Public job board (`/careers`) + apply form
-writing a `Candidate` (mirrors existing public card/landing pattern).
-
-**Integrations.** Conversion → Users + onboarding journeys; offer letter via
-storage/e-sign (Wave 3); reporting funnel + time-to-hire (Wave 4).
-
-**Tests.** pipeline moves, résumé upload, interview feedback aggregation,
-offer lifecycle, convert-creates-user + journey, recruiting-permission gating.
-
----
-
-## Wave 3 — Custom fields + e-signature + onboarding packets  (priority 3, ~1.5–2wk)
-
-**Permission:** `hr` (reuse) for definitions/templates; signing is self-service.
-
-### 3a. Custom fields (~3–4d)
-- `CustomFieldDef` — entity (employee), key, label, `field_type`
-  (text|number|date|select|bool), `options` (json), section, sort, required,
-  `sensitive`.
-- `CustomFieldValue` — `def_id`, `user_id`, value (json).
-- API: admin CRUD defs; values read/written through the profile (respecting
-  `sensitive` + edit rules). Profile renders dynamic "custom" sections.
-- *Stretch:* repeatable "custom tables" (education, prior employment) — phase 2.
-
-### 3b. E-signature (~3–4d)
-- `SignatureRequest` — `document_id?` / template, `user_id` (signer),
-  `status` (pending|signed|declined), `signed_at`, `typed_name`,
-  `signature_audit` (ip, user-agent, timestamp).
-- Flow: HR sends a document to sign → signer notified → signs (typed name +
-  consent checkbox + timestamp; non-PKI e-sign with audit trail, BambooHR-style)
-  → optional stamped PDF via the pdf service.
-- Profile shows "Documents to sign"; HR sees status per request.
-
-### 3c. Onboarding packets / templates (~3–4d)
-- `OnboardingTemplate` — name, optional dept/role scoping.
-- `TemplateItem` — template_id, kind (task|document|signature), title,
-  category, sort.
-- Starting an onboarding journey can pick a template → auto-creates checklist
-  tasks + signature requests (replaces the hardcoded `DEFAULT_ONBOARDING`,
-  which becomes a seeded template).
-
-**Integrations.** Packets ⇄ people journeys + hr_documents/signatures; custom
-fields appear on profile + in Wave 4 reports.
-
-**Tests.** field def/value round-trip + sensitivity, sign flow + audit + access,
-template → journey materialisation.
+### Experience & Platform
+| Capability | Status | Wave |
+|---|---|---|
+| Announcements / company feed | ✅ | — |
+| **Company calendar** (birthdays, work anniversaries, holidays, who's-out) | ⚠️ | P12 |
+| **Kudos / shoutouts** | ❌ | P12 |
+| **Learning / training + certifications & renewals** | ❌ | P13 |
+| **Email notifications / digests** | ⚠️ (in-app) | P14 (cross-cutting) |
+| **Slack/Teams outbound** | ❌ | P14 |
+| **Public API + webhooks** | ⚠️ | P14 |
+| Multi-entity / multi-currency | ⚠️ (currency on records) | P14 |
+| Mobile | responsive web only (no native app) |
 
 ---
 
-## Wave 4 — Reporting + surveys  (priority 4, ~1.5–2wk)
+## 2. Build program (parity waves)
 
-**Permission:** `hr`.
+> Reusing throughout: storage service, PDF renderer, notify + activity log,
+> approvals pattern, people journeys, and the `hr` permission + `is_hr()`.
 
-### 4a. Report builder (~1–1.5wk)
-- `SavedReport` — name, entity (employees|leave|time|compensation|recruiting),
-  `columns` (json), `filters` (json), `group_by`, owner, shared, `schedule`.
-- Engine over a **whitelisted** field set per entity → tabular results + CSV.
-  Canned reports first (headcount, turnover, leave usage, hours, hiring funnel),
-  then custom column/filter selection; scheduled reports → emailed digest.
+**P1 — Records platform & access control**
+Custom fields + custom tables (dependents, education, prior employment, visas);
+field-level permission scheme (per-field view/edit by role/relationship);
+standard BambooHR-style profile tabs; private notes; configurable multi-step
+approval-workflow engine (reused by leave, pay changes, offers); full employee
+import/export; per-field audit. *(~2–2.5 wk)*
 
-### 4b. Surveys / eNPS (~3–5d)
-- `Survey` — title, type (enps|custom), `questions` (json: scale|text|choice),
-  `anonymous`, audience (all|department), status, open/close dates.
-- `SurveyResponse` — survey_id, `user_id?` (omitted when anonymous),
-  answers (json), submitted_at.
-- Results: eNPS score, distribution, per-question aggregates, export.
+**P2 — Time off maturity**
+Accrual schedules (monthly/anniversary, waiting periods, caps), carryover/
+year-end rollover job, half-day & hourly requests, policy assignment by group,
+blackout dates, projected balances, team calendar + iCal feed. *(~1.5 wk)*
 
-**Integrations.** Dashboard tiles (eNPS, turnover); invites via notifications;
-exports via pdf/csv.
+**P3 — Time tracking / attendance**
+Clock in/out + manual entries, weekly timesheets submit→approve, schedules &
+overtime, project hours, missing-time reminders, leave/holiday-aware. *(~1 wk)*
 
-**Tests.** report query + filter + CSV, schedule record; survey lifecycle,
-anonymity, eNPS calculation.
+**P4 — Documents & e-signature**
+Folders/company files, e-signature with audit trail + stamped PDF, document
+templates, bulk send & acknowledgement tracking. *(~1.5 wk)*
+
+**P5 — Onboarding packets & preboarding**
+Configurable packet templates (tasks + docs-to-sign + welcome emails);
+new-hire preboarding portal to self-complete info/sign before start; offboarding
+templates. Replaces hardcoded default checklist. *(~1.5 wk)*
+
+**P6 — Recruiting / ATS** *(largest; 2–3 increments)*
+Job openings, public careers site + application intake, candidate kanban
+pipeline, interview scheduling + scorecards, email templates, offers + e-sign,
+hire→create-user→onboarding packet; optional job-board adapters. *(~3–4 wk)*
+
+**P7 — Compensation maturity**
+Total-rewards statement (salary + benefits + bonuses + employer costs),
+pay-change request→approval workflow, comp history visualisation. *(~1 wk)*
+
+**P8 — Payroll inputs & payslips**
+Pay schedules, earnings & deduction codes, payslip generation (PDF) + YTD,
+payroll register, export to provider (CSV/API). No tax engine — integrate.
+*(~2 wk)*
+
+**P9 — Benefits administration**
+Benefit plans & classes, enrollment + open-enrollment windows, dependents/
+beneficiaries, employer/employee costs → deductions feed payroll. *(~2 wk)*
+
+**P10 — Performance maturity**
+Self/peer/manager + 360 assessments, configurable cycle templates & questions,
+1:1 notes, continuous feedback, calibration/heatmap & trends. *(~2 wk)*
+
+**P11 — Reporting & analytics**
+Standard report library (headcount, turnover/retention, tenure, diversity/EEO,
+comp, time-off, time-tracking, hiring funnel), custom report builder over a
+whitelisted schema, saved/shared/scheduled, CSV/PDF export, workforce trends.
+*(~2 wk)*
+
+**P12 — Engagement & experience**
+eNPS + custom surveys (anonymity, targeting, results), kudos/shoutouts wall,
+company calendar (birthdays, work anniversaries, holidays, who's-out). *(~1.5 wk)*
+
+**P13 — Learning & training**
+Trainings/courses, assignments, completion tracking, certifications with
+expiry/renewal reminders (ties into documents). *(~1 wk)*
+
+**P14 — Platform & integrations (cross-cutting)**
+Email notifications/digests (SMTP), Slack/Teams outbound webhooks, public API
+keys + outbound webhooks, multi-entity/multi-currency polish, accessibility &
+mobile-responsive pass. *(~1.5–2 wk)*
 
 ---
 
-## Sequencing & estimate
+## 3. Scope decisions (defaults unless you object)
+- **Payroll (P8):** build inputs, payslips, register and provider export — **not**
+  a tax-calculation/filing engine (country-specific; integrate with a provider).
+- **E-signature (P4/P6):** built-in typed-signature + consent + full audit trail
+  (legally typical, BambooHR-style). DocuSign/PKI as an optional adapter later.
+- **Job boards (P6):** build our own careers site; Indeed/LinkedIn posting as
+  optional adapters after core ATS.
+- **Email/Slack (P14):** depends on SMTP/webhook access in the environment.
+- **Mobile:** responsive web, no native app.
+- **Multi-entity:** support multiple legal entities + currencies as attributes;
+  not separate tenant databases.
 
-| Wave | Module(s) | Increments | Rough effort |
-|---|---|---|---|
-| 1 Time/attendance | `attendance` | 1 | ~5–7d |
-| 2 Recruiting/ATS | `recruiting` | 2 (2a, 2b) | ~2–3wk |
-| 3 Custom/e-sign/packets | `hr` | 3 (3a–3c) | ~1.5–2wk |
-| 4 Reporting/surveys | `hr` | 2 (4a, 4b) | ~1.5–2wk |
+## 4. Sequencing & estimate
+Order: **P1 → P3 → P2 → P4 → P5 → P6 → P10 → P11 → P9 → P8 → P7 → P12 → P13 → P14**
+(records/access first because everything else builds on custom fields, workflow
+engine and field-level permissions; payroll after benefits so deductions exist).
 
-Total ≈ **6–9 weeks** of increments. ATS is the long pole and is split in two.
+Total ≈ **5–7 months** of increments for full parity. We ship continuously, so
+it's usable and replacing BambooHR piece-by-piece throughout — not big-bang.
 
-## Decisions needed before Wave 1
-1. Attendance: clock in/out **and** manual entry, or manual only?
-2. Timesheet period: weekly (default) / bi-weekly / monthly?
-3. Link time to projects/tasks (existing worklog) or plain hours?
-4. ATS later: do we want a **public careers page**, or internal-only intake?
-5. E-sign: typed-name + audit trail acceptable (non-PKI), or need provider
-   integration (DocuSign/etc.)?
+## 5. Definition of "parity done"
+- Every ✅/⚠️ row above is ✅.
+- Each module has create/read/update/delete + permissions + tests + UI.
+- Data import from BambooHR (CSV/export) supported for employees, time-off
+  balances, comp, documents.
+- Standard report library covers BambooHR's common reports.
