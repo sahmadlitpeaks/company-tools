@@ -1493,3 +1493,81 @@ export interface ReportResult {
   rows: Record<string, unknown>[];
   generated_at: string;
 }
+
+export interface JobOpening {
+  id: string;
+  title: string;
+  department_id?: string | null;
+  department_name?: string | null;
+  company_id?: string | null;
+  location?: string | null;
+  employment_type?: string | null;
+  description?: string | null;
+  status: string;
+  openings: number;
+  hiring_manager_id?: string | null;
+  hiring_manager_name?: string | null;
+  candidate_count: number;
+  hired_count: number;
+  created_at: string;
+}
+
+export interface CandidateActivityItem {
+  id: string;
+  kind: string;
+  body: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  created_at: string;
+}
+
+export interface InterviewItem {
+  id: string;
+  candidate_id: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  mode: string;
+  location?: string | null;
+  interviewer_id?: string | null;
+  interviewer_name?: string | null;
+  rating?: number | null;
+  recommendation?: string | null;
+  feedback?: string | null;
+  created_at: string;
+}
+
+export interface OfferItem {
+  id: string;
+  candidate_id: string;
+  amount?: string | null;
+  currency: string;
+  pay_period: string;
+  start_date?: string | null;
+  status: string;
+  note?: string | null;
+  created_at: string;
+}
+
+export interface Candidate {
+  id: string;
+  job_id: string;
+  job_title?: string | null;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  resume_path?: string | null;
+  source?: string | null;
+  stage: string;
+  status: string;
+  rating?: number | null;
+  notes?: string | null;
+  user_id?: string | null;
+  interview_count: number;
+  created_at: string;
+}
+
+export interface CandidateDetail extends Candidate {
+  activities: CandidateActivityItem[];
+  interviews: InterviewItem[];
+  offers: OfferItem[];
+}

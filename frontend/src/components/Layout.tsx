@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
+  Briefcase,
   BarChart3,
   Boxes,
   ChevronDown,
@@ -75,6 +76,7 @@ const NAV: NavEntry[] = [
   { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
   { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops" },
   { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
+  { to: "/recruiting", label: "Recruiting", icon: Briefcase, module: "recruiting" },
   { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
   { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance" },
   { to: "/performance", label: "Performance", icon: Target },

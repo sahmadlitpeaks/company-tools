@@ -32,6 +32,7 @@ MODULES: list[tuple[str, str]] = [
     ("announcements", "Announcements"),
     ("people_ops", "Onboarding & Offboarding"),
     ("hr", "People / HR"),
+    ("recruiting", "Recruiting / ATS"),
     ("worklog", "Work Log"),
     ("workspace", "My Docs"),
     ("qrcodes", "QR Codes"),

@@ -68,3 +68,10 @@ from app.models.workplace import (  # noqa: F401
     Ticket,
     TicketComment,
 )
+from app.models.recruiting import (  # noqa: F401
+    Candidate,
+    CandidateActivity,
+    Interview,
+    JobOpening,
+    Offer,
+)
