@@ -118,36 +118,38 @@ export default function PeopleOpsPage() {
         ) : (journeys.data?.length ?? 0) === 0 ? (
           <Empty icon="🧭" message="No journeys yet" hint="Start an onboarding or offboarding above." />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Type</th>
-                <th>Progress</th>
-                <th>Status</th>
-                <th>Started</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {journeys.data!.map((j) => (
-                <tr key={j.id} className="cursor-pointer" onClick={() => setOpenId(j.id)}>
-                  <td className="font-semibold">{j.target_name ?? "—"}</td>
-                  <td>
-                    <span className={`badge ${j.kind === "onboarding" ? "green" : "amber"}`}>
-                      {j.kind}
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
+            {journeys.data!.map((j) => {
+              const pct = j.total_tasks ? Math.round((j.done_tasks / j.total_tasks) * 100) : 0;
+              return (
+                <button
+                  key={j.id}
+                  onClick={() => setOpenId(j.id)}
+                  className="flex flex-col rounded-xl border border-slate-200 p-4 text-left transition hover:shadow-md"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="org-avatar !h-11 !w-11 !text-sm" style={{ background: colorFor(j.target_name ?? j.id) }}>
+                      {jInitials(j.target_name)}
                     </span>
-                  </td>
-                  <td style={{ minWidth: 140 }}>
-                    <ProgressBar done={j.done_tasks} total={j.total_tasks} />
-                  </td>
-                  <td><span className={`badge ${STATUS_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span></td>
-                  <td className="muted text-sm">{new Date(j.created_at).toLocaleDateString()}</td>
-                  <td className="text-right font-medium text-brand-600">Open ›</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{j.target_name ?? "—"}</div>
+                      <div className="mt-0.5 flex gap-1">
+                        <span className={`badge ${j.kind === "onboarding" ? "green" : "amber"}`}>{j.kind}</span>
+                        <span className={`badge ${STATUS_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--surface-3)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--brand-600)" }} />
+                    </div>
+                    <span className="muted text-xs">{j.done_tasks}/{j.total_tasks}</span>
+                  </div>
+                  <div className="muted mt-2 text-xs">Started {new Date(j.created_at).toLocaleDateString()}</div>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -168,16 +170,19 @@ export default function PeopleOpsPage() {
   );
 }
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--surface-3)" }}>
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--brand-600)" }} />
-      </div>
-      <span className="muted text-xs">{done}/{total}</span>
-    </div>
-  );
+const ORG_COLORS = [
+  "#0ea5e9", "#6366f1", "#ec4899", "#f59e0b", "#10b981",
+  "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#3b82f6",
+];
+function colorFor(s: string): string {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return ORG_COLORS[h % ORG_COLORS.length];
+}
+function jInitials(name?: string | null): string {
+  const src = (name || "?").trim();
+  const parts = src.split(/\s+/);
+  return (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)).toUpperCase();
 }
 
 function StartModal({
