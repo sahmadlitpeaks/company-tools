@@ -74,6 +74,7 @@ const NAV: NavEntry[] = [
   { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
   { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
   { to: "/performance", label: "Performance", icon: Target },
+  { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr" },
   { section: "Marketing" },
   { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards" },
   { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets" },

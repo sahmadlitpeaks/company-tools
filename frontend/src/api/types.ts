@@ -1290,3 +1290,71 @@ export interface HrOverview {
   recent_joiners: HrJoiner[];
   upcoming_joiners: HrJoiner[];
 }
+
+export interface CustomFieldDef {
+  id: string;
+  entity: string;
+  section: string;
+  key: string;
+  label: string;
+  field_type: string;
+  options?: string[] | null;
+  required: boolean;
+  sensitive: boolean;
+  sort: number;
+  active: boolean;
+}
+
+export interface CustomTableColumn {
+  key: string;
+  label: string;
+  type?: string;
+  options?: string[] | null;
+}
+
+export interface CustomTableDef {
+  id: string;
+  key: string;
+  label: string;
+  columns: CustomTableColumn[];
+  sensitive: boolean;
+  sort: number;
+  active: boolean;
+}
+
+export interface CustomSchema {
+  fields: CustomFieldDef[];
+  tables: CustomTableDef[];
+}
+
+export interface CustomFieldValue {
+  def_id: string;
+  key: string;
+  label: string;
+  section: string;
+  field_type: string;
+  options?: string[] | null;
+  sensitive: boolean;
+  value?: unknown;
+}
+
+export interface CustomTableRow {
+  id: string;
+  data: Record<string, unknown>;
+  sort: number;
+}
+
+export interface CustomTableValues {
+  table_id: string;
+  key: string;
+  label: string;
+  columns: CustomTableColumn[];
+  sensitive: boolean;
+  rows: CustomTableRow[];
+}
+
+export interface CustomValues {
+  fields: CustomFieldValue[];
+  tables: CustomTableValues[];
+  can_edit: boolean;
+}

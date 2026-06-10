@@ -10,6 +10,7 @@ import {
   KeyRound,
   ListChecks,
   Pencil,
+  Sliders,
   Smartphone,
   Target,
   Trash2,
@@ -20,6 +21,9 @@ import { api, downloadFile } from "../api/client";
 import type {
   CompensationRecord,
   CompensationSummary,
+  CustomFieldValue,
+  CustomTableValues,
+  CustomValues,
   Department,
   HrDocument,
   PerformanceGoal,
@@ -222,6 +226,7 @@ export default function ProfilePage() {
             </Section>
           )}
 
+          <CustomFieldsSection userId={p.id} />
           <GoalsSection userId={p.id} canEdit={p.can_manage || p.id === viewerId} />
 
           {p.can_see_sensitive && (
@@ -831,6 +836,183 @@ function EditProfileModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function CustomFieldsSection({ userId }: { userId: string }) {
+  const { notify } = useToast();
+  const cv = useFetch<CustomValues>(`/api/custom-fields/values/${userId}`);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [busy, setBusy] = useState(false);
+
+  const data = cv.data;
+  if (cv.loading || !data) return null;
+  if (data.fields.length === 0 && data.tables.length === 0) return null;
+
+  function startEdit() {
+    const d: Record<string, unknown> = {};
+    data!.fields.forEach((f) => (d[f.def_id] = f.value ?? ""));
+    setDraft(d);
+    setEditing(true);
+  }
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/custom-fields/values/${userId}`, { method: "PUT", body: { values: draft } });
+      setEditing(false);
+      cv.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+    setBusy(false);
+  }
+
+  // Group single-value fields by section.
+  const bySection: Record<string, typeof data.fields> = {};
+  data.fields.forEach((f) => {
+    (bySection[f.section] ??= []).push(f);
+  });
+
+  return (
+    <>
+      {data.fields.length > 0 && (
+        <div className="card">
+          <div className="spread mb-2">
+            <h3 className="m-0 flex items-center gap-2 text-base"><Sliders size={16} /> Additional information</h3>
+            {data.can_edit && (
+              editing ? (
+                <span className="flex gap-1">
+                  <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditing(false)}>Cancel</button>
+                  <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>Save</button>
+                </span>
+              ) : (
+                <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={startEdit}>Edit</button>
+              )
+            )}
+          </div>
+          {Object.entries(bySection).map(([section, fields]) => (
+            <div key={section} className="mb-2">
+              <div className="muted mb-1 text-xs uppercase tracking-wide">{section}</div>
+              <div className="space-y-1 text-sm">
+                {fields.map((f) =>
+                  editing ? (
+                    <div key={f.def_id} className="flex items-center justify-between gap-2">
+                      <span className="muted">{f.label}</span>
+                      <span style={{ flex: "0 0 60%" }}>{renderInput(f, draft[f.def_id], (v) => setDraft((p) => ({ ...p, [f.def_id]: v })))}</span>
+                    </div>
+                  ) : (
+                    <div key={f.def_id} className="flex justify-between gap-2">
+                      <span className="muted">{f.label}{f.sensitive ? " 🔒" : ""}</span>
+                      <span className="text-right">{formatValue(f.value) || "—"}</span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data.tables.map((t) => (
+        <CustomTableCard key={t.table_id} userId={userId} table={t} canEdit={data.can_edit} onChange={cv.reload} />
+      ))}
+    </>
+  );
+}
+
+function renderInput(f: CustomFieldValue, value: unknown, onChange: (v: unknown) => void) {
+  if (f.field_type === "bool")
+    return <input type="checkbox" className="!w-auto" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;
+  if (f.field_type === "select")
+    return (
+      <select value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  if (f.field_type === "textarea")
+    return <textarea rows={2} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
+  const type = f.field_type === "number" ? "number" : f.field_type === "date" ? "date" : "text";
+  return <input type={type} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function formatValue(v: unknown): string {
+  if (v === true) return "Yes";
+  if (v === false) return "No";
+  if (v == null) return "";
+  return String(v);
+}
+
+function CustomTableCard({
+  userId, table, canEdit, onChange,
+}: {
+  userId: string;
+  table: CustomTableValues;
+  canEdit: boolean;
+  onChange: () => void;
+}) {
+  const { notify } = useToast();
+  const [adding, setAdding] = useState(false);
+  const [row, setRow] = useState<Record<string, string>>({});
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api(`/api/custom-fields/tables/${table.table_id}/rows/${userId}`, { method: "POST", body: { data: row } });
+      setRow({});
+      setAdding(false);
+      onChange();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+  async function del(id: string) {
+    await api(`/api/custom-fields/rows/${id}`, { method: "DELETE" });
+    onChange();
+  }
+
+  return (
+    <div className="card">
+      <div className="spread mb-2">
+        <h3 className="m-0 text-base">{table.label}{table.sensitive ? " 🔒" : ""}</h3>
+        {canEdit && (
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>{adding ? "Cancel" : "+ Add"}</button>
+        )}
+      </div>
+      {table.rows.length === 0 ? (
+        <Muted>No entries.</Muted>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr>{table.columns.map((c) => <th key={c.key} className="text-left">{c.label}</th>)}{canEdit && <th />}</tr>
+          </thead>
+          <tbody>
+            {table.rows.map((r) => (
+              <tr key={r.id}>
+                {table.columns.map((c) => <td key={c.key}>{formatValue(r.data[c.key])}</td>)}
+                {canEdit && (
+                  <td className="text-right">
+                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(r.id)}><Trash2 size={12} /></button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {adding && (
+        <form onSubmit={add} className="mt-2 flex flex-wrap items-end gap-2">
+          {table.columns.map((c) => (
+            <div key={c.key} className="field" style={{ marginBottom: 0, flex: 1 }}>
+              <label>{c.label}</label>
+              <input value={row[c.key] ?? ""} onChange={(e) => setRow((p) => ({ ...p, [c.key]: e.target.value }))} />
+            </div>
+          ))}
+          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add</button>
+        </form>
+      )}
+    </div>
   );
 }
 
