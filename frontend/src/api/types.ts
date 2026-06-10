@@ -1358,3 +1358,26 @@ export interface CustomValues {
   tables: CustomTableValues[];
   can_edit: boolean;
 }
+
+export interface Celebration {
+  user_id: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  kind: string;
+  label: string;
+  detail?: string | null;
+  days_until: number;
+}
+
+export interface WhosOutToday {
+  user_id?: string | null;
+  name?: string | null;
+  avatar_url?: string | null;
+  leave_type?: string | null;
+  until?: string | null;
+}
+
+export interface HomeFeed {
+  celebrations: Celebration[];
+  whos_out: WhosOutToday[];
+}

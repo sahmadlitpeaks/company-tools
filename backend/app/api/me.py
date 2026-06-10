@@ -4,7 +4,7 @@ Open to any active user; it only ever returns the caller's own items, so it is
 not module-gated (a user without a given module simply sees nothing there).
 """
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
@@ -26,12 +26,102 @@ from app.models.workplace import (
     Task,
     Ticket,
 )
+from app.schemas.home import Celebration, HomeFeed, WhosOutToday
 from app.schemas.workplace import WorkSummary
 from app.services.people import user_names
 
 router = APIRouter(prefix="/me", tags=["my-work"])
 
 OPEN_TICKET = ("open", "in_progress")
+
+
+def _next_occurrence(d: date, today: date) -> date:
+    """Next month/day occurrence of `d` on or after today (ignores year)."""
+    try:
+        cand = d.replace(year=today.year)
+    except ValueError:  # 29 Feb
+        cand = d.replace(year=today.year, day=28)
+    if cand < today:
+        try:
+            cand = d.replace(year=today.year + 1)
+        except ValueError:
+            cand = d.replace(year=today.year + 1, day=28)
+    return cand
+
+
+def _when_label(days: int, d: date) -> str:
+    if days == 0:
+        return "Today"
+    if days == 1:
+        return "Tomorrow"
+    if days <= 7:
+        return f"in {days} days"
+    return d.strftime("%a %d %b")
+
+
+@router.get("/home", response_model=HomeFeed)
+async def home_feed(
+    days: int = 21,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Celebrations (birthdays, work anniversaries, new hires) and who's out —
+    the people-centric home surface, visible to every employee."""
+    today = date.today()
+    horizon = today + timedelta(days=max(days, 1))
+    users = (
+        await db.execute(select(User).where(User.status == "active"))
+    ).scalars().all()
+
+    out = HomeFeed()
+    for u in users:
+        if u.date_of_birth:
+            nxt = _next_occurrence(u.date_of_birth, today)
+            if nxt <= horizon:
+                d = (nxt - today).days
+                out.celebrations.append(Celebration(
+                    user_id=u.id, name=u.display_name, avatar_url=u.avatar_url,
+                    kind="birthday", label=_when_label(d, nxt), detail="Birthday", days_until=d,
+                ))
+        if u.hire_date:
+            d0 = (today - u.hire_date).days
+            if 0 <= d0 <= 30:
+                out.celebrations.append(Celebration(
+                    user_id=u.id, name=u.display_name, avatar_url=u.avatar_url,
+                    kind="new_hire", label=("Today" if d0 == 0 else f"{d0}d ago"),
+                    detail=u.job_title or "New hire", days_until=-d0,
+                ))
+            elif u.hire_date < today:
+                nxt = _next_occurrence(u.hire_date, today)
+                years = nxt.year - u.hire_date.year
+                if nxt <= horizon and years >= 1:
+                    d = (nxt - today).days
+                    out.celebrations.append(Celebration(
+                        user_id=u.id, name=u.display_name, avatar_url=u.avatar_url,
+                        kind="anniversary", label=_when_label(d, nxt),
+                        detail=f"{years} year{'s' if years > 1 else ''}", days_until=d,
+                    ))
+    out.celebrations.sort(key=lambda c: (c.days_until if c.days_until >= 0 else 999, c.name or ""))
+
+    # Who's out today (approved leave covering today).
+    leaves = (
+        await db.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.type == "leave",
+                ApprovalRequest.status == "approved",
+                ApprovalRequest.start_date.is_not(None),
+            )
+        )
+    ).scalars().all()
+    by_id = {u.id: u for u in users}
+    for lv in leaves:
+        end = lv.end_date or lv.start_date
+        if lv.start_date and end and lv.start_date <= today <= end and lv.requester_id in by_id:
+            u = by_id[lv.requester_id]
+            out.whos_out.append(WhosOutToday(
+                user_id=u.id, name=u.display_name, avatar_url=u.avatar_url, until=end,
+            ))
+    return out
 
 
 async def _count(db: AsyncSession, stmt) -> int:
