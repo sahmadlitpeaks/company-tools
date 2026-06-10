@@ -1436,3 +1436,41 @@ export interface TimeSummary {
   week_status: string;
   pending_approvals: number;
 }
+
+export interface IntakeSource {
+  id: string;
+  name: string;
+  key: string;
+  default_type: string;
+  active: boolean;
+  notify_user_id?: string | null;
+  created_at: string;
+  submission_count: number;
+}
+
+export interface Submission {
+  id: string;
+  source_id?: string | null;
+  source_name?: string | null;
+  type: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  subject?: string | null;
+  message?: string | null;
+  page_url?: string | null;
+  payload?: Record<string, unknown> | null;
+  status: string;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  converted_lead_id?: string | null;
+  converted_ticket_id?: string | null;
+  created_at: string;
+}
+
+export interface IntakeSummary {
+  new: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+}

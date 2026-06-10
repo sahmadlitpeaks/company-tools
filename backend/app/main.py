@@ -20,6 +20,7 @@ from app.api import (
     cards,
     crm,
     demo,
+    intake,
     departments,
     knowledge,
     landing,
@@ -159,6 +160,7 @@ app.include_router(products.public_router, prefix=api_prefix)
 app.include_router(landing.public_router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(shares.public_router, prefix=api_prefix)
+app.include_router(intake.public_router, prefix=api_prefix)
 
 # Module-gated feature routers (403 unless the user has the permission).
 app.include_router(cards.router, prefix=api_prefix, dependencies=_mod("cards"))
@@ -175,6 +177,7 @@ app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tr
 app.include_router(subscriptions.router, prefix=api_prefix, dependencies=_mod("subscriptions"))
 app.include_router(timekeeping.router, prefix=api_prefix, dependencies=_mod("attendance"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
+app.include_router(intake.router, prefix=api_prefix, dependencies=_mod("crm"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
 app.include_router(tasks.router, prefix=api_prefix, dependencies=_mod("tasks"))

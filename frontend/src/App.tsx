@@ -33,6 +33,7 @@ import PerformancePage from "./pages/PerformancePage";
 import HrDashboardPage from "./pages/HrDashboardPage";
 import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
 import TimePage from "./pages/TimePage";
+import InboxPage from "./pages/InboxPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -163,6 +164,7 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
+          <Route path="/inbox" element={<Protected module="crm"><InboxPage /></Protected>} />
           <Route
             path="/campaigns"
             element={<Protected module="campaigns"><CampaignsPage /></Protected>}
