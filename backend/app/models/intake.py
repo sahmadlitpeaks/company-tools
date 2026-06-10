@@ -9,7 +9,9 @@ from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 SUBMISSION_TYPES = {"lead", "complaint", "support", "inquiry", "feedback", "other"}
-SUBMISSION_STATUSES = {"new", "in_progress", "resolved", "spam", "archived"}
+# Inbound items land in `quarantined` for spam screening; clean ones become
+# `new` (real leads in the inbox/CRM), likely-spam ones become `spam`.
+SUBMISSION_STATUSES = {"quarantined", "new", "in_progress", "resolved", "spam", "archived"}
 
 
 class IntakeSource(UUIDMixin, TimestampMixin, Base):
@@ -21,6 +23,8 @@ class IntakeSource(UUIDMixin, TimestampMixin, Base):
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     default_type: Mapped[str] = mapped_column(String(16), default="lead")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # Auto-create a CRM lead when a clean lead-type submission passes screening.
+    auto_convert: Mapped[bool] = mapped_column(Boolean, default=False)
     # Who to notify when this source receives a submission.
     notify_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -45,7 +49,9 @@ class Submission(UUIDMixin, TimestampMixin, Base):
     page_url: Mapped[str | None] = mapped_column(String(1024))
     # Any extra form fields not mapped to the columns above.
     payload: Mapped[dict | None] = mapped_column(JSON)
-    status: Mapped[str] = mapped_column(String(16), default="new", index=True)
+    status: Mapped[str] = mapped_column(String(16), default="quarantined", index=True)
+    spam_score: Mapped[int] = mapped_column(default=0)
+    spam_reasons: Mapped[list | None] = mapped_column(JSON)
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
     )

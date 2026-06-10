@@ -64,3 +64,50 @@ async def test_intake_management_requires_module(client, auth):
     hdr, _ = await make_member(client, auth, "intake-nocrm@agholding.net")
     assert (await client.get("/api/intake/submissions", headers=hdr)).status_code == 403
     assert (await client.get("/api/intake/sources", headers=hdr)).status_code == 403
+
+
+async def test_spam_quarantine_release_and_autoconvert(client, auth):
+    src = (await client.post("/api/intake/sources", headers=auth, json={
+        "name": "Site B", "default_type": "lead",
+    })).json()
+    tok = {"Authorization": f"Bearer {src['key']}"}
+
+    # Honeypot field filled -> definite spam.
+    r = await client.post("/api/intake/ingest", headers=tok, json={
+        "name": "Bot", "email": "bot@x.com", "message": "hi", "_gotcha": "filled",
+    })
+    assert r.json()["status"] == "spam" and r.json()["spam_score"] == 100
+
+    # Spammy content (links + keywords + disposable email) -> spam, not in inbox.
+    await client.post("/api/intake/ingest", headers=tok, json={
+        "name": "SEO", "email": "x@mailinator.com",
+        "message": "cheap viagra http://a.com http://b.com http://c.com seo backlinks",
+    })
+
+    # Clean lead -> released as new.
+    clean = await client.post("/api/intake/ingest", headers=tok, json={
+        "name": "Real Person", "email": "real@acme.com", "phone": "+15550000",
+        "message": "Hello, I'd like a quote for your service.",
+    })
+    assert clean.json()["status"] == "new"
+
+    new_ones = (await client.get("/api/intake/submissions?status=new", headers=auth)).json()
+    assert all(s["source_id"] != src["id"] or s["email"] == "real@acme.com" for s in new_ones)
+    quarantined_or_spam = (await client.get("/api/intake/submissions?status=spam", headers=auth)).json()
+    assert len(quarantined_or_spam) >= 2
+
+    # A spam item can be released (false positive) -> becomes new.
+    spam_item = quarantined_or_spam[0]
+    rel = await client.post(f"/api/intake/submissions/{spam_item['id']}/release", headers=auth)
+    assert rel.status_code == 200 and rel.json()["status"] == "new"
+
+    # Auto-convert: a source with auto_convert turns clean leads into CRM leads.
+    asrc = (await client.post("/api/intake/sources", headers=auth, json={
+        "name": "Auto Site", "default_type": "lead", "auto_convert": True,
+    })).json()
+    a = await client.post("/api/intake/ingest", headers={"Authorization": f"Bearer {asrc['key']}"}, json={
+        "name": "Auto Lead", "email": "auto@acme.com", "message": "Interested in pricing please.",
+    })
+    assert a.json()["status"] == "new"
+    leads = (await client.get("/api/crm/leads", headers=auth)).json()
+    assert any(le.get("email") == "auto@acme.com" for le in leads)

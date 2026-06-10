@@ -13,6 +13,7 @@ class SourceOut(BaseModel):
     key: str
     default_type: str
     active: bool
+    auto_convert: bool = False
     notify_user_id: uuid.UUID | None = None
     created_at: datetime
     submission_count: int = 0
@@ -21,6 +22,7 @@ class SourceOut(BaseModel):
 class SourceCreate(BaseModel):
     name: str
     default_type: str = "lead"
+    auto_convert: bool = False
     notify_user_id: uuid.UUID | None = None
 
 
@@ -28,6 +30,7 @@ class SourceUpdate(BaseModel):
     name: str | None = None
     default_type: str | None = None
     active: bool | None = None
+    auto_convert: bool | None = None
     notify_user_id: uuid.UUID | None = None
 
 
@@ -47,6 +50,8 @@ class SubmissionOut(BaseModel):
     page_url: str | None = None
     payload: dict | None = None
     status: str
+    spam_score: int = 0
+    spam_reasons: list[str] | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
     converted_lead_id: uuid.UUID | None = None

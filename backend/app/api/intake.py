@@ -30,6 +30,7 @@ from app.schemas.intake import (
 from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_labels
+from app.services.spam import score_submission, status_for
 
 # Token-authenticated ingest (WordPress etc. post here with the source token).
 public_router = APIRouter(prefix="/intake", tags=["intake-public"])
@@ -91,28 +92,42 @@ async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
         payload=extra or None,
         ip=request.client.host if request.client else None,
     )
+    # Spam screening -> quarantine flow.
+    score, reasons = score_submission(
+        name=sub.name, email=sub.email, phone=sub.phone,
+        subject=sub.subject, message=sub.message, payload=extra,
+    )
+    sub.spam_score = score
+    sub.spam_reasons = reasons or None
+    sub.status = status_for(score)
     db.add(sub)
     await db.flush()
-    # Notify the source owner, else everyone with CRM access.
-    recipients = (
-        [source.notify_user_id]
-        if source.notify_user_id
-        else (
-            await db.execute(
-                select(User.id).where(User.is_admin.is_(True), User.status == "active")
-            )
-        ).scalars().all()
-    )
-    for rid in recipients:
-        if rid:
-            await notify_user(
-                db, user_id=rid,
-                title=f"New {sub_type}: {sub.subject or sub.name or 'submission'}",
-                body=f"From {sub.name or sub.email or 'website'} via {source.name}.",
-                link="/inbox", category="info",
-            )
+
+    # A clean lead can auto-flow to the CRM when the source opts in.
+    if sub.status == "new" and sub.type == "lead" and source.auto_convert:
+        await _make_lead(db, sub, source)
+
+    # Notify only when it's a real (clean) submission — not quarantined/spam noise.
+    if sub.status == "new":
+        recipients = (
+            [source.notify_user_id]
+            if source.notify_user_id
+            else (
+                await db.execute(
+                    select(User.id).where(User.is_admin.is_(True), User.status == "active")
+                )
+            ).scalars().all()
+        )
+        for rid in recipients:
+            if rid:
+                await notify_user(
+                    db, user_id=rid,
+                    title=f"New {sub_type}: {sub.subject or sub.name or 'submission'}",
+                    body=f"From {sub.name or sub.email or 'website'} via {source.name}.",
+                    link="/inbox", category="info",
+                )
     await db.commit()
-    return {"ok": True, "id": str(sub.id)}
+    return {"ok": True, "id": str(sub.id), "status": sub.status, "spam_score": score}
 
 
 # ---- Sources -------------------------------------------------------------
@@ -144,6 +159,7 @@ async def create_source(
         name=payload.name.strip(),
         key=secrets.token_urlsafe(18),
         default_type=payload.default_type,
+        auto_convert=payload.auto_convert,
         notify_user_id=payload.notify_user_id,
     )
     db.add(s)
@@ -288,6 +304,36 @@ async def delete_submission(
         await db.commit()
 
 
+async def _make_lead(db: AsyncSession, sub: Submission, src: IntakeSource | None) -> CrmLead:
+    lead = CrmLead(
+        name=sub.name, email=sub.email, phone=sub.phone, company=sub.company,
+        source="web", source_detail=src.name if src else None,
+        notes="\n".join(filter(None, [sub.subject, sub.message])) or None,
+        origin_type="submission", origin_id=str(sub.id), status="new",
+    )
+    db.add(lead)
+    await db.flush()
+    sub.converted_lead_id = lead.id
+    return lead
+
+
+@router.post("/submissions/{sub_id}/release", response_model=SubmissionOut)
+async def release(
+    sub_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Approve a quarantined/spam submission as a real one (-> status `new`)."""
+    sub = await db.get(Submission, sub_id)
+    if not sub:
+        raise HTTPException(status_code=404, detail="Not found")
+    sub.status = "new"
+    record(db, user=user, action="updated", entity_type="submission", entity_id=sub.id,
+           summary="Released submission from quarantine")
+    await db.commit()
+    return (await _serialize(db, [sub]))[0]
+
+
 @router.post("/submissions/{sub_id}/convert-lead", response_model=SubmissionOut)
 async def convert_lead(
     sub_id: uuid.UUID,
@@ -300,16 +346,8 @@ async def convert_lead(
     if sub.converted_lead_id:
         raise HTTPException(status_code=409, detail="Already converted to a lead")
     src = await db.get(IntakeSource, sub.source_id) if sub.source_id else None
-    lead = CrmLead(
-        name=sub.name, email=sub.email, phone=sub.phone, company=sub.company,
-        source="web", source_detail=src.name if src else None,
-        notes="\n".join(filter(None, [sub.subject, sub.message])) or None,
-        origin_type="submission", origin_id=str(sub.id), status="new",
-    )
-    db.add(lead)
-    await db.flush()
-    sub.converted_lead_id = lead.id
-    if sub.status == "new":
+    lead = await _make_lead(db, sub, src)
+    if sub.status in ("new", "quarantined"):
         sub.status = "in_progress"
     record(db, user=user, action="created", entity_type="crm_lead", entity_id=lead.id,
            summary="Converted submission to CRM lead")

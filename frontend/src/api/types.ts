@@ -1443,6 +1443,7 @@ export interface IntakeSource {
   key: string;
   default_type: string;
   active: boolean;
+  auto_convert: boolean;
   notify_user_id?: string | null;
   created_at: string;
   submission_count: number;
@@ -1462,6 +1463,8 @@ export interface Submission {
   page_url?: string | null;
   payload?: Record<string, unknown> | null;
   status: string;
+  spam_score: number;
+  spam_reasons?: string[] | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
   converted_lead_id?: string | null;
