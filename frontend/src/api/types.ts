@@ -1192,6 +1192,8 @@ export interface HrDocument {
   uploaded_by_id?: string | null;
   created_at: string;
   days_to_expiry?: number | null;
+  signature_status?: string | null;
+  signature_request_id?: string | null;
 }
 
 export interface PayBand {

@@ -15,6 +15,7 @@ import {
   Mail,
   MapPin,
   Pencil,
+  PenLine,
   Phone,
   Sliders,
   Smartphone,
@@ -230,7 +231,7 @@ export default function ProfilePage() {
         )}
 
         {tab === "documents" && p.can_see_sensitive && (
-          <DocumentsSection userId={p.id} canManage={p.can_manage} />
+          <DocumentsSection userId={p.id} canManage={p.can_manage} isSelf={p.id === viewerId} />
         )}
 
         {tab === "performance" && (
@@ -546,13 +547,24 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
   );
 }
 
-function DocumentsSection({ userId, canManage }: { userId: string; canManage: boolean }) {
+function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canManage: boolean; isSelf: boolean }) {
   const { notify } = useToast();
   const docs = useFetch<HrDocument[]>(`/api/hr-documents/by-user/${userId}`);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ title: "", category: "contract", issue_date: "", expiry_date: "" });
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signing, setSigning] = useState<HrDocument | null>(null);
+
+  async function requestSig(id: string) {
+    try {
+      await api(`/api/hr-documents/${id}/signature-requests`, { method: "POST" });
+      notify("Signature requested.");
+      docs.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
 
   async function upload(e: React.FormEvent) {
     e.preventDefault();
@@ -630,8 +642,25 @@ function DocumentsSection({ userId, canManage }: { userId: string; canManage: bo
                       {d.days_to_expiry != null && !expired ? ` (${d.days_to_expiry}d)` : ""}
                     </div>
                   )}
+                  {d.signature_status && (
+                    <div className="mt-0.5">
+                      <span className={`badge ${d.signature_status === "signed" ? "green" : "amber"}`}>
+                        {d.signature_status === "signed" ? "✓ signed" : "awaiting signature"}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-none gap-1">
+                  {isSelf && d.signature_status === "pending" && (
+                    <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setSigning(d)}>
+                      Sign
+                    </button>
+                  )}
+                  {canManage && !d.signature_status && (
+                    <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => requestSig(d.id)} title="Request signature">
+                      <PenLine size={13} />
+                    </button>
+                  )}
                   <button
                     className="btn-sm inline-flex items-center gap-1"
                     style={{ flex: "0 0 auto" }}
@@ -650,7 +679,68 @@ function DocumentsSection({ userId, canManage }: { userId: string; canManage: bo
           })}
         </div>
       )}
+      {signing && (
+        <SignModal
+          doc={signing}
+          onClose={() => setSigning(null)}
+          onDone={() => { setSigning(null); docs.reload(); }}
+        />
+      )}
     </div>
+  );
+}
+
+function SignModal({ doc, onClose, onDone }: { doc: HrDocument; onClose: () => void; onDone: () => void }) {
+  const { notify } = useToast();
+  const [name, setName] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !consent || !doc.signature_request_id) return;
+    setBusy(true);
+    try {
+      await api(`/api/hr-documents/signatures/${doc.signature_request_id}/sign`, {
+        method: "POST",
+        body: { typed_name: name.trim(), consent },
+      });
+      notify("Document signed.");
+      onDone();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Sign — ${doc.title}`} onClose={onClose} maxWidth={460}>
+      <form onSubmit={submit}>
+        <p className="muted text-sm">
+          Review the document, then type your full name to e-sign. This records a
+          legal audit trail (your name, the date, and your IP address).
+        </p>
+        <button
+          type="button"
+          className="btn-sm my-2 inline-flex items-center gap-1"
+          style={{ flex: "0 0 auto" }}
+          onClick={() => downloadFile(`/api/hr-documents/${doc.id}/download`, doc.title).catch(() => notify("Download failed", "error"))}
+        >
+          <Download size={13} /> View document
+        </button>
+        <div className="field"><label>Full name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full legal name" /></div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="!w-auto" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          I agree this constitutes my electronic signature.
+        </label>
+        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy || !name.trim() || !consent}>
+            {busy ? "Signing…" : "Sign"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

@@ -37,6 +37,7 @@ from app.models.hr import (  # noqa: F401
     PerformanceGoal,
     Review,
     ReviewCycle,
+    SignatureRequest,
 )
 from app.models.custom_fields import (  # noqa: F401
     CustomFieldDef,

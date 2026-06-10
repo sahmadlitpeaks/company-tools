@@ -199,3 +199,32 @@ class Review(UUIDMixin, TimestampMixin, Base):
     rating: Mapped[int | None] = mapped_column(Integer)  # 1-5
     summary: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[date | None] = mapped_column(Date)
+
+
+# Status of an e-signature request on a document.
+SIGNATURE_STATUSES = {"pending", "signed", "declined"}
+
+
+class SignatureRequest(UUIDMixin, TimestampMixin, Base):
+    """A request for an employee to e-sign one of their HR documents.
+
+    Non-PKI e-signature: the signer types their name and consents; we store an
+    audit trail (who, when, IP, user-agent) — the BambooHR-style model.
+    """
+
+    __tablename__ = "signature_requests"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hr_documents.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    typed_name: Mapped[str | None] = mapped_column(String(255))
+    signed_at: Mapped[date | None] = mapped_column(Date)
+    audit_ip: Mapped[str | None] = mapped_column(String(64))
+    audit_agent: Mapped[str | None] = mapped_column(String(512))
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

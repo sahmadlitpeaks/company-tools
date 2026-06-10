@@ -21,3 +21,25 @@ class HrDocumentOut(BaseModel):
     created_at: datetime
     # Days until expiry (negative = already expired); None if no expiry.
     days_to_expiry: int | None = None
+    # Latest e-signature request for this doc (None = none requested).
+    signature_status: str | None = None
+    signature_request_id: uuid.UUID | None = None
+
+
+class SignatureRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str | None = None
+    user_id: uuid.UUID
+    user_name: str | None = None
+    status: str
+    typed_name: str | None = None
+    signed_at: date | None = None
+    created_at: datetime
+
+
+class SignIn(BaseModel):
+    typed_name: str
+    consent: bool = False
