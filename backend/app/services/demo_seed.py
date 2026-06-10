@@ -26,6 +26,19 @@ from app.models.asset import Asset, Folder
 from app.models.landing import LandingLead, LandingPage
 from app.models.notification import Notification
 from app.models.people import AccessGrant, OnboardingJourney, OnboardingTask
+from app.models.hr import (
+    CompensationRecord,
+    EmploymentEvent,
+    PerformanceGoal,
+    Review,
+    ReviewCycle,
+)
+from app.models.custom_fields import (
+    CustomFieldDef,
+    CustomFieldValue,
+    CustomTableDef,
+    CustomTableRow,
+)
 from app.models.product import Brochure, Product
 from app.models.qrcode import QRCode
 from app.models.shortlink import ShortLink
@@ -85,6 +98,15 @@ _MODELS = {
     "access_grant": AccessGrant,
     "onboarding_task": OnboardingTask,
     "onboarding_journey": OnboardingJourney,
+    "custom_field_value": CustomFieldValue,
+    "custom_table_row": CustomTableRow,
+    "custom_field_def": CustomFieldDef,
+    "custom_table_def": CustomTableDef,
+    "compensation_record": CompensationRecord,
+    "employment_event": EmploymentEvent,
+    "performance_goal": PerformanceGoal,
+    "review": Review,
+    "review_cycle": ReviewCycle,
     "leave_balance": LeaveBalance,
     "notification": Notification,
     "shortlink": ShortLink,
@@ -161,9 +183,13 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("Yusuf Raza", "Operations", "member", "pending", None),
         ("Mariam Saeed", "Sales", "member", "active", None),
     ]
+    _emp_types = ["full_time", "full_time", "full_time", "full_time", "full_time",
+                  "full_time", "contractor", "part_time"]
+    _offices = ["Dubai", "Dubai", "Abu Dhabi", "Dubai", "Dubai", "Abu Dhabi", "Remote", "Dubai"]
     users = []
     for full, dept, role, status, perms in people_spec:
         first, last = full.split(" ", 1)
+        i = len(users)
         u = User(
             email=f"{first.lower()}.{last.lower().replace(' ', '')}.demo@agholding.net",
             personal_email=f"{first.lower()}@example.com",
@@ -174,7 +200,10 @@ async def seed_demo(db: AsyncSession) -> dict:
             job_title={"Marketing": "Marketing Specialist", "IT": "IT Support",
                        "HR": "HR Manager", "Sales": "Account Executive",
                        "Finance": "Accountant", "Operations": "Ops Coordinator"}.get(dept, "Staff"),
-            mobile_phone="+9715000000" + str(len(users)),
+            mobile_phone="+9715000000" + str(i),
+            office_location=_offices[i],
+            employment_type=_emp_types[i],
+            hire_date=today - timedelta(days=120 + i * 95),
             role=role,
             is_admin=False,
             status=status,
@@ -186,6 +215,81 @@ async def seed_demo(db: AsyncSession) -> dict:
     for u in users:
         m.add("user", u)
     mkt_mgr, mkt, it, hr, sales1, fin, pending, sales2 = users
+
+    # Reporting lines (for the org chart + profile relationships).
+    for rep, mgr in [(mkt, mkt_mgr), (sales1, mkt_mgr), (sales2, mkt_mgr),
+                     (it, hr), (fin, hr), (pending, hr)]:
+        rep.manager_id = mgr.id
+
+    # ---- HR records: employment history, compensation, goals, reviews ----
+    _hr: list[tuple] = []
+
+    def hradd(obj, key):
+        db.add(obj)
+        _hr.append((obj, key))
+        return obj
+
+    for u in users:
+        hradd(EmploymentEvent(
+            user_id=u.id, event_type="hired", effective_date=u.hire_date,
+            title="Joined the company", created_by_id=hr.id,
+        ), "employment_event")
+    hradd(EmploymentEvent(
+        user_id=mkt_mgr.id, event_type="promotion",
+        effective_date=today - timedelta(days=60),
+        title="Promoted to Marketing Manager", created_by_id=hr.id,
+    ), "employment_event")
+    _salaries = {mkt_mgr.id: 18000, mkt.id: 9000, it.id: 8500, hr.id: 16000,
+                 sales1.id: 10000, fin.id: 11000, sales2.id: 7000}
+    for uid, amt in _salaries.items():
+        hradd(CompensationRecord(
+            user_id=uid, record_type="salary", amount=amt, currency="AED",
+            pay_period="monthly", effective_date=today - timedelta(days=90),
+            created_by_id=hr.id,
+        ), "compensation_record")
+    for uid, title, prog in [
+        (mkt.id, "Launch Q3 brand campaign", 60),
+        (mkt.id, "Grow social following 20%", 35),
+        (sales1.id, "Close 12 enterprise deals", 50),
+        (it.id, "Roll out MDM to all laptops", 80),
+    ]:
+        hradd(PerformanceGoal(
+            user_id=uid, title=title, status="in_progress", progress=prog,
+            due_date=today + timedelta(days=90), created_by_id=mkt_mgr.id,
+        ), "performance_goal")
+    cycle = hradd(ReviewCycle(name="2026 H1 Review", period="H1 2026", status="open",
+                              due_date=today + timedelta(days=30)), "review_cycle")
+    await db.flush()
+    for uid, reviewer, rating in [(mkt.id, mkt_mgr.id, 4), (sales1.id, mkt_mgr.id, 5)]:
+        hradd(Review(
+            cycle_id=cycle.id, user_id=uid, reviewer_id=reviewer,
+            status="submitted", rating=rating, summary="Strong contribution this cycle.",
+            submitted_at=today - timedelta(days=3),
+        ), "review")
+
+    # ---- Custom fields + a Dependents table (so profiles look rich) ----
+    cf_shirt = hradd(CustomFieldDef(section="personal", key="t_shirt_size", label="T-shirt size",
+                     field_type="select", options=["S", "M", "L", "XL"], sort=0), "custom_field_def")
+    hradd(CustomFieldDef(section="personal", key="linkedin", label="LinkedIn", field_type="text", sort=1), "custom_field_def")
+    hradd(CustomFieldDef(section="personal", key="blood_group", label="Blood group",
+          field_type="text", sensitive=True, sort=2), "custom_field_def")
+    dependents = hradd(CustomTableDef(
+        key="dependents", label="Dependents", sensitive=True,
+        columns=[{"key": "name", "label": "Name", "type": "text"},
+                 {"key": "relation", "label": "Relationship", "type": "text"},
+                 {"key": "dob", "label": "Date of birth", "type": "date"}],
+    ), "custom_table_def")
+    await db.flush()
+    _shirt = {mkt_mgr.id: "L", mkt.id: "M", it.id: "XL", hr.id: "M", sales1.id: "L"}
+    for uid, size in _shirt.items():
+        hradd(CustomFieldValue(def_id=cf_shirt.id, user_id=uid, value=size), "custom_field_value")
+    hradd(CustomTableRow(table_id=dependents.id, user_id=mkt_mgr.id,
+          data={"name": "Lina Khan", "relation": "Daughter", "dob": "2016-05-02"}), "custom_table_row")
+
+    # Register all HR rows once their ids are assigned (for clean teardown).
+    await db.flush()
+    for obj, key in _hr:
+        m.add(key, obj)
 
     # ---- Marketing assets ----
     folders = [Folder(name=n, created_by_id=mkt.id) for n in ("Brand Guidelines", "Campaign 2026")]
