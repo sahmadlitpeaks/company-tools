@@ -38,6 +38,7 @@ import ReportsPage from "./pages/ReportsPage";
 import RecruitingPage from "./pages/RecruitingPage";
 import PayrollPage from "./pages/PayrollPage";
 import BenefitsPage from "./pages/BenefitsPage";
+import EngagementPage from "./pages/EngagementPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -129,6 +130,7 @@ export default function App() {
           <Route path="/reports" element={<Protected module="hr"><ReportsPage /></Protected>} />
           <Route path="/payroll" element={<Protected module="hr"><PayrollPage /></Protected>} />
           <Route path="/benefits" element={<Protected module="hr"><BenefitsPage /></Protected>} />
+          <Route path="/engagement" element={<EngagementPage />} />
           <Route path="/recruiting" element={<Protected module="recruiting"><RecruitingPage /></Protected>} />
           <Route path="/time" element={<Protected module="attendance"><TimePage /></Protected>} />
           <Route

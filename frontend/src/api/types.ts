@@ -1660,3 +1660,50 @@ export interface Dependent {
   relationship_type: string;
   date_of_birth?: string | null;
 }
+
+export interface SurveyQuestion {
+  id: string;
+  text: string;
+  qtype: string;
+  sort: number;
+}
+
+export interface Survey {
+  id: string;
+  title: string;
+  description?: string | null;
+  kind: string;
+  anonymous: boolean;
+  status: string;
+  response_count: number;
+  created_at: string;
+  questions: SurveyQuestion[];
+}
+
+export interface QuestionResult {
+  question_id: string;
+  text: string;
+  qtype: string;
+  response_count: number;
+  average?: number | null;
+  enps?: number | null;
+  text_answers: string[];
+}
+
+export interface SurveyResults {
+  survey_id: string;
+  title: string;
+  response_count: number;
+  questions: QuestionResult[];
+}
+
+export interface Kudos {
+  id: string;
+  from_user_id?: string | null;
+  from_name?: string | null;
+  to_user_id: string;
+  to_name?: string | null;
+  message: string;
+  value_tag?: string | null;
+  created_at: string;
+}

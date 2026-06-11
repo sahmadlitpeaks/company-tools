@@ -81,3 +81,10 @@ from app.models.benefits import (  # noqa: F401
     BenefitPlan,
     Dependent,
 )
+from app.models.engagement import (  # noqa: F401
+    Kudos,
+    Survey,
+    SurveyAnswer,
+    SurveyQuestion,
+    SurveyResponse,
+)
