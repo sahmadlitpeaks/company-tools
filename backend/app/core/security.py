@@ -14,6 +14,24 @@ from app.core.config import settings
 _PBKDF2_ALGO = "pbkdf2_sha256"
 _PBKDF2_ROUNDS = 240_000
 
+# ---- Password policy ----
+PASSWORD_MIN_LENGTH = 8
+
+
+def password_policy_error(password: str) -> str | None:
+    """Return a human-readable reason if ``password`` is too weak, else None.
+
+    Requires the configured minimum length and a mix of letters and digits.
+    """
+    pw = password or ""
+    if len(pw) < PASSWORD_MIN_LENGTH:
+        return f"Password must be at least {PASSWORD_MIN_LENGTH} characters"
+    if not any(c.isalpha() for c in pw):
+        return "Password must contain a letter"
+    if not any(c.isdigit() for c in pw):
+        return "Password must contain a number"
+    return None
+
 
 def hash_password(password: str) -> str:
     """Return an encoded hash: ``pbkdf2_sha256$rounds$salt_b64$hash_b64``."""

@@ -13,6 +13,8 @@ export default function LoginPage() {
   const { notify } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   // The production build is static, so DEV-flag detection won't work — ask the
   // backend at runtime which sign-in options to show.
@@ -40,11 +42,18 @@ export default function LoginPage() {
   async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !password) return;
+    if (mfaRequired && !code) return;
     setBusy(true);
     try {
-      await passwordLogin(email, password);
+      await passwordLogin(email, password, code || undefined);
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Login failed", "error");
+      const msg = err instanceof Error ? err.message : "Login failed";
+      if (/2fa|code required/i.test(msg) && !mfaRequired) {
+        setMfaRequired(true);
+        notify("Enter your authenticator code to continue.", "info");
+      } else {
+        notify(msg, "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -118,11 +127,26 @@ export default function LoginPage() {
                   required
                 />
               </div>
+              {mfaRequired && (
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Authenticator code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    autoFocus
+                    required
+                  />
+                </div>
+              )}
               <button
                 className="btn-primary flex w-full items-center justify-center gap-2 py-3"
                 disabled={busy}
               >
-                {busy ? "Signing in…" : "Sign in"}
+                {busy ? "Signing in…" : mfaRequired ? "Verify & sign in" : "Sign in"}
               </button>
             </form>
           )}

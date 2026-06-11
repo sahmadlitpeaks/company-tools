@@ -80,6 +80,7 @@ const NAV: NavEntry[] = [
   { section: "People" },
   { to: "/hr", label: "HR Dashboard", icon: HeartHandshake, module: "hr" },
   { to: "/profile", label: "My Profile", icon: UserRound },
+  { to: "/security", label: "Security (2FA)", icon: ShieldCheck },
   { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
   { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops" },
   { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },

@@ -13,7 +13,7 @@ from app.auth.azure import fetch_graph_users, get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
-from app.core.security import hash_password
+from app.core.security import hash_password, password_policy_error
 from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User
@@ -123,10 +123,9 @@ async def create_user(
         status=payload.status,
     )
     if payload.password:
-        if len(payload.password) < 8:
-            raise HTTPException(
-                status_code=422, detail="Password must be at least 8 characters"
-            )
+        err = password_policy_error(payload.password)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
         user.password_hash = hash_password(payload.password)
         user.must_change_password = True
     db.add(user)
@@ -306,8 +305,9 @@ async def set_password(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if len(payload.password or "") < 8:
-        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    err = password_policy_error(payload.password or "")
+    if err:
+        raise HTTPException(status_code=422, detail=err)
     user.password_hash = hash_password(payload.password)
     user.must_change_password = True
     record(

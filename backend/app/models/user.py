@@ -88,6 +88,9 @@ class User(UUIDMixin, TimestampMixin, Base):
     # Notification categories the user has muted for outbound channels
     # (in-app notifications are always delivered).
     notify_muted: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Two-factor authentication (TOTP). Secret stored once enabled.
+    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     managed_companies: Mapped[list["object"]] = relationship(
         "Company", secondary=user_companies, lazy="selectin"
