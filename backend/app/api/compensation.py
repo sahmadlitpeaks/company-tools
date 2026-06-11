@@ -20,6 +20,7 @@ from app.models.hr import (
     EmploymentEvent,
     PayBand,
 )
+from app.models.benefits import BenefitEnrollment, BenefitPlan
 from app.models.user import User
 from app.schemas.compensation import (
     CompensationCreate,
@@ -28,6 +29,8 @@ from app.schemas.compensation import (
     PayBandCreate,
     PayBandOut,
     PayBandUpdate,
+    RewardComponent,
+    TotalRewards,
 )
 from app.services.activity import record as log
 
@@ -172,6 +175,94 @@ async def current(
         effective_date=rec.effective_date,
         band_name=bands.get(rec.band_id),
         annualised=_annualised(Decimal(rec.amount), rec.pay_period),
+    )
+
+
+@router.get("/total-rewards/{user_id}", response_model=TotalRewards)
+async def total_rewards(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    """A total-rewards statement: base pay + employer benefit contributions +
+    this year's bonuses/allowances. An employee may view their own; HR any."""
+    if viewer.id != user_id and not _is_hr(viewer):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    components: list[RewardComponent] = []
+    currency = "USD"
+
+    # Base pay (latest salary record, annualised).
+    salary = (
+        await db.execute(
+            select(CompensationRecord)
+            .where(
+                CompensationRecord.user_id == user_id,
+                CompensationRecord.record_type == "salary",
+            )
+            .order_by(CompensationRecord.effective_date.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    base_annual = Decimal("0")
+    if salary:
+        currency = salary.currency
+        base_annual = _annualised(Decimal(salary.amount), salary.pay_period)
+        components.append(RewardComponent(label="Base salary", category="cash", annual_amount=base_annual))
+
+    # This year's bonuses / allowances / adjustments.
+    year = date.today().year
+    extras = (
+        await db.execute(
+            select(CompensationRecord).where(
+                CompensationRecord.user_id == user_id,
+                CompensationRecord.record_type != "salary",
+            )
+        )
+    ).scalars().all()
+    bonuses_annual = Decimal("0")
+    for e in extras:
+        if e.effective_date and e.effective_date.year == year:
+            amt = Decimal(e.amount)
+            bonuses_annual += amt
+            components.append(RewardComponent(
+                label=e.record_type.title(), category="bonus", annual_amount=amt
+            ))
+
+    # Employer benefit contributions (enrolled plans, monthly → annual).
+    enrollments = (
+        await db.execute(
+            select(BenefitEnrollment).where(
+                BenefitEnrollment.user_id == user_id,
+                BenefitEnrollment.status == "enrolled",
+            )
+        )
+    ).scalars().all()
+    benefits_annual = Decimal("0")
+    for en in enrollments:
+        plan = await db.get(BenefitPlan, en.plan_id)
+        if not plan:
+            continue
+        annual = (Decimal(plan.employer_cost) * 12).quantize(Decimal("0.01"))
+        if annual > 0:
+            benefits_annual += annual
+            components.append(RewardComponent(
+                label=f"{plan.name} (employer)", category="benefit", annual_amount=annual
+            ))
+
+    total = base_annual + bonuses_annual + benefits_annual
+    return TotalRewards(
+        user_id=user_id,
+        user_name=target.display_name or target.email,
+        currency=currency,
+        base_annual=base_annual,
+        bonuses_annual=bonuses_annual,
+        benefits_annual=benefits_annual,
+        total_annual=total,
+        components=components,
     )
 
 

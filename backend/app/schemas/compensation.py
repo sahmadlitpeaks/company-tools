@@ -73,3 +73,22 @@ class CompensationSummary(BaseModel):
     band_name: str | None = None
     # Annualised figure for comparison (monthly*12, hourly*2080).
     annualised: Decimal | None = None
+
+
+class RewardComponent(BaseModel):
+    label: str
+    category: str  # cash | benefit | bonus
+    annual_amount: Decimal
+
+
+class TotalRewards(BaseModel):
+    """A total-rewards statement: cash + employer benefit contributions + bonuses."""
+
+    user_id: uuid.UUID
+    user_name: str | None = None
+    currency: str = "USD"
+    base_annual: Decimal = Decimal("0")
+    bonuses_annual: Decimal = Decimal("0")
+    benefits_annual: Decimal = Decimal("0")
+    total_annual: Decimal = Decimal("0")
+    components: list[RewardComponent] = []

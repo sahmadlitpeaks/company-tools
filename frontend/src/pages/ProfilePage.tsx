@@ -29,6 +29,7 @@ import { api, downloadFile } from "../api/client";
 import type {
   CompensationRecord,
   CompensationSummary,
+  TotalRewards,
   CustomFieldValue,
   CustomTableValues,
   CustomValues,
@@ -443,6 +444,7 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
   const { notify } = useToast();
   const current = useFetch<CompensationSummary>(`/api/compensation/current/${userId}`);
   const records = useFetch<CompensationRecord[]>(`/api/compensation/by-user/${userId}`);
+  const rewards = useFetch<TotalRewards>(`/api/compensation/total-rewards/${userId}`);
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ record_type: "salary", amount: "", currency: "USD", pay_period: "annual", effective_date: "", note: "" });
   const [busy, setBusy] = useState(false);
@@ -541,6 +543,23 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {rewards.data && Number(rewards.data.total_annual) > 0 && (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="spread mb-1">
+            <span className="text-sm font-semibold">Total rewards (annual)</span>
+            <span className="text-lg font-bold">{money(rewards.data.total_annual, rewards.data.currency)}</span>
+          </div>
+          <div className="space-y-0.5 text-xs">
+            {rewards.data.components.map((c, i) => (
+              <div key={i} className="flex justify-between">
+                <span className="muted">{c.label}</span>
+                <span>{money(c.annual_amount, rewards.data!.currency)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

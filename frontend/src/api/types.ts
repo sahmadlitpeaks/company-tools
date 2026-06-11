@@ -1749,3 +1749,20 @@ export interface ContinuousFeedback {
   body: string;
   created_at: string;
 }
+
+export interface RewardComponent {
+  label: string;
+  category: string;
+  annual_amount: string | number;
+}
+
+export interface TotalRewards {
+  user_id: string;
+  user_name?: string | null;
+  currency: string;
+  base_annual: string | number;
+  bonuses_annual: string | number;
+  benefits_annual: string | number;
+  total_annual: string | number;
+  components: RewardComponent[];
+}
