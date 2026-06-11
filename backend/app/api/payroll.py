@@ -12,7 +12,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -289,6 +289,80 @@ async def register_csv(
         iter([buf.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/runs/{run_id}/bank.csv")
+async def bank_file(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A bank-transfer payment file (net pay per employee) for a finalized run."""
+    _require_hr(user)
+    run = await _run_with_slips(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != "finalized":
+        raise HTTPException(status_code=409, detail="Finalize the run before exporting payments")
+    names = await _names_for(db, [s.user_id for s in run.payslips])
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Beneficiary", "Amount", "Currency", "Reference"])
+    for s in sorted(run.payslips, key=lambda s: (names.get(s.user_id) or "").lower()):
+        if Decimal(str(s.net or 0)) <= 0:
+            continue
+        writer.writerow([
+            names.get(s.user_id) or str(s.user_id),
+            f"{Decimal(str(s.net or 0)):.2f}",
+            s.currency,
+            f"Salary {run.period}",
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="payments-{run.period}.csv"'},
+    )
+
+
+@router.get("/payslips/{slip_id}/pdf")
+async def payslip_pdf(
+    slip_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A printable payslip PDF. The employee can fetch their own (finalized);
+    HR can fetch anyone's."""
+    slip = await db.get(Payslip, slip_id)
+    if not slip:
+        raise HTTPException(status_code=404, detail="Payslip not found")
+    run = await db.get(PayrollRun, slip.run_id)
+    owner = slip.user_id == user.id
+    if not (is_hr(user) or owner):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if owner and not is_hr(user) and (not run or run.status != "finalized"):
+        raise HTTPException(status_code=403, detail="Payslip not available yet")
+
+    from app.services.payslip_pdf import render_payslip
+
+    names = await _names_for(db, [slip.user_id])
+    pdf = render_payslip(
+        company="AG Holding",
+        employee=names.get(slip.user_id) or "Employee",
+        period=run.period if run else "",
+        currency=slip.currency,
+        base_salary=slip.base_salary,
+        items=slip.items or [],
+        gross=slip.gross,
+        deductions=slip.deductions,
+        net=slip.net,
+    )
+    period = run.period if run else "payslip"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="payslip-{period}.pdf"'},
     )
 
 

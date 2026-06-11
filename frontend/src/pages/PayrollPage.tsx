@@ -118,6 +118,12 @@ function RunDetail({ run, onBack }: { run: PayrollRun; onBack: () => void }) {
               onClick={() => downloadFile(`/api/payroll/runs/${run.id}/register.csv`, `payroll-${run.period}.csv`).catch(() => notify("Export failed", "error"))}>
               <Download size={15} /> Register CSV
             </button>
+            {finalized && (
+              <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }}
+                onClick={() => downloadFile(`/api/payroll/runs/${run.id}/bank.csv`, `payments-${run.period}.csv`).catch(() => notify("Export failed", "error"))}>
+                <Download size={15} /> Bank file
+              </button>
+            )}
             {!finalized && <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={finalize}><Banknote size={15} /> Finalize</button>}
           </div>
         }
@@ -127,7 +133,7 @@ function RunDetail({ run, onBack }: { run: PayrollRun; onBack: () => void }) {
       ) : (
         <div className="card">
           <table className="table">
-            <thead><tr><th>Employee</th><th>Base</th><th>Gross</th><th>Deductions</th><th>Net</th>{!finalized && <th />}</tr></thead>
+            <thead><tr><th>Employee</th><th>Base</th><th>Gross</th><th>Deductions</th><th>Net</th><th /></tr></thead>
             <tbody>
               {slips.data!.payslips.map((s) => (
                 <tr key={s.id}>
@@ -136,7 +142,17 @@ function RunDetail({ run, onBack }: { run: PayrollRun; onBack: () => void }) {
                   <td>{money(s.gross, s.currency)}</td>
                   <td>{money(s.deductions, s.currency)}</td>
                   <td className="font-semibold">{money(s.net, s.currency)}</td>
-                  {!finalized && <td className="text-right"><button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEdit(s)}>Adjust</button></td>}
+                  <td className="text-right">
+                    <span className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                      {!finalized && <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEdit(s)}>Adjust</button>}
+                      {finalized && (
+                        <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }}
+                          onClick={() => downloadFile(`/api/payroll/payslips/${s.id}/pdf`, `payslip-${run.period}.pdf`).catch(() => notify("Download failed", "error"))}>
+                          <Download size={13} /> PDF
+                        </button>
+                      )}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

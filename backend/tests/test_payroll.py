@@ -96,3 +96,29 @@ async def test_payroll_requires_hr(client, auth):
     assert (
         await client.post("/api/payroll/runs", headers=member_auth, json={"period": "2026-07"})
     ).status_code == 403
+
+
+async def test_payslip_pdf_and_bank_file(client, auth):
+    from helpers import make_member
+    emp_hdr, emp = await make_member(client, auth, "pay-pdf@agholding.net")
+    await client.post(f"/api/compensation/by-user/{emp}", headers=auth, json={
+        "record_type": "salary", "amount": 5000, "currency": "USD",
+        "pay_period": "monthly", "effective_date": "2026-01-01",
+    })
+    run = (await client.post("/api/payroll/runs", headers=auth, json={"period": "2026-09"})).json()
+    detail = (await client.get(f"/api/payroll/runs/{run['id']}", headers=auth)).json()
+    slip = next(s for s in detail["payslips"] if s["user_id"] == emp)
+
+    # Bank file requires a finalized run.
+    assert (await client.get(f"/api/payroll/runs/{run['id']}/bank.csv", headers=auth)).status_code == 409
+    # Employee can't see their PDF before finalize.
+    assert (await client.get(f"/api/payroll/payslips/{slip['id']}/pdf", headers=emp_hdr)).status_code == 403
+
+    await client.post(f"/api/payroll/runs/{run['id']}/finalize", headers=auth)
+
+    pdf = await client.get(f"/api/payroll/payslips/{slip['id']}/pdf", headers=emp_hdr)
+    assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content[:5] == b"%PDF-"
+
+    bank = await client.get(f"/api/payroll/runs/{run['id']}/bank.csv", headers=auth)
+    assert bank.status_code == 200 and "Beneficiary" in bank.text and "Salary 2026-09" in bank.text
