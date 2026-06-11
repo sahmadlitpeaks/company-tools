@@ -76,3 +76,8 @@ from app.models.recruiting import (  # noqa: F401
     Offer,
 )
 from app.models.payroll import Payslip, PayrollRun  # noqa: F401
+from app.models.benefits import (  # noqa: F401
+    BenefitEnrollment,
+    BenefitPlan,
+    Dependent,
+)

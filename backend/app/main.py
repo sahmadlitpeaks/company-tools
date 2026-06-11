@@ -32,6 +32,7 @@ from app.api import (
     custom_fields,
     hr,
     hr_documents,
+    benefits,
     payroll,
     performance,
     phones,
@@ -153,6 +154,7 @@ app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(compensation.router, prefix=api_prefix)
 app.include_router(performance.router, prefix=api_prefix)
 app.include_router(payroll.router, prefix=api_prefix)
+app.include_router(benefits.router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(recruiting.router, prefix=api_prefix, dependencies=_mod("recruiting"))

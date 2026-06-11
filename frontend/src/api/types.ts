@@ -1601,3 +1601,43 @@ export interface PayrollRun {
   payslip_count: number;
   total_net: string | number;
 }
+
+export interface BenefitPlan {
+  id: string;
+  name: string;
+  category: string;
+  carrier?: string | null;
+  description?: string | null;
+  currency: string;
+  employee_cost: string | number;
+  employer_cost: string | number;
+  active: boolean;
+  enrollment_open: boolean;
+  sort: number;
+  enrolled_count: number;
+  created_at: string;
+}
+
+export interface BenefitEnrollment {
+  id: string;
+  plan_id: string;
+  plan_name?: string | null;
+  category?: string | null;
+  user_id: string;
+  employee_name?: string | null;
+  status: string;
+  coverage_level: string;
+  elected_cost: string | number;
+  currency?: string | null;
+  effective_date: string;
+  end_date?: string | null;
+  note?: string | null;
+}
+
+export interface Dependent {
+  id: string;
+  user_id: string;
+  name: string;
+  relationship_type: string;
+  date_of_birth?: string | null;
+}
