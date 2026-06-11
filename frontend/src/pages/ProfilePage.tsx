@@ -553,13 +553,13 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="spread mb-1">
             <span className="text-sm font-semibold">Total rewards (annual)</span>
-            <span className="text-lg font-bold">{money(rewards.data.total_annual, rewards.data.currency)}</span>
+            <span className="text-lg font-bold">{money(String(rewards.data.total_annual), rewards.data.currency)}</span>
           </div>
           <div className="space-y-0.5 text-xs">
             {rewards.data.components.map((c, i) => (
               <div key={i} className="flex justify-between">
                 <span className="muted">{c.label}</span>
-                <span>{money(c.annual_amount, rewards.data!.currency)}</span>
+                <span>{money(String(c.annual_amount), rewards.data!.currency)}</span>
               </div>
             ))}
           </div>

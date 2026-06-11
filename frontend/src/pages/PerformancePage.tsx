@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CalendarDays, ClipboardList, MessageSquarePlus, Plus, Star, UsersRound } from "lucide-react";
 import { api } from "../api/client";
-import type { ContinuousFeedback, OneOnOne, Review, ReviewCycle, ReviewFeedback, User } from "../api/types";
+import type { OneOnOne, Review, ReviewCycle, ReviewFeedback, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
