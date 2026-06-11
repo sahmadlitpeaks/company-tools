@@ -1571,3 +1571,33 @@ export interface CandidateDetail extends Candidate {
   interviews: InterviewItem[];
   offers: OfferItem[];
 }
+
+export interface PayslipItem {
+  label: string;
+  amount: string | number;
+  kind: string; // "earning" | "deduction"
+}
+
+export interface Payslip {
+  id: string;
+  run_id: string;
+  user_id: string;
+  employee_name?: string | null;
+  period?: string | null;
+  currency: string;
+  base_salary: string | number;
+  items: PayslipItem[];
+  gross: string | number;
+  deductions: string | number;
+  net: string | number;
+}
+
+export interface PayrollRun {
+  id: string;
+  period: string;
+  status: string;
+  note?: string | null;
+  created_at: string;
+  payslip_count: number;
+  total_net: string | number;
+}
