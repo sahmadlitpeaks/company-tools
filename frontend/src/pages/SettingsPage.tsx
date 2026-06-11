@@ -390,6 +390,8 @@ export default function SettingsPage() {
             </button>
           </div>
 
+          <NotificationsCard />
+
           <IntegrationsSettings />
 
           <DemoDataCard variant="card" />
@@ -410,6 +412,48 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function NotificationsCard() {
+  const { notify } = useToast();
+  const [status, setStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void api<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean }>("/api/notifications/channels")
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      const res = await api<{ external_channels: string[] }>("/api/notifications/test", { method: "POST" });
+      notify(res.external_channels.length ? `Sent via: ${res.external_channels.join(", ")}` : "In-app notification sent (no external channels configured).");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <div className="spread mb-3">
+        <h3 className="m-0 flex items-center gap-2"><span className="text-xl">🔔</span> Notifications</h3>
+        <span className={`badge ${status?.outbound_enabled ? "green" : "amber"}`}>{status?.outbound_enabled ? "Outbound on" : "In-app only"}</span>
+      </div>
+      <p className="muted mt-0 text-sm">
+        In-app notifications always work. Configure SMTP and a Slack webhook (env vars
+        <code> SMTP_HOST</code>, <code>SLACK_WEBHOOK_URL</code>) and set <code>NOTIFY_OUTBOUND=true</code>
+        to also mirror notifications to email and Slack.
+      </p>
+      <div className="flex flex-wrap gap-2 text-sm">
+        <span className={`badge ${status?.email_configured ? "green" : ""}`}>Email {status?.email_configured ? "configured" : "off"}</span>
+        <span className={`badge ${status?.slack_configured ? "green" : ""}`}>Slack {status?.slack_configured ? "configured" : "off"}</span>
+      </div>
+      <button className="btn mt-3 flex-none" disabled={busy} onClick={sendTest}>{busy ? "Sending…" : "Send test notification"}</button>
     </div>
   );
 }

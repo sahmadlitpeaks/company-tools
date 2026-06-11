@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.models.notification import Notification
 from app.models.user import User
 from app.services.asset_alerts import run_asset_alerts
+from app.services.notify import notify_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -85,3 +86,40 @@ async def check_warranties(
 ):
     """Run warranty + maintenance alerts now (also runs automatically)."""
     return await run_asset_alerts(db)
+
+
+@router.get("/channels")
+async def channel_status(_: User = Depends(get_current_user)):
+    """Which outbound notification channels are configured/enabled."""
+    from app.core.config import settings
+    from app.services.dispatch import email_enabled, slack_enabled
+
+    return {
+        "outbound_enabled": settings.NOTIFY_OUTBOUND,
+        "email_configured": email_enabled(),
+        "slack_configured": slack_enabled(),
+    }
+
+
+@router.post("/test")
+async def test_outbound(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Send a test notification to the current user across configured channels."""
+    from app.services.dispatch import deliver_notification
+
+    await notify_user(
+        db, user_id=user.id,
+        title="Test notification",
+        body="This is a test of the in-app notification channel.",
+        link="/",
+        category="info",
+    )
+    await db.commit()
+    attempted = deliver_notification(
+        to_email=user.email,
+        title="Test notification",
+        body="This confirms outbound email/Slack delivery is working.",
+        link="/",
+    )
+    return {"in_app": True, "external_channels": attempted}
