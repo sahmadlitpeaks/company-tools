@@ -88,3 +88,8 @@ from app.models.engagement import (  # noqa: F401
     SurveyQuestion,
     SurveyResponse,
 )
+from app.models.performance import (  # noqa: F401
+    ContinuousFeedback,
+    OneOnOne,
+    ReviewFeedback,
+)

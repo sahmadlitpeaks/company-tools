@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ClipboardList, Plus, Star } from "lucide-react";
+import { CalendarDays, ClipboardList, MessageSquarePlus, Plus, Star, UsersRound } from "lucide-react";
 import { api } from "../api/client";
-import type { Review, ReviewCycle, User } from "../api/types";
+import type { ContinuousFeedback, OneOnOne, Review, ReviewCycle, ReviewFeedback, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
@@ -12,22 +12,50 @@ export default function PerformancePage() {
   const cycles = useFetch<ReviewCycle[]>(isHr ? "/api/performance/cycles" : null);
   const toReview = useFetch<Review[]>("/api/performance/reviews?scope=to_review");
   const mine = useFetch<Review[]>("/api/performance/reviews?scope=mine");
+  const feedbackQueue = useFetch<ReviewFeedback[]>("/api/performance/feedback/mine");
+  const oneOnOnes = useFetch<OneOnOne[]>("/api/performance/one-on-ones");
   const [newCycle, setNewCycle] = useState(false);
   const [editing, setEditing] = useState<Review | null>(null);
+  const [fillFeedback, setFillFeedback] = useState<ReviewFeedback | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [giving, setGiving] = useState(false);
 
   return (
     <div>
       <PageHead
         title="Performance"
-        subtitle="Review cycles and the reviews you owe or have received."
+        subtitle="Reviews, 360 feedback, 1:1s and continuous feedback."
         action={
-          isHr ? (
-            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setNewCycle(true)}>
-              <Plus size={15} /> New cycle
+          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setGiving(true)}>
+              <MessageSquarePlus size={15} /> Give feedback
             </button>
-          ) : undefined
+            {isHr && (
+              <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setNewCycle(true)}>
+                <Plus size={15} /> New cycle
+              </button>
+            )}
+          </div>
         }
       />
+
+      {/* 360 feedback requested from me */}
+      {(feedbackQueue.data?.length ?? 0) > 0 && (
+        <div className="card mb-4">
+          <h3 className="mt-0 inline-flex items-center gap-2"><UsersRound size={18} className="text-brand-600" /> Feedback requested from you</h3>
+          <div className="divide-y divide-slate-100">
+            {feedbackQueue.data!.map((f) => (
+              <div key={f.id} className="flex items-center justify-between py-2 text-sm">
+                <span>
+                  <span className="font-medium">{f.subject_name}</span>
+                  <span className="muted"> · {f.cycle_name} · as {f.relation}</span>
+                </span>
+                <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setFillFeedback(f)}>Give feedback</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid cols-2">
         <div className="card">
@@ -97,9 +125,214 @@ export default function PerformancePage() {
         </div>
       )}
 
+      {/* 1:1 meetings */}
+      <div className="card mt-4">
+        <div className="spread">
+          <h3 className="m-0 inline-flex items-center gap-2"><CalendarDays size={18} className="text-brand-600" /> 1:1 meetings</h3>
+          <button className="btn-sm btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setScheduling(true)}>
+            <Plus size={14} /> Schedule 1:1
+          </button>
+        </div>
+        {oneOnOnes.loading ? (
+          <Loading />
+        ) : (oneOnOnes.data?.length ?? 0) === 0 ? (
+          <Empty message="No 1:1s scheduled." />
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {oneOnOnes.data!.map((o) => (
+              <OneOnOneRow key={o.id} o={o} meId={user?.id} onChange={() => oneOnOnes.reload()} />
+            ))}
+          </div>
+        )}
+      </div>
+
       {newCycle && <NewCycleModal onClose={() => setNewCycle(false)} onDone={() => { setNewCycle(false); cycles.reload(); }} />}
       {editing && <ReviewModal review={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); toReview.reload(); }} />}
+      {fillFeedback && <FeedbackModal fb={fillFeedback} onClose={() => setFillFeedback(null)} onDone={() => { setFillFeedback(null); feedbackQueue.reload(); }} />}
+      {scheduling && <ScheduleOneOnOneModal onClose={() => setScheduling(false)} onDone={() => { setScheduling(false); oneOnOnes.reload(); }} />}
+      {giving && <GiveFeedbackModal onClose={() => setGiving(false)} onDone={() => { setGiving(false); }} />}
     </div>
+  );
+}
+
+function OneOnOneRow({ o, meId, onChange }: { o: OneOnOne; meId?: string; onChange: () => void }) {
+  const { notify } = useToast();
+  const [open, setOpen] = useState(false);
+  const other = o.manager_id === meId ? o.employee_name : o.manager_name;
+  const when = new Date(o.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  async function toggleItem(idx: number) {
+    const agenda = o.agenda.map((a, i) => (i === idx ? { ...a, done: !a.done } : a));
+    await api(`/api/performance/one-on-ones/${o.id}`, { method: "PATCH", body: { agenda } });
+    onChange();
+  }
+  async function setStatus(status: string) {
+    try {
+      await api(`/api/performance/one-on-ones/${o.id}`, { method: "PATCH", body: { status } });
+      onChange();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+
+  return (
+    <div className="py-2 text-sm">
+      <div className="flex items-center justify-between">
+        <button className="text-left font-medium hover:underline" onClick={() => setOpen((v) => !v)}>
+          {other} <span className="muted font-normal">· {when}</span>
+        </button>
+        <span className={`badge ${o.status === "completed" ? "green" : o.status === "cancelled" ? "gray" : "amber"}`}>{o.status}</span>
+      </div>
+      {open && (
+        <div className="mt-2 rounded-lg bg-slate-50 p-2">
+          {o.agenda.length === 0 ? <div className="muted text-xs">No agenda items.</div> : o.agenda.map((a, i) => (
+            <label key={i} className="flex items-center gap-2"><input type="checkbox" checked={a.done} onChange={() => toggleItem(i)} /> <span className={a.done ? "line-through text-ink-muted" : ""}>{a.text}</span></label>
+          ))}
+          {o.shared_notes && <p className="muted mt-2 mb-0">{o.shared_notes}</p>}
+          {o.status === "scheduled" && (
+            <div className="row mt-2" style={{ gap: 6 }}>
+              <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setStatus("completed")}>Mark complete</button>
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => setStatus("cancelled")}>Cancel</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeedbackModal({ fb, onClose, onDone }: { fb: ReviewFeedback; onClose: () => void; onDone: () => void }) {
+  const { notify } = useToast();
+  const [rating, setRating] = useState("");
+  const [strengths, setStrengths] = useState("");
+  const [improvements, setImprovements] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api(`/api/performance/feedback/${fb.id}`, {
+        method: "PATCH",
+        body: { rating: rating ? Number(rating) : null, strengths: strengths || null, improvements: improvements || null },
+      });
+      notify("Feedback submitted.");
+      onDone();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Feedback on ${fb.subject_name}`} onClose={onClose} maxWidth={500}>
+      <div className="field">
+        <label>Overall rating</label>
+        <select value={rating} onChange={(e) => setRating(e.target.value)}>
+          <option value="">No rating</option>
+          {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}/5</option>)}
+        </select>
+      </div>
+      <div className="field"><label>Strengths</label><textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} /></div>
+      <div className="field"><label>Areas to improve</label><textarea value={improvements} onChange={(e) => setImprovements(e.target.value)} /></div>
+      <div className="row mt-2" style={{ justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Submitting…" : "Submit"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ScheduleOneOnOneModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { notify } = useToast();
+  const people = useFetch<User[]>("/api/users");
+  const [employeeId, setEmployeeId] = useState("");
+  const [when, setWhen] = useState("");
+  const [agenda, setAgenda] = useState<string[]>([""]);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!employeeId || !when) { notify("Pick a person and a time", "error"); return; }
+    setBusy(true);
+    try {
+      await api("/api/performance/one-on-ones", {
+        method: "POST",
+        body: {
+          employee_id: employeeId,
+          scheduled_at: new Date(when).toISOString(),
+          agenda: agenda.filter((t) => t.trim()).map((t) => ({ text: t.trim() })),
+        },
+      });
+      notify("1:1 scheduled.");
+      onDone();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Schedule 1:1" onClose={onClose} maxWidth={480}>
+      <div className="field">
+        <label>With (your report)</label>
+        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
+          <option value="">Select…</option>
+          {(people.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>)}
+        </select>
+      </div>
+      <div className="field"><label>When</label><input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
+      <label className="muted text-xs">Agenda</label>
+      {agenda.map((t, i) => (
+        <div key={i} className="mt-1 flex gap-1">
+          <input className="flex-1" value={t} placeholder="Talking point" onChange={(e) => setAgenda((a) => a.map((x, j) => j === i ? e.target.value : x))} />
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAgenda((a) => a.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <button className="btn-sm mt-1" style={{ flex: "0 0 auto" }} onClick={() => setAgenda((a) => [...a, ""])}>+ Add item</button>
+      <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Scheduling…" : "Schedule"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function GiveFeedbackModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { notify } = useToast();
+  const people = useFetch<User[]>("/api/users");
+  const [toId, setToId] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    if (!toId || !body.trim()) { notify("Pick a colleague and write feedback", "error"); return; }
+    setBusy(true);
+    try {
+      await api("/api/performance/continuous-feedback", { method: "POST", body: { to_user_id: toId, body: body.trim() } });
+      notify("Private feedback sent.");
+      onDone();
+      onClose();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Give private feedback" onClose={onClose} maxWidth={460}>
+      <p className="muted text-sm">Visible only to the recipient, their manager and HR.</p>
+      <div className="field">
+        <label>To</label>
+        <select value={toId} onChange={(e) => setToId(e.target.value)}>
+          <option value="">Select a colleague…</option>
+          {(people.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>)}
+        </select>
+      </div>
+      <div className="field"><label>Feedback</label><textarea value={body} onChange={(e) => setBody(e.target.value)} /></div>
+      <div className="row mt-2" style={{ justifyContent: "flex-end", gap: 8 }}>
+        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Sending…" : "Send"}</button>
+      </div>
+    </Modal>
   );
 }
 

@@ -1707,3 +1707,45 @@ export interface Kudos {
   value_tag?: string | null;
   created_at: string;
 }
+
+export interface ReviewFeedback {
+  id: string;
+  review_id: string;
+  author_id: string;
+  author_name?: string | null;
+  relation: string;
+  status: string;
+  rating?: number | null;
+  strengths?: string | null;
+  improvements?: string | null;
+  submitted_at?: string | null;
+  subject_name?: string | null;
+  cycle_name?: string | null;
+}
+
+export interface AgendaItem {
+  text: string;
+  done: boolean;
+}
+
+export interface OneOnOne {
+  id: string;
+  manager_id: string;
+  manager_name?: string | null;
+  employee_id: string;
+  employee_name?: string | null;
+  scheduled_at: string;
+  status: string;
+  agenda: AgendaItem[];
+  shared_notes?: string | null;
+}
+
+export interface ContinuousFeedback {
+  id: string;
+  from_user_id?: string | null;
+  from_name?: string | null;
+  to_user_id: string;
+  to_name?: string | null;
+  body: string;
+  created_at: string;
+}
