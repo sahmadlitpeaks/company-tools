@@ -44,6 +44,7 @@ import TrainingPage from "./pages/TrainingPage";
 import SecurityPage from "./pages/SecurityPage";
 import WebhooksPage from "./pages/WebhooksPage";
 import ApprovalWorkflowsPage from "./pages/ApprovalWorkflowsPage";
+import ApiTokensPage from "./pages/ApiTokensPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -234,6 +235,10 @@ export default function App() {
           <Route
             path="/approval-workflows"
             element={<Protected adminOnly><ApprovalWorkflowsPage /></Protected>}
+          />
+          <Route
+            path="/api-tokens"
+            element={<Protected adminOnly><ApiTokensPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

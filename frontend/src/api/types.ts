@@ -1870,3 +1870,13 @@ export interface Certification {
   expired: boolean;
   days_to_expiry?: number | null;
 }
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  active: boolean;
+  last_used_at?: string | null;
+  created_at: string;
+}
