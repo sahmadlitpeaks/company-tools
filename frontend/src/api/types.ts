@@ -1791,3 +1791,30 @@ export interface WebhookDelivery {
   error?: string | null;
   created_at: string;
 }
+
+export interface WorkflowStep {
+  approver: string; // manager | hr | admin | user
+  user_id?: string | null;
+  min_amount?: string | number | null;
+}
+
+export interface ApprovalWorkflow {
+  id: string;
+  type: string;
+  name: string;
+  active: boolean;
+  steps: WorkflowStep[];
+  created_at: string;
+}
+
+export interface ApprovalStep {
+  id: string;
+  seq: number;
+  approver_kind: string;
+  approver_id?: string | null;
+  approver_name?: string | null;
+  status: string;
+  decided_by_id?: string | null;
+  decided_by_name?: string | null;
+  note?: string | null;
+}

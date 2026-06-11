@@ -32,6 +32,7 @@ import {
   Building2,
   ScrollText,
   Webhook,
+  GitBranch,
   ShieldCheck,
   Settings as SettingsIcon,
   Share2,
@@ -120,6 +121,7 @@ const NAV: NavEntry[] = [
   { to: "/departments", label: "Departments", icon: ShieldCheck, adminOnly: true },
   { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
   { to: "/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
+  { to: "/approval-workflows", label: "Approval Workflows", icon: GitBranch, adminOnly: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 

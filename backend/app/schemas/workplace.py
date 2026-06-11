@@ -328,3 +328,48 @@ class AnnouncementOut(BaseModel):
     created_at: datetime
 
 # ---- Leave schemas now live in app/schemas/leave.py ----
+
+
+# ---- Approval workflows (configurable engine) ----
+class WorkflowStepIn(BaseModel):
+    approver: str  # manager | hr | admin | user
+    user_id: uuid.UUID | None = None
+    min_amount: Decimal | None = None
+
+
+class WorkflowCreate(BaseModel):
+    type: str
+    name: str
+    steps: list[WorkflowStepIn] = []
+    active: bool = True
+
+
+class WorkflowUpdate(BaseModel):
+    name: str | None = None
+    steps: list[WorkflowStepIn] | None = None
+    active: bool | None = None
+
+
+class WorkflowOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    type: str
+    name: str
+    active: bool
+    steps: list[WorkflowStepIn] = []
+    created_at: datetime
+
+
+class ApprovalStepOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    seq: int
+    approver_kind: str
+    approver_id: uuid.UUID | None = None
+    approver_name: str | None = None
+    status: str
+    decided_by_id: uuid.UUID | None = None
+    decided_by_name: str | None = None
+    note: str | None = None

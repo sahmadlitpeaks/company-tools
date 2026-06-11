@@ -94,3 +94,7 @@ from app.models.performance import (  # noqa: F401
     ReviewFeedback,
 )
 from app.models.webhook import Webhook, WebhookDelivery  # noqa: F401
+from app.models.approval_workflow import (  # noqa: F401
+    ApprovalStep,
+    ApprovalWorkflow,
+)

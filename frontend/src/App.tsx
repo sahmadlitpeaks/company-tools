@@ -40,6 +40,7 @@ import PayrollPage from "./pages/PayrollPage";
 import BenefitsPage from "./pages/BenefitsPage";
 import EngagementPage from "./pages/EngagementPage";
 import WebhooksPage from "./pages/WebhooksPage";
+import ApprovalWorkflowsPage from "./pages/ApprovalWorkflowsPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -223,6 +224,10 @@ export default function App() {
           <Route
             path="/webhooks"
             element={<Protected adminOnly><WebhooksPage /></Protected>}
+          />
+          <Route
+            path="/approval-workflows"
+            element={<Protected adminOnly><ApprovalWorkflowsPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

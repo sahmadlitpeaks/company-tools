@@ -32,6 +32,7 @@ from app.api import (
     custom_fields,
     hr,
     hr_documents,
+    approval_workflows,
     benefits,
     engagement,
     payroll,
@@ -159,6 +160,8 @@ app.include_router(payroll.router, prefix=api_prefix)
 app.include_router(benefits.router, prefix=api_prefix)
 app.include_router(engagement.router, prefix=api_prefix)
 app.include_router(webhooks.router, prefix=api_prefix)
+app.include_router(approval_workflows.router, prefix=api_prefix)
+app.include_router(approval_workflows.steps_router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(recruiting.router, prefix=api_prefix, dependencies=_mod("recruiting"))

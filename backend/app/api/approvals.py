@@ -11,6 +11,7 @@ from app.models.hr import LeaveType
 from app.models.user import User
 from app.models.workplace import ApprovalRequest
 from app.schemas.workplace import ApprovalCreate, ApprovalDecision, ApprovalOut
+from app.services import approval_engine as engine
 from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_names
@@ -93,7 +94,11 @@ async def create_approval(
         raise HTTPException(status_code=404, detail="Leave type not found")
     req = ApprovalRequest(**payload.model_dump(), requester_id=user.id)
     db.add(req)
-    if req.approver_id:
+    await db.flush()
+    # If a multi-step workflow is configured for this type, instantiate it
+    # (this may override approver_id or auto-approve when all steps are skipped).
+    await engine.instantiate(db, req, user)
+    if req.approver_id and req.status == "pending":
         await notify_user(
             db,
             user_id=req.approver_id,
@@ -126,21 +131,42 @@ async def decide_approval(
     req = await db.get(ApprovalRequest, req_id)
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    if not _can_decide(user, req):
-        raise HTTPException(status_code=403, detail="You can't decide this request")
     if req.status != "pending":
         raise HTTPException(status_code=409, detail="Already decided")
     if payload.status not in {"approved", "rejected"}:
         raise HTTPException(status_code=422, detail="Invalid decision")
-    req.status = payload.status
-    req.decision_note = payload.note
-    req.decided_by_id = user.id
-    req.decided_at = datetime.now(timezone.utc)
-    if req.requester_id:
+
+    steps = await engine.steps_for(db, req.id)
+    next_approver_id: uuid.UUID | None = None
+    if steps:
+        # Multi-step workflow: only the current step's approver may decide.
+        step = engine.current_step(steps)
+        if not step:
+            raise HTTPException(status_code=409, detail="No pending step")
+        if not engine.can_decide_step(user, step):
+            raise HTTPException(status_code=403, detail="You can't decide this step")
+        next_approver_id = await engine.advance(db, req, steps, step, user, payload.status, payload.note)
+    else:
+        # Classic single-approver flow.
+        if not _can_decide(user, req):
+            raise HTTPException(status_code=403, detail="You can't decide this request")
+        req.status = payload.status
+        req.decision_note = payload.note
+        req.decided_by_id = user.id
+        req.decided_at = datetime.now(timezone.utc)
+
+    # Notify the next approver if the workflow advanced; else the requester.
+    if next_approver_id and req.status == "pending":
+        await notify_user(
+            db, user_id=next_approver_id,
+            title="An approval needs your review",
+            body=req.title, link="/approvals", category="approval",
+        )
+    elif req.requester_id:
         await notify_user(
             db,
             user_id=req.requester_id,
-            title=f"Your request was {payload.status}",
+            title=f"Your request was {req.status}" if req.status != "pending" else "Your request advanced",
             body=req.title,
             link="/approvals",
             category="approval",
