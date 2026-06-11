@@ -39,6 +39,7 @@ import RecruitingPage from "./pages/RecruitingPage";
 import PayrollPage from "./pages/PayrollPage";
 import BenefitsPage from "./pages/BenefitsPage";
 import EngagementPage from "./pages/EngagementPage";
+import ExpensesPage from "./pages/ExpensesPage";
 import WebhooksPage from "./pages/WebhooksPage";
 import ApprovalWorkflowsPage from "./pages/ApprovalWorkflowsPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="/payroll" element={<Protected module="hr"><PayrollPage /></Protected>} />
           <Route path="/benefits" element={<Protected module="hr"><BenefitsPage /></Protected>} />
           <Route path="/engagement" element={<EngagementPage />} />
+          <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/recruiting" element={<Protected module="recruiting"><RecruitingPage /></Protected>} />
           <Route path="/time" element={<Protected module="attendance"><TimePage /></Protected>} />
           <Route

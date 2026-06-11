@@ -35,6 +35,7 @@ from app.api import (
     approval_workflows,
     benefits,
     engagement,
+    expenses,
     payroll,
     webhooks,
     performance,
@@ -158,6 +159,7 @@ app.include_router(compensation.router, prefix=api_prefix)
 app.include_router(performance.router, prefix=api_prefix)
 app.include_router(payroll.router, prefix=api_prefix)
 app.include_router(benefits.router, prefix=api_prefix)
+app.include_router(expenses.router, prefix=api_prefix)
 app.include_router(engagement.router, prefix=api_prefix)
 app.include_router(webhooks.router, prefix=api_prefix)
 app.include_router(approval_workflows.router, prefix=api_prefix)

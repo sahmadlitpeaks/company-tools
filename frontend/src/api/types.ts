@@ -1818,3 +1818,20 @@ export interface ApprovalStep {
   decided_by_name?: string | null;
   note?: string | null;
 }
+
+export interface ExpenseClaim {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  title: string;
+  category: string;
+  currency: string;
+  amount: string | number;
+  expense_date?: string | null;
+  description?: string | null;
+  has_receipt: boolean;
+  status: string;
+  approval_request_id?: string | null;
+  reimbursed_at?: string | null;
+  created_at: string;
+}
