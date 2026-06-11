@@ -31,6 +31,7 @@ import {
   QrCode,
   Building2,
   ScrollText,
+  Webhook,
   ShieldCheck,
   Settings as SettingsIcon,
   Share2,
@@ -118,6 +119,7 @@ const NAV: NavEntry[] = [
   { to: "/companies", label: "Companies", icon: Building2, adminOnly: true },
   { to: "/departments", label: "Departments", icon: ShieldCheck, adminOnly: true },
   { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
+  { to: "/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 

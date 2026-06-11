@@ -480,6 +480,14 @@ async def hire(
 
     record(db, user=user, action="created", entity_type="user", entity_id=emp.id,
            summary=f"Hired {cand.name}" + (f" for {job.title}" if job else ""))
+
+    from app.services.webhooks import emit as emit_webhook
+
+    await emit_webhook(db, "employee.created", {
+        "id": str(emp.id), "name": emp.display_name, "email": emp.email,
+        "job_title": emp.job_title, "source": "recruiting",
+    })
+
     await db.commit()
     await db.refresh(cand)
     return CandidateOut.model_validate(cand)

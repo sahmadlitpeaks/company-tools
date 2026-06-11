@@ -1771,3 +1771,23 @@ export interface TotalRewards {
   total_annual: string | number;
   components: RewardComponent[];
 }
+
+export interface Webhook {
+  id: string;
+  url: string;
+  description?: string | null;
+  events: string[];
+  active: boolean;
+  has_secret: boolean;
+  created_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  status_code?: number | null;
+  success: boolean;
+  error?: string | null;
+  created_at: string;
+}

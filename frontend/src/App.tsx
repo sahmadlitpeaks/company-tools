@@ -39,6 +39,7 @@ import RecruitingPage from "./pages/RecruitingPage";
 import PayrollPage from "./pages/PayrollPage";
 import BenefitsPage from "./pages/BenefitsPage";
 import EngagementPage from "./pages/EngagementPage";
+import WebhooksPage from "./pages/WebhooksPage";
 import DepartmentsPage from "./pages/DepartmentsPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -218,6 +219,10 @@ export default function App() {
           <Route
             path="/settings"
             element={<Protected adminOnly><SettingsPage /></Protected>}
+          />
+          <Route
+            path="/webhooks"
+            element={<Protected adminOnly><WebhooksPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

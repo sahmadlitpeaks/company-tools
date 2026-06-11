@@ -147,6 +147,15 @@ async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
     db.add(sub)
     await db.flush()
 
+    # Fan the new submission out to any subscribed webhooks (best-effort).
+    from app.services.webhooks import emit as emit_webhook
+
+    await emit_webhook(db, "submission.created", {
+        "id": str(sub.id), "type": sub.type, "status": sub.status,
+        "name": sub.name, "email": sub.email, "subject": sub.subject,
+        "source": source.name, "spam_score": score,
+    })
+
     # A clean lead can auto-flow to the CRM when the source opts in.
     if sub.status == "new" and sub.type == "lead" and source.auto_convert:
         await _make_lead(db, sub, source)
