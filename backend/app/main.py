@@ -37,6 +37,7 @@ from app.api import (
     engagement,
     expenses,
     payroll,
+    training,
     webhooks,
     performance,
     phones,
@@ -160,6 +161,7 @@ app.include_router(performance.router, prefix=api_prefix)
 app.include_router(payroll.router, prefix=api_prefix)
 app.include_router(benefits.router, prefix=api_prefix)
 app.include_router(expenses.router, prefix=api_prefix)
+app.include_router(training.router, prefix=api_prefix)
 app.include_router(engagement.router, prefix=api_prefix)
 app.include_router(webhooks.router, prefix=api_prefix)
 app.include_router(approval_workflows.router, prefix=api_prefix)

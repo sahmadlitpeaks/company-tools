@@ -1835,3 +1835,38 @@ export interface ExpenseClaim {
   reimbursed_at?: string | null;
   created_at: string;
 }
+
+export interface Course {
+  id: string;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  url?: string | null;
+  active: boolean;
+  assigned_count: number;
+  created_at: string;
+}
+
+export interface CourseAssignment {
+  id: string;
+  course_id: string;
+  course_title?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  status: string;
+  due_date?: string | null;
+  completed_at?: string | null;
+}
+
+export interface Certification {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  name: string;
+  issuer?: string | null;
+  issued_date?: string | null;
+  expiry_date?: string | null;
+  credential_id?: string | null;
+  expired: boolean;
+  days_to_expiry?: number | null;
+}

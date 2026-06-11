@@ -100,3 +100,8 @@ from app.models.approval_workflow import (  # noqa: F401
 )
 from app.models.field_audit import FieldChange  # noqa: F401
 from app.models.expense import ExpenseClaim  # noqa: F401
+from app.models.training import (  # noqa: F401
+    Certification,
+    Course,
+    CourseAssignment,
+)
