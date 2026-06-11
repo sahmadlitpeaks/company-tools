@@ -74,6 +74,7 @@ const TABS: { key: string; label: string; sensitive?: boolean }[] = [
   { key: "documents", label: "Documents", sensitive: true },
   { key: "performance", label: "Performance" },
   { key: "assets", label: "Assets & Access" },
+  { key: "history", label: "Change History", sensitive: true },
 ];
 
 export default function ProfilePage() {
@@ -230,6 +231,8 @@ export default function ProfilePage() {
         {tab === "comp" && p.can_see_sensitive && (
           <CompensationSection userId={p.id} canManage={p.can_manage} />
         )}
+
+        {tab === "history" && p.can_see_sensitive && <FieldHistorySection userId={p.id} />}
 
         {tab === "documents" && p.can_see_sensitive && (
           <DocumentsSection userId={p.id} canManage={p.can_manage} isSelf={p.id === viewerId} />
@@ -1234,4 +1237,43 @@ function Item({ label, sub, right }: { label: string; sub?: string | null; right
 
 function Muted({ children }: { children: React.ReactNode }) {
   return <p className="muted py-1 text-sm">{children}</p>;
+}
+
+interface FieldChangeRow {
+  id: string;
+  field: string;
+  old_value: string | null;
+  new_value: string | null;
+  actor_name: string | null;
+  created_at: string;
+}
+
+function FieldHistorySection({ userId }: { userId: string }) {
+  const history = useFetch<FieldChangeRow[]>(`/api/profiles/${userId}/field-history`);
+  return (
+    <div className="card">
+      <h3 className="mt-0 flex items-center gap-2 text-base">Change history</h3>
+      <p className="muted mt-0 text-sm">Every edit to this profile's fields, with who made it.</p>
+      {history.loading ? (
+        <Loading />
+      ) : (history.data?.length ?? 0) === 0 ? (
+        <Muted>No changes recorded yet.</Muted>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Field</th><th>From</th><th>To</th><th>By</th><th>When</th></tr></thead>
+          <tbody>
+            {history.data!.map((h) => (
+              <tr key={h.id}>
+                <td className="font-medium">{h.field.replace(/_/g, " ")}</td>
+                <td className="muted">{h.old_value ?? "—"}</td>
+                <td>{h.new_value ?? "—"}</td>
+                <td className="muted">{h.actor_name ?? "—"}</td>
+                <td className="muted text-xs">{new Date(h.created_at).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }

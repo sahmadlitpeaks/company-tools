@@ -98,3 +98,4 @@ from app.models.approval_workflow import (  # noqa: F401
     ApprovalStep,
     ApprovalWorkflow,
 )
+from app.models.field_audit import FieldChange  # noqa: F401

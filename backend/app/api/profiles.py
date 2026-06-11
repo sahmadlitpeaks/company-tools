@@ -28,7 +28,10 @@ from app.schemas.profile import (
     ProfileTask,
     ProfileUpdate,
 )
+from app.models.field_audit import FieldChange
 from app.services.activity import record
+from app.services.field_audit import record_field_change
+from app.services.people import user_names
 from app.services.subscriptions import person_subscriptions
 
 # Fields any manager/HR editor may change vs. admin-only ones.
@@ -241,7 +244,12 @@ async def update_profile(
 
     data = payload.model_dump(exclude_unset=True)
     if "hr_department" in data:
-        target.department = data.pop("hr_department")
+        new_dept = data.pop("hr_department")
+        record_field_change(
+            db, entity_type="user", entity_id=target.id, field="hr_department",
+            old=target.department, new=new_dept, actor_id=viewer.id,
+        )
+        target.department = new_dept
     if data.get("manager_id") is not None and viewer.is_admin:
         if data["manager_id"] == target.id:
             raise HTTPException(status_code=422, detail="A user can't manage themselves")
@@ -252,6 +260,11 @@ async def update_profile(
             data.pop(field)  # silently ignore admin-only fields for HR editors
             continue
         if field in _HR_FIELDS or field in _ADMIN_FIELDS:
+            old = getattr(target, field)
+            record_field_change(
+                db, entity_type="user", entity_id=target.id, field=field,
+                old=old, new=data[field], actor_id=viewer.id,
+            )
             setattr(target, field, data[field])
     record(
         db, user=viewer, action="updated", entity_type="user", entity_id=target.id,
@@ -265,3 +278,38 @@ async def update_profile(
         )
     ).scalar_one()
     return await _build(db, viewer, target)
+
+
+@router.get("/{user_id}/field-history")
+async def field_history(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    """Per-field change history for a profile. Visible to HR and the person."""
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    _, _, sensitive = _can_view(viewer, target)
+    if not sensitive:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    rows = (
+        await db.execute(
+            select(FieldChange)
+            .where(FieldChange.entity_type == "user", FieldChange.entity_id == user_id)
+            .order_by(FieldChange.created_at.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+    names = await user_names(db, {r.actor_id for r in rows})
+    return [
+        {
+            "id": str(r.id),
+            "field": r.field,
+            "old_value": r.old_value,
+            "new_value": r.new_value,
+            "actor_name": names.get(r.actor_id) if r.actor_id else None,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
