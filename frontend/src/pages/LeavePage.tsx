@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { CalendarOff, CalendarPlus, Plane, Plus, Settings2, Trash2 } from "lucide-react";
-import { api } from "../api/client";
+import { CalendarOff, CalendarPlus, Download, Plane, Plus, Settings2, Trash2 } from "lucide-react";
+import { api, downloadFile } from "../api/client";
 import type { Holiday, LeaveBalance, LeaveType, WhosOutItem } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
@@ -39,6 +39,13 @@ export default function LeavePage() {
         subtitle="Balances by type, the holiday calendar, and who's off across the team."
         action={
           <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button
+              className="btn inline-flex items-center gap-1.5"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => downloadFile("/api/leave/calendar.ics", "leave.ics").catch(() => notify("Download failed", "error"))}
+            >
+              <Download size={15} /> Calendar (iCal)
+            </button>
             {isAdmin && (
               <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setManagingTypes(true)}>
                 <Settings2 size={15} /> Leave types
@@ -180,9 +187,14 @@ function RequestLeaveModal({
     leave_type_id: types[0]?.id ?? "",
     start_date: "",
     end_date: "",
+    half_day: false,
     title: "",
   });
   const [busy, setBusy] = useState(false);
+
+  const selectedType = types.find((t) => t.id === f.leave_type_id);
+  const singleDay = !!f.start_date && (!f.end_date || f.end_date === f.start_date);
+  const canHalfDay = singleDay && (selectedType?.allow_half_day ?? true);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -198,6 +210,7 @@ function RequestLeaveModal({
           title: f.title.trim() || `${type?.name ?? "Leave"} request`,
           start_date: f.start_date,
           end_date: f.end_date || f.start_date,
+          half_day: canHalfDay && f.half_day,
         },
       });
       onDone();
@@ -222,6 +235,12 @@ function RequestLeaveModal({
           <div className="field"><label>From</label><input type="date" value={f.start_date} onChange={(e) => setF((p) => ({ ...p, start_date: e.target.value }))} required /></div>
           <div className="field"><label>To</label><input type="date" value={f.end_date} onChange={(e) => setF((p) => ({ ...p, end_date: e.target.value }))} /></div>
         </div>
+        {canHalfDay && (
+          <label className="row" style={{ gap: 6, marginBottom: 8 }}>
+            <input type="checkbox" checked={f.half_day} onChange={(e) => setF((p) => ({ ...p, half_day: e.target.checked }))} />
+            Take as a half day (½)
+          </label>
+        )}
         <div className="field"><label>Note (optional)</label><input value={f.title} onChange={(e) => setF((p) => ({ ...p, title: e.target.value }))} placeholder="Reason / details" /></div>
         <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
           <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
@@ -309,14 +328,14 @@ function LeaveTypesModal({
   onChange: () => void;
 }) {
   const { notify } = useToast();
-  const [form, setForm] = useState({ name: "", default_days: 0, paid: true, color: "#6366f1" });
+  const [form, setForm] = useState({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#6366f1" });
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return;
     try {
       await api("/api/leave/types", { method: "POST", body: form });
-      setForm({ name: "", default_days: 0, paid: true, color: "#6366f1" });
+      setForm({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#6366f1" });
       onChange();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
@@ -335,16 +354,34 @@ function LeaveTypesModal({
     <Modal title="Leave types" onClose={onClose} maxWidth={560}>
       <div className="divide-y divide-slate-100">
         {types.map((t) => (
-          <div key={t.id} className="flex items-center gap-2 py-2 text-sm">
+          <div key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
             <span className="h-3 w-3 flex-none rounded-full" style={{ background: t.color }} />
             <span className="flex-1 font-medium">{t.name}{t.paid ? "" : " (unpaid)"}</span>
-            <label className="muted text-xs">Default days</label>
+            <label className="muted text-xs">Days</label>
             <input
               type="number"
               defaultValue={t.default_days}
-              className="!w-16 !py-1"
+              className="!w-14 !py-1"
+              title="Default annual days"
               onBlur={(e) => { const v = Number(e.target.value); if (v !== t.default_days) patch(t.id, { default_days: v }); }}
             />
+            <label className="muted text-xs">Carryover</label>
+            <input
+              type="number"
+              defaultValue={t.carryover_max}
+              className="!w-14 !py-1"
+              title="Max days carried to next year"
+              onBlur={(e) => { const v = Number(e.target.value); if (v !== t.carryover_max) patch(t.id, { carryover_max: v }); }}
+            />
+            <select
+              className="!w-auto !py-1"
+              defaultValue={t.accrual_period}
+              title="Accrual schedule"
+              onChange={(e) => patch(t.id, { accrual_period: e.target.value })}
+            >
+              <option value="annual">Annual</option>
+              <option value="monthly">Monthly</option>
+            </select>
             <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => remove(t.id)}>
               <Trash2 size={13} />
             </button>
@@ -354,8 +391,16 @@ function LeaveTypesModal({
       <form onSubmit={add} className="mt-3 rounded-lg border border-slate-200 p-2">
         <div className="row">
           <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></div>
-          <div className="field" style={{ maxWidth: 110 }}><label>Default days</label><input type="number" value={form.default_days} onChange={(e) => setForm((p) => ({ ...p, default_days: Number(e.target.value) }))} /></div>
+          <div className="field" style={{ maxWidth: 90 }}><label>Default days</label><input type="number" value={form.default_days} onChange={(e) => setForm((p) => ({ ...p, default_days: Number(e.target.value) }))} /></div>
+          <div className="field" style={{ maxWidth: 90 }}><label>Carryover</label><input type="number" value={form.carryover_max} onChange={(e) => setForm((p) => ({ ...p, carryover_max: Number(e.target.value) }))} /></div>
           <div className="field" style={{ maxWidth: 70 }}><label>Color</label><input type="color" value={form.color} onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))} /></div>
+        </div>
+        <div className="field" style={{ maxWidth: 160 }}>
+          <label>Accrual</label>
+          <select value={form.accrual_period} onChange={(e) => setForm((p) => ({ ...p, accrual_period: e.target.value }))}>
+            <option value="annual">Annual (full upfront)</option>
+            <option value="monthly">Monthly (1/12 per month)</option>
+          </select>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="!w-auto" checked={form.paid} onChange={(e) => setForm((p) => ({ ...p, paid: e.target.checked }))} /> Paid leave

@@ -100,6 +100,7 @@ class ApprovalCreate(BaseModel):
     amount: Decimal | None = None
     start_date: date | None = None
     end_date: date | None = None
+    half_day: bool = False
     leave_type_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None = None
     company_id: uuid.UUID | None = None
@@ -120,6 +121,7 @@ class ApprovalOut(BaseModel):
     amount: Decimal | None = None
     start_date: date | None = None
     end_date: date | None = None
+    half_day: bool = False
     leave_type_id: uuid.UUID | None = None
     leave_type_name: str | None = None
     status: str

@@ -3,9 +3,9 @@
 (type=leave, optionally tagged with a leave_type_id) so there's one source
 of truth for the approval workflow."""
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,9 +78,18 @@ async def _overrides(db: AsyncSession, year: int) -> dict[tuple, int]:
     return {(r[0], r[1]): r[2] for r in rows}
 
 
+def _request_days(lv: ApprovalRequest, holidays: set[date]) -> float:
+    """Working days a leave request consumes, honouring the half-day flag."""
+    days = _working_days(lv.start_date, lv.end_date or lv.start_date, holidays)
+    if getattr(lv, "half_day", False) and days >= 1:
+        # A half-day is always taken on a single working day.
+        return 0.5
+    return float(days)
+
+
 async def _usage(
     db: AsyncSession, year: int, holidays: set[date], default_type: uuid.UUID | None
-) -> dict[tuple, list[int]]:
+) -> dict[tuple, list[float]]:
     """(user_id, type_id) -> [approved_days, pending_days] for the year."""
     leaves = (
         await db.execute(
@@ -91,22 +100,56 @@ async def _usage(
             )
         )
     ).scalars().all()
-    out: dict[tuple, list[int]] = {}
+    out: dict[tuple, list[float]] = {}
     for lv in leaves:
         if not (lv.start_date and lv.start_date.year == year and lv.requester_id):
             continue
         tid = lv.leave_type_id or default_type
-        days = _working_days(lv.start_date, lv.end_date or lv.start_date, holidays)
-        agg = out.setdefault((lv.requester_id, tid), [0, 0])
+        days = _request_days(lv, holidays)
+        agg = out.setdefault((lv.requester_id, tid), [0.0, 0.0])
         agg[0 if lv.status == "approved" else 1] += days
     return out
 
 
-def _accrued(default_days: int, today: date) -> int:
-    """Pro-rata of the annual entitlement earned by today (by month)."""
-    if default_days <= 0:
-        return 0
-    return round(default_days * (today.month / 12))
+def _accrued(entitlement: float, accrual_period: str, today: date) -> float:
+    """Entitlement earned by today, per the type's accrual schedule.
+
+    ``annual`` makes the full entitlement available immediately; ``monthly``
+    accrues 1/12 of it per elapsed month of the year.
+    """
+    if entitlement <= 0:
+        return 0.0
+    if accrual_period == "monthly":
+        return round(entitlement * (today.month / 12), 2)
+    return float(entitlement)
+
+
+async def _carryover(
+    db: AsyncSession,
+    year: int,
+    types: list[LeaveType],
+    holidays: set[date],
+    default_type: uuid.UUID | None,
+) -> dict[tuple, float]:
+    """(user_id, type_id) -> unused days carried from the prior year (uncapped).
+
+    The per-type ``carryover_max`` cap is applied later in ``_balance_for``.
+    """
+    prev = year - 1
+    prev_overrides = await _overrides(db, prev)
+    prev_usage = await _usage(db, prev, holidays, default_type)
+    type_by_id = {t.id: t for t in types}
+    out: dict[tuple, float] = {}
+    for uid, tid in set(prev_usage) | set(prev_overrides):
+        t = type_by_id.get(tid)
+        if t is None or (t.carryover_max or 0) <= 0:
+            continue
+        base = prev_overrides.get((uid, tid))
+        if base is None:
+            base = t.default_days
+        used = prev_usage.get((uid, tid), [0.0, 0.0])[0]
+        out[(uid, tid)] = max(base - used, 0.0)
+    return out
 
 
 async def _balance_for(
@@ -116,23 +159,28 @@ async def _balance_for(
     overrides: dict,
     usage: dict,
     today: date,
+    carryover: dict | None = None,
 ) -> LeaveBalanceOut:
     by_type: list[LeaveTypeBalance] = []
     default_tid = types[0].id if types else None
-    top = {"ent": 0, "used": 0, "rem": 0}
+    carryover = carryover or {}
+    top = {"ent": 0.0, "used": 0.0, "rem": 0.0}
     for t in types:
-        ent = overrides.get((user.id, t.id))
-        if ent is None and t.id == default_tid:
+        base = overrides.get((user.id, t.id))
+        if base is None and t.id == default_tid:
             # Legacy single-balance rows stored leave_type_id = NULL.
-            ent = overrides.get((user.id, None))
-        if ent is None:
-            ent = t.default_days
-        used, pending = usage.get((user.id, t.id), [0, 0])
+            base = overrides.get((user.id, None))
+        if base is None:
+            base = t.default_days
+        carried = min(carryover.get((user.id, t.id), 0.0), float(t.carryover_max or 0))
+        ent = base + carried
+        used, pending = usage.get((user.id, t.id), [0.0, 0.0])
         remaining = ent - used
         by_type.append(
             LeaveTypeBalance(
                 leave_type_id=t.id, name=t.name, color=t.color, paid=t.paid,
-                entitlement_days=ent, accrued_days=_accrued(ent, today),
+                entitlement_days=ent, carryover_days=carried,
+                accrued_days=_accrued(ent, t.accrual_period, today),
                 used_days=used, pending_days=pending, remaining_days=remaining,
             )
         )
@@ -276,7 +324,8 @@ async def my_balance(
     default_type = types[0].id if types else None
     overrides = await _overrides(db, year)
     usage = await _usage(db, year, holidays, default_type)
-    return await _balance_for(user, year, types, overrides, usage, date.today())
+    carryover = await _carryover(db, year, types, holidays, default_type)
+    return await _balance_for(user, year, types, overrides, usage, date.today(), carryover)
 
 
 @router.get("/balances", response_model=list[LeaveBalanceOut])
@@ -291,10 +340,14 @@ async def all_balances(
     default_type = types[0].id if types else None
     overrides = await _overrides(db, year)
     usage = await _usage(db, year, holidays, default_type)
+    carryover = await _carryover(db, year, types, holidays, default_type)
     users = (
         await db.execute(select(User).where(User.status == "active").order_by(User.display_name))
     ).scalars().all()
-    return [await _balance_for(u, year, types, overrides, usage, date.today()) for u in users]
+    return [
+        await _balance_for(u, year, types, overrides, usage, date.today(), carryover)
+        for u in users
+    ]
 
 
 @router.put("/balances/{user_id}", response_model=LeaveBalanceOut)
@@ -337,7 +390,79 @@ async def set_entitlement(
     default_type = types[0].id if types else None
     overrides = await _overrides(db, year)
     usage = await _usage(db, year, holidays, default_type)
-    return await _balance_for(target, year, types, overrides, usage, date.today())
+    carryover = await _carryover(db, year, types, holidays, default_type)
+    return await _balance_for(target, year, types, overrides, usage, date.today(), carryover)
+
+
+def _ics_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+
+
+@router.get("/calendar.ics")
+async def calendar_feed(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """An iCal feed of company holidays plus approved leave (subscribe in any
+    calendar app). All-day VEVENTs use exclusive DTEND per the spec."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Company Tools//Leave//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Company Leave & Holidays",
+    ]
+
+    holidays = (await db.execute(select(Holiday).order_by(Holiday.day))).scalars().all()
+    for h in holidays:
+        end = h.day + timedelta(days=1)
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:holiday-{h.id}@company-tools",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{h.day:%Y%m%d}",
+            f"DTEND;VALUE=DATE:{end:%Y%m%d}",
+            f"SUMMARY:{_ics_escape(h.name)} (Holiday)",
+            "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ]
+
+    leaves = (
+        await db.execute(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.type == "leave",
+                ApprovalRequest.status == "approved",
+                ApprovalRequest.start_date.is_not(None),
+            )
+            .order_by(ApprovalRequest.start_date.asc())
+        )
+    ).scalars().all()
+    names = await user_names(db, {lv.requester_id for lv in leaves})
+    for lv in leaves:
+        start = lv.start_date
+        end = (lv.end_date or lv.start_date) + timedelta(days=1)
+        who = names.get(lv.requester_id) if lv.requester_id else "Someone"
+        suffix = " (½ day)" if lv.half_day else ""
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:leave-{lv.id}@company-tools",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{start:%Y%m%d}",
+            f"DTEND;VALUE=DATE:{end:%Y%m%d}",
+            f"SUMMARY:{_ics_escape(f'{who} — {lv.title}{suffix}')}",
+            "END:VEVENT",
+        ]
+
+    lines.append("END:VCALENDAR")
+    body = "\r\n".join(lines) + "\r\n"
+    return Response(
+        content=body,
+        media_type="text/calendar",
+        headers={"Content-Disposition": 'attachment; filename="leave.ics"'},
+    )
 
 
 @router.get("/whos-out", response_model=list[WhosOutItem])

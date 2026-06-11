@@ -91,8 +91,14 @@ class LeaveType(UUIDMixin, TimestampMixin, Base):
     paid: Mapped[bool] = mapped_column(Boolean, default=True)
     # Annual entitlement granted by default (can be overridden per employee).
     default_days: Mapped[int] = mapped_column(Integer, default=0)
-    # Max days that can roll over to next year (informational).
+    # Max days that can roll over from the prior year (applied to entitlement).
     carryover_max: Mapped[int] = mapped_column(Integer, default=0)
+    # Accrual schedule: how the yearly entitlement is earned over the year.
+    #   annual  -> fully available from Jan 1
+    #   monthly -> 1/12 of the entitlement accrues each month
+    accrual_period: Mapped[str] = mapped_column(String(12), default="annual")
+    # Whether single-day requests may be taken as a half day.
+    allow_half_day: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
 

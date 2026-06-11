@@ -706,6 +706,7 @@ export interface Approval {
   amount?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  half_day?: boolean;
   leave_type_id?: string | null;
   leave_type_name?: string | null;
   status: string;
@@ -821,6 +822,8 @@ export interface LeaveType {
   paid: boolean;
   default_days: number;
   carryover_max: number;
+  accrual_period: string;
+  allow_half_day: boolean;
   active: boolean;
   sort: number;
 }
@@ -831,6 +834,7 @@ export interface LeaveTypeBalance {
   color: string;
   paid: boolean;
   entitlement_days: number;
+  carryover_days: number;
   accrued_days: number;
   used_days: number;
   pending_days: number;
