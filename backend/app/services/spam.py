@@ -83,9 +83,15 @@ def score_submission(
     return min(100, score), reasons
 
 
-def status_for(score: int) -> str:
-    if score >= SPAM_THRESHOLD:
+def status_for(
+    score: int,
+    spam_threshold: int | None = None,
+    clean_threshold: int | None = None,
+) -> str:
+    spam_t = SPAM_THRESHOLD if spam_threshold is None else spam_threshold
+    clean_t = CLEAN_THRESHOLD if clean_threshold is None else clean_threshold
+    if score >= spam_t:
         return "spam"
-    if score <= CLEAN_THRESHOLD:
+    if score <= clean_t:
         return "new"
     return "quarantined"

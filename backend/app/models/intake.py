@@ -2,7 +2,7 @@
 inquiries) land here, to be triaged and converted to CRM leads or tickets."""
 import uuid
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -29,6 +29,16 @@ class IntakeSource(UUIDMixin, TimestampMixin, Base):
     notify_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Optional shared secret: when set, requests must carry a valid
+    # X-Signature: sha256=<hex HMAC of the raw body>.
+    signing_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Reject more than this many submissions per minute from this source (0=off).
+    rate_limit_per_min: Mapped[int] = mapped_column(Integer, default=60)
+    # Drop duplicate (same email+message) submissions within this many minutes (0=off).
+    dedup_window_min: Mapped[int] = mapped_column(Integer, default=10)
+    # Per-source spam thresholds; null falls back to the global defaults.
+    spam_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clean_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Submission(UUIDMixin, TimestampMixin, Base):

@@ -15,6 +15,11 @@ class SourceOut(BaseModel):
     active: bool
     auto_convert: bool = False
     notify_user_id: uuid.UUID | None = None
+    rate_limit_per_min: int = 60
+    dedup_window_min: int = 10
+    spam_threshold: int | None = None
+    clean_threshold: int | None = None
+    has_signing_secret: bool = False
     created_at: datetime
     submission_count: int = 0
 
@@ -24,6 +29,10 @@ class SourceCreate(BaseModel):
     default_type: str = "lead"
     auto_convert: bool = False
     notify_user_id: uuid.UUID | None = None
+    rate_limit_per_min: int = 60
+    dedup_window_min: int = 10
+    spam_threshold: int | None = None
+    clean_threshold: int | None = None
 
 
 class SourceUpdate(BaseModel):
@@ -32,6 +41,10 @@ class SourceUpdate(BaseModel):
     active: bool | None = None
     auto_convert: bool | None = None
     notify_user_id: uuid.UUID | None = None
+    rate_limit_per_min: int | None = None
+    dedup_window_min: int | None = None
+    spam_threshold: int | None = None
+    clean_threshold: int | None = None
 
 
 class SubmissionOut(BaseModel):

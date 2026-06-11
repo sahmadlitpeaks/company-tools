@@ -261,6 +261,21 @@ function SourcesTab() {
     sources.reload();
     notify("Token rotated.");
   }
+  async function genSecret(s: IntakeSource) {
+    const res = await api<{ signing_secret: string }>(`/api/intake/sources/${s.id}/signing-secret`, { method: "POST" });
+    sources.reload();
+    window.prompt("Copy this signing secret now — it won't be shown again. Sign the raw body with HMAC-SHA256 and send it as X-Signature: sha256=<hex>.", res.signing_secret);
+  }
+  async function clearSecret(s: IntakeSource) {
+    if (!confirm("Remove the signing secret? Requests will no longer require a signature.")) return;
+    await api(`/api/intake/sources/${s.id}/signing-secret`, { method: "DELETE" });
+    sources.reload();
+    notify("Signing secret removed.");
+  }
+  async function setLimit(s: IntakeSource, field: "rate_limit_per_min" | "dedup_window_min", value: number) {
+    await api(`/api/intake/sources/${s.id}`, { method: "PATCH", body: { [field]: value } });
+    sources.reload();
+  }
   function copy(text: string, what: string) {
     navigator.clipboard?.writeText(text);
     notify(`${what} copied.`);
@@ -313,6 +328,21 @@ function SourcesTab() {
                 <span className="muted text-xs">Token</span>
                 <code className="flex-1 truncate rounded-lg px-2 py-1 text-xs" style={{ background: "var(--surface-2)" }}>{s.key}</code>
                 <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => copy(s.key, "Token")}><Copy size={12} /> Copy</button>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                <span className="muted">Rate/min</span>
+                <input type="number" className="!w-16 !py-0.5" defaultValue={s.rate_limit_per_min} onBlur={(e) => { const v = Number(e.target.value); if (v !== s.rate_limit_per_min) setLimit(s, "rate_limit_per_min", v); }} />
+                <span className="muted">Dedup min</span>
+                <input type="number" className="!w-16 !py-0.5" defaultValue={s.dedup_window_min} onBlur={(e) => { const v = Number(e.target.value); if (v !== s.dedup_window_min) setLimit(s, "dedup_window_min", v); }} />
+                {s.has_signing_secret ? (
+                  <>
+                    <span className="badge green">HMAC on</span>
+                    <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => genSecret(s)}>Regenerate secret</button>
+                    <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => clearSecret(s)}>Remove secret</button>
+                  </>
+                ) : (
+                  <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => genSecret(s)}>Enable HMAC signing</button>
+                )}
               </div>
             </div>
           ))}

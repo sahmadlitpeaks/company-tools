@@ -111,3 +111,70 @@ async def test_spam_quarantine_release_and_autoconvert(client, auth):
     assert a.json()["status"] == "new"
     leads = (await client.get("/api/crm/leads", headers=auth)).json()
     assert any(le.get("email") == "auto@acme.com" for le in leads)
+
+
+async def test_hmac_signature_enforced(client, auth):
+    import hashlib
+    import hmac
+    import json
+
+    src = (await client.post("/api/intake/sources", headers=auth, json={"name": "Signed Site"})).json()
+    token = src["key"]
+    secret = (await client.post(f"/api/intake/sources/{src['id']}/signing-secret", headers=auth)).json()["signing_secret"]
+    assert secret
+
+    body = {"name": "Bob", "email": "bob@acme.com", "message": "hello"}
+    raw = json.dumps(body).encode()
+    good_sig = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+
+    # Missing/wrong signature is rejected.
+    bad = await client.post("/api/intake/ingest", headers={"Authorization": f"Bearer {token}"}, content=raw)
+    assert bad.status_code == 401
+    wrong = await client.post(
+        "/api/intake/ingest",
+        headers={"Authorization": f"Bearer {token}", "X-Signature": "sha256=deadbeef"},
+        content=raw,
+    )
+    assert wrong.status_code == 401
+
+    ok = await client.post(
+        "/api/intake/ingest",
+        headers={"Authorization": f"Bearer {token}", "X-Signature": f"sha256={good_sig}"},
+        content=raw,
+    )
+    assert ok.status_code == 200
+
+    # Clearing the secret disables verification.
+    assert (await client.delete(f"/api/intake/sources/{src['id']}/signing-secret", headers=auth)).status_code == 204
+    plain = await client.post("/api/intake/ingest", headers={"Authorization": f"Bearer {token}"}, json=body)
+    # (Same email+message would normally dedupe, but the signed one above used content path;
+    # this verifies no-signature now passes auth — dedup may return duplicate, both are 200.)
+    assert plain.status_code == 200
+
+
+async def test_dedup_drops_repeats(client, auth):
+    src = (await client.post("/api/intake/sources", headers=auth, json={
+        "name": "Dedup Site", "dedup_window_min": 60,
+    })).json()
+    token = src["key"]
+    payload = {"name": "Repeat", "email": "rep@acme.com", "message": "same message"}
+    first = await client.post("/api/intake/ingest", headers={"X-API-Key": token}, json=payload)
+    assert first.status_code == 200 and not first.json().get("deduped")
+    second = await client.post("/api/intake/ingest", headers={"X-API-Key": token}, json=payload)
+    assert second.status_code == 200 and second.json().get("deduped") is True
+    subs = (await client.get(f"/api/intake/submissions?source_id={src['id']}", headers=auth)).json()
+    assert len([s for s in subs if s["email"] == "rep@acme.com"]) == 1
+
+
+async def test_rate_limit(client, auth):
+    src = (await client.post("/api/intake/sources", headers=auth, json={
+        "name": "Busy Site", "rate_limit_per_min": 3, "dedup_window_min": 0,
+    })).json()
+    token = src["key"]
+    codes = []
+    for i in range(5):
+        r = await client.post("/api/intake/ingest", headers={"X-API-Key": token}, json={
+            "name": f"U{i}", "email": f"u{i}@acme.com", "message": f"msg {i}",
+        })
+        codes.append(r.status_code)
+    assert codes.count(200) == 3 and codes.count(429) == 2

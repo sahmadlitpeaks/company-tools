@@ -1464,6 +1464,11 @@ export interface IntakeSource {
   active: boolean;
   auto_convert: boolean;
   notify_user_id?: string | null;
+  rate_limit_per_min: number;
+  dedup_window_min: number;
+  spam_threshold?: number | null;
+  clean_threshold?: number | null;
+  has_signing_secret: boolean;
   created_at: string;
   submission_count: number;
 }

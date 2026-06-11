@@ -1,8 +1,11 @@
 """Inbound intake: a public endpoint websites post their forms to, plus a
 triage inbox (list, assign, status) with conversion to CRM leads or tickets.
 """
+import hashlib
+import hmac
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
@@ -65,8 +68,32 @@ async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
     ).scalar_one_or_none()
     if not source:
         raise HTTPException(status_code=401, detail="Invalid or inactive API token")
+
+    raw = await request.body()
+    # Optional HMAC verification: X-Signature: sha256=<hex>.
+    if source.signing_secret:
+        sig = request.headers.get("x-signature", "")
+        if sig.startswith("sha256="):
+            sig = sig[7:]
+        expected = hmac.new(source.signing_secret.encode(), raw, hashlib.sha256).hexdigest()
+        if not (sig and hmac.compare_digest(sig, expected)):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+    # Per-source rate limit (submissions in the last minute).
+    if source.rate_limit_per_min and source.rate_limit_per_min > 0:
+        since = datetime.now(timezone.utc) - timedelta(minutes=1)
+        recent = await db.scalar(
+            select(func.count(Submission.id)).where(
+                Submission.source_id == source.id, Submission.created_at >= since
+            )
+        )
+        if (recent or 0) >= source.rate_limit_per_min:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
     try:
-        body = await request.json()
+        import json
+
+        body = json.loads(raw) if raw else {}
     except Exception:
         form = await request.form()
         body = dict(form)
@@ -79,27 +106,44 @@ async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
     extra = {k: v for k, v in body.items() if k not in _KNOWN and k != "fields"}
     if isinstance(body.get("fields"), dict):
         extra.update(body["fields"])
+    email = body.get("email") or None
+    message = body.get("message") or None
+
+    # Dedup: drop an identical (email + message) submission seen recently.
+    if source.dedup_window_min and source.dedup_window_min > 0 and (email or message):
+        since = datetime.now(timezone.utc) - timedelta(minutes=source.dedup_window_min)
+        dupe = await db.scalar(
+            select(func.count(Submission.id)).where(
+                Submission.source_id == source.id,
+                Submission.created_at >= since,
+                Submission.email == email,
+                Submission.message == message,
+            )
+        )
+        if dupe:
+            return {"ok": True, "status": "duplicate", "deduped": True}
+
     sub = Submission(
         source_id=source.id,
         type=sub_type,
         name=(body.get("name") or None),
-        email=(body.get("email") or None),
+        email=email,
         phone=(body.get("phone") or None),
         company=(body.get("company") or None),
         subject=(body.get("subject") or None),
-        message=(body.get("message") or None),
+        message=message,
         page_url=(body.get("page_url") or None),
         payload=extra or None,
         ip=request.client.host if request.client else None,
     )
-    # Spam screening -> quarantine flow.
+    # Spam screening -> quarantine flow (per-source thresholds when set).
     score, reasons = score_submission(
         name=sub.name, email=sub.email, phone=sub.phone,
         subject=sub.subject, message=sub.message, payload=extra,
     )
     sub.spam_score = score
     sub.spam_reasons = reasons or None
-    sub.status = status_for(score)
+    sub.status = status_for(score, source.spam_threshold, source.clean_threshold)
     db.add(sub)
     await db.flush()
 
@@ -133,6 +177,7 @@ async def ingest(request: Request, db: AsyncSession = Depends(get_db)):
 # ---- Sources -------------------------------------------------------------
 async def _source_out(db: AsyncSession, s: IntakeSource) -> SourceOut:
     out = SourceOut.model_validate(s)
+    out.has_signing_secret = bool(s.signing_secret)
     out.submission_count = (
         await db.scalar(select(func.count(Submission.id)).where(Submission.source_id == s.id))
     ) or 0
@@ -161,6 +206,10 @@ async def create_source(
         default_type=payload.default_type,
         auto_convert=payload.auto_convert,
         notify_user_id=payload.notify_user_id,
+        rate_limit_per_min=payload.rate_limit_per_min,
+        dedup_window_min=payload.dedup_window_min,
+        spam_threshold=payload.spam_threshold,
+        clean_threshold=payload.clean_threshold,
     )
     db.add(s)
     await db.commit()
@@ -198,6 +247,34 @@ async def rotate_key(
     await db.commit()
     await db.refresh(s)
     return await _source_out(db, s)
+
+
+@router.post("/sources/{source_id}/signing-secret")
+async def rotate_signing_secret(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Generate (or clear) the HMAC signing secret. Returned only once here."""
+    s = await db.get(IntakeSource, source_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Source not found")
+    secret = secrets.token_urlsafe(24)
+    s.signing_secret = secret
+    await db.commit()
+    return {"signing_secret": secret}
+
+
+@router.delete("/sources/{source_id}/signing-secret", status_code=204)
+async def clear_signing_secret(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    s = await db.get(IntakeSource, source_id)
+    if s:
+        s.signing_secret = None
+        await db.commit()
 
 
 @router.delete("/sources/{source_id}", status_code=204)
