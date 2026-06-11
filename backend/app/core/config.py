@@ -59,7 +59,9 @@ class Settings(BaseSettings):
 
     # Outbound notification fan-out (optional).
     SLACK_WEBHOOK_URL: str = ""
-    # Master switch: also email/Slack in-app notifications as they're created.
+    # Microsoft Teams incoming webhook (optional).
+    TEAMS_WEBHOOK_URL: str = ""
+    # Master switch: also email/Slack/Teams in-app notifications as created.
     NOTIFY_OUTBOUND: bool = False
 
     @property

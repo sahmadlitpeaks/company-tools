@@ -9,12 +9,29 @@ def test_deliver_gating_no_config(monkeypatch):
     # Nothing configured → no channels attempted.
     monkeypatch.setattr(dispatch.settings, "SMTP_HOST", "", raising=False)
     monkeypatch.setattr(dispatch.settings, "SLACK_WEBHOOK_URL", "", raising=False)
+    monkeypatch.setattr(dispatch.settings, "TEAMS_WEBHOOK_URL", "", raising=False)
     assert dispatch.deliver_notification(to_email="a@b.com", title="Hi") == []
+
+
+def test_deliver_uses_teams(monkeypatch):
+    monkeypatch.setattr(dispatch.settings, "SMTP_HOST", "", raising=False)
+    monkeypatch.setattr(dispatch.settings, "SLACK_WEBHOOK_URL", "", raising=False)
+    monkeypatch.setattr(dispatch.settings, "TEAMS_WEBHOOK_URL", "https://outlook.office.com/webhook/x", raising=False)
+    captured = {}
+
+    def fake_send_teams(title, body, link):
+        captured["title"] = title
+        return True
+
+    monkeypatch.setattr(dispatch, "send_teams", fake_send_teams)
+    channels = dispatch.deliver_notification(to_email=None, title="Ping", body="b", link="/x")
+    assert channels == ["teams"] and captured["title"] == "Ping"
 
 
 def test_deliver_uses_email_and_slack(monkeypatch):
     monkeypatch.setattr(dispatch.settings, "SMTP_HOST", "smtp.test", raising=False)
     monkeypatch.setattr(dispatch.settings, "SLACK_WEBHOOK_URL", "https://hooks.slack/x", raising=False)
+    monkeypatch.setattr(dispatch.settings, "TEAMS_WEBHOOK_URL", "", raising=False)
     sent_email = {}
 
     def fake_send_email(to, subject, html):

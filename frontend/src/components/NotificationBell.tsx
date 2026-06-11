@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, Settings2 } from "lucide-react";
 import { api } from "../api/client";
 import type { AppNotification } from "../api/types";
 
@@ -23,7 +23,27 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState<AppNotification[]>([]);
+  const [showPrefs, setShowPrefs] = useState(false);
+  const [prefs, setPrefs] = useState<{ categories: string[]; muted: string[] } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+
+  async function loadPrefs() {
+    try {
+      setPrefs(await api<{ categories: string[]; muted: string[] }>("/api/notifications/preferences"));
+    } catch {
+      /* ignore */
+    }
+  }
+  async function toggleMute(cat: string) {
+    if (!prefs) return;
+    const muted = prefs.muted.includes(cat) ? prefs.muted.filter((c) => c !== cat) : [...prefs.muted, cat];
+    setPrefs({ ...prefs, muted });
+    try {
+      await api("/api/notifications/preferences", { method: "PUT", body: { muted } });
+    } catch {
+      /* ignore */
+    }
+  }
 
   const loadCount = useCallback(async () => {
     try {
@@ -101,12 +121,40 @@ export default function NotificationBell() {
         <div className="bell-menu">
           <div className="bell-head spread">
             <strong>Notifications</strong>
-            {count > 0 && (
-              <button className="btn-sm" onClick={markAll}>
-                Mark all read
+            <span className="flex gap-1">
+              <button className="btn-sm" title="Preferences" onClick={() => { setShowPrefs((v) => !v); if (!prefs) void loadPrefs(); }}>
+                <Settings2 size={13} />
               </button>
-            )}
+              {count > 0 && (
+                <button className="btn-sm" onClick={markAll}>
+                  Mark all read
+                </button>
+              )}
+            </span>
           </div>
+          {showPrefs && prefs && (
+            <div className="bell-prefs" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Mute email/Slack/Teams for (in-app stays on):
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {prefs.categories.map((c) => {
+                  const muted = prefs.muted.includes(c);
+                  return (
+                    <button
+                      key={c}
+                      className={muted ? "btn-sm" : "btn-sm btn-primary"}
+                      style={{ flex: "0 0 auto", textTransform: "capitalize" }}
+                      onClick={() => toggleMute(c)}
+                      title={muted ? "Muted — click to enable" : "On — click to mute"}
+                    >
+                      {muted ? `🔕 ${c}` : c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="bell-list">
             {items.length === 0 ? (
               <div className="empty" style={{ padding: 24 }}>

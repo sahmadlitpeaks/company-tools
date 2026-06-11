@@ -92,13 +92,40 @@ async def check_warranties(
 async def channel_status(_: User = Depends(get_current_user)):
     """Which outbound notification channels are configured/enabled."""
     from app.core.config import settings
-    from app.services.dispatch import email_enabled, slack_enabled
+    from app.services.dispatch import email_enabled, slack_enabled, teams_enabled
 
     return {
         "outbound_enabled": settings.NOTIFY_OUTBOUND,
         "email_configured": email_enabled(),
         "slack_configured": slack_enabled(),
+        "teams_configured": teams_enabled(),
     }
+
+
+# Categories users can mute for outbound channels (in-app always delivered).
+NOTIFY_CATEGORIES = [
+    "approval", "kudos", "performance", "info", "ticket", "task", "leave",
+]
+
+
+@router.get("/preferences")
+async def get_preferences(user: User = Depends(get_current_user)):
+    return {"categories": NOTIFY_CATEGORIES, "muted": user.notify_muted or []}
+
+
+class PreferencesIn(BaseModel):
+    muted: list[str]
+
+
+@router.put("/preferences")
+async def set_preferences(
+    body: PreferencesIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    user.notify_muted = [c for c in body.muted if c in NOTIFY_CATEGORIES]
+    await db.commit()
+    return {"muted": user.notify_muted}
 
 
 @router.post("/test")

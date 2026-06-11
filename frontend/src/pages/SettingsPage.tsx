@@ -418,11 +418,11 @@ export default function SettingsPage() {
 
 function NotificationsCard() {
   const { notify } = useToast();
-  const [status, setStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean } | null>(null);
+  const [status, setStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void api<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean }>("/api/notifications/channels")
+    void api<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean }>("/api/notifications/channels")
       .then(setStatus)
       .catch(() => {});
   }, []);
@@ -445,13 +445,15 @@ function NotificationsCard() {
         <span className={`badge ${status?.outbound_enabled ? "green" : "amber"}`}>{status?.outbound_enabled ? "Outbound on" : "In-app only"}</span>
       </div>
       <p className="muted mt-0 text-sm">
-        In-app notifications always work. Configure SMTP and a Slack webhook (env vars
-        <code> SMTP_HOST</code>, <code>SLACK_WEBHOOK_URL</code>) and set <code>NOTIFY_OUTBOUND=true</code>
-        to also mirror notifications to email and Slack.
+        In-app notifications always work. Configure SMTP, a Slack webhook and/or a Microsoft
+        Teams webhook (env vars <code>SMTP_HOST</code>, <code>SLACK_WEBHOOK_URL</code>,
+        <code> TEAMS_WEBHOOK_URL</code>) and set <code>NOTIFY_OUTBOUND=true</code> to mirror
+        notifications to those channels. Employees can mute categories from the bell menu.
       </p>
       <div className="flex flex-wrap gap-2 text-sm">
         <span className={`badge ${status?.email_configured ? "green" : ""}`}>Email {status?.email_configured ? "configured" : "off"}</span>
         <span className={`badge ${status?.slack_configured ? "green" : ""}`}>Slack {status?.slack_configured ? "configured" : "off"}</span>
+        <span className={`badge ${status?.teams_configured ? "green" : ""}`}>Teams {status?.teams_configured ? "configured" : "off"}</span>
       </div>
       <button className="btn mt-3 flex-none" disabled={busy} onClick={sendTest}>{busy ? "Sending…" : "Send test notification"}</button>
     </div>

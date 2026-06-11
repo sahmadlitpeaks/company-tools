@@ -85,6 +85,9 @@ class User(UUIDMixin, TimestampMixin, Base):
     schedule_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("work_schedules.id", ondelete="SET NULL"), nullable=True
     )
+    # Notification categories the user has muted for outbound channels
+    # (in-app notifications are always delivered).
+    notify_muted: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     managed_companies: Mapped[list["object"]] = relationship(
         "Company", secondary=user_companies, lazy="selectin"

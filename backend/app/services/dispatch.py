@@ -14,6 +14,10 @@ def slack_enabled() -> bool:
     return bool(settings.SLACK_WEBHOOK_URL)
 
 
+def teams_enabled() -> bool:
+    return bool(settings.TEAMS_WEBHOOK_URL)
+
+
 def email_enabled() -> bool:
     return bool(settings.SMTP_HOST)
 
@@ -25,6 +29,32 @@ def send_slack(text: str) -> bool:
     data = json.dumps({"text": text}).encode()
     req = urllib.request.Request(
         settings.SLACK_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
+        return 200 <= resp.status < 300
+
+
+def send_teams(title: str, body: str | None, link: str | None) -> bool:
+    """Post an Office 365 MessageCard to the configured Teams incoming webhook."""
+    if not teams_enabled():
+        return False
+    card: dict = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": title,
+        "themeColor": "0b5cab",
+        "title": title,
+        "text": body or "",
+    }
+    if link:
+        card["potentialAction"] = [{
+            "@type": "OpenUri",
+            "name": "Open",
+            "targets": [{"os": "default", "uri": _absolute(link)}],
+        }]
+    data = json.dumps(card).encode()
+    req = urllib.request.Request(
+        settings.TEAMS_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
         return 200 <= resp.status < 300
@@ -58,6 +88,12 @@ def deliver_notification(
                 text += f"\n{_absolute(link)}"
             if send_slack(text):
                 sent.append("slack")
+        except Exception:
+            pass
+    if teams_enabled():
+        try:
+            if send_teams(title, body, link):
+                sent.append("teams")
         except Exception:
             pass
     return sent
