@@ -47,6 +47,9 @@ class TimesheetOut(BaseModel):
     decided_at: datetime | None = None
     note: str | None = None
     total_minutes: int = 0
+    expected_minutes: int = 0
+    overtime_minutes: int = 0
+    leave_days: float = 0
     entries: list[TimeEntryOut] = []
 
 
@@ -59,5 +62,38 @@ class TimeSummary(BaseModel):
     open_entry: TimeEntryOut | None = None
     today_minutes: int = 0
     week_minutes: int = 0
+    week_expected_minutes: int = 0
+    week_overtime_minutes: int = 0
     week_status: str = "open"
     pending_approvals: int = 0
+
+
+class ScheduleBase(BaseModel):
+    name: str
+    daily_minutes: int = 480
+    workdays: list[int] = [0, 1, 2, 3, 4]
+    is_default: bool = False
+    active: bool = True
+
+
+class ScheduleCreate(ScheduleBase):
+    pass
+
+
+class ScheduleUpdate(BaseModel):
+    name: str | None = None
+    daily_minutes: int | None = None
+    workdays: list[int] | None = None
+    is_default: bool | None = None
+    active: bool | None = None
+
+
+class ScheduleOut(ScheduleBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    assigned_count: int = 0
+
+
+class AssignSchedule(BaseModel):
+    schedule_id: uuid.UUID | None = None

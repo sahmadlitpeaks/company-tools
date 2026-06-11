@@ -1430,6 +1430,9 @@ export interface Timesheet {
   decided_at?: string | null;
   note?: string | null;
   total_minutes: number;
+  expected_minutes: number;
+  overtime_minutes: number;
+  leave_days: number;
   entries: TimeEntry[];
 }
 
@@ -1437,8 +1440,20 @@ export interface TimeSummary {
   open_entry?: TimeEntry | null;
   today_minutes: number;
   week_minutes: number;
+  week_expected_minutes: number;
+  week_overtime_minutes: number;
   week_status: string;
   pending_approvals: number;
+}
+
+export interface WorkSchedule {
+  id: string;
+  name: string;
+  daily_minutes: number;
+  workdays: number[];
+  is_default: boolean;
+  active: boolean;
+  assigned_count: number;
 }
 
 export interface IntakeSource {

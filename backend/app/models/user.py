@@ -81,6 +81,10 @@ class User(UUIDMixin, TimestampMixin, Base):
     # Per-person overrides layered on top of the department's permissions.
     extra_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     revoked_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Work pattern used for expected-hours / overtime on timesheets.
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_schedules.id", ondelete="SET NULL"), nullable=True
+    )
 
     managed_companies: Mapped[list["object"]] = relationship(
         "Company", secondary=user_companies, lazy="selectin"

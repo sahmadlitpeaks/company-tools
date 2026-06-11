@@ -3,7 +3,7 @@ timesheets with a submit→approve workflow (replaces Calamari clock-in)."""
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -11,6 +11,21 @@ from app.models.base import TimestampMixin, UUIDMixin
 
 ENTRY_SOURCES = {"clock", "manual"}
 TIMESHEET_STATUSES = {"open", "submitted", "approved", "rejected"}
+
+
+class WorkSchedule(UUIDMixin, TimestampMixin, Base):
+    """A work pattern: which weekdays are workdays and the expected daily
+    minutes. Drives the expected-hours and overtime figures on timesheets."""
+
+    __tablename__ = "work_schedules"
+
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    # Expected worked minutes per workday (e.g. 480 = 8h).
+    daily_minutes: Mapped[int] = mapped_column(Integer, default=480)
+    # Workdays as ISO weekday ints (Mon=0 … Sun=6); default Mon–Fri.
+    workdays: Mapped[list | None] = mapped_column(JSON, default=lambda: [0, 1, 2, 3, 4])
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
 
 class TimeEntry(UUIDMixin, TimestampMixin, Base):

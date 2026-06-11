@@ -7,15 +7,21 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.permissions import is_hr
-from app.models.timekeeping import TimeEntry, Timesheet
+from app.models.hr import Holiday
+from app.models.timekeeping import TimeEntry, Timesheet, WorkSchedule
 from app.models.user import User
+from app.models.workplace import ApprovalRequest
 from app.schemas.timekeeping import (
+    AssignSchedule,
+    ScheduleCreate,
+    ScheduleOut,
+    ScheduleUpdate,
     TimeEntryCreate,
     TimeEntryOut,
     TimeEntryUpdate,
@@ -29,9 +35,77 @@ from app.services.people import user_labels
 
 router = APIRouter(prefix="/time", tags=["time-tracking"])
 
+_DEFAULT_WORKDAYS = [0, 1, 2, 3, 4]
+_DEFAULT_DAILY_MINUTES = 480
+
 
 def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
+
+
+async def _holidays(db: AsyncSession) -> set[date]:
+    return set((await db.execute(select(Holiday.day))).scalars().all())
+
+
+async def _schedule_for(db: AsyncSession, user: User) -> WorkSchedule | None:
+    """The user's assigned schedule, falling back to the default one."""
+    if getattr(user, "schedule_id", None):
+        sched = await db.get(WorkSchedule, user.schedule_id)
+        if sched and sched.active:
+            return sched
+    return (
+        await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.is_default.is_(True), WorkSchedule.active.is_(True)
+            )
+        )
+    ).scalar_one_or_none()
+
+
+def _expected_minutes(sched: WorkSchedule | None, week_start: date, holidays: set[date]) -> int:
+    """Expected worked minutes across the week per the schedule, minus holidays."""
+    workdays = (sched.workdays if sched and sched.workdays is not None else _DEFAULT_WORKDAYS)
+    daily = sched.daily_minutes if sched else _DEFAULT_DAILY_MINUTES
+    total = 0
+    for i in range(7):
+        day = week_start + timedelta(days=i)
+        if day.weekday() in workdays and day not in holidays:
+            total += daily
+    return total
+
+
+async def _leave_days_in_week(
+    db: AsyncSession, user_id: uuid.UUID, week_start: date, holidays: set[date]
+) -> float:
+    """Approved leave (working days, half-day aware) overlapping the week."""
+    week_end = week_start + timedelta(days=6)
+    leaves = (
+        await db.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.type == "leave",
+                ApprovalRequest.status == "approved",
+                ApprovalRequest.requester_id == user_id,
+                ApprovalRequest.start_date.is_not(None),
+            )
+        )
+    ).scalars().all()
+    total = 0.0
+    for lv in leaves:
+        start = max(lv.start_date, week_start)
+        end = min(lv.end_date or lv.start_date, week_end)
+        if end < start:
+            continue
+        days = 0
+        cur = start
+        while cur <= end:
+            if cur.weekday() < 5 and cur not in holidays:
+                days += 1
+            cur += timedelta(days=1)
+        if lv.half_day and days >= 1:
+            total += 0.5
+        else:
+            total += days
+    return total
 
 
 async def _can_view(db: AsyncSession, viewer: User, target_id: uuid.UUID) -> bool:
@@ -190,6 +264,11 @@ async def _timesheet(db: AsyncSession, user_id: uuid.UUID, week_start: date) -> 
             )
         )
     ).scalar_one_or_none()
+    total = sum(e.minutes for e in entries)
+    target = await db.get(User, user_id)
+    holidays = await _holidays(db)
+    sched = await _schedule_for(db, target) if target else None
+    expected = _expected_minutes(sched, week_start, holidays)
     out = TimesheetOut(
         id=ts.id if ts else None,
         user_id=user_id,
@@ -199,7 +278,10 @@ async def _timesheet(db: AsyncSession, user_id: uuid.UUID, week_start: date) -> 
         decided_by_id=ts.decided_by_id if ts else None,
         decided_at=ts.decided_at if ts else None,
         note=ts.note if ts else None,
-        total_minutes=sum(e.minutes for e in entries),
+        total_minutes=total,
+        expected_minutes=expected,
+        overtime_minutes=max(total - expected, 0),
+        leave_days=await _leave_days_in_week(db, user_id, week_start, holidays),
         entries=[TimeEntryOut.model_validate(e) for e in entries],
     )
     return out
@@ -326,12 +408,127 @@ async def summary(db: AsyncSession = Depends(get_db), user: User = Depends(get_c
         )
     ).scalars().all()
     open_entry = next((e for e in entries if e.clock_in and not e.clock_out), None)
+    week_minutes = sum(e.minutes for e in entries)
+    holidays = await _holidays(db)
+    sched = await _schedule_for(db, user)
+    expected = _expected_minutes(sched, week_start, holidays)
     out = TimeSummary(
         open_entry=TimeEntryOut.model_validate(open_entry) if open_entry else None,
         today_minutes=sum(e.minutes for e in entries if e.work_date == today),
-        week_minutes=sum(e.minutes for e in entries),
+        week_minutes=week_minutes,
+        week_expected_minutes=expected,
+        week_overtime_minutes=max(week_minutes - expected, 0),
         week_status=await _week_status(db, user.id, week_start),
     )
     pend = await approvals(db, user)
     out.pending_approvals = len(pend)
     return out
+
+
+# ---- Work schedules (HR) -------------------------------------------------
+async def _schedule_out(db: AsyncSession, sched: WorkSchedule) -> ScheduleOut:
+    count = await db.scalar(
+        select(func.count(User.id)).where(User.schedule_id == sched.id)
+    )
+    out = ScheduleOut.model_validate(sched)
+    out.assigned_count = count or 0
+    return out
+
+
+@router.get("/schedules", response_model=list[ScheduleOut])
+async def list_schedules(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    rows = (
+        await db.execute(
+            select(WorkSchedule).where(WorkSchedule.active.is_(True)).order_by(WorkSchedule.name)
+        )
+    ).scalars().all()
+    return [await _schedule_out(db, s) for s in rows]
+
+
+@router.post("/schedules", response_model=ScheduleOut, status_code=201)
+async def create_schedule(
+    body: ScheduleCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not is_hr(user):
+        raise HTTPException(status_code=403, detail="HR access required")
+    sched = WorkSchedule(**body.model_dump())
+    db.add(sched)
+    await db.flush()
+    if sched.is_default:
+        await _clear_other_defaults(db, sched.id)
+    await db.commit()
+    await db.refresh(sched)
+    return await _schedule_out(db, sched)
+
+
+@router.patch("/schedules/{schedule_id}", response_model=ScheduleOut)
+async def update_schedule(
+    schedule_id: uuid.UUID,
+    body: ScheduleUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not is_hr(user):
+        raise HTTPException(status_code=403, detail="HR access required")
+    sched = await db.get(WorkSchedule, schedule_id)
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(sched, k, v)
+    if sched.is_default:
+        await _clear_other_defaults(db, sched.id)
+    await db.commit()
+    await db.refresh(sched)
+    return await _schedule_out(db, sched)
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+async def delete_schedule(
+    schedule_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not is_hr(user):
+        raise HTTPException(status_code=403, detail="HR access required")
+    sched = await db.get(WorkSchedule, schedule_id)
+    if sched:
+        sched.active = False  # soft-delete keeps history intact
+        await db.commit()
+
+
+async def _clear_other_defaults(db: AsyncSession, keep_id: uuid.UUID) -> None:
+    others = (
+        await db.execute(
+            select(WorkSchedule).where(
+                WorkSchedule.is_default.is_(True), WorkSchedule.id != keep_id
+            )
+        )
+    ).scalars().all()
+    for o in others:
+        o.is_default = False
+
+
+@router.put("/users/{user_id}/schedule", response_model=ScheduleOut | None)
+async def assign_schedule(
+    user_id: uuid.UUID,
+    body: AssignSchedule,
+    db: AsyncSession = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    if not is_hr(viewer):
+        raise HTTPException(status_code=403, detail="HR access required")
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.schedule_id and not await db.get(WorkSchedule, body.schedule_id):
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    target.schedule_id = body.schedule_id
+    await db.commit()
+    if not body.schedule_id:
+        return None
+    sched = await db.get(WorkSchedule, body.schedule_id)
+    return await _schedule_out(db, sched)

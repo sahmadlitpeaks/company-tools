@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Clock, Play, Plus, Square, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Clock, Play, Plus, Settings2, Square, Trash2, Zap } from "lucide-react";
 import { api } from "../api/client";
-import type { TimeEntry, Timesheet, TimeSummary } from "../api/types";
+import type { TimeEntry, Timesheet, TimeSummary, WorkSchedule } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Loading, PageHead, useToast } from "../components/ui";
+import { useAuth } from "../auth/AuthContext";
+import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+
+const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function hm(mins: number): string {
   const h = Math.floor(mins / 60);
@@ -25,6 +28,9 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function TimePage() {
   const { notify } = useToast();
+  const { user } = useAuth();
+  const canManage = !!user?.is_admin || !!user?.effective_permissions?.includes("hr");
+  const [managingSchedules, setManagingSchedules] = useState(false);
   const summary = useFetch<TimeSummary>("/api/time/summary");
   const approvals = useFetch<Timesheet[]>("/api/time/approvals");
   const [weekOffset, setWeekOffset] = useState(0);
@@ -64,10 +70,20 @@ export default function TimePage() {
 
   return (
     <div>
-      <PageHead title="Time Tracking" subtitle="Clock in/out, log time and submit your weekly timesheet." />
+      <PageHead
+        title="Time Tracking"
+        subtitle="Clock in/out, log time and submit your weekly timesheet."
+        action={
+          canManage ? (
+            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setManagingSchedules(true)}>
+              <Settings2 size={15} /> Work schedules
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Clock + summary */}
-      <div className="grid mb-5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+      <div className="grid mb-5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
         <div className="card flex flex-col items-center justify-center text-center">
           <button
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-3 text-base font-semibold text-white ${isClockedIn ? "bg-rose-500 hover:bg-rose-600" : "bg-brand-600 hover:bg-brand-700"}`}
@@ -80,6 +96,8 @@ export default function TimePage() {
         </div>
         <Stat icon={<Clock size={16} />} label="Today" value={hm(s?.today_minutes ?? 0)} />
         <Stat icon={<Clock size={16} />} label="This week" value={hm(s?.week_minutes ?? 0)} />
+        <Stat icon={<CalendarClock size={16} />} label="Expected" value={hm(s?.week_expected_minutes ?? 0)} />
+        <Stat icon={<Zap size={16} />} label="Overtime" value={<span className={(s?.week_overtime_minutes ?? 0) > 0 ? "text-amber-600" : ""}>{hm(s?.week_overtime_minutes ?? 0)}</span>} />
         <Stat label="Week status" value={<span className={`badge ${STATUS_BADGE[s?.week_status ?? "open"]}`}>{s?.week_status ?? "open"}</span>} />
       </div>
 
@@ -109,7 +127,91 @@ export default function TimePage() {
           </div>
         </div>
       )}
+
+      {managingSchedules && <SchedulesModal onClose={() => setManagingSchedules(false)} />}
     </div>
+  );
+}
+
+function SchedulesModal({ onClose }: { onClose: () => void }) {
+  const { notify } = useToast();
+  const schedules = useFetch<WorkSchedule[]>("/api/time/schedules");
+  const [form, setForm] = useState({ name: "", daily_hours: "8", workdays: [0, 1, 2, 3, 4], is_default: false });
+
+  function toggleDay(d: number) {
+    setForm((p) => ({
+      ...p,
+      workdays: p.workdays.includes(d) ? p.workdays.filter((x) => x !== d) : [...p.workdays, d].sort(),
+    }));
+  }
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    try {
+      await api("/api/time/schedules", {
+        method: "POST",
+        body: {
+          name: form.name.trim(),
+          daily_minutes: Math.round(parseFloat(form.daily_hours) * 60),
+          workdays: form.workdays,
+          is_default: form.is_default,
+        },
+      });
+      setForm({ name: "", daily_hours: "8", workdays: [0, 1, 2, 3, 4], is_default: false });
+      schedules.reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
+  async function patch(id: string, body: Record<string, unknown>) {
+    await api(`/api/time/schedules/${id}`, { method: "PATCH", body });
+    schedules.reload();
+  }
+  async function remove(id: string) {
+    await api(`/api/time/schedules/${id}`, { method: "DELETE" });
+    schedules.reload();
+  }
+
+  return (
+    <Modal title="Work schedules" onClose={onClose} maxWidth={560}>
+      {schedules.loading ? (
+        <Loading />
+      ) : (schedules.data?.length ?? 0) === 0 ? (
+        <Empty icon="🗓" message="No schedules yet" hint="Add a work pattern below." />
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {schedules.data!.map((sc) => (
+            <div key={sc.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+              <span className="flex-1 font-medium">
+                {sc.name} {sc.is_default && <span className="badge green">default</span>}
+              </span>
+              <span className="muted">{(sc.daily_minutes / 60).toFixed(2).replace(/\.00$/, "")}h/day · {sc.workdays.map((d) => DOW[d]).join(" ")}</span>
+              <span className="muted text-xs">{sc.assigned_count} assigned</span>
+              {!sc.is_default && (
+                <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => patch(sc.id, { is_default: true })}>Make default</button>
+              )}
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => remove(sc.id)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form onSubmit={add} className="mt-3 rounded-lg border border-slate-200 p-2">
+        <div className="row">
+          <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Standard 40h" /></div>
+          <div className="field" style={{ maxWidth: 110 }}><label>Hours/day</label><input type="number" step="0.25" value={form.daily_hours} onChange={(e) => setForm((p) => ({ ...p, daily_hours: e.target.value }))} /></div>
+        </div>
+        <label className="muted text-xs">Workdays</label>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {DOW.map((d, i) => (
+            <button type="button" key={d} className={form.workdays.includes(i) ? "btn-sm btn-primary" : "btn-sm"} style={{ flex: "0 0 auto" }} onClick={() => toggleDay(i)}>{d}</button>
+          ))}
+        </div>
+        <label className="mt-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" className="!w-auto" checked={form.is_default} onChange={(e) => setForm((p) => ({ ...p, is_default: e.target.checked }))} /> Use as the default schedule
+        </label>
+        <button className="btn-primary mt-2" style={{ flex: "0 0 auto" }}>Add schedule</button>
+      </form>
+    </Modal>
   );
 }
 
@@ -217,8 +319,14 @@ function WeekSheet({
         })}
       </div>
 
-      <div className="spread mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <span className="font-semibold">Total: {hm(sheet.total_minutes)}</span>
+        <span className="muted">Expected: {hm(sheet.expected_minutes)}</span>
+        {sheet.overtime_minutes > 0 && <span className="text-amber-600">Overtime: {hm(sheet.overtime_minutes)}</span>}
+        {sheet.leave_days > 0 && <span className="badge blue">On leave: {sheet.leave_days} day{sheet.leave_days === 1 ? "" : "s"}</span>}
+      </div>
+      <div className="spread mt-2">
+        <span />
         {!locked ? (
           <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={onSubmit}>Submit for approval</button>
         ) : (

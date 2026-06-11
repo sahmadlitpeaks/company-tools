@@ -54,7 +54,7 @@ from app.models.people import (  # noqa: F401
     OnboardingTemplateItem,
 )
 from app.models.worklog import WorkLog  # noqa: F401
-from app.models.timekeeping import TimeEntry, Timesheet  # noqa: F401
+from app.models.timekeeping import TimeEntry, Timesheet, WorkSchedule  # noqa: F401
 from app.models.intake import IntakeSource, Submission  # noqa: F401
 from app.models.workspace import WorkspaceItem  # noqa: F401
 from app.models.workplace import (  # noqa: F401
