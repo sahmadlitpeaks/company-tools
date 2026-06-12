@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.app_setting import AppSetting
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.brand_document import BrandDocument, BrandDocumentVersion
 from app.models.branding import BrandAsset, BrandKit
 from app.models.card import CardScan, DigitalCard, Lead
@@ -26,6 +26,19 @@ from app.models.asset import Asset, Folder
 from app.models.landing import LandingLead, LandingPage
 from app.models.notification import Notification
 from app.models.people import AccessGrant, OnboardingJourney, OnboardingTask
+from app.models.hr import (
+    CompensationRecord,
+    EmploymentEvent,
+    PerformanceGoal,
+    Review,
+    ReviewCycle,
+)
+from app.models.custom_fields import (
+    CustomFieldDef,
+    CustomFieldValue,
+    CustomTableDef,
+    CustomTableRow,
+)
 from app.models.product import Brochure, Product
 from app.models.qrcode import QRCode
 from app.models.shortlink import ShortLink
@@ -85,6 +98,15 @@ _MODELS = {
     "access_grant": AccessGrant,
     "onboarding_task": OnboardingTask,
     "onboarding_journey": OnboardingJourney,
+    "custom_field_value": CustomFieldValue,
+    "custom_table_row": CustomTableRow,
+    "custom_field_def": CustomFieldDef,
+    "custom_table_def": CustomTableDef,
+    "compensation_record": CompensationRecord,
+    "employment_event": EmploymentEvent,
+    "performance_goal": PerformanceGoal,
+    "review": Review,
+    "review_cycle": ReviewCycle,
     "leave_balance": LeaveBalance,
     "notification": Notification,
     "shortlink": ShortLink,
@@ -99,7 +121,7 @@ _MODELS = {
     "asset_category": AssetCategory,
     "asset_location": AssetLocation,
     "user": User,
-    "brand": Brand,
+    "brand": Company,
 }
 _DELETE_ORDER = list(_MODELS.keys())  # already child→parent
 
@@ -143,7 +165,7 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("demo-timepiece", "Timepiece", "#7c3aed"),
         ("demo-grilltime", "Grill Time", "#ea580c"),
     ]:
-        b = Brand(slug=slug, name=name, primary_color=colour, accent_color=colour)
+        b = Company(slug=slug, name=name, primary_color=colour, accent_color=colour)
         db.add(b)
         brands.append(b)
     await db.flush()
@@ -161,9 +183,13 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("Yusuf Raza", "Operations", "member", "pending", None),
         ("Mariam Saeed", "Sales", "member", "active", None),
     ]
+    _emp_types = ["full_time", "full_time", "full_time", "full_time", "full_time",
+                  "full_time", "contractor", "part_time"]
+    _offices = ["Dubai", "Dubai", "Abu Dhabi", "Dubai", "Dubai", "Abu Dhabi", "Remote", "Dubai"]
     users = []
     for full, dept, role, status, perms in people_spec:
         first, last = full.split(" ", 1)
+        i = len(users)
         u = User(
             email=f"{first.lower()}.{last.lower().replace(' ', '')}.demo@agholding.net",
             personal_email=f"{first.lower()}@example.com",
@@ -174,7 +200,10 @@ async def seed_demo(db: AsyncSession) -> dict:
             job_title={"Marketing": "Marketing Specialist", "IT": "IT Support",
                        "HR": "HR Manager", "Sales": "Account Executive",
                        "Finance": "Accountant", "Operations": "Ops Coordinator"}.get(dept, "Staff"),
-            mobile_phone="+9715000000" + str(len(users)),
+            mobile_phone="+9715000000" + str(i),
+            office_location=_offices[i],
+            employment_type=_emp_types[i],
+            hire_date=today - timedelta(days=120 + i * 95),
             role=role,
             is_admin=False,
             status=status,
@@ -187,8 +216,83 @@ async def seed_demo(db: AsyncSession) -> dict:
         m.add("user", u)
     mkt_mgr, mkt, it, hr, sales1, fin, pending, sales2 = users
 
+    # Reporting lines (for the org chart + profile relationships).
+    for rep, mgr in [(mkt, mkt_mgr), (sales1, mkt_mgr), (sales2, mkt_mgr),
+                     (it, hr), (fin, hr), (pending, hr)]:
+        rep.manager_id = mgr.id
+
+    # ---- HR records: employment history, compensation, goals, reviews ----
+    _hr: list[tuple] = []
+
+    def hradd(obj, key):
+        db.add(obj)
+        _hr.append((obj, key))
+        return obj
+
+    for u in users:
+        hradd(EmploymentEvent(
+            user_id=u.id, event_type="hired", effective_date=u.hire_date,
+            title="Joined the company", created_by_id=hr.id,
+        ), "employment_event")
+    hradd(EmploymentEvent(
+        user_id=mkt_mgr.id, event_type="promotion",
+        effective_date=today - timedelta(days=60),
+        title="Promoted to Marketing Manager", created_by_id=hr.id,
+    ), "employment_event")
+    _salaries = {mkt_mgr.id: 18000, mkt.id: 9000, it.id: 8500, hr.id: 16000,
+                 sales1.id: 10000, fin.id: 11000, sales2.id: 7000}
+    for uid, amt in _salaries.items():
+        hradd(CompensationRecord(
+            user_id=uid, record_type="salary", amount=amt, currency="AED",
+            pay_period="monthly", effective_date=today - timedelta(days=90),
+            created_by_id=hr.id,
+        ), "compensation_record")
+    for uid, title, prog in [
+        (mkt.id, "Launch Q3 brand campaign", 60),
+        (mkt.id, "Grow social following 20%", 35),
+        (sales1.id, "Close 12 enterprise deals", 50),
+        (it.id, "Roll out MDM to all laptops", 80),
+    ]:
+        hradd(PerformanceGoal(
+            user_id=uid, title=title, status="in_progress", progress=prog,
+            due_date=today + timedelta(days=90), created_by_id=mkt_mgr.id,
+        ), "performance_goal")
+    cycle = hradd(ReviewCycle(name="2026 H1 Review", period="H1 2026", status="open",
+                              due_date=today + timedelta(days=30)), "review_cycle")
+    await db.flush()
+    for uid, reviewer, rating in [(mkt.id, mkt_mgr.id, 4), (sales1.id, mkt_mgr.id, 5)]:
+        hradd(Review(
+            cycle_id=cycle.id, user_id=uid, reviewer_id=reviewer,
+            status="submitted", rating=rating, summary="Strong contribution this cycle.",
+            submitted_at=today - timedelta(days=3),
+        ), "review")
+
+    # ---- Custom fields + a Dependents table (so profiles look rich) ----
+    cf_shirt = hradd(CustomFieldDef(section="personal", key="t_shirt_size", label="T-shirt size",
+                     field_type="select", options=["S", "M", "L", "XL"], sort=0), "custom_field_def")
+    hradd(CustomFieldDef(section="personal", key="linkedin", label="LinkedIn", field_type="text", sort=1), "custom_field_def")
+    hradd(CustomFieldDef(section="personal", key="blood_group", label="Blood group",
+          field_type="text", sensitive=True, sort=2), "custom_field_def")
+    dependents = hradd(CustomTableDef(
+        key="dependents", label="Dependents", sensitive=True,
+        columns=[{"key": "name", "label": "Name", "type": "text"},
+                 {"key": "relation", "label": "Relationship", "type": "text"},
+                 {"key": "dob", "label": "Date of birth", "type": "date"}],
+    ), "custom_table_def")
+    await db.flush()
+    _shirt = {mkt_mgr.id: "L", mkt.id: "M", it.id: "XL", hr.id: "M", sales1.id: "L"}
+    for uid, size in _shirt.items():
+        hradd(CustomFieldValue(def_id=cf_shirt.id, user_id=uid, value=size), "custom_field_value")
+    hradd(CustomTableRow(table_id=dependents.id, user_id=mkt_mgr.id,
+          data={"name": "Lina Khan", "relation": "Daughter", "dob": "2016-05-02"}), "custom_table_row")
+
+    # Register all HR rows once their ids are assigned (for clean teardown).
+    await db.flush()
+    for obj, key in _hr:
+        m.add(key, obj)
+
     # ---- Marketing assets ----
-    folders = [Folder(name=n, created_by_id=mkt.id) for n in ("Brand Guidelines", "Campaign 2026")]
+    folders = [Folder(name=n, created_by_id=mkt.id) for n in ("Company Guidelines", "Campaign 2026")]
     for f in folders:
         db.add(f)
     await db.flush()
@@ -197,7 +301,7 @@ async def seed_demo(db: AsyncSession) -> dict:
     assets = [
         Asset(folder_id=folders[0].id, name="Logo Pack.zip", file_path="demo/logo-pack.zip",
               content_type="application/zip", size_bytes=2_400_000, uploaded_by_id=mkt.id),
-        Asset(folder_id=folders[0].id, name="Brand Manual.pdf", file_path="demo/brand-manual.pdf",
+        Asset(folder_id=folders[0].id, name="Company Manual.pdf", file_path="demo/brand-manual.pdf",
               content_type="application/pdf", size_bytes=5_100_000, uploaded_by_id=mkt.id),
         Asset(folder_id=folders[1].id, name="Hero Banner.png", file_path="demo/hero.png",
               content_type="image/png", size_bytes=820_000, uploaded_by_id=mkt.id),
@@ -251,8 +355,8 @@ async def seed_demo(db: AsyncSession) -> dict:
         m.add("crm_lead", lead)
 
     # ---- Campaigns + metrics ----
-    camp = Campaign(name="Ramadan 2026", objective="awareness", status="active", brand_id=brands[0].id)
-    camp2 = Campaign(name="Summer Launch", objective="conversions", status="completed", brand_id=brands[1].id)
+    camp = Campaign(name="Ramadan 2026", objective="awareness", status="active", company_id=brands[0].id)
+    camp2 = Campaign(name="Summer Launch", objective="conversions", status="completed", company_id=brands[1].id)
     db.add(camp)
     db.add(camp2)
     await db.flush()
@@ -423,7 +527,7 @@ async def seed_demo(db: AsyncSession) -> dict:
 
     # ---- My docs ----
     for who, kind, title, url, body in [
-        (mkt.id, "link", "Brand drive (OneDrive)", "https://onedrive.example.com/brand", None),
+        (mkt.id, "link", "Company drive (OneDrive)", "https://onedrive.example.com/brand", None),
         (mkt.id, "note", "Campaign checklist", None, "1. Brief\n2. Creatives\n3. Launch\n4. Report"),
         (it.id, "link", "Server runbook", "https://wiki.example.com/runbook", None),
     ]:
@@ -461,9 +565,9 @@ async def seed_demo(db: AsyncSession) -> dict:
         (it, "demo-bilal-hussain", "IT Support", None, "#0b5cab"),
     ]
     cards = []
-    for owner, slug, title, brand_id, colour in card_spec:
+    for owner, slug, title, company_id, colour in card_spec:
         c = DigitalCard(
-            owner_id=owner.id, brand_id=brand_id, slug=slug, full_name=owner.display_name,
+            owner_id=owner.id, company_id=company_id, slug=slug, full_name=owner.display_name,
             title=title, company="AG Holding", email=owner.email, phone=owner.mobile_phone,
             whatsapp=owner.mobile_phone, website="https://agholding.net",
             linkedin=f"https://linkedin.com/in/{slug}", accent_color=colour,
@@ -513,9 +617,9 @@ async def seed_demo(db: AsyncSession) -> dict:
         ("demo-grilltime-launch", "Grill Time Launch", brands[2].id, "draft", 0),
     ]
     pages = []
-    for slug, title, brand_id, status, views in lp_spec:
+    for slug, title, company_id, status, views in lp_spec:
         p = LandingPage(
-            slug=slug, brand_id=brand_id, title=title,
+            slug=slug, company_id=company_id, title=title,
             description=f"{title} landing page.",
             blocks=json.dumps([
                 {"type": "hero", "heading": title, "subheading": "Limited time only."},
@@ -554,9 +658,9 @@ async def seed_demo(db: AsyncSession) -> dict:
     for st in (await db.execute(select(SecureTransfer).where(SecureTransfer.sender_id.in_([mkt_mgr.id, hr.id])))).scalars().all():
         m.add("secure_transfer", st)
 
-    # ---- Brand kits (+ downloadable assets) ----
+    # ---- Company kits (+ downloadable assets) ----
     kit = BrandKit(
-        name="Agiomix Brand Kit", description="Primary brand guidelines & assets.",
+        name="Agiomix Company Kit", description="Primary brand guidelines & assets.",
         guidelines_url="https://agholding.net/brand", logo_url="demo/agiomix-logo.svg",
         primary_colors=json.dumps([{"name": "Primary", "hex": "#0d9488"},
                                    {"name": "Ink", "hex": "#0f172a"}]),
@@ -565,7 +669,7 @@ async def seed_demo(db: AsyncSession) -> dict:
     db.add(kit)
     await db.flush()
     m.add("brand_kit", kit)
-    for name, cat in [("Logo (SVG)", "logo"), ("Letterhead", "template"), ("Brand Font", "font")]:
+    for name, cat in [("Logo (SVG)", "logo"), ("Letterhead", "template"), ("Company Font", "font")]:
         db.add(BrandAsset(brand_kit_id=kit.id, name=name, category=cat,
                           file_path=f"demo/{name.lower().replace(' ', '-')}",
                           content_type="application/octet-stream", size_bytes=64_000))
@@ -573,8 +677,8 @@ async def seed_demo(db: AsyncSession) -> dict:
     for ba in (await db.execute(select(BrandAsset).where(BrandAsset.brand_kit_id == kit.id))).scalars().all():
         m.add("brand_asset", ba)
 
-    # ---- Brand documents (versioned) ----
-    doc = BrandDocument(brand_id=brands[0].id, name="Brand Guidelines", category="guideline",
+    # ---- Company documents (versioned) ----
+    doc = BrandDocument(company_id=brands[0].id, name="Company Guidelines", category="guideline",
                         current_version=2)
     db.add(doc)
     await db.flush()
@@ -590,10 +694,10 @@ async def seed_demo(db: AsyncSession) -> dict:
 
     # ---- People ops: onboarding & offboarding journeys ----
     onj = OnboardingJourney(kind="onboarding", target_user_id=pending.id, status="in_progress",
-                            brand_id=brands[0].id, created_by_id=hr.id,
+                            company_id=brands[0].id, created_by_id=hr.id,
                             note="New Operations coordinator starting next week.")
     offj = OnboardingJourney(kind="offboarding", target_user_id=sales2.id, status="in_progress",
-                             brand_id=brands[1].id, created_by_id=hr.id,
+                             company_id=brands[1].id, created_by_id=hr.id,
                              note="Moving on at end of month.")
     db.add(onj)
     db.add(offj)

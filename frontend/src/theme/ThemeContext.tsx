@@ -25,7 +25,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   mode: "light",
   accent: "#0b5cab",
   density: "comfortable",
-  font: "system",
+  font: "inter",
 };
 
 export const ACCENT_PRESETS = [

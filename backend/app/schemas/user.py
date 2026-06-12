@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,15 +21,29 @@ class UserOut(BaseModel):
     avatar_url: str | None = None
     passport_no: str | None = None
     nationality: str | None = None
+    date_of_birth: date | None = None
     bamboo_id: str | None = None
+    manager_id: uuid.UUID | None = None
+    manager_name: str | None = None
+    employment_type: str | None = None
+    hire_date: date | None = None
+    probation_end_date: date | None = None
+    contract_end_date: date | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     is_active: bool
     is_admin: bool
     must_change_password: bool = False
     role: str = "member"
     status: str = "active"
     permissions: list[str] | None = None
+    department_id: uuid.UUID | None = None
+    department_name: str | None = None
+    extra_permissions: list[str] | None = None
+    revoked_permissions: list[str] | None = None
     effective_permissions: list[str] = []
-    managed_brand_ids: list[uuid.UUID] = []
+    managed_company_ids: list[uuid.UUID] = []
     created_at: datetime
 
 
@@ -46,10 +60,22 @@ class UserUpdate(BaseModel):
     business_phone: str | None = None
     passport_no: str | None = None
     nationality: str | None = None
+    date_of_birth: date | None = None
+    manager_id: uuid.UUID | None = None
+    employment_type: str | None = None
+    hire_date: date | None = None
+    probation_end_date: date | None = None
+    contract_end_date: date | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     is_active: bool | None = None
     role: str | None = None
     status: str | None = None
     permissions: list[str] | None = None
+    department_id: uuid.UUID | None = None
+    extra_permissions: list[str] | None = None
+    revoked_permissions: list[str] | None = None
 
 
 class UserCreate(BaseModel):
@@ -80,4 +106,4 @@ class SetPasswordIn(BaseModel):
 
 
 class ManagedBrandsUpdate(BaseModel):
-    brand_ids: list[uuid.UUID] = []
+    company_ids: list[uuid.UUID] = []

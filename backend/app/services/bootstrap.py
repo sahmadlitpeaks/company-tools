@@ -19,9 +19,87 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import hash_password
+from app.models.department import Department
 from app.models.user import User
 
 log = logging.getLogger("bootstrap")
+
+# Everyday modules every department gets.
+_BASE = [
+    "dashboard", "directory", "tasks", "approvals", "service_desk",
+    "knowledge", "announcements", "worklog", "workspace",
+]
+# Default departments and the modules they grant on top of (or beyond) the base.
+DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
+    ("Management", "Leadership — full access to every module.", ["__all__"]),
+    ("Marketing", "Company, campaigns and creative tooling.", _BASE + [
+        "cards", "marketing_assets", "branding", "products", "shared",
+        "campaigns", "crm", "qrcodes", "landing_pages", "signatures",
+        "shortener", "transfers",
+    ]),
+    ("Sales", "Leads, decks and outreach.", _BASE + [
+        "crm", "cards", "products", "shared", "campaigns", "shortener", "transfers",
+    ]),
+    ("IT", "Assets, phone lines and the service desk.", _BASE + [
+        "asset_tracker", "subscriptions", "transfers", "shortener", "qrcodes",
+    ]),
+    ("HR", "People operations, records and onboarding.", _BASE + [
+        "hr", "recruiting", "people_ops", "directory",
+    ]),
+    ("Finance", "Approvals and expense oversight.", _BASE + [
+        "products", "shared", "subscriptions",
+    ]),
+    ("Operations", "Day-to-day running and assets.", _BASE + [
+        "asset_tracker", "subscriptions", "products", "shared", "transfers", "qrcodes",
+    ]),
+]
+
+
+async def ensure_default_departments(db: AsyncSession) -> int:
+    """Seed the default departments once (only if none exist yet)."""
+    from app.core.permissions import ALL_MODULES
+
+    count = await db.scalar(select(func.count(Department.id)))
+    if count and count > 0:
+        return 0
+    created = 0
+    for name, description, perms in DEFAULT_DEPARTMENTS:
+        resolved = list(ALL_MODULES) if perms == ["__all__"] else [
+            p for p in perms if p in set(ALL_MODULES)
+        ]
+        db.add(Department(name=name, description=description, permissions=resolved))
+        created += 1
+    await db.commit()
+    log.info("Seeded %s default departments", created)
+    return created
+
+
+# (name, color, paid, default_days, carryover_max)
+DEFAULT_LEAVE_TYPES: list[tuple[str, str, bool, int, int]] = [
+    ("Annual", "#6366f1", True, 25, 5),
+    ("Sick", "#f59e0b", True, 10, 0),
+    ("Unpaid", "#94a3b8", False, 0, 0),
+    ("Parental", "#ec4899", True, 0, 0),
+]
+
+
+async def ensure_default_leave_types(db: AsyncSession) -> int:
+    """Seed the default leave types once (only if none exist yet)."""
+    from app.models.hr import LeaveType
+
+    count = await db.scalar(select(func.count(LeaveType.id)))
+    if count and count > 0:
+        return 0
+    for i, (name, color, paid, default_days, carryover) in enumerate(DEFAULT_LEAVE_TYPES):
+        db.add(
+            LeaveType(
+                name=name, color=color, paid=paid, default_days=default_days,
+                carryover_max=carryover, sort=i,
+            )
+        )
+    await db.commit()
+    log.info("Seeded %s default leave types", len(DEFAULT_LEAVE_TYPES))
+    return len(DEFAULT_LEAVE_TYPES)
 
 
 async def ensure_default_admin(db: AsyncSession) -> User | None:

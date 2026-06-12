@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.urls import public_base_url
+from app.models.company import Company
 from app.models.tracked_asset import (
     AssetAttachment,
     AssetCategory,
@@ -59,6 +60,8 @@ CSV_FIELDS = [
     "location",
     "condition",
     "serial_number",
+    "assigned_to_email",
+    "brand",
     "vendor",
     "purchase_date",
     "purchase_cost",
@@ -66,6 +69,25 @@ CSV_FIELDS = [
     "useful_life_years",
     "notes",
 ]
+
+# One illustrative row for the downloadable migration template.
+CSV_SAMPLE = {
+    "asset_tag": "AT-0001",
+    "name": "MacBook Pro 14\"",
+    "category": "Laptop",
+    "status": "assigned",
+    "location": "HQ - London",
+    "condition": "good",
+    "serial_number": "C02XL0ABJGH5",
+    "assigned_to_email": "person@agholding.net",
+    "brand": "",
+    "vendor": "Apple",
+    "purchase_date": "2024-03-15",
+    "purchase_cost": "2400.00",
+    "warranty_expiry": "2027-03-15",
+    "useful_life_years": "4",
+    "notes": "Migrated from old system",
+}
 
 
 def _label_url(asset: TrackedAsset) -> str:
@@ -86,14 +108,19 @@ def _book_value(asset: TrackedAsset) -> Decimal | None:
     return value.quantize(Decimal("0.01"))
 
 
-async def _names(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+async def _names(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Map user ids -> {"name", "title"} (title is the staff job title/position)."""
     ids = {i for i in ids if i}
     if not ids:
         return {}
     rows = (
-        await db.execute(select(User.id, User.display_name, User.email).where(User.id.in_(ids)))
+        await db.execute(
+            select(User.id, User.display_name, User.email, User.job_title).where(
+                User.id.in_(ids)
+            )
+        )
     ).all()
-    return {r[0]: (r[1] or r[2]) for r in rows}
+    return {r[0]: {"name": (r[1] or r[2]), "title": r[3]} for r in rows}
 
 
 async def _attachment_counts(
@@ -118,7 +145,9 @@ def _serialize(
     counts: dict[uuid.UUID, int] | None = None,
 ) -> TrackedAssetOut:
     out = TrackedAssetOut.model_validate(asset)
-    out.assigned_to_name = names.get(asset.assigned_to_id) if asset.assigned_to_id else None
+    lab = (names.get(asset.assigned_to_id) or {}) if asset.assigned_to_id else {}
+    out.assigned_to_name = lab.get("name")
+    out.assigned_to_title = lab.get("title")
     out.current_book_value = _book_value(asset)
     out.attachment_count = (counts or {}).get(asset.id, 0)
     return out
@@ -142,7 +171,7 @@ async def list_assets(
     category: str | None = None,
     location: str | None = None,
     condition: str | None = None,
-    brand_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
     assigned_to_id: uuid.UUID | None = None,
     q: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -157,8 +186,8 @@ async def list_assets(
         stmt = stmt.where(TrackedAsset.location == location)
     if condition:
         stmt = stmt.where(TrackedAsset.condition == condition)
-    if brand_id:
-        stmt = stmt.where(TrackedAsset.brand_id == brand_id)
+    if company_id:
+        stmt = stmt.where(TrackedAsset.company_id == company_id)
     if assigned_to_id:
         stmt = stmt.where(TrackedAsset.assigned_to_id == assigned_to_id)
     if q:
@@ -334,6 +363,37 @@ async def delete_location(
         await db.commit()
 
 
+async def _emails_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(User.id, User.email).where(User.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+async def _company_names_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+@router.get("/template.csv")
+async def template_csv(_: User = Depends(get_current_user)):
+    """A header row plus one example row to fill in when migrating."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    writer.writerow(CSV_SAMPLE)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="assets-template.csv"'},
+    )
+
+
 @router.get("/export.csv")
 async def export_csv(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
@@ -341,6 +401,8 @@ async def export_csv(
     assets = (
         await db.execute(select(TrackedAsset).order_by(TrackedAsset.asset_tag))
     ).scalars().all()
+    emails = await _emails_by_id(db, {a.assigned_to_id for a in assets})
+    brands = await _company_names_by_id(db, {a.company_id for a in assets})
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
     writer.writeheader()
@@ -354,6 +416,8 @@ async def export_csv(
                 "location": a.location or "",
                 "condition": a.condition or "",
                 "serial_number": a.serial_number or "",
+                "assigned_to_email": emails.get(a.assigned_to_id, ""),
+                "brand": brands.get(a.company_id, ""),
                 "vendor": a.vendor or "",
                 "purchase_date": a.purchase_date.isoformat() if a.purchase_date else "",
                 "purchase_cost": a.purchase_cost if a.purchase_cost is not None else "",
@@ -399,6 +463,15 @@ async def import_csv(
     """Bulk create/update assets from a CSV (matched by asset_tag)."""
     raw = (await file.read()).decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(raw))
+    # Resolve assignees / brands by name once for the whole file.
+    users = {
+        e.lower(): i
+        for i, e in (await db.execute(select(User.id, User.email))).all()
+    }
+    brands = {
+        n.lower(): i
+        for i, n in (await db.execute(select(Company.id, Company.name))).all()
+    }
     created = updated = 0
     errors: list[str] = []
     for i, row in enumerate(reader, start=2):
@@ -416,6 +489,14 @@ async def import_csv(
         condition = (row.get("condition") or "").strip() or None
         if condition and condition not in CONDITIONS:
             condition = None
+        email = (row.get("assigned_to_email") or "").strip().lower()
+        assigned_to_id = users.get(email) if email else None
+        if email and not assigned_to_id:
+            errors.append(f"Row {i}: unknown assignee '{email}' (left unassigned)")
+        company_name = (row.get("brand") or "").strip().lower()
+        company_id = brands.get(company_name) if company_name else None
+        if assigned_to_id and status == "available":
+            status = "assigned"
         values = dict(
             name=name,
             category=(row.get("category") or "").strip() or None,
@@ -423,6 +504,8 @@ async def import_csv(
             location=(row.get("location") or "").strip() or None,
             condition=condition,
             serial_number=(row.get("serial_number") or "").strip() or None,
+            assigned_to_id=assigned_to_id,
+            company_id=company_id,
             vendor=(row.get("vendor") or "").strip() or None,
             purchase_date=_parse_date(row.get("purchase_date", "")),
             purchase_cost=_parse_decimal(row.get("purchase_cost", "")),
@@ -644,8 +727,10 @@ async def list_events(
     result = []
     for e in events:
         out = AssetEventOut.model_validate(e)
-        out.user_name = names.get(e.user_id) if e.user_id else None
-        out.performed_by_name = names.get(e.performed_by_id) if e.performed_by_id else None
+        out.user_name = (names.get(e.user_id) or {}).get("name") if e.user_id else None
+        out.performed_by_name = (
+            (names.get(e.performed_by_id) or {}).get("name") if e.performed_by_id else None
+        )
         result.append(out)
     return result
 
@@ -676,7 +761,7 @@ async def assignment_history(
         if e.event_type == "checkout":
             open_span = AssignmentSpan(
                 user_id=e.user_id,
-                user_name=names.get(e.user_id) if e.user_id else None,
+                user_name=(names.get(e.user_id) or {}).get("name") if e.user_id else None,
                 checked_out_at=e.created_at,
                 note=e.note,
             )

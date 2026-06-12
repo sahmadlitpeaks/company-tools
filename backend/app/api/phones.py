@@ -1,13 +1,18 @@
+import csv
+import io
 import uuid
-from decimal import Decimal
+from datetime import date
+from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.models.company import Company
 from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent
 from app.models.user import User
 from app.schemas.phone import (
@@ -25,11 +30,44 @@ from app.schemas.phone import (
 )
 from app.services.activity import record
 from app.services.notify import notify_user
-from app.services.people import user_names
+from app.services.people import user_labels
 
 router = APIRouter(prefix="/phone-lines", tags=["phone-lines"])
 
 STATUSES = {"available", "assigned", "suspended", "cancelled"}
+
+# Columns used for CSV migration (export / template / import). Lines are
+# matched on `number`, so re-importing updates existing lines.
+CSV_FIELDS = [
+    "number",
+    "carrier",
+    "plan_name",
+    "sim_number",
+    "data_allowance",
+    "monthly_cost",
+    "status",
+    "assigned_to_email",
+    "brand",
+    "contract_start",
+    "contract_end",
+    "notes",
+]
+
+# One illustrative row so people migrating know the expected shape.
+CSV_SAMPLE = {
+    "number": "+44 7700 900123",
+    "carrier": "Vodafone",
+    "plan_name": "Business Unlimited",
+    "sim_number": "8944000000000000000",
+    "data_allowance": "Unlimited",
+    "monthly_cost": "25.00",
+    "status": "assigned",
+    "assigned_to_email": "person@agholding.net",
+    "brand": "",
+    "contract_start": "2025-01-01",
+    "contract_end": "2027-01-01",
+    "notes": "Ported from old system",
+}
 
 
 async def _get(db: AsyncSession, line_id: uuid.UUID) -> PhoneLine:
@@ -54,7 +92,9 @@ async def _bill_counts(db: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID,
 
 def _serialize(line: PhoneLine, names: dict, counts: dict | None = None) -> PhoneLineOut:
     out = PhoneLineOut.model_validate(line)
-    out.assigned_to_name = names.get(line.assigned_to_id) if line.assigned_to_id else None
+    lab = (names.get(line.assigned_to_id) or {}) if line.assigned_to_id else {}
+    out.assigned_to_name = lab.get("name")
+    out.assigned_to_title = lab.get("title")
     out.bill_count = (counts or {}).get(line.id, 0)
     return out
 
@@ -80,7 +120,7 @@ async def list_lines(
             | PhoneLine.plan_name.ilike(like)
         )
     lines = (await db.execute(stmt)).scalars().all()
-    names = await user_names(db, {ln.assigned_to_id for ln in lines})
+    names = await user_labels(db, {ln.assigned_to_id for ln in lines})
     counts = await _bill_counts(db, {ln.id for ln in lines})
     return [_serialize(ln, names, counts) for ln in lines]
 
@@ -108,6 +148,172 @@ async def summary(
         assigned=by_status.get("assigned", 0),
         monthly_cost=Decimal(spend),
     )
+
+
+def _parse_date(v: str | None):
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(v)
+    except ValueError:
+        return None
+
+
+def _parse_decimal(v: str | None):
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        return Decimal(v)
+    except InvalidOperation:
+        return None
+
+
+def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/template.csv")
+async def template_csv(_: User = Depends(get_current_user)):
+    """A header row plus one example row to fill in when migrating."""
+    return _csv_response([CSV_SAMPLE], "phone-lines-template.csv")
+
+
+@router.get("/export.csv")
+async def export_csv(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+):
+    lines = (
+        await db.execute(select(PhoneLine).order_by(PhoneLine.number))
+    ).scalars().all()
+    emails = await _emails_by_id(db, {ln.assigned_to_id for ln in lines})
+    brands = await _company_names_by_id(db, {ln.company_id for ln in lines})
+    rows = [
+        {
+            "number": ln.number,
+            "carrier": ln.carrier or "",
+            "plan_name": ln.plan_name or "",
+            "sim_number": ln.sim_number or "",
+            "data_allowance": ln.data_allowance or "",
+            "monthly_cost": ln.monthly_cost if ln.monthly_cost is not None else "",
+            "status": ln.status,
+            "assigned_to_email": emails.get(ln.assigned_to_id, ""),
+            "brand": brands.get(ln.company_id, ""),
+            "contract_start": ln.contract_start.isoformat() if ln.contract_start else "",
+            "contract_end": ln.contract_end.isoformat() if ln.contract_end else "",
+            "notes": ln.notes or "",
+        }
+        for ln in lines
+    ]
+    return _csv_response(rows, "phone-lines.csv")
+
+
+async def _emails_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(User.id, User.email).where(User.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+async def _company_names_by_id(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()
+    return {r[0]: r[1] for r in rows}
+
+
+@router.post("/import")
+async def import_csv(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Bulk create/update phone lines from a CSV (matched by number).
+
+    Lets admins migrate an existing telecom inventory in one go. Unknown
+    assignee emails or brand names are skipped (the line still imports).
+    """
+    raw = (await file.read()).decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(raw))
+    # Resolve assignees / brands by name once.
+    users = {
+        e.lower(): i
+        for i, e in (await db.execute(select(User.id, User.email))).all()
+    }
+    brands = {
+        n.lower(): i
+        for i, n in (await db.execute(select(Company.id, Company.name))).all()
+    }
+    created = updated = 0
+    errors: list[str] = []
+    for i, row in enumerate(reader, start=2):
+        number = (row.get("number") or "").strip()
+        if not number:
+            errors.append(f"Row {i}: number is required")
+            continue
+        status = (row.get("status") or "available").strip() or "available"
+        if status not in STATUSES:
+            status = "available"
+        email = (row.get("assigned_to_email") or "").strip().lower()
+        assigned_to_id = users.get(email) if email else None
+        if email and not assigned_to_id:
+            errors.append(f"Row {i}: unknown assignee '{email}' (left unassigned)")
+        company_name = (row.get("brand") or "").strip().lower()
+        company_id = brands.get(company_name) if company_name else None
+        if assigned_to_id and status == "available":
+            status = "assigned"
+        values = dict(
+            carrier=(row.get("carrier") or "").strip() or None,
+            plan_name=(row.get("plan_name") or "").strip() or None,
+            sim_number=(row.get("sim_number") or "").strip() or None,
+            data_allowance=(row.get("data_allowance") or "").strip() or None,
+            monthly_cost=_parse_decimal(row.get("monthly_cost")),
+            status=status,
+            assigned_to_id=assigned_to_id,
+            company_id=company_id,
+            contract_start=_parse_date(row.get("contract_start")),
+            contract_end=_parse_date(row.get("contract_end")),
+            notes=(row.get("notes") or "").strip() or None,
+        )
+        existing = (
+            await db.execute(select(PhoneLine).where(PhoneLine.number == number))
+        ).scalar_one_or_none()
+        if existing:
+            for k, v in values.items():
+                setattr(existing, k, v)
+            updated += 1
+        else:
+            line = PhoneLine(number=number, **values)
+            db.add(line)
+            await db.flush()
+            db.add(
+                PhoneLineEvent(
+                    line_id=line.id,
+                    event_type="assigned" if line.assigned_to_id else "note",
+                    user_id=line.assigned_to_id,
+                    note="Imported via CSV",
+                    performed_by_id=user.id,
+                )
+            )
+            created += 1
+    record(
+        db, user=user, action="created", entity_type="phone_line",
+        summary=f"Imported phone lines via CSV ({created} new, {updated} updated)",
+    )
+    await db.commit()
+    return {"created": created, "updated": updated, "errors": errors}
 
 
 @router.post("", response_model=PhoneLineOut, status_code=201)
@@ -144,7 +350,7 @@ async def create_line(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 
@@ -163,15 +369,19 @@ async def get_line(
     ids = {line.assigned_to_id}
     for e in line.events:
         ids |= {e.user_id, e.performed_by_id}
-    names = await user_names(db, ids)
+    names = await user_labels(db, ids)
     detail = PhoneLineDetail.model_validate(line)
-    detail.assigned_to_name = names.get(line.assigned_to_id) if line.assigned_to_id else None
+    alab = (names.get(line.assigned_to_id) or {}) if line.assigned_to_id else {}
+    detail.assigned_to_name = alab.get("name")
+    detail.assigned_to_title = alab.get("title")
     detail.bill_count = len(line.bills)
     detail.events = []
     for e in line.events:
         eo = PhoneLineEventOut.model_validate(e)
-        eo.user_name = names.get(e.user_id) if e.user_id else None
-        eo.performed_by_name = names.get(e.performed_by_id) if e.performed_by_id else None
+        eo.user_name = (names.get(e.user_id) or {}).get("name") if e.user_id else None
+        eo.performed_by_name = (
+            (names.get(e.performed_by_id) or {}).get("name") if e.performed_by_id else None
+        )
         detail.events.append(eo)
     detail.bills = [PhoneBillOut.model_validate(b) for b in line.bills]
     return detail
@@ -214,7 +424,7 @@ async def update_line(
         )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     counts = await _bill_counts(db, {line.id})
     return _serialize(line, names, counts)
 
@@ -252,7 +462,7 @@ async def assign(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 
@@ -316,7 +526,7 @@ async def set_status(
     )
     await db.commit()
     await db.refresh(line)
-    names = await user_names(db, {line.assigned_to_id})
+    names = await user_labels(db, {line.assigned_to_id})
     return _serialize(line, names)
 
 

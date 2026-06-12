@@ -76,3 +76,67 @@ async def test_phone_lines_module_gated(client, auth):
         f"/api/users/{uid}", headers=auth, json={"permissions": ["dashboard"]}
     )
     assert (await client.get("/api/phone-lines", headers=hdr)).status_code == 403
+
+
+async def test_phone_csv_migration(client, auth):
+    _, uid = await make_member(client, auth, "phoneimp@agholding.net")
+    csv = (
+        "number,carrier,plan_name,monthly_cost,status,assigned_to_email,notes\n"
+        "+971500001111,Etisalat,Biz,30.00,assigned,phoneimp@agholding.net,Ported\n"
+        "+971500002222,Du,Basic,10,available,,\n"
+        ",NoNumber,,,,,\n"
+    )
+    res = await client.post(
+        "/api/phone-lines/import",
+        headers=auth,
+        files={"file": ("lines.csv", csv, "text/csv")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["created"] == 2
+    assert any("number is required" in e for e in body["errors"])
+
+    # The assignee's position/title is surfaced alongside their name.
+    await client.patch(f"/api/users/{uid}", headers=auth, json={"job_title": "Sales Manager"})
+
+    lines = (await client.get("/api/phone-lines", headers=auth)).json()
+    imported = next(ln for ln in lines if ln["number"] == "+971500001111")
+    assert imported["status"] == "assigned" and imported["assigned_to_id"] == uid
+    assert imported["assigned_to_title"] == "Sales Manager"
+
+    detail = (await client.get(f"/api/phone-lines/{imported['id']}", headers=auth)).json()
+    assert detail["assigned_to_title"] == "Sales Manager"
+
+    # Re-importing the same number updates instead of duplicating.
+    csv2 = "number,carrier,monthly_cost\n+971500001111,NewCarrier,99\n"
+    res2 = (await client.post(
+        "/api/phone-lines/import",
+        headers=auth,
+        files={"file": ("l2.csv", csv2, "text/csv")},
+    )).json()
+    assert res2["updated"] == 1 and res2["created"] == 0
+    lines2 = (await client.get("/api/phone-lines", headers=auth)).json()
+    assert next(ln for ln in lines2 if ln["number"] == "+971500001111")["carrier"] == "NewCarrier"
+
+    # Export round-trips and a template is downloadable.
+    exp = await client.get("/api/phone-lines/export.csv", headers=auth)
+    assert exp.status_code == 200 and "+971500001111" in exp.text
+    tpl = await client.get("/api/phone-lines/template.csv", headers=auth)
+    assert tpl.status_code == 200 and "assigned_to_email" in tpl.text
+
+
+async def test_phone_import_unknown_assignee_is_skipped(client, auth):
+    csv = (
+        "number,assigned_to_email\n"
+        "+971500009999,ghost@nowhere.test\n"
+    )
+    body = (await client.post(
+        "/api/phone-lines/import",
+        headers=auth,
+        files={"file": ("g.csv", csv, "text/csv")},
+    )).json()
+    assert body["created"] == 1
+    assert any("unknown assignee" in e for e in body["errors"])
+    lines = (await client.get("/api/phone-lines", headers=auth)).json()
+    line = next(ln for ln in lines if ln["number"] == "+971500009999")
+    assert line["assigned_to_id"] is None and line["status"] == "available"

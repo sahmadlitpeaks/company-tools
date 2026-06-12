@@ -6,21 +6,21 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import can_manage_brand, get_current_admin, get_current_user
+from app.auth.deps import can_manage_company, get_current_admin, get_current_user
 from app.core.database import get_db
-from app.models.brand import Brand
+from app.models.company import Company
 from app.models.brand_document import BrandDocument, BrandDocumentVersion
 from app.models.user import User
-from app.schemas.brand import BrandCreate, BrandOut, BrandUpdate
+from app.schemas.company import CompanyCreate, CompanyOut, CompanyUpdate
 from app.services.activity import record
 from app.services.storage import absolute_path, media_url, save_upload
 from app.services.utils import slugify
 
-router = APIRouter(prefix="/brands", tags=["brands"])
+router = APIRouter(prefix="/companies", tags=["companies"])
 
 
-def _require_manage(user: User, brand: Brand) -> None:
-    if not can_manage_brand(user, brand.id):
+def _require_manage(user: User, brand: Company) -> None:
+    if not can_manage_company(user, brand.id):
         raise HTTPException(status_code=403, detail="You can't manage this brand")
 
 
@@ -29,33 +29,33 @@ async def _unique_slug(db: AsyncSession, base: str) -> str:
     slug = base
     i = 1
     while (
-        await db.execute(select(Brand).where(Brand.slug == slug))
+        await db.execute(select(Company).where(Company.slug == slug))
     ).scalar_one_or_none() is not None:
         i += 1
         slug = f"{base}-{i}"
     return slug
 
 
-@router.get("", response_model=list[BrandOut])
+@router.get("", response_model=list[CompanyOut])
 async def list_brands(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
 ):
     return (
         await db.execute(
-            select(Brand).where(Brand.is_active.is_(True)).order_by(Brand.name)
+            select(Company).where(Company.is_active.is_(True)).order_by(Company.name)
         )
     ).scalars().all()
 
 
-@router.post("", response_model=BrandOut, status_code=201)
+@router.post("", response_model=CompanyOut, status_code=201)
 async def create_brand(
-    payload: BrandCreate,
+    payload: CompanyCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_admin),
 ):
     data = payload.model_dump()
     data["slug"] = await _unique_slug(db, payload.slug or payload.name)
-    brand = Brand(**data)
+    brand = Company(**data)
     db.add(brand)
     record(
         db,
@@ -70,28 +70,28 @@ async def create_brand(
     return brand
 
 
-@router.get("/{brand_id}", response_model=BrandOut)
+@router.get("/{company_id}", response_model=CompanyOut)
 async def get_brand(
-    brand_id: uuid.UUID,
+    company_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    brand = await db.get(Brand, brand_id)
+    brand = await db.get(Company, company_id)
     if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
+        raise HTTPException(status_code=404, detail="Company not found")
     return brand
 
 
-@router.patch("/{brand_id}", response_model=BrandOut)
+@router.patch("/{company_id}", response_model=CompanyOut)
 async def update_brand(
-    brand_id: uuid.UUID,
-    payload: BrandUpdate,
+    company_id: uuid.UUID,
+    payload: CompanyUpdate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    brand = await db.get(Brand, brand_id)
+    brand = await db.get(Company, company_id)
     if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
+        raise HTTPException(status_code=404, detail="Company not found")
     _require_manage(user, brand)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(brand, field, value)
@@ -100,16 +100,16 @@ async def update_brand(
     return brand
 
 
-@router.post("/{brand_id}/logo", response_model=BrandOut)
+@router.post("/{company_id}/logo", response_model=CompanyOut)
 async def upload_logo(
-    brand_id: uuid.UUID,
+    company_id: uuid.UUID,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    brand = await db.get(Brand, brand_id)
+    brand = await db.get(Company, company_id)
     if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
+        raise HTTPException(status_code=404, detail="Company not found")
     _require_manage(user, brand)
     rel_path, _size = await save_upload(file, subdir="brands")
     brand.logo_url = media_url(rel_path)
@@ -118,15 +118,15 @@ async def upload_logo(
     return brand
 
 
-@router.delete("/{brand_id}", status_code=204)
+@router.delete("/{company_id}", status_code=204)
 async def delete_brand(
-    brand_id: uuid.UUID,
+    company_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ):
-    brand = await db.get(Brand, brand_id)
+    brand = await db.get(Company, company_id)
     if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
+        raise HTTPException(status_code=404, detail="Company not found")
     if brand.is_default:
         raise HTTPException(status_code=409, detail="Cannot delete the default brand")
     await db.delete(brand)
@@ -138,7 +138,7 @@ class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    brand_id: uuid.UUID
+    company_id: uuid.UUID
     name: str
     category: str
     current_version: int
@@ -157,16 +157,16 @@ class VersionOut(BaseModel):
     created_at: object
 
 
-@router.get("/{brand_id}/documents", response_model=list[DocumentOut])
+@router.get("/{company_id}/documents", response_model=list[DocumentOut])
 async def list_documents(
-    brand_id: uuid.UUID,
+    company_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     docs = (
         await db.execute(
             select(BrandDocument)
-            .where(BrandDocument.brand_id == brand_id)
+            .where(BrandDocument.company_id == company_id)
             .order_by(BrandDocument.name)
         )
     ).scalars().all()
@@ -194,9 +194,9 @@ async def list_documents(
     return result
 
 
-@router.post("/{brand_id}/documents", response_model=DocumentOut, status_code=201)
+@router.post("/{company_id}/documents", response_model=DocumentOut, status_code=201)
 async def upload_document(
-    brand_id: uuid.UUID,
+    company_id: uuid.UUID,
     file: UploadFile = File(...),
     name: str = Form(...),
     category: str = Form("document"),
@@ -204,20 +204,20 @@ async def upload_document(
     user: User = Depends(get_current_user),
 ):
     """Upload a brand document. Re-uploading the same name adds a new version."""
-    brand = await db.get(Brand, brand_id)
+    brand = await db.get(Company, company_id)
     if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
+        raise HTTPException(status_code=404, detail="Company not found")
     _require_manage(user, brand)
 
     doc = (
         await db.execute(
             select(BrandDocument).where(
-                BrandDocument.brand_id == brand_id, BrandDocument.name == name
+                BrandDocument.company_id == company_id, BrandDocument.name == name
             )
         )
     ).scalar_one_or_none()
     if doc is None:
-        doc = BrandDocument(brand_id=brand_id, name=name, category=category, current_version=0)
+        doc = BrandDocument(company_id=company_id, name=name, category=category, current_version=0)
         db.add(doc)
         await db.flush()
 
@@ -284,7 +284,7 @@ async def delete_document(
     doc = await db.get(BrandDocument, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    brand = await db.get(Brand, doc.brand_id)
+    brand = await db.get(Company, doc.company_id)
     if brand:
         _require_manage(user, brand)
     await db.delete(doc)

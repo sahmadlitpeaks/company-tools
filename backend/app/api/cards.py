@@ -258,7 +258,7 @@ async def submit_lead(
 
     db.add(
         CrmLead(
-            brand_id=card.brand_id,
+            company_id=card.company_id,
             name=lead.name,
             email=lead.email,
             phone=lead.phone,

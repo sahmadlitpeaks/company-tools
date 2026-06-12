@@ -17,8 +17,8 @@ class CrmLead(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "crm_leads"
 
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     name: Mapped[str | None] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(320), index=True)

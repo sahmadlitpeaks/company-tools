@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.azure import build_oauth, fetch_graph_me
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core import totp
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    password_policy_error,
+    verify_password,
+)
 from app.core.urls import frontend_base_url
 from app.models.user import User
 from app.schemas.user import UserOut
@@ -23,11 +29,16 @@ from app.services.users import upsert_user_from_graph
 class LoginIn(BaseModel):
     email: str
     password: str
+    code: str | None = None  # TOTP code when 2FA is enabled
 
 
 class ChangePasswordIn(BaseModel):
     current_password: str | None = None
     new_password: str
+
+
+class MfaCodeIn(BaseModel):
+    code: str
 
 
 async def _is_first_user(db: AsyncSession) -> bool:
@@ -70,6 +81,12 @@ async def password_login(payload: LoginIn, db: AsyncSession = Depends(get_db)):
             status_code=403,
             detail="Your account isn't active yet. Please contact an administrator.",
         )
+    # Two-factor: when enabled, a valid TOTP code is required to complete login.
+    if user.mfa_enabled and user.mfa_secret:
+        if not payload.code:
+            raise HTTPException(status_code=401, detail="2FA code required", headers={"X-MFA-Required": "1"})
+        if not totp.verify(user.mfa_secret, payload.code):
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
     token = create_access_token(
         subject=str(user.id),
         extra={"email": user.email, "name": user.display_name},
@@ -93,10 +110,9 @@ async def change_password(
         payload.current_password or "", user.password_hash
     ):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
-    if len(payload.new_password or "") < 8:
-        raise HTTPException(
-            status_code=422, detail="New password must be at least 8 characters"
-        )
+    err = password_policy_error(payload.new_password)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
     record(
@@ -105,6 +121,60 @@ async def change_password(
     )
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/mfa/status")
+async def mfa_status(user: User = Depends(get_current_user)):
+    return {"enabled": user.mfa_enabled}
+
+
+@router.post("/mfa/setup")
+async def mfa_setup(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Generate a pending TOTP secret + provisioning URI to show as a QR code.
+    Not active until confirmed via /mfa/enable."""
+    secret = totp.generate_secret()
+    user.mfa_secret = secret
+    user.mfa_enabled = False
+    await db.commit()
+    return {
+        "secret": secret,
+        "otpauth_uri": totp.provisioning_uri(secret, account=user.email or str(user.id)),
+    }
+
+
+@router.post("/mfa/enable")
+async def mfa_enable(
+    payload: MfaCodeIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.mfa_secret:
+        raise HTTPException(status_code=400, detail="Start setup first")
+    if not totp.verify(user.mfa_secret, payload.code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    user.mfa_enabled = True
+    record(db, user=user, action="updated", entity_type="auth", entity_id=user.id,
+           summary="Enabled two-factor authentication")
+    await db.commit()
+    return {"enabled": True}
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(
+    payload: MfaCodeIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.mfa_enabled and not totp.verify(user.mfa_secret or "", payload.code):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    record(db, user=user, action="updated", entity_type="auth", entity_id=user.id,
+           summary="Disabled two-factor authentication")
+    await db.commit()
+    return {"enabled": False}
 
 
 @router.get("/callback")

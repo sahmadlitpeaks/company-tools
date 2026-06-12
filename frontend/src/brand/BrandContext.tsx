@@ -31,7 +31,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     try {
-      const data = await api<Brand[]>("/api/brands");
+      const data = await api<Brand[]>("/api/companies");
       setBrands(data);
     } catch {
       setBrands([]);

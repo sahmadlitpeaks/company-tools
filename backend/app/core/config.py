@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
 
+    # Outbound notification fan-out (optional).
+    SLACK_WEBHOOK_URL: str = ""
+    # Microsoft Teams incoming webhook (optional).
+    TEAMS_WEBHOOK_URL: str = ""
+    # Master switch: also email/Slack/Teams in-app notifications as created.
+    NOTIFY_OUTBOUND: bool = False
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.BACKEND_CORS_ORIGINS.split(",") if o.strip()]

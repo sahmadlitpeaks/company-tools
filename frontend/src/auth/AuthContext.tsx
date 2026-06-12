@@ -14,7 +14,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: () => void;
-  passwordLogin: (email: string, password: string) => Promise<void>;
+  passwordLogin: (email: string, password: string, code?: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -55,11 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const passwordLogin = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, code?: string) => {
       const res = await api<{ access_token: string }>("/api/auth/login", {
         method: "POST",
         auth: false,
-        body: { email, password },
+        body: { email, password, code },
       });
       tokenStore.set(res.access_token);
       await refresh();

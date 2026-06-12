@@ -52,7 +52,7 @@ function LeadModal({
     status: lead?.status ?? "new",
     owner_id: lead?.owner_id ?? "",
     value: lead?.value ?? "",
-    brand_id: lead?.brand_id ?? "",
+    company_id: lead?.company_id ?? "",
     notes: lead?.notes ?? "",
   });
   const [busy, setBusy] = useState(false);
@@ -69,7 +69,7 @@ function LeadModal({
       status: form.status,
       owner_id: form.owner_id || null,
       value: form.value || null,
-      brand_id: form.brand_id || null,
+      company_id: form.company_id || null,
       notes: form.notes || null,
     };
     try {
@@ -141,7 +141,7 @@ function LeadModal({
           </div>
           <div className="field">
             <label>Brand</label>
-            <select value={form.brand_id} onChange={(e) => set("brand_id", e.target.value)}>
+            <select value={form.company_id} onChange={(e) => set("company_id", e.target.value)}>
               <option value="">—</option>
               {brands.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>

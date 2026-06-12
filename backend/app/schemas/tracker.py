@@ -14,7 +14,7 @@ class TrackedAssetBase(BaseModel):
     serial_number: str | None = None
     notes: str | None = None
     condition: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     purchase_date: date | None = None
     purchase_cost: Decimal | None = None
     vendor: str | None = None
@@ -38,7 +38,7 @@ class TrackedAssetUpdate(BaseModel):
     serial_number: str | None = None
     notes: str | None = None
     condition: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     assigned_to_id: uuid.UUID | None = None
     purchase_date: date | None = None
     purchase_cost: Decimal | None = None
@@ -56,6 +56,7 @@ class TrackedAssetOut(TrackedAssetBase):
     status: str
     assigned_to_id: uuid.UUID | None = None
     assigned_to_name: str | None = None
+    assigned_to_title: str | None = None
     # Straight-line depreciated value as of today (None if cost/life unknown).
     current_book_value: Decimal | None = None
     disposal_date: date | None = None

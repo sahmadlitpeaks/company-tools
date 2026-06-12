@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
+  Award,
+  Banknote,
+  HeartPulse,
+  Briefcase,
+  BarChart3,
   Boxes,
   ChevronDown,
+  Clock,
   CreditCard,
+  Inbox,
   FolderOpen,
+  HeartHandshake,
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
@@ -16,11 +24,18 @@ import {
   Megaphone,
   Menu,
   Moon,
+  Network,
   Package,
   Palette,
   Plane,
   QrCode,
+  Building2,
   ScrollText,
+  Webhook,
+  GitBranch,
+  ReceiptText,
+  GraduationCap,
+  ShieldCheck,
   Settings as SettingsIcon,
   Share2,
   KeyRound,
@@ -28,9 +43,13 @@ import {
   Smartphone,
   Stamp,
   Sun,
+  Target,
   UserCog,
+  UserRound,
   Users,
+  Wallet,
   BookText,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
@@ -57,37 +76,75 @@ type NavEntry =
     };
 
 const NAV: NavEntry[] = [
-  { section: "Overview" },
+  { section: "Home" },
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, module: "dashboard" },
+  { to: "/hub", label: "My Workspace", icon: LayoutGrid },
+
+  { section: "Me" },
+  { to: "/profile", label: "My Profile", icon: UserRound },
+  { to: "/security", label: "Security (2FA)", icon: ShieldCheck },
+
+  { section: "People" },
+  { to: "/hr", label: "HR Dashboard", icon: HeartHandshake, module: "hr" },
   { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
+  { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops" },
+  { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
+  { to: "/recruiting", label: "Recruiting", icon: Briefcase, module: "recruiting" },
+
+  { section: "Talent" },
+  { to: "/performance", label: "Performance", icon: Target },
+  { to: "/training", label: "Training", icon: GraduationCap },
+  { to: "/engagement", label: "Engagement", icon: Award },
+
+  { section: "Time & Pay" },
+  { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance" },
+  { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
+  { to: "/expenses", label: "Expenses", icon: ReceiptText },
+  { to: "/payroll", label: "Payroll", icon: Banknote, module: "hr" },
+  { to: "/benefits", label: "Benefits", icon: HeartPulse, module: "hr" },
+
+  { section: "HR Tools" },
+  { to: "/reports", label: "Reports", icon: BarChart3, module: "hr" },
+  { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr" },
+  { to: "/hr/automations", label: "Automations", icon: Zap, module: "hr" },
+
+  { section: "Workplace" },
+  { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
+  { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
+  { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
+  { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements" },
+
   { section: "Marketing" },
   { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards" },
   { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets" },
   { to: "/branding", label: "Brand Center", icon: Palette, module: "branding" },
   { to: "/products", label: "Products & Brochures", icon: Package, module: "products" },
+  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
   { to: "/shared", label: "Shared Links", icon: Share2, module: "shared" },
+
   { section: "Sales" },
   { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm" },
-  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
-  { section: "Workplace" },
-  { to: "/hub", label: "My Workspace", icon: LayoutGrid },
-  { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
-  { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
-  { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
-  { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
-  { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements" },
-  { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
+  { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm" },
+
   { section: "Operations" },
   { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
   { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker" },
+  { to: "/subscriptions", label: "Subscriptions", icon: Wallet, module: "subscriptions" },
+
   { section: "Tools" },
   { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes" },
   { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate, module: "landing_pages" },
   { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures" },
   { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener" },
   { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers" },
+
   { section: "Admin", adminOnly: true },
+  { to: "/companies", label: "Companies", icon: Building2, adminOnly: true },
+  { to: "/departments", label: "Departments", icon: ShieldCheck, adminOnly: true },
+  { to: "/approval-workflows", label: "Approval Workflows", icon: GitBranch, adminOnly: true },
   { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
+  { to: "/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
+  { to: "/api-tokens", label: "API Tokens", icon: KeyRound, adminOnly: true },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -129,18 +186,38 @@ export default function Layout() {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-color-scheme: dark)").matches);
 
-  // Filter nav by permission, then drop section headers left with no items.
+  // Filter nav by permission, then group items under their section header so
+  // each section can be collapsed independently.
+  type NavItem = Extract<NavEntry, { to: string }>;
   const navItems = NAV.filter((item) => {
     if ("section" in item) return !item.adminOnly || user?.is_admin;
     if (item.adminOnly && !user?.is_admin) return false;
     if (item.module && !can(item.module)) return false;
     return true;
   });
-  const visibleNav = navItems.filter((item, i) => {
-    if (!("section" in item)) return true;
-    const next = navItems[i + 1];
-    return next !== undefined && !("section" in next);
+  const navGroups: { section: string; items: NavItem[] }[] = [];
+  for (const item of navItems) {
+    if ("section" in item) navGroups.push({ section: item.section, items: [] });
+    else if (navGroups.length) navGroups[navGroups.length - 1].items.push(item);
+  }
+  const visibleGroups = navGroups.filter((g) => g.items.length > 0);
+
+  // Per-section collapse state, remembered across sessions.
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem("ag_nav_collapsed") || "[]"));
+    } catch {
+      return new Set();
+    }
   });
+  function toggleSection(name: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      localStorage.setItem("ag_nav_collapsed", JSON.stringify([...next]));
+      return next;
+    });
+  }
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -188,23 +265,40 @@ export default function Layout() {
           <span>AG Holding</span>
         </div>
         <nav className="nav-scroll">
-          {visibleNav.map((item, i) =>
-            "section" in item ? (
-              <div key={i} className="nav-section">
-                {item.section}
+          {visibleGroups.map((g) => {
+            const isCollapsed = collapsedSections.has(g.section);
+            const hasActive = g.items.some((it) =>
+              it.end ? location.pathname === it.to : location.pathname.startsWith(it.to),
+            );
+            return (
+              <div key={g.section} className="nav-group">
+                <button
+                  type="button"
+                  className={`nav-group-head ${isCollapsed ? "collapsed" : ""}`}
+                  onClick={() => toggleSection(g.section)}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {g.section}
+                    {isCollapsed && hasActive && <span className="nav-group-dot" />}
+                  </span>
+                  <ChevronDown size={13} className="chev" />
+                </button>
+                {!isCollapsed &&
+                  g.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                    >
+                      <item.icon className="nav-icon" size={18} strokeWidth={2} />
+                      {item.label}
+                    </NavLink>
+                  ))}
               </div>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-              >
-                <item.icon className="nav-icon" size={18} strokeWidth={2} />
-                {item.label}
-              </NavLink>
-            ),
-          )}
+            );
+          })}
         </nav>
         <div className="sidebar-foot">Internal Platform · v1</div>
       </aside>

@@ -354,6 +354,34 @@ async def test_onboarding_journey(client, auth):
     assert done.status_code == 200
 
 
+async def test_onboarding_checklist_mirrors_to_tasks(client, auth):
+    hdr, uid = await _member(client, auth, email="mirror@agholding.net")
+    j = (await client.post(
+        "/api/people/journeys", headers=auth,
+        json={"kind": "onboarding", "target_user_id": uid},
+    )).json()
+    detail = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
+    first, second = detail["tasks"][0], detail["tasks"][1]
+
+    # Assigning a checklist item to the new hire creates a Task on their board.
+    await client.patch(f"/api/people/tasks/{first['id']}", headers=auth, json={"owner_id": uid})
+    tasks = (await client.get("/api/tasks?mine=true", headers=hdr)).json()
+    mirrored = next(t for t in tasks if t["onboarding_task_id"] == first["id"])
+    assert mirrored["title"].startswith("[Onboarding]")
+
+    # Completing it from the Tasks board ticks off the checklist item.
+    await client.patch(f"/api/tasks/{mirrored['id']}", headers=hdr, json={"status": "done"})
+    d2 = (await client.get(f"/api/people/journeys/{j['id']}", headers=auth)).json()
+    assert next(t for t in d2["tasks"] if t["id"] == first["id"])["status"] == "done"
+
+    # Reverse direction: completing via People-ops marks the mirrored Task done.
+    await client.patch(
+        f"/api/people/tasks/{second['id']}", headers=auth, json={"owner_id": uid, "status": "done"}
+    )
+    tasks2 = (await client.get("/api/tasks?mine=true", headers=hdr)).json()
+    assert next(t for t in tasks2 if t["onboarding_task_id"] == second["id"])["status"] == "done"
+
+
 async def test_offboarding_revokes_access(client, auth):
     hdr, uid = await _member(client, auth, email="leaver@agholding.net")
     j = (await client.post(
@@ -392,7 +420,7 @@ async def test_journey_autocompletes(client, auth):
 async def test_onboarding_assets_access_and_pdf(client, auth):
     me = (await client.get("/api/auth/me", headers=auth)).json()
     # A branch + an available asset.
-    brand = (await client.post("/api/brands", headers=auth, json={"name": "Agiomix"})).json()
+    brand = (await client.post("/api/companies", headers=auth, json={"name": "Agiomix"})).json()
     asset = (await client.post(
         "/api/asset-tracker", headers=auth,
         json={"asset_tag": "OB-LAP-1", "name": "MacBook Air"},
@@ -400,9 +428,9 @@ async def test_onboarding_assets_access_and_pdf(client, auth):
 
     j = (await client.post(
         "/api/people/journeys", headers=auth,
-        json={"kind": "onboarding", "target_user_id": me["id"], "brand_id": brand["id"]},
+        json={"kind": "onboarding", "target_user_id": me["id"], "company_id": brand["id"]},
     )).json()
-    assert j["brand_name"] == brand["name"]
+    assert j["company_name"] == brand["name"]
 
     # Assignable assets surfaced to HR.
     avail = (await client.get("/api/people/assignable-assets", headers=auth)).json()

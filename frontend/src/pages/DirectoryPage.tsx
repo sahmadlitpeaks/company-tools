@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { api } from "../api/client";
-import type { ModuleCatalogue, User } from "../api/types";
+import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { Download, FileText, LayoutGrid, List, Mail, Upload } from "lucide-react";
+import { api, downloadFile } from "../api/client";
+import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   Empty,
@@ -36,21 +38,20 @@ function AccessModal({
 }) {
   const { notify } = useToast();
   const { data: cat } = useFetch<ModuleCatalogue>("/api/users/modules");
+  const { data: departments } = useFetch<Department[]>("/api/departments");
   const [role, setRole] = useState(u.role);
   const [status, setStatus] = useState(u.status);
-  const [useDefaults, setUseDefaults] = useState(
-    u.permissions === null || u.permissions === undefined,
-  );
-  const [perms, setPerms] = useState<Set<string>>(
-    new Set(u.effective_permissions),
-  );
+  const [deptId, setDeptId] = useState(u.department_id ?? "");
+  // What the person should end up with — we derive grant/revoke diffs on save.
+  const [desired, setDesired] = useState<Set<string>>(new Set(u.effective_permissions));
   const [busy, setBusy] = useState(false);
 
-  const roleDefaults = new Set(cat?.role_defaults[role] ?? []);
-  const shown = useDefaults ? roleDefaults : perms;
+  // Base permissions implied by the chosen department (or the role default).
+  const dept = departments?.find((d) => d.id === deptId);
+  const base = new Set(dept ? dept.permissions : cat?.role_defaults[role] ?? []);
 
   function toggle(key: string) {
-    setPerms((s) => {
+    setDesired((s) => {
       const n = new Set(s);
       n.has(key) ? n.delete(key) : n.add(key);
       return n;
@@ -60,12 +61,17 @@ function AccessModal({
   async function save() {
     setBusy(true);
     try {
+      const extra = [...desired].filter((k) => !base.has(k));
+      const revoked = [...base].filter((k) => !desired.has(k));
       await api(`/api/users/${u.id}`, {
         method: "PATCH",
         body: {
           role,
           status,
-          permissions: useDefaults ? null : [...perms],
+          department_id: deptId || null,
+          permissions: null, // department + grants/revokes now drive access
+          extra_permissions: extra,
+          revoked_permissions: revoked,
         },
       });
       notify("Access updated.");
@@ -83,9 +89,9 @@ function AccessModal({
     <Modal
       title={`Access — ${u.display_name ?? u.email}`}
       onClose={onClose}
-      maxWidth={560}
+      maxWidth={580}
     >
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <label className="field">
           <span className="mb-1 block text-sm font-medium">Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
@@ -102,6 +108,15 @@ function AccessModal({
             <option value="disabled">Disabled</option>
           </select>
         </label>
+        <label className="field">
+          <span className="mb-1 block text-sm font-medium">Department</span>
+          <select value={deptId} onChange={(e) => setDeptId(e.target.value)} disabled={isAdminRole}>
+            <option value="">None</option>
+            {(departments ?? []).map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {isAdminRole ? (
@@ -110,33 +125,32 @@ function AccessModal({
         </p>
       ) : (
         <>
-          <label className="mt-2 flex items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="!w-auto"
-              checked={useDefaults}
-              onChange={(e) => setUseDefaults(e.target.checked)}
-            />
-            Use the {role} role's default modules
-          </label>
+          <p className="muted mt-1 text-sm">
+            Base access comes from the {dept ? <strong>{dept.name}</strong> : `${role} role`}.
+            Tick to grant extra modules to this person, or untick to revoke.
+          </p>
           <div className="mt-3 grid grid-cols-2 gap-1.5">
-            {cat?.modules.map((m) => (
-              <label
-                key={m.key}
-                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                  useDefaults ? "opacity-60" : "hover:bg-slate-50"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="!w-auto"
-                  disabled={useDefaults}
-                  checked={shown.has(m.key)}
-                  onChange={() => toggle(m.key)}
-                />
-                {m.label}
-              </label>
-            ))}
+            {cat?.modules.map((m) => {
+              const inBase = base.has(m.key);
+              const on = desired.has(m.key);
+              const tag = on && !inBase ? "granted" : !on && inBase ? "revoked" : null;
+              return (
+                <label
+                  key={m.key}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    className="!w-auto"
+                    checked={on}
+                    onChange={() => toggle(m.key)}
+                  />
+                  <span className="flex-1">{m.label}</span>
+                  {tag === "granted" && <span className="badge green">+grant</span>}
+                  {tag === "revoked" && <span className="badge red">revoked</span>}
+                </label>
+              );
+            })}
           </div>
         </>
       )}
@@ -169,7 +183,7 @@ function ManageBrandsModal({
 }) {
   const { notify } = useToast();
   const { brands } = useBrand();
-  const [ids, setIds] = useState<string[]>(u.managed_brand_ids ?? []);
+  const [ids, setIds] = useState<string[]>(u.managed_company_ids ?? []);
   const [busy, setBusy] = useState(false);
   function toggle(id: string) {
     setIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -179,9 +193,9 @@ function ManageBrandsModal({
     try {
       await api(`/api/users/${u.id}/brands`, {
         method: "PUT",
-        body: { brand_ids: ids },
+        body: { company_ids: ids },
       });
-      notify("Brand access updated.");
+      notify("Company access updated.");
       onSaved();
       onClose();
     } catch (err) {
@@ -190,9 +204,9 @@ function ManageBrandsModal({
     }
   }
   return (
-    <Modal title={`Brand access — ${u.display_name ?? u.email}`} onClose={onClose}>
+    <Modal title={`Company access — ${u.display_name ?? u.email}`} onClose={onClose}>
       <div className="muted mb-3 text-sm">
-        Choose which brands this manager can manage.
+        Choose which companies this manager can manage.
       </div>
       <div className="flex flex-col gap-1">
         {brands.map((b) => (
@@ -233,11 +247,38 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
+const AVATAR_COLORS = [
+  "#0ea5e9", "#6366f1", "#ec4899", "#f59e0b", "#10b981",
+  "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#3b82f6",
+];
+function colorFor(s: string): string {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function PersonAvatar({ u, size = 64 }: { u: User; size?: number }) {
+  const seed = u.display_name ?? u.email ?? "?";
+  return (
+    <span
+      className="grid flex-none place-items-center overflow-hidden rounded-full font-semibold text-white"
+      style={{ height: size, width: size, background: colorFor(seed), fontSize: size * 0.36 }}
+    >
+      {u.avatar_url ? (
+        <img src={u.avatar_url} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initials(u.display_name, u.email ?? undefined)
+      )}
+    </span>
+  );
+}
+
 export default function DirectoryPage() {
   const { user } = useAuth();
   const { notify } = useToast();
   const [q, setQ] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
   const [adding, setAdding] = useState(false);
@@ -246,6 +287,16 @@ export default function DirectoryPage() {
   );
   const isAdmin = user?.is_admin;
   const pendingCount = data?.filter((u) => u.status === "pending").length ?? 0;
+  const [deptFilter, setDeptFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [view, setView] = useState<"grid" | "list">("grid");
+
+  const departments = [...new Set((data ?? []).map((u) => u.department).filter(Boolean))].sort();
+  const filtered = (data ?? []).filter(
+    (u) =>
+      (!deptFilter || u.department === deptFilter) &&
+      (!statusFilter || u.status === statusFilter),
+  );
 
   async function approve(u: User) {
     try {
@@ -272,14 +323,43 @@ export default function DirectoryPage() {
     }
   }
 
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await api<{ created: number; updated: number; errors: string[] }>(
+        "/api/users/import",
+        { method: "POST", form: fd },
+      );
+      const errs = res.errors.length ? ` (${res.errors.length} issue${res.errors.length > 1 ? "s" : ""})` : "";
+      notify(`Imported: ${res.created} new, ${res.updated} updated${errs}.`);
+      reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Import failed", "error");
+    }
+    if (importRef.current) importRef.current.value = "";
+  }
+
   return (
     <div>
+      <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
       <PageHead
         title="Employee Directory"
         subtitle="Synced from Azure Entra ID into the platform database."
         action={
           user?.is_admin && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/template.csv", "employees-template.csv").catch(() => notify("Download failed", "error"))}>
+                <FileText size={15} /> Template
+              </button>
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => importRef.current?.click()}>
+                <Upload size={15} /> Import
+              </button>
+              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/export.csv", "employees.csv").catch(() => notify("Export failed", "error"))}>
+                <Download size={15} /> Export
+              </button>
               <button className="btn" onClick={sync} disabled={syncing}>
                 {syncing ? "Syncing…" : "Sync from Entra ID"}
               </button>
@@ -297,22 +377,119 @@ export default function DirectoryPage() {
         </div>
       )}
       <div className="card">
-        <input
-          placeholder="Search by name, email, department…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ marginBottom: 14 }}
-        />
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <div className="field" style={{ marginBottom: 0, flex: "1 1 220px" }}>
+            <input
+              placeholder="Search by name, email, department…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
+              <option value="">All departments</option>
+              {departments.map((d) => <option key={d} value={d as string}>{d}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+            <button
+              className={`px-2.5 py-1.5 ${view === "grid" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+              onClick={() => setView("grid")}
+              title="Grid view"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              className={`px-2.5 py-1.5 ${view === "list" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+              onClick={() => setView("list")}
+              title="List view"
+            >
+              <List size={16} />
+            </button>
+          </div>
+        </div>
+
         {loading ? (
           <ListSkeleton rows={6} />
         ) : error ? (
           <ErrorBox message={error} />
-        ) : !data || data.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <Empty
             icon="👥"
             message="No employees found"
-            hint="Run a sync to import staff from Azure Entra ID."
+            hint="Adjust filters, or run a sync to import staff from Azure Entra ID."
           />
+        ) : view === "grid" ? (
+          <>
+            <div className="muted mb-2 text-xs">{filtered.length} people</div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))" }}>
+              {filtered.map((u) => {
+                const seed = u.display_name ?? u.email ?? "?";
+                return (
+                  <div
+                    key={u.id}
+                    className="relative flex flex-col items-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 pb-3.5 text-center transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
+                  >
+                    {/* Tinted cover band behind the avatar */}
+                    <div
+                      className="absolute inset-x-0 top-0 h-[52px]"
+                      style={{
+                        background: `linear-gradient(180deg, ${colorFor(seed)}26, transparent)`,
+                      }}
+                    />
+                    <Link to={`/people/${u.id}`} className="relative mt-1.5 rounded-full" style={{ boxShadow: "0 0 0 3px var(--surface)" }}>
+                      <PersonAvatar u={u} size={68} />
+                    </Link>
+                    <Link to={`/people/${u.id}`} className="relative mt-2 font-semibold leading-tight text-ink hover:text-brand-600">
+                      {u.display_name ?? "—"}
+                    </Link>
+                    <div className="muted mt-0.5 text-xs leading-snug">
+                      {u.job_title ?? "—"}
+                      {u.department && <> · {u.department}</>}
+                    </div>
+                    {(u.status !== "active" || u.role !== "member") && (
+                      <div className="mt-2 flex flex-wrap justify-center gap-1">
+                        {u.status !== "active" && (
+                          <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>{u.status}</span>
+                        )}
+                        {u.role !== "member" && (
+                          <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
+                        )}
+                      </div>
+                    )}
+                    {u.email && (
+                      <a
+                        href={`mailto:${u.email}`}
+                        className="muted mt-1.5 inline-flex max-w-full items-center gap-1 truncate text-xs hover:text-brand-600"
+                      >
+                        <Mail size={11} className="flex-none" />
+                        <span className="truncate">{u.email}</span>
+                      </a>
+                    )}
+                    {isAdmin && (
+                      <div className="mt-2.5 flex flex-wrap justify-center gap-1 border-t border-[var(--border)] pt-2.5 w-full">
+                        {u.status === "pending" && (
+                          <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
+                        )}
+                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
+                        {u.role === "manager" && (
+                          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <table>
             <thead>
@@ -326,15 +503,18 @@ export default function DirectoryPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((u) => (
+              {filtered.map((u) => (
                 <tr key={u.id}>
                   <td>
                     <div className="flex items-center gap-2.5">
-                      <span className="avatar !h-8 !w-8 !text-[11px]">
-                        {initials(u.display_name, u.email ?? undefined)}
-                      </span>
+                      <PersonAvatar u={u} size={32} />
                       <div className="min-w-0">
-                        <div className="font-semibold">{u.display_name ?? "—"}</div>
+                        <Link
+                          to={`/people/${u.id}`}
+                          className="font-semibold hover:text-brand-600 hover:underline"
+                        >
+                          {u.display_name ?? "—"}
+                        </Link>
                         <div className="muted text-xs">{u.job_title ?? "—"}</div>
                       </div>
                     </div>
@@ -362,7 +542,7 @@ export default function DirectoryPage() {
                         )}
                         {u.role === "manager" && (
                           <button className="btn-sm" onClick={() => setManaging(u)}>
-                            Brands ({u.managed_brand_ids?.length ?? 0})
+                            Brands ({u.managed_company_ids?.length ?? 0})
                           </button>
                         )}
                         <button className="btn-sm" onClick={() => setEditingAccess(u)}>

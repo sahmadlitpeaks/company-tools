@@ -23,8 +23,8 @@ class OnboardingJourney(UUIDMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="in_progress", index=True)
     note: Mapped[str | None] = mapped_column(Text)
     # Sub-company / branch the person belongs to.
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -109,3 +109,34 @@ DEFAULT_OFFBOARDING = [
     ("hr", "Handover of responsibilities"),
     ("hr", "Final settlement & exit interview"),
 ]
+
+
+class OnboardingTemplate(UUIDMixin, TimestampMixin, Base):
+    """A reusable packet of checklist steps applied when a journey starts."""
+
+    __tablename__ = "onboarding_templates"
+
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    # onboarding | offboarding
+    kind: Mapped[str] = mapped_column(String(16), default="onboarding", index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(default=True, index=True)
+
+    items: Mapped[list["OnboardingTemplateItem"]] = relationship(
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="OnboardingTemplateItem.sort.asc()",
+    )
+
+
+class OnboardingTemplateItem(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "onboarding_template_items"
+
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("onboarding_templates.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(512))
+    category: Mapped[str] = mapped_column(String(24), default="other")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+    template: Mapped["OnboardingTemplate"] = relationship(back_populates="items")

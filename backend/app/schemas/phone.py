@@ -13,7 +13,7 @@ class PhoneLineBase(BaseModel):
     sim_number: str | None = None
     monthly_cost: Decimal | None = None
     data_allowance: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     contract_start: date | None = None
     contract_end: date | None = None
     notes: str | None = None
@@ -32,7 +32,7 @@ class PhoneLineUpdate(BaseModel):
     monthly_cost: Decimal | None = None
     data_allowance: str | None = None
     status: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     assigned_to_id: uuid.UUID | None = None
     contract_start: date | None = None
     contract_end: date | None = None
@@ -46,6 +46,7 @@ class PhoneLineOut(PhoneLineBase):
     status: str
     assigned_to_id: uuid.UUID | None = None
     assigned_to_name: str | None = None
+    assigned_to_title: str | None = None
     bill_count: int = 0
     created_at: datetime
 

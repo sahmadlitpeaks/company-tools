@@ -14,14 +14,37 @@ export interface User {
   mobile_phone?: string | null;
   business_phone?: string | null;
   avatar_url?: string | null;
+  date_of_birth?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  employment_type?: string | null;
+  hire_date?: string | null;
+  probation_end_date?: string | null;
+  contract_end_date?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   is_active: boolean;
   is_admin: boolean;
   must_change_password?: boolean;
   role: string;
   status: string;
   permissions?: string[] | null;
+  department_id?: string | null;
+  department_name?: string | null;
+  extra_permissions?: string[] | null;
+  revoked_permissions?: string[] | null;
   effective_permissions: string[];
-  managed_brand_ids: string[];
+  managed_company_ids: string[];
+  created_at: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  description?: string | null;
+  permissions: string[];
+  member_count: number;
   created_at: string;
 }
 
@@ -311,7 +334,7 @@ export interface CampaignKpis {
 
 export interface Campaign {
   id: string;
-  brand_id?: string | null;
+  company_id?: string | null;
   name: string;
   objective?: string | null;
   status: string;
@@ -373,7 +396,8 @@ export interface PhoneLine {
   status: string;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
-  brand_id?: string | null;
+  assigned_to_title?: string | null;
+  company_id?: string | null;
   contract_start?: string | null;
   contract_end?: string | null;
   notes?: string | null;
@@ -425,9 +449,10 @@ export interface TrackedAsset {
   serial_number?: string | null;
   notes?: string | null;
   condition?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   assigned_to_id?: string | null;
   assigned_to_name?: string | null;
+  assigned_to_title?: string | null;
   purchase_date?: string | null;
   purchase_cost?: string | null;
   vendor?: string | null;
@@ -521,7 +546,7 @@ export interface ActivityItem {
   created_at?: string | null;
 }
 
-export interface Brand {
+export interface Company {
   id: string;
   slug: string;
   name: string;
@@ -544,9 +569,12 @@ export interface Brand {
   created_at: string;
 }
 
+/** @deprecated kept as an alias during the Brand→Company rename. */
+export type Brand = Company;
+
 export interface BrandDocument {
   id: string;
-  brand_id: string;
+  company_id: string;
   name: string;
   category: string;
   current_version: number;
@@ -565,7 +593,7 @@ export interface BrandDocumentVersion {
 
 export interface CrmLead {
   id: string;
-  brand_id?: string | null;
+  company_id?: string | null;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -623,9 +651,10 @@ export interface Task {
   assignee_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
-  brand_id?: string | null;
+  company_id?: string | null;
   completed_at?: string | null;
   created_at: string;
+  onboarding_task_id?: string | null;
   subtasks_total: number;
   subtasks_done: number;
   comment_count: number;
@@ -677,6 +706,9 @@ export interface Approval {
   amount?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  half_day?: boolean;
+  leave_type_id?: string | null;
+  leave_type_name?: string | null;
   status: string;
   requester_id?: string | null;
   requester_name?: string | null;
@@ -783,6 +815,32 @@ export interface Announcement {
   created_at: string;
 }
 
+export interface LeaveType {
+  id: string;
+  name: string;
+  color: string;
+  paid: boolean;
+  default_days: number;
+  carryover_max: number;
+  accrual_period: string;
+  allow_half_day: boolean;
+  active: boolean;
+  sort: number;
+}
+
+export interface LeaveTypeBalance {
+  leave_type_id: string;
+  name: string;
+  color: string;
+  paid: boolean;
+  entitlement_days: number;
+  carryover_days: number;
+  accrued_days: number;
+  used_days: number;
+  pending_days: number;
+  remaining_days: number;
+}
+
 export interface LeaveBalance {
   user_id: string;
   user_name?: string | null;
@@ -790,12 +848,21 @@ export interface LeaveBalance {
   entitlement_days: number;
   used_days: number;
   remaining_days: number;
+  by_type: LeaveTypeBalance[];
+}
+
+export interface Holiday {
+  id: string;
+  day: string;
+  name: string;
 }
 
 export interface WhosOutItem {
   user_id?: string | null;
   user_name?: string | null;
   title: string;
+  leave_type_name?: string | null;
+  color?: string | null;
   start_date?: string | null;
   end_date?: string | null;
 }
@@ -855,8 +922,8 @@ export interface Journey {
   note?: string | null;
   target_user_id?: string | null;
   target_name?: string | null;
-  brand_id?: string | null;
-  brand_name?: string | null;
+  company_id?: string | null;
+  company_name?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   completed_at?: string | null;
@@ -877,11 +944,27 @@ export interface AccessGrant {
   created_at: string;
 }
 
+export interface AssignedPhone {
+  id: string;
+  number: string;
+}
+
+export interface PersonSubscription {
+  subscription_id: string;
+  name: string;
+  vendor?: string | null;
+  source: string; // seat | department | company
+  seat_id?: string | null;
+  seat_status?: string | null;
+}
+
 export interface JourneyDetail extends Journey {
   tasks: JourneyTask[];
   target?: TargetAccess | null;
   assigned_assets: AssignedAsset[];
+  assigned_phones: AssignedPhone[];
   access_grants: AccessGrant[];
+  subscriptions: PersonSubscription[];
 }
 
 // ---- Work log + quick docs ----
@@ -922,4 +1005,878 @@ export interface WorkspaceItem {
   shared: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubscriptionSeat {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  user_title?: string | null;
+  status: string;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  name: string;
+  vendor?: string | null;
+  plan?: string | null;
+  url?: string | null;
+  status: string;
+  scope: string; // company | department | person
+  department_id?: string | null;
+  department_name?: string | null;
+  cost_type: string; // flat | per_seat
+  cost?: string | null;
+  currency: string;
+  billing_cycle: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  auto_renew: boolean;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  company_id?: string | null;
+  notes?: string | null;
+  active_seats: number;
+  monthly_cost?: string | null;
+  seats: SubscriptionSeat[];
+  created_at: string;
+}
+
+export interface SubscriptionSummary {
+  total: number;
+  by_status: Record<string, number>;
+  monthly_spend: string;
+  renewing_soon: number;
+}
+
+export interface ProfileItem {
+  id: string;
+  label: string;
+  sub?: string | null;
+  status?: string | null;
+}
+
+export interface ProfileSubscription {
+  subscription_id: string;
+  name: string;
+  vendor?: string | null;
+  source: string; // seat | department | company
+  seat_status?: string | null;
+}
+
+export interface ProfileTask {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string | null;
+  due_date?: string | null;
+}
+
+export interface ProfileJourney {
+  id: string;
+  kind: string;
+  status: string;
+  total_tasks: number;
+  done_tasks: number;
+  created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  job_title?: string | null;
+  role: string;
+  status: string;
+  is_admin: boolean;
+  department_name?: string | null;
+  hr_department?: string | null;
+  office_location?: string | null;
+  mobile_phone?: string | null;
+  business_phone?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  employment_type?: string | null;
+  hire_date?: string | null;
+  probation_end_date?: string | null;
+  contract_end_date?: string | null;
+  direct_reports: ProfileItem[];
+  personal_email?: string | null;
+  nationality?: string | null;
+  passport_no?: string | null;
+  date_of_birth?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
+  modules: string[];
+  access_grants: ProfileItem[];
+  subscriptions: ProfileSubscription[];
+  assets: ProfileItem[];
+  phones: ProfileItem[];
+  open_tasks: ProfileTask[];
+  journeys: ProfileJourney[];
+  events: ProfileEvent[];
+  can_manage: boolean;
+  can_see_sensitive: boolean;
+}
+
+export interface ProfileEvent {
+  id: string;
+  event_type: string;
+  effective_date: string;
+  title: string;
+  detail?: string | null;
+  created_at: string;
+}
+
+export interface EmploymentEvent extends ProfileEvent {
+  user_id: string;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+}
+
+export interface OrgNode {
+  id: string;
+  name?: string | null;
+  job_title?: string | null;
+  avatar_url?: string | null;
+  department_name?: string | null;
+  report_count: number;
+  reports: OrgNode[];
+}
+
+export interface SpendBucket {
+  label: string;
+  monthly: string;
+  count: number;
+}
+
+export interface SubscriptionReport {
+  monthly_total: string;
+  annual_total: string;
+  active_seats: number;
+  by_department: SpendBucket[];
+  by_vendor: SpendBucket[];
+  by_billing_cycle: SpendBucket[];
+  top: SpendBucket[];
+}
+
+export interface ProvisionSuggestion {
+  kind: string;
+  ref_id?: string | null;
+  label: string;
+  detail?: string | null;
+  peer_count: number;
+  peer_total: number;
+}
+
+export interface ProvisionSuggestions {
+  department_name?: string | null;
+  peer_total: number;
+  auto_covered: PersonSubscription[];
+  subscriptions: ProvisionSuggestion[];
+  access: ProvisionSuggestion[];
+}
+
+export interface HrDocument {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  title: string;
+  category: string;
+  content_type?: string | null;
+  size_bytes: number;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  notes?: string | null;
+  uploaded_by_id?: string | null;
+  created_at: string;
+  days_to_expiry?: number | null;
+  signature_status?: string | null;
+  signature_request_id?: string | null;
+}
+
+export interface PayBand {
+  id: string;
+  name: string;
+  level?: string | null;
+  min_amount?: string | null;
+  max_amount?: string | null;
+  currency: string;
+  note?: string | null;
+}
+
+export interface CompensationRecord {
+  id: string;
+  user_id: string;
+  record_type: string;
+  amount: string;
+  currency: string;
+  pay_period: string;
+  effective_date: string;
+  band_id?: string | null;
+  band_name?: string | null;
+  note?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+}
+
+export interface CompensationSummary {
+  user_id: string;
+  amount?: string | null;
+  currency?: string | null;
+  pay_period?: string | null;
+  effective_date?: string | null;
+  band_name?: string | null;
+  annualised?: string | null;
+}
+
+export interface PerformanceGoal {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string | null;
+  status: string;
+  progress: number;
+  due_date?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+}
+
+export interface ReviewCycle {
+  id: string;
+  name: string;
+  period?: string | null;
+  status: string;
+  due_date?: string | null;
+  created_at: string;
+  review_count: number;
+  submitted_count: number;
+}
+
+export interface Review {
+  id: string;
+  cycle_id: string;
+  cycle_name?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  status: string;
+  rating?: number | null;
+  summary?: string | null;
+  submitted_at?: string | null;
+  created_at: string;
+}
+
+export interface HrCountItem {
+  label: string;
+  count: number;
+}
+
+export interface HrJoiner {
+  id: string;
+  name?: string | null;
+  job_title?: string | null;
+  hire_date?: string | null;
+}
+
+export interface HrOverview {
+  headcount: number;
+  on_leave_today: number;
+  pending_leave: number;
+  docs_expiring: number;
+  contracts_expiring: number;
+  probation_ending: number;
+  open_review_cycles: number;
+  open_journeys: number;
+  by_department: HrCountItem[];
+  by_employment_type: HrCountItem[];
+  recent_joiners: HrJoiner[];
+  upcoming_joiners: HrJoiner[];
+}
+
+export interface CustomFieldDef {
+  id: string;
+  entity: string;
+  section: string;
+  key: string;
+  label: string;
+  field_type: string;
+  options?: string[] | null;
+  required: boolean;
+  sensitive: boolean;
+  sort: number;
+  active: boolean;
+}
+
+export interface CustomTableColumn {
+  key: string;
+  label: string;
+  type?: string;
+  options?: string[] | null;
+}
+
+export interface CustomTableDef {
+  id: string;
+  key: string;
+  label: string;
+  columns: CustomTableColumn[];
+  sensitive: boolean;
+  sort: number;
+  active: boolean;
+}
+
+export interface CustomSchema {
+  fields: CustomFieldDef[];
+  tables: CustomTableDef[];
+}
+
+export interface CustomFieldValue {
+  def_id: string;
+  key: string;
+  label: string;
+  section: string;
+  field_type: string;
+  options?: string[] | null;
+  sensitive: boolean;
+  value?: unknown;
+}
+
+export interface CustomTableRow {
+  id: string;
+  data: Record<string, unknown>;
+  sort: number;
+}
+
+export interface CustomTableValues {
+  table_id: string;
+  key: string;
+  label: string;
+  columns: CustomTableColumn[];
+  sensitive: boolean;
+  rows: CustomTableRow[];
+}
+
+export interface CustomValues {
+  fields: CustomFieldValue[];
+  tables: CustomTableValues[];
+  can_edit: boolean;
+}
+
+export interface Celebration {
+  user_id: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  kind: string;
+  label: string;
+  detail?: string | null;
+  days_until: number;
+}
+
+export interface WhosOutToday {
+  user_id?: string | null;
+  name?: string | null;
+  avatar_url?: string | null;
+  leave_type?: string | null;
+  until?: string | null;
+}
+
+export interface HomeFeed {
+  celebrations: Celebration[];
+  whos_out: WhosOutToday[];
+}
+
+export interface OnboardingTemplateItem {
+  id?: string;
+  title: string;
+  category: string;
+  sort: number;
+}
+
+export interface OnboardingTemplate {
+  id: string;
+  name: string;
+  kind: string;
+  description?: string | null;
+  active: boolean;
+  items: OnboardingTemplateItem[];
+}
+
+export interface TimeEntry {
+  id: string;
+  user_id: string;
+  work_date: string;
+  clock_in?: string | null;
+  clock_out?: string | null;
+  minutes: number;
+  kind: string;
+  note?: string | null;
+  source: string;
+}
+
+export interface Timesheet {
+  id?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  week_start: string;
+  status: string;
+  submitted_at?: string | null;
+  decided_by_id?: string | null;
+  decided_at?: string | null;
+  note?: string | null;
+  total_minutes: number;
+  expected_minutes: number;
+  overtime_minutes: number;
+  leave_days: number;
+  entries: TimeEntry[];
+}
+
+export interface TimeSummary {
+  open_entry?: TimeEntry | null;
+  today_minutes: number;
+  week_minutes: number;
+  week_expected_minutes: number;
+  week_overtime_minutes: number;
+  week_status: string;
+  pending_approvals: number;
+}
+
+export interface WorkSchedule {
+  id: string;
+  name: string;
+  daily_minutes: number;
+  workdays: number[];
+  is_default: boolean;
+  active: boolean;
+  assigned_count: number;
+}
+
+export interface IntakeSource {
+  id: string;
+  name: string;
+  key: string;
+  default_type: string;
+  active: boolean;
+  auto_convert: boolean;
+  notify_user_id?: string | null;
+  rate_limit_per_min: number;
+  dedup_window_min: number;
+  spam_threshold?: number | null;
+  clean_threshold?: number | null;
+  has_signing_secret: boolean;
+  created_at: string;
+  submission_count: number;
+}
+
+export interface Submission {
+  id: string;
+  source_id?: string | null;
+  source_name?: string | null;
+  type: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  subject?: string | null;
+  message?: string | null;
+  page_url?: string | null;
+  payload?: Record<string, unknown> | null;
+  status: string;
+  spam_score: number;
+  spam_reasons?: string[] | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  converted_lead_id?: string | null;
+  converted_ticket_id?: string | null;
+  created_at: string;
+}
+
+export interface IntakeSummary {
+  new: number;
+  by_status: Record<string, number>;
+  by_type: Record<string, number>;
+}
+
+export interface ReportColumn { key: string; label: string; }
+export interface ReportCatalogItem {
+  key: string;
+  title: string;
+  description: string;
+  group: string;
+  sensitive: boolean;
+}
+export interface ReportResult {
+  key: string;
+  title: string;
+  columns: ReportColumn[];
+  rows: Record<string, unknown>[];
+  generated_at: string;
+}
+
+export interface JobOpening {
+  id: string;
+  title: string;
+  department_id?: string | null;
+  department_name?: string | null;
+  company_id?: string | null;
+  location?: string | null;
+  employment_type?: string | null;
+  description?: string | null;
+  status: string;
+  openings: number;
+  hiring_manager_id?: string | null;
+  hiring_manager_name?: string | null;
+  candidate_count: number;
+  hired_count: number;
+  created_at: string;
+}
+
+export interface CandidateActivityItem {
+  id: string;
+  kind: string;
+  body: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  created_at: string;
+}
+
+export interface InterviewItem {
+  id: string;
+  candidate_id: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  mode: string;
+  location?: string | null;
+  interviewer_id?: string | null;
+  interviewer_name?: string | null;
+  rating?: number | null;
+  recommendation?: string | null;
+  feedback?: string | null;
+  created_at: string;
+}
+
+export interface OfferItem {
+  id: string;
+  candidate_id: string;
+  amount?: string | null;
+  currency: string;
+  pay_period: string;
+  start_date?: string | null;
+  status: string;
+  note?: string | null;
+  created_at: string;
+}
+
+export interface Candidate {
+  id: string;
+  job_id: string;
+  job_title?: string | null;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  resume_path?: string | null;
+  source?: string | null;
+  stage: string;
+  status: string;
+  rating?: number | null;
+  notes?: string | null;
+  user_id?: string | null;
+  interview_count: number;
+  created_at: string;
+}
+
+export interface CandidateDetail extends Candidate {
+  activities: CandidateActivityItem[];
+  interviews: InterviewItem[];
+  offers: OfferItem[];
+}
+
+export interface PayslipItem {
+  label: string;
+  amount: string | number;
+  kind: string; // "earning" | "deduction"
+}
+
+export interface Payslip {
+  id: string;
+  run_id: string;
+  user_id: string;
+  employee_name?: string | null;
+  period?: string | null;
+  currency: string;
+  base_salary: string | number;
+  items: PayslipItem[];
+  gross: string | number;
+  deductions: string | number;
+  net: string | number;
+}
+
+export interface PayrollRun {
+  id: string;
+  period: string;
+  status: string;
+  note?: string | null;
+  created_at: string;
+  payslip_count: number;
+  total_net: string | number;
+}
+
+export interface BenefitPlan {
+  id: string;
+  name: string;
+  category: string;
+  carrier?: string | null;
+  description?: string | null;
+  currency: string;
+  employee_cost: string | number;
+  employer_cost: string | number;
+  active: boolean;
+  enrollment_open: boolean;
+  sort: number;
+  enrolled_count: number;
+  created_at: string;
+}
+
+export interface BenefitEnrollment {
+  id: string;
+  plan_id: string;
+  plan_name?: string | null;
+  category?: string | null;
+  user_id: string;
+  employee_name?: string | null;
+  status: string;
+  coverage_level: string;
+  elected_cost: string | number;
+  currency?: string | null;
+  effective_date: string;
+  end_date?: string | null;
+  note?: string | null;
+}
+
+export interface Dependent {
+  id: string;
+  user_id: string;
+  name: string;
+  relationship_type: string;
+  date_of_birth?: string | null;
+}
+
+export interface SurveyQuestion {
+  id: string;
+  text: string;
+  qtype: string;
+  sort: number;
+}
+
+export interface Survey {
+  id: string;
+  title: string;
+  description?: string | null;
+  kind: string;
+  anonymous: boolean;
+  status: string;
+  response_count: number;
+  created_at: string;
+  questions: SurveyQuestion[];
+}
+
+export interface QuestionResult {
+  question_id: string;
+  text: string;
+  qtype: string;
+  response_count: number;
+  average?: number | null;
+  enps?: number | null;
+  text_answers: string[];
+}
+
+export interface SurveyResults {
+  survey_id: string;
+  title: string;
+  response_count: number;
+  questions: QuestionResult[];
+}
+
+export interface Kudos {
+  id: string;
+  from_user_id?: string | null;
+  from_name?: string | null;
+  to_user_id: string;
+  to_name?: string | null;
+  message: string;
+  value_tag?: string | null;
+  created_at: string;
+}
+
+export interface ReviewFeedback {
+  id: string;
+  review_id: string;
+  author_id: string;
+  author_name?: string | null;
+  relation: string;
+  status: string;
+  rating?: number | null;
+  strengths?: string | null;
+  improvements?: string | null;
+  submitted_at?: string | null;
+  subject_name?: string | null;
+  cycle_name?: string | null;
+}
+
+export interface AgendaItem {
+  text: string;
+  done: boolean;
+}
+
+export interface OneOnOne {
+  id: string;
+  manager_id: string;
+  manager_name?: string | null;
+  employee_id: string;
+  employee_name?: string | null;
+  scheduled_at: string;
+  status: string;
+  agenda: AgendaItem[];
+  shared_notes?: string | null;
+}
+
+export interface ContinuousFeedback {
+  id: string;
+  from_user_id?: string | null;
+  from_name?: string | null;
+  to_user_id: string;
+  to_name?: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface RewardComponent {
+  label: string;
+  category: string;
+  annual_amount: string | number;
+}
+
+export interface TotalRewards {
+  user_id: string;
+  user_name?: string | null;
+  currency: string;
+  base_annual: string | number;
+  bonuses_annual: string | number;
+  benefits_annual: string | number;
+  total_annual: string | number;
+  components: RewardComponent[];
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  description?: string | null;
+  events: string[];
+  active: boolean;
+  has_secret: boolean;
+  created_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  status_code?: number | null;
+  success: boolean;
+  error?: string | null;
+  created_at: string;
+}
+
+export interface WorkflowStep {
+  approver: string; // manager | hr | admin | user
+  user_id?: string | null;
+  min_amount?: string | number | null;
+}
+
+export interface ApprovalWorkflow {
+  id: string;
+  type: string;
+  name: string;
+  active: boolean;
+  steps: WorkflowStep[];
+  created_at: string;
+}
+
+export interface ApprovalStep {
+  id: string;
+  seq: number;
+  approver_kind: string;
+  approver_id?: string | null;
+  approver_name?: string | null;
+  status: string;
+  decided_by_id?: string | null;
+  decided_by_name?: string | null;
+  note?: string | null;
+}
+
+export interface ExpenseClaim {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  title: string;
+  category: string;
+  currency: string;
+  amount: string | number;
+  expense_date?: string | null;
+  description?: string | null;
+  has_receipt: boolean;
+  status: string;
+  approval_request_id?: string | null;
+  reimbursed_at?: string | null;
+  created_at: string;
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  url?: string | null;
+  active: boolean;
+  assigned_count: number;
+  created_at: string;
+}
+
+export interface CourseAssignment {
+  id: string;
+  course_id: string;
+  course_title?: string | null;
+  user_id: string;
+  user_name?: string | null;
+  status: string;
+  due_date?: string | null;
+  completed_at?: string | null;
+}
+
+export interface Certification {
+  id: string;
+  user_id: string;
+  user_name?: string | null;
+  name: string;
+  issuer?: string | null;
+  issued_date?: string | null;
+  expiry_date?: string | null;
+  credential_id?: string | null;
+  expired: boolean;
+  days_to_expiry?: number | null;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  active: boolean;
+  last_used_at?: string | null;
+  created_at: string;
 }

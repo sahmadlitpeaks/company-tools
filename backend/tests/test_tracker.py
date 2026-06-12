@@ -138,3 +138,43 @@ async def test_bulk_and_warranty_alerts(client, auth):
     assert res.json()["created"] >= 1
     notes = (await client.get("/api/notifications", headers=auth)).json()
     assert any(n["category"] == "warranty" for n in notes)
+
+
+async def test_asset_csv_migration_with_assignee(client, auth):
+    from helpers import make_member
+
+    _, uid = await make_member(client, auth, "assetimp@agholding.net")
+    csv = (
+        "asset_tag,name,status,assigned_to_email,purchase_cost,category\n"
+        "MIG-1,Laptop,available,assetimp@agholding.net,1000,Laptop\n"
+        "MIG-2,Monitor,available,,200,Display\n"
+        ",NoTag,,,,\n"
+    )
+    res = await client.post(
+        "/api/asset-tracker/import",
+        headers=auth,
+        files={"file": ("assets.csv", csv, "text/csv")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["created"] == 2
+    assert any("required" in e for e in body["errors"])
+
+    await client.patch(f"/api/users/{uid}", headers=auth, json={"job_title": "IT Technician"})
+
+    assets = (await client.get("/api/asset-tracker", headers=auth)).json()
+    a = next(x for x in assets if x["asset_tag"] == "MIG-1")
+    # An assignee in the CSV flips an "available" row to "assigned".
+    assert a["assigned_to_id"] == uid and a["status"] == "assigned"
+    # The holder's position/title shows alongside their name.
+    assert a["assigned_to_title"] == "IT Technician"
+
+    # The category was auto-registered so rollups stay clean.
+    cats = [c["name"] for c in (await client.get("/api/asset-tracker/categories", headers=auth)).json()]
+    assert "Laptop" in cats
+
+    # Export includes the new columns; a template is downloadable.
+    exp = await client.get("/api/asset-tracker/export.csv", headers=auth)
+    assert exp.status_code == 200 and "assigned_to_email" in exp.text and "MIG-1" in exp.text
+    tpl = await client.get("/api/asset-tracker/template.csv", headers=auth)
+    assert tpl.status_code == 200 and "assigned_to_email" in tpl.text

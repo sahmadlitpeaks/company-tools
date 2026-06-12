@@ -1,15 +1,16 @@
 """A tiny in-process background scheduler.
 
-Runs asset alerts (warranty + maintenance) and service-desk SLA breach checks
-periodically so people are notified without anyone hitting an endpoint. Enabled
-via settings.RUN_SCHEDULER (off in tests). For multi-replica deployments,
-prefer an external cron hitting the manual endpoints instead.
+Runs asset alerts (warranty + maintenance), service-desk SLA breach checks and
+HR people reminders periodically so notifications fire without anyone hitting an
+endpoint. Enabled via settings.RUN_SCHEDULER (off in tests). For multi-replica
+deployments, prefer an external cron hitting the manual endpoints instead.
 """
 import asyncio
 import logging
 
 from app.core.database import AsyncSessionLocal
 from app.services.asset_alerts import run_asset_alerts
+from app.services.hr_reminders import run_hr_reminders
 from app.services.sla_alerts import run_sla_alerts
 
 log = logging.getLogger("scheduler")
@@ -17,6 +18,9 @@ log = logging.getLogger("scheduler")
 # Asset alerts change slowly; SLA breaches need a tighter cadence.
 ASSET_INTERVAL_SECONDS = 12 * 60 * 60
 SLA_INTERVAL_SECONDS = 30 * 60
+# HR reminders are date-based (expiries, birthdays, deadlines); twice a day is
+# plenty and dedup keys keep re-runs from spamming.
+HR_INTERVAL_SECONDS = 12 * 60 * 60
 
 
 async def _periodic(name: str, runner, interval: int, warmup: int) -> None:
@@ -38,4 +42,5 @@ def start_scheduler(app) -> None:
         app.state.scheduler_tasks = [
             asyncio.create_task(_periodic("asset alerts", run_asset_alerts, ASSET_INTERVAL_SECONDS, 15)),
             asyncio.create_task(_periodic("sla alerts", run_sla_alerts, SLA_INTERVAL_SECONDS, 45)),
+            asyncio.create_task(_periodic("hr reminders", run_hr_reminders, HR_INTERVAL_SECONDS, 60)),
         ]

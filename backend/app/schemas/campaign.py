@@ -12,7 +12,7 @@ class CampaignCreate(BaseModel):
     start_date: DateType | None = None
     end_date: DateType | None = None
     notes: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class CampaignUpdate(BaseModel):
@@ -22,7 +22,7 @@ class CampaignUpdate(BaseModel):
     start_date: DateType | None = None
     end_date: DateType | None = None
     notes: str | None = None
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
 
 
 class Kpis(BaseModel):
@@ -43,7 +43,7 @@ class CampaignOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    brand_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
     name: str
     objective: str | None = None
     status: str

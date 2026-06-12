@@ -1,0 +1,70 @@
+"""Inbound intake — website form submissions (leads, complaints, support,
+inquiries) land here, to be triaged and converted to CRM leads or tickets."""
+import uuid
+
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+from app.models.base import TimestampMixin, UUIDMixin
+
+SUBMISSION_TYPES = {"lead", "complaint", "support", "inquiry", "feedback", "other"}
+# Inbound items land in `quarantined` for spam screening; clean ones become
+# `new` (real leads in the inbox/CRM), likely-spam ones become `spam`.
+SUBMISSION_STATUSES = {"quarantined", "new", "in_progress", "resolved", "spam", "archived"}
+
+
+class IntakeSource(UUIDMixin, TimestampMixin, Base):
+    """A connected website/form. Each has a public key used by its endpoint."""
+
+    __tablename__ = "intake_sources"
+
+    name: Mapped[str] = mapped_column(String(255))
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    default_type: Mapped[str] = mapped_column(String(16), default="lead")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # Auto-create a CRM lead when a clean lead-type submission passes screening.
+    auto_convert: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Who to notify when this source receives a submission.
+    notify_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Optional shared secret: when set, requests must carry a valid
+    # X-Signature: sha256=<hex HMAC of the raw body>.
+    signing_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Reject more than this many submissions per minute from this source (0=off).
+    rate_limit_per_min: Mapped[int] = mapped_column(Integer, default=60)
+    # Drop duplicate (same email+message) submissions within this many minutes (0=off).
+    dedup_window_min: Mapped[int] = mapped_column(Integer, default=10)
+    # Per-source spam thresholds; null falls back to the global defaults.
+    spam_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clean_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class Submission(UUIDMixin, TimestampMixin, Base):
+    """One inbound form submission."""
+
+    __tablename__ = "submissions"
+
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("intake_sources.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    type: Mapped[str] = mapped_column(String(16), default="lead", index=True)
+    name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320), index=True)
+    phone: Mapped[str | None] = mapped_column(String(64))
+    company: Mapped[str | None] = mapped_column(String(255))
+    subject: Mapped[str | None] = mapped_column(String(512))
+    message: Mapped[str | None] = mapped_column(Text)
+    page_url: Mapped[str | None] = mapped_column(String(1024))
+    # Any extra form fields not mapped to the columns above.
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default="quarantined", index=True)
+    spam_score: Mapped[int] = mapped_column(default=0)
+    spam_reasons: Mapped[list | None] = mapped_column(JSON)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    converted_lead_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    converted_ticket_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64))

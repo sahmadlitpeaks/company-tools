@@ -1,17 +1,17 @@
 import uuid
 
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, String, Table
+from sqlalchemy import JSON, Boolean, Column, Date, ForeignKey, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 # Brands a "manager" is allowed to manage (admins manage all; members none).
-user_brands = Table(
-    "user_brands",
+user_companies = Table(
+    "user_companies",
     Base.metadata,
     Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-    Column("brand_id", ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True),
+    Column("company_id", ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -41,8 +41,23 @@ class User(UUIDMixin, TimestampMixin, Base):
     # Extra HR details captured at onboarding.
     passport_no: Mapped[str | None] = mapped_column(String(64))
     nationality: Mapped[str | None] = mapped_column(String(128))
+    date_of_birth: Mapped[object | None] = mapped_column(Date)
     # External system ids for sync.
     bamboo_id: Mapped[str | None] = mapped_column(String(64))
+
+    # ---- HR / employment record ----
+    # Reporting line (self-referential). Distinct from the access department.
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    # full_time | part_time | contractor | intern | temporary
+    employment_type: Mapped[str | None] = mapped_column(String(24))
+    hire_date: Mapped[object | None] = mapped_column(Date)
+    probation_end_date: Mapped[object | None] = mapped_column(Date)
+    contract_end_date: Mapped[object | None] = mapped_column(Date)
+    emergency_contact_name: Mapped[str | None] = mapped_column(String(255))
+    emergency_contact_phone: Mapped[str | None] = mapped_column(String(64))
+    emergency_contact_relationship: Mapped[str | None] = mapped_column(String(64))
 
     # Local password sign-in (for users not coming via Azure SSO). Encoded
     # PBKDF2 hash; null means the user can only sign in via SSO.
@@ -58,19 +73,57 @@ class User(UUIDMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     # Explicit per-user module grants; null = use the role's defaults.
     permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Access department (drives base permissions). Distinct from the free-text
+    # `department` HR label above.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    # Per-person overrides layered on top of the department's permissions.
+    extra_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    revoked_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Work pattern used for expected-hours / overtime on timesheets.
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("work_schedules.id", ondelete="SET NULL"), nullable=True
+    )
+    # Notification categories the user has muted for outbound channels
+    # (in-app notifications are always delivered).
+    notify_muted: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Two-factor authentication (TOTP). Secret stored once enabled.
+    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    managed_brands: Mapped[list["object"]] = relationship(
-        "Brand", secondary=user_brands, lazy="selectin"
+    managed_companies: Mapped[list["object"]] = relationship(
+        "Company", secondary=user_companies, lazy="selectin"
+    )
+    access_department: Mapped["object"] = relationship(
+        "Department", lazy="selectin"
+    )
+    manager: Mapped["object"] = relationship(
+        "User", remote_side="User.id", foreign_keys=[manager_id], lazy="joined", join_depth=1
     )
 
     @property
-    def managed_brand_ids(self) -> list[uuid.UUID]:
-        return [b.id for b in self.managed_brands]
+    def manager_name(self) -> str | None:
+        return self.manager.display_name if self.manager else None
+
+    @property
+    def managed_company_ids(self) -> list[uuid.UUID]:
+        return [b.id for b in self.managed_companies]
+
+    @property
+    def department_name(self) -> str | None:
+        return self.access_department.name if self.access_department else None
 
     @property
     def effective_permissions(self) -> list[str]:
         from app.core.permissions import resolve_permissions
 
+        dept = self.access_department
         return resolve_permissions(
-            role=self.role, is_admin=self.is_admin, permissions=self.permissions
+            role=self.role,
+            is_admin=self.is_admin,
+            permissions=self.permissions,
+            department_perms=dept.permissions if dept else None,
+            extra=self.extra_permissions,
+            revoked=self.revoked_permissions,
         )

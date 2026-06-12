@@ -14,19 +14,39 @@ from app.api import (
     assets,
     audit,
     analytics,
-    brands,
+    companies,
     branding,
     campaigns,
     cards,
     crm,
     demo,
+    intake,
+    departments,
     knowledge,
     landing,
     leave,
     me as me_api,
     people,
     notifications,
+    compensation,
+    custom_fields,
+    hr,
+    hr_documents,
+    api_tokens,
+    approval_workflows,
+    benefits,
+    engagement,
+    expenses,
+    payroll,
+    training,
+    webhooks,
+    performance,
     phones,
+    profiles,
+    recruiting,
+    reports,
+    subscriptions,
+    timekeeping,
     products,
     qrcodes,
     service_desk,
@@ -96,10 +116,16 @@ if settings.RUN_SCHEDULER:
 @app.on_event("startup")
 async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tests
     from app.core.database import AsyncSessionLocal
-    from app.services.bootstrap import ensure_default_admin
+    from app.services.bootstrap import (
+        ensure_default_admin,
+        ensure_default_departments,
+        ensure_default_leave_types,
+    )
 
     async with AsyncSessionLocal() as db:
         await ensure_default_admin(db)
+        await ensure_default_departments(db)
+        await ensure_default_leave_types(db)
 
 
 @app.get("/health", tags=["meta"])
@@ -120,14 +146,33 @@ def _mod(key: str):
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
-app.include_router(brands.router, prefix=api_prefix)
+app.include_router(companies.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
 app.include_router(audit.router, prefix=api_prefix)
 app.include_router(activity.router, prefix=api_prefix)
 app.include_router(views.router, prefix=api_prefix)
+app.include_router(departments.router, prefix=api_prefix)
 app.include_router(demo.router, prefix=api_prefix)
 app.include_router(notifications.router, prefix=api_prefix)
 app.include_router(me_api.router, prefix=api_prefix)
+app.include_router(profiles.router, prefix=api_prefix)
+app.include_router(hr_documents.router, prefix=api_prefix)
+app.include_router(compensation.router, prefix=api_prefix)
+app.include_router(performance.router, prefix=api_prefix)
+app.include_router(payroll.router, prefix=api_prefix)
+app.include_router(benefits.router, prefix=api_prefix)
+app.include_router(expenses.router, prefix=api_prefix)
+app.include_router(training.router, prefix=api_prefix)
+app.include_router(engagement.router, prefix=api_prefix)
+app.include_router(webhooks.router, prefix=api_prefix)
+app.include_router(approval_workflows.router, prefix=api_prefix)
+app.include_router(approval_workflows.steps_router, prefix=api_prefix)
+app.include_router(api_tokens.router, prefix=api_prefix)
+app.include_router(api_tokens.public_router, prefix=api_prefix)
+app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
+app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
+app.include_router(recruiting.router, prefix=api_prefix, dependencies=_mod("recruiting"))
+app.include_router(custom_fields.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
 
 # Public (no auth) surfaces.
@@ -137,6 +182,7 @@ app.include_router(products.public_router, prefix=api_prefix)
 app.include_router(landing.public_router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(shares.public_router, prefix=api_prefix)
+app.include_router(intake.public_router, prefix=api_prefix)
 
 # Module-gated feature routers (403 unless the user has the permission).
 app.include_router(cards.router, prefix=api_prefix, dependencies=_mod("cards"))
@@ -150,7 +196,10 @@ app.include_router(shortener.router, prefix=api_prefix, dependencies=_mod("short
 app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("transfers"))
 app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
 app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
+app.include_router(subscriptions.router, prefix=api_prefix, dependencies=_mod("subscriptions"))
+app.include_router(timekeeping.router, prefix=api_prefix, dependencies=_mod("attendance"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
+app.include_router(intake.router, prefix=api_prefix, dependencies=_mod("crm"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
 app.include_router(tasks.router, prefix=api_prefix, dependencies=_mod("tasks"))

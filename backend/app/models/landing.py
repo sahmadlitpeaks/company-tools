@@ -18,8 +18,8 @@ class LandingPage(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "landing_pages"
 
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
-    brand_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("brands.id", ondelete="SET NULL"), index=True, nullable=True
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
     )
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)

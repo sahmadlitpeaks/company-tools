@@ -23,6 +23,7 @@ from app.schemas.workplace import (
 )
 from app.services.activity import record
 from app.services.notify import notify_user
+from app.services.onboarding_sync import reflect_task_into_checklist
 from app.services.people import user_names
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -233,6 +234,9 @@ async def update_task(
             db, user=user, action="status", entity_type="task", entity_id=task.id,
             summary=f"{actor} moved task {prev_status} → {data['status']}",
         )
+        # If this task mirrors an onboarding checklist item, keep it in sync.
+        if task.onboarding_task_id:
+            await reflect_task_into_checklist(db, task, user.id)
 
     # Recurring tasks spawn the next occurrence when completed.
     if (
@@ -248,7 +252,7 @@ async def update_task(
             priority=task.priority,
             recurrence=task.recurrence,
             assignee_id=task.assignee_id,
-            brand_id=task.brand_id,
+            company_id=task.company_id,
             created_by_id=task.created_by_id,
             due_date=_advance(base, task.recurrence),
             status="todo",

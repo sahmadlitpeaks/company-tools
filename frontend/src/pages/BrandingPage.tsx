@@ -68,7 +68,7 @@ function ColorField({
 function VersionsModal({ doc, onClose }: { doc: BrandDocument; onClose: () => void }) {
   const { notify } = useToast();
   const { data, loading } = useFetch<BrandDocumentVersion[]>(
-    `/api/brands/documents/${doc.id}/versions`,
+    `/api/companies/documents/${doc.id}/versions`,
   );
   return (
     <Modal title={`${doc.name} — version history`} onClose={onClose}>
@@ -89,7 +89,7 @@ function VersionsModal({ doc, onClose }: { doc: BrandDocument; onClose: () => vo
                     className="btn-sm"
                     onClick={() =>
                       downloadFile(
-                        `/api/brands/document-versions/${v.id}/download`,
+                        `/api/companies/document-versions/${v.id}/download`,
                         `${doc.name}-v${v.version}`,
                       ).catch(() => notify("Download failed", "error"))
                     }
@@ -116,7 +116,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
   const [docName, setDocName] = useState("");
   const [docCategory, setDocCategory] = useState("guideline");
   const [versionsFor, setVersionsFor] = useState<BrandDocument | null>(null);
-  const docs = useFetch<BrandDocument[]>(`/api/brands/${brand.id}/documents`);
+  const docs = useFetch<BrandDocument[]>(`/api/companies/${brand.id}/documents`);
 
   useEffect(() => {
     setForm(brand);
@@ -128,7 +128,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
   async function saveIdentity() {
     setBusy(true);
     try {
-      await api(`/api/brands/${brand.id}`, {
+      await api(`/api/companies/${brand.id}`, {
         method: "PATCH",
         body: {
           name: form.name,
@@ -159,7 +159,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const u = await api<Brand>(`/api/brands/${brand.id}/logo`, { method: "POST", form: fd });
+      const u = await api<Brand>(`/api/companies/${brand.id}/logo`, { method: "POST", form: fd });
       setForm((f) => ({ ...f, logo_url: u.logo_url }));
       notify("Logo updated.");
       onSaved();
@@ -178,7 +178,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
     fd.append("name", name);
     fd.append("category", docCategory);
     try {
-      await api(`/api/brands/${brand.id}/documents`, { method: "POST", form: fd });
+      await api(`/api/companies/${brand.id}/documents`, { method: "POST", form: fd });
       notify(`Uploaded “${name}”. New versions are kept automatically.`);
       setDocName("");
       docs.reload();
@@ -386,17 +386,17 @@ export default function BrandingPage() {
   const selected = brands.find((b) => b.id === selectedId) ?? null;
   const isAdmin = !!user?.is_admin;
   const canManage = (b: Brand) =>
-    isAdmin || (user?.managed_brand_ids ?? []).includes(b.id);
+    isAdmin || (user?.managed_company_ids ?? []).includes(b.id);
 
   async function createBrand(name: string) {
-    const b = await api<Brand>("/api/brands", { method: "POST", body: { name } });
+    const b = await api<Brand>("/api/companies", { method: "POST", body: { name } });
     notify("Brand created.");
     await reload();
     setSelectedId(b.id);
   }
 
   async function remove(b: Brand) {
-    await api(`/api/brands/${b.id}`, { method: "DELETE" });
+    await api(`/api/companies/${b.id}`, { method: "DELETE" });
     notify("Brand deleted.");
     await reload();
     setSelectedId(null);

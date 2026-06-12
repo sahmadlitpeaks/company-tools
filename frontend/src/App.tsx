@@ -26,6 +26,28 @@ import MyDocsPage from "./pages/MyDocsPage";
 import HubPage from "./pages/HubPage";
 import AssetTrackerPage from "./pages/AssetTrackerPage";
 import PhoneLinesPage from "./pages/PhoneLinesPage";
+import SubscriptionsPage from "./pages/SubscriptionsPage";
+import ProfilePage from "./pages/ProfilePage";
+import OrgChartPage from "./pages/OrgChartPage";
+import PerformancePage from "./pages/PerformancePage";
+import HrDashboardPage from "./pages/HrDashboardPage";
+import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
+import AutomationsPage from "./pages/AutomationsPage";
+import TimePage from "./pages/TimePage";
+import InboxPage from "./pages/InboxPage";
+import ReportsPage from "./pages/ReportsPage";
+import RecruitingPage from "./pages/RecruitingPage";
+import PayrollPage from "./pages/PayrollPage";
+import BenefitsPage from "./pages/BenefitsPage";
+import EngagementPage from "./pages/EngagementPage";
+import ExpensesPage from "./pages/ExpensesPage";
+import TrainingPage from "./pages/TrainingPage";
+import SecurityPage from "./pages/SecurityPage";
+import WebhooksPage from "./pages/WebhooksPage";
+import ApprovalWorkflowsPage from "./pages/ApprovalWorkflowsPage";
+import ApiTokensPage from "./pages/ApiTokensPage";
+import DepartmentsPage from "./pages/DepartmentsPage";
+import CompaniesPage from "./pages/CompaniesPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import CrmPage from "./pages/CrmPage";
@@ -100,6 +122,29 @@ export default function App() {
             element={<Protected module="asset_tracker"><PhoneLinesPage /></Protected>}
           />
           <Route
+            path="/subscriptions"
+            element={<Protected module="subscriptions"><SubscriptionsPage /></Protected>}
+          />
+          <Route path="/profile" element={<Protected><ProfilePage /></Protected>} />
+          <Route path="/people/:id" element={<Protected><ProfilePage /></Protected>} />
+          <Route
+            path="/org-chart"
+            element={<Protected module="people_ops"><OrgChartPage /></Protected>}
+          />
+          <Route path="/performance" element={<Protected><PerformancePage /></Protected>} />
+          <Route path="/hr" element={<Protected module="hr"><HrDashboardPage /></Protected>} />
+          <Route path="/hr/custom-fields" element={<Protected module="hr"><CustomFieldsAdminPage /></Protected>} />
+          <Route path="/hr/automations" element={<Protected module="hr"><AutomationsPage /></Protected>} />
+          <Route path="/reports" element={<Protected module="hr"><ReportsPage /></Protected>} />
+          <Route path="/payroll" element={<Protected module="hr"><PayrollPage /></Protected>} />
+          <Route path="/benefits" element={<Protected module="hr"><BenefitsPage /></Protected>} />
+          <Route path="/engagement" element={<EngagementPage />} />
+          <Route path="/expenses" element={<ExpensesPage />} />
+          <Route path="/training" element={<TrainingPage />} />
+          <Route path="/security" element={<SecurityPage />} />
+          <Route path="/recruiting" element={<Protected module="recruiting"><RecruitingPage /></Protected>} />
+          <Route path="/time" element={<Protected module="attendance"><TimePage /></Protected>} />
+          <Route
             path="/tasks"
             element={<Protected module="tasks"><TasksPage /></Protected>}
           />
@@ -140,6 +185,7 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
+          <Route path="/inbox" element={<Protected module="crm"><InboxPage /></Protected>} />
           <Route
             path="/campaigns"
             element={<Protected module="campaigns"><CampaignsPage /></Protected>}
@@ -169,12 +215,32 @@ export default function App() {
             element={<Protected module="transfers"><TransfersPage /></Protected>}
           />
           <Route
+            path="/companies"
+            element={<Protected adminOnly><CompaniesPage /></Protected>}
+          />
+          <Route
+            path="/departments"
+            element={<Protected adminOnly><DepartmentsPage /></Protected>}
+          />
+          <Route
             path="/audit"
             element={<Protected adminOnly><AuditPage /></Protected>}
           />
           <Route
             path="/settings"
             element={<Protected adminOnly><SettingsPage /></Protected>}
+          />
+          <Route
+            path="/webhooks"
+            element={<Protected adminOnly><WebhooksPage /></Protected>}
+          />
+          <Route
+            path="/approval-workflows"
+            element={<Protected adminOnly><ApprovalWorkflowsPage /></Protected>}
+          />
+          <Route
+            path="/api-tokens"
+            element={<Protected adminOnly><ApiTokensPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

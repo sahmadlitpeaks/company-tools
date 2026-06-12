@@ -8,7 +8,9 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.notification import Notification
+from app.models.user import User
 
 
 async def notify_user(
@@ -43,4 +45,21 @@ async def notify_user(
         dedup_key=dedup_key,
     )
     db.add(n)
+
+    # Best-effort fan-out to email/Slack/Teams when enabled (never breaks the
+    # flow). Respects each user's muted categories.
+    if settings.NOTIFY_OUTBOUND:
+        try:
+            from app.services.dispatch import deliver_notification
+
+            target = await db.get(User, user_id)
+            muted = (target.notify_muted or []) if target else []
+            if category not in muted:
+                deliver_notification(
+                    to_email=target.email if target else None,
+                    title=title, body=body, link=link,
+                )
+        except Exception:
+            pass
+
     return n

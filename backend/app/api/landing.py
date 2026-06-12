@@ -227,7 +227,7 @@ async def submit_landing_lead(
 
     db.add(
         CrmLead(
-            brand_id=page.brand_id,
+            company_id=page.company_id,
             name=lead.name,
             email=lead.email,
             phone=lead.phone,

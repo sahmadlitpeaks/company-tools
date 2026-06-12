@@ -1,7 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  BellRing,
   Boxes,
+  CalendarClock,
   Check,
+  ClipboardList,
   Cloud,
   FileDown,
   KeyRound,
@@ -11,15 +15,20 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
+  Wallet,
 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type {
   AccessGrant,
   AssignedAsset,
   Brand,
+  HrDocument,
   Journey,
   JourneyDetail,
   JourneyTask,
+  OnboardingTemplate,
+  ProvisionSuggestion,
+  ProvisionSuggestions,
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -40,9 +49,24 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function PeopleOpsPage() {
+  const { notify } = useToast();
   const journeys = useFetch<Journey[]>("/api/people/journeys");
+  const expiring = useFetch<HrDocument[]>("/api/hr-documents/expiring?days=60");
   const [start, setStart] = useState<"onboarding" | "offboarding" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [managingTemplates, setManagingTemplates] = useState(false);
+
+  async function remindExpiring() {
+    try {
+      const res = await api<{ reminders_sent: number }>(
+        "/api/hr-documents/expiring/notify?days=60",
+        { method: "POST" },
+      );
+      notify(`Sent ${res.reminders_sent} document reminder(s).`);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    }
+  }
 
   return (
     <div>
@@ -51,6 +75,9 @@ export default function PeopleOpsPage() {
         subtitle="Run a checklist when someone joins or leaves — access, equipment, accounts and HR."
         action={
           <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setManagingTemplates(true)}>
+              <ClipboardList size={15} /> Templates
+            </button>
             <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setStart("offboarding")}>
               <UserMinus size={15} /> Offboard
             </button>
@@ -61,42 +88,112 @@ export default function PeopleOpsPage() {
         }
       />
 
+      {(expiring.data?.length ?? 0) > 0 && (
+        <div className="card mb-4" style={{ borderColor: "var(--amber-300, #fcd34d)" }}>
+          <div className="spread mb-2">
+            <h4 className="m-0 inline-flex items-center gap-2">
+              <CalendarClock size={16} /> Documents expiring soon ({expiring.data!.length})
+            </h4>
+            <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={remindExpiring}>
+              <BellRing size={13} /> Remind HR
+            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {expiring.data!.slice(0, 8).map((d) => {
+              const expired = d.days_to_expiry != null && d.days_to_expiry < 0;
+              return (
+                <Link
+                  key={d.id}
+                  to={`/people/${d.user_id}`}
+                  className="flex items-center justify-between rounded-lg px-2 py-1 text-sm hover:bg-slate-50"
+                >
+                  <span><span className="badge mr-1">{d.category.replace("_", " ")}</span>{d.title} · {d.user_name}</span>
+                  <span className={expired ? "text-rose-600" : "text-amber-600"}>
+                    {expired ? "expired " : "expires "}{d.expiry_date}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(journeys.data?.length ?? 0) > 0 && (
+        <div
+          className="grid mb-4"
+          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}
+        >
+          <JourneyStat
+            icon={<UserPlus size={18} />}
+            label="Onboardings in progress"
+            value={journeys.data!.filter((j) => j.kind === "onboarding" && j.status === "in_progress").length}
+          />
+          <JourneyStat
+            icon={<UserMinus size={18} />}
+            label="Offboardings in progress"
+            value={journeys.data!.filter((j) => j.kind === "offboarding" && j.status === "in_progress").length}
+          />
+          <JourneyStat
+            icon={<Check size={18} />}
+            label="Completed"
+            value={journeys.data!.filter((j) => j.status === "completed").length}
+          />
+        </div>
+      )}
+
       <div className="card">
         {journeys.loading ? (
           <Loading />
         ) : (journeys.data?.length ?? 0) === 0 ? (
           <Empty icon="🧭" message="No journeys yet" hint="Start an onboarding or offboarding above." />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Type</th>
-                <th>Progress</th>
-                <th>Status</th>
-                <th>Started</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {journeys.data!.map((j) => (
-                <tr key={j.id} className="cursor-pointer" onClick={() => setOpenId(j.id)}>
-                  <td className="font-semibold">{j.target_name ?? "—"}</td>
-                  <td>
-                    <span className={`badge ${j.kind === "onboarding" ? "green" : "amber"}`}>
-                      {j.kind}
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
+            {journeys.data!.map((j) => {
+              const pct = j.total_tasks ? Math.round((j.done_tasks / j.total_tasks) * 100) : 0;
+              const accent = j.kind === "onboarding" ? "var(--ok)" : "var(--warn)";
+              return (
+                <button
+                  key={j.id}
+                  onClick={() => setOpenId(j.id)}
+                  className="relative flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
+                >
+                  {/* Kind accent edge */}
+                  <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />
+                  <div className="flex items-center gap-3">
+                    <span className="org-avatar !h-11 !w-11 !text-sm" style={{ background: colorFor(j.target_name ?? j.id) }}>
+                      {jInitials(j.target_name)}
                     </span>
-                  </td>
-                  <td style={{ minWidth: 140 }}>
-                    <ProgressBar done={j.done_tasks} total={j.total_tasks} />
-                  </td>
-                  <td><span className={`badge ${STATUS_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span></td>
-                  <td className="muted text-sm">{new Date(j.created_at).toLocaleDateString()}</td>
-                  <td className="text-right font-medium text-brand-600">Open ›</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{j.target_name ?? "—"}</div>
+                      <div className="mt-0.5 flex gap-1">
+                        <span className={`badge ${j.kind === "onboarding" ? "green" : "amber"}`}>{j.kind}</span>
+                        <span className={`badge ${STATUS_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span>
+                      </div>
+                    </div>
+                    <span
+                      className="flex-none text-lg font-bold [font-variant-numeric:tabular-nums]"
+                      style={{ color: pct === 100 ? "var(--ok)" : "var(--brand-600)" }}
+                    >
+                      {pct}%
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--surface-3)" }}>
+                      <div
+                        className="h-full rounded-full transition-[width] duration-300"
+                        style={{
+                          width: `${pct}%`,
+                          background: `linear-gradient(90deg, color-mix(in srgb, ${accent} 65%, var(--surface)), ${accent})`,
+                        }}
+                      />
+                    </div>
+                    <span className="muted text-xs [font-variant-numeric:tabular-nums]">{j.done_tasks}/{j.total_tasks} tasks</span>
+                  </div>
+                  <div className="muted mt-2 text-xs">Started {new Date(j.created_at).toLocaleDateString()}</div>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -113,20 +210,161 @@ export default function PeopleOpsPage() {
       {openId && (
         <JourneyModal id={openId} onClose={() => setOpenId(null)} onChanged={journeys.reload} />
       )}
+      {managingTemplates && <TemplatesModal onClose={() => setManagingTemplates(false)} />}
     </div>
   );
 }
 
-function ProgressBar({ done, total }: { done: number; total: number }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
+const TASK_CATEGORIES = ["access", "accounts", "equipment", "hr", "other"];
+
+function TemplatesModal({ onClose }: { onClose: () => void }) {
+  const { notify } = useToast();
+  const templates = useFetch<OnboardingTemplate[]>("/api/people/templates?include_inactive=true");
+  const [editing, setEditing] = useState<OnboardingTemplate | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function del(id: string) {
+    if (!confirm("Delete this template?")) return;
+    await api(`/api/people/templates/${id}`, { method: "DELETE" });
+    templates.reload();
+  }
+
+  if (editing || creating) {
+    return (
+      <TemplateEditor
+        template={editing}
+        onClose={() => { setEditing(null); setCreating(false); }}
+        onSaved={() => { setEditing(null); setCreating(false); templates.reload(); }}
+      />
+    );
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--surface-3)" }}>
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--brand-600)" }} />
+    <Modal title="Onboarding templates" onClose={onClose} maxWidth={560}>
+      <div className="spread mb-2">
+        <span className="muted text-sm">Reusable checklist packets applied when a journey starts.</span>
+        <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setCreating(true)}>+ New</button>
       </div>
-      <span className="muted text-xs">{done}/{total}</span>
+      <div className="divide-y divide-slate-100">
+        {(templates.data ?? []).map((t) => (
+          <div key={t.id} className="flex items-center justify-between py-2 text-sm">
+            <span>
+              <span className="font-medium">{t.name}</span>
+              <span className="muted"> · {t.kind} · {t.items.length} steps</span>
+              {!t.active && <span className="badge ml-1">inactive</span>}
+            </span>
+            <span className="flex gap-1">
+              <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditing(t)}>Edit</button>
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(t.id)}><Trash2 size={13} /></button>
+            </span>
+          </div>
+        ))}
+        {(templates.data?.length ?? 0) === 0 && <p className="muted text-sm">No templates yet.</p>}
+      </div>
+    </Modal>
+  );
+
+  function TemplateEditor({ template, onClose, onSaved }: { template: OnboardingTemplate | null; onClose: () => void; onSaved: () => void }) {
+    const [name, setName] = useState(template?.name ?? "");
+    const [kind, setKind] = useState(template?.kind ?? "onboarding");
+    const [items, setItems] = useState<{ title: string; category: string }[]>(
+      template?.items.map((i) => ({ title: i.title, category: i.category })) ?? [{ title: "", category: "other" }],
+    );
+    const [busy, setBusy] = useState(false);
+
+    function setItem(idx: number, patch: Partial<{ title: string; category: string }>) {
+      setItems((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+    }
+
+    async function save() {
+      const cleaned = items.filter((i) => i.title.trim()).map((i, idx) => ({ ...i, title: i.title.trim(), sort: idx }));
+      if (!name.trim() || cleaned.length === 0) {
+        notify("Add a name and at least one step.", "error");
+        return;
+      }
+      setBusy(true);
+      try {
+        if (template) {
+          await api(`/api/people/templates/${template.id}`, { method: "PATCH", body: { name: name.trim(), items: cleaned } });
+        } else {
+          await api("/api/people/templates", { method: "POST", body: { name: name.trim(), kind, items: cleaned } });
+        }
+        onSaved();
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "Failed", "error");
+        setBusy(false);
+      }
+    }
+
+    return (
+      <Modal title={template ? `Edit ${template.name}` : "New template"} onClose={onClose} maxWidth={560}>
+        <div className="row">
+          <div className="field" style={{ flex: 2 }}><label>Name</label><input value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div className="field">
+            <label>Kind</label>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={!!template}>
+              <option value="onboarding">onboarding</option>
+              <option value="offboarding">offboarding</option>
+            </select>
+          </div>
+        </div>
+        <label className="mb-1 block text-sm font-medium">Steps</label>
+        <div className="space-y-1">
+          {items.map((it, i) => (
+            <div key={i} className="flex gap-1">
+              <input className="flex-1" placeholder="Step title" value={it.title} onChange={(e) => setItem(i, { title: e.target.value })} />
+              <select className="!w-auto" value={it.category} onChange={(e) => setItem(i, { category: e.target.value })}>
+                {TASK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => setItems((arr) => arr.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+        <button className="btn-sm mt-1" style={{ flex: "0 0 auto" }} onClick={() => setItems((arr) => [...arr, { title: "", category: "other" }])}>+ Add step</button>
+        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </Modal>
+    );
+  }
+}
+
+function JourneyStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="card flex items-center gap-3 !py-3.5">
+      <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-600">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xl font-bold leading-none [font-variant-numeric:tabular-nums]">{value}</span>
+        <span className="mt-1 block truncate text-xs font-medium text-ink-muted">{label}</span>
+      </span>
     </div>
   );
+}
+
+const ORG_COLORS = [
+  "#0ea5e9", "#6366f1", "#ec4899", "#f59e0b", "#10b981",
+  "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#3b82f6",
+];
+function colorFor(s: string): string {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return ORG_COLORS[h % ORG_COLORS.length];
+}
+function jInitials(name?: string | null): string {
+  const src = (name || "?").trim();
+  const parts = src.split(/\s+/);
+  return (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)).toUpperCase();
 }
 
 function StartModal({
@@ -140,7 +378,9 @@ function StartModal({
 }) {
   const { notify } = useToast();
   const users = useFetch<User[]>("/api/users");
-  const brands = useFetch<Brand[]>("/api/brands");
+  const brands = useFetch<Brand[]>("/api/companies");
+  const templates = useFetch<OnboardingTemplate[]>(`/api/people/templates?kind=${kind}`);
+  const [templateId, setTemplateId] = useState("");
   // Onboarding is almost always a brand-new person, so default to that.
   const [mode, setMode] = useState<"new" | "existing">(
     kind === "onboarding" ? "new" : "existing",
@@ -213,9 +453,10 @@ function StartModal({
         body: {
           kind,
           target_user_id: target,
-          brand_id: brandId || null,
+          company_id: brandId || null,
           note: note || null,
           announce,
+          template_id: templateId || null,
         },
       });
       notify(`${kind === "onboarding" ? "Onboarding" : "Offboarding"} started.`);
@@ -312,6 +553,15 @@ function StartModal({
           </select>
         </div>
         <div className="field">
+          <label>Checklist template (packet)</label>
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <option value="">Default checklist</option>
+            {(templates.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.items.length} steps)</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
           <label>Note (optional)</label>
           <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
@@ -342,6 +592,29 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
   const [assetPick, setAssetPick] = useState("");
   const [grant, setGrant] = useState({ name: "", system: "", username: "" });
   const d = detail.data;
+  const suggestions = useFetch<ProvisionSuggestions>(
+    d?.kind === "onboarding" ? `/api/people/journeys/${id}/suggestions` : null,
+  );
+
+  async function provisionSub(s: ProvisionSuggestion) {
+    if (!s.ref_id || !d?.target_user_id) return;
+    await api(`/api/subscriptions/${s.ref_id}/seats`, {
+      method: "POST",
+      body: { user_ids: [d.target_user_id] },
+    });
+    suggestions.reload();
+    detail.reload();
+    onChanged();
+  }
+  async function provisionAccess(s: ProvisionSuggestion) {
+    await api(`/api/people/journeys/${id}/grants`, {
+      method: "POST",
+      body: { name: s.label },
+    });
+    suggestions.reload();
+    detail.reload();
+    onChanged();
+  }
 
   async function assignAsset() {
     if (!assetPick) return;
@@ -371,6 +644,10 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
   }
   async function deleteGrant(g: AccessGrant) {
     await api(`/api/people/grants/${g.id}`, { method: "DELETE" });
+    detail.reload();
+  }
+  async function revokeSeat(seatId: string) {
+    await api(`/api/subscriptions/seats/${seatId}/revoke`, { method: "POST" });
     detail.reload();
   }
 
@@ -432,7 +709,7 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
         <>
           <div className="spread mb-3">
             <div className="muted text-sm">
-              {d.brand_name && <>Branch: <strong>{d.brand_name}</strong> · </>}
+              {d.company_name && <>Branch: <strong>{d.company_name}</strong> · </>}
               <span className={`badge ${d.kind === "onboarding" ? "green" : "amber"}`}>{d.kind}</span>
             </div>
             <button
@@ -578,6 +855,96 @@ function JourneyModal({ id, onClose, onChanged }: { id: string; onClose: () => v
               </button>
             </div>
           </div>
+
+          {/* Subscriptions the person is covered by */}
+          {d.subscriptions.length > 0 && (
+            <div className="mb-4">
+              <h4 className="mb-2 inline-flex items-center gap-1.5">
+                <Wallet size={15} /> Subscriptions to review
+              </h4>
+              <div className="flex flex-col gap-1.5">
+                {d.subscriptions.map((s) => (
+                  <div
+                    key={s.subscription_id + s.source}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                    style={{ background: "var(--surface-2)" }}
+                  >
+                    <span className="min-w-0 text-sm">
+                      <span className="font-medium">{s.name}</span>
+                      {s.vendor && <span className="muted"> · {s.vendor}</span>}
+                      <span className="muted"> · {s.source === "seat" ? "personal seat" : `${s.source}-wide`}</span>
+                    </span>
+                    <span className="flex flex-none items-center gap-2">
+                      {s.source === "seat" ? (
+                        s.seat_status === "active" ? (
+                          <button
+                            className="btn-sm btn-danger inline-flex items-center gap-1"
+                            style={{ flex: "0 0 auto" }}
+                            onClick={() => revokeSeat(s.seat_id!)}
+                          >
+                            <Lock size={12} /> Revoke seat
+                          </button>
+                        ) : (
+                          <span className="badge red">revoked</span>
+                        )
+                      ) : (
+                        <span className="badge">shared</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Onboarding: suggested provisioning from department peers */}
+          {d.kind === "onboarding" &&
+            ((suggestions.data?.subscriptions.length ?? 0) > 0 ||
+              (suggestions.data?.access.length ?? 0) > 0) && (
+              <div className="mb-4">
+                <h4 className="mb-2 inline-flex items-center gap-1.5">
+                  <UserPlus size={15} /> Suggested for {suggestions.data?.department_name ?? "this department"}
+                </h4>
+                <p className="muted mb-2 text-xs">
+                  Commonly held by peers in the same department but not yet provisioned.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {suggestions.data!.subscriptions.map((s) => (
+                    <div
+                      key={`sub-${s.ref_id}`}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                      style={{ background: "var(--surface-2)" }}
+                    >
+                      <span className="min-w-0 text-sm">
+                        <Wallet size={12} className="mr-1 inline" />
+                        <span className="font-medium">{s.label}</span>
+                        {s.detail && <span className="muted"> · {s.detail}</span>}
+                        <span className="muted"> · {s.peer_count}/{s.peer_total} peers</span>
+                      </span>
+                      <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => provisionSub(s)}>
+                        <Plus size={12} /> Seat
+                      </button>
+                    </div>
+                  ))}
+                  {suggestions.data!.access.map((s) => (
+                    <div
+                      key={`acc-${s.label}`}
+                      className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
+                      style={{ background: "var(--surface-2)" }}
+                    >
+                      <span className="min-w-0 text-sm">
+                        <KeyRound size={12} className="mr-1 inline" />
+                        <span className="font-medium">{s.label}</span>
+                        <span className="muted"> · {s.peer_count}/{s.peer_total} peers</span>
+                      </span>
+                      <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => provisionAccess(s)}>
+                        <Plus size={12} /> Add access
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {/* Checklist */}
           <div className="spread mb-2">
