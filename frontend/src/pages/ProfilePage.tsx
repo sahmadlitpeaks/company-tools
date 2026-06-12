@@ -87,8 +87,36 @@ export default function ProfilePage() {
   const [tab, setTab] = useState("personal");
 
   if (loading) return <Loading />;
-  if (error || !p)
-    return <Empty message={error ? "You don't have access to this profile." : "Not found."} />;
+  if (error || !p) {
+    // Distinguish an expired/invalid session (401) from a genuine permission
+    // denial (403) — they used to show the same misleading message.
+    const sessionExpired = /not authenticated|credential|401/i.test(error ?? "");
+    if (sessionExpired) {
+      return (
+        <Empty
+          icon="🔒"
+          message="Your session has expired"
+          hint="Please sign in again to continue."
+          action={
+            <Link to="/login" className="btn-primary inline-block">
+              Go to sign in
+            </Link>
+          }
+        />
+      );
+    }
+    return (
+      <Empty
+        icon="🚫"
+        message={error ? "You don't have access to this profile" : "Profile not found"}
+        hint={
+          error
+            ? "Only admins, HR, the person themselves, or their department manager can view a profile."
+            : undefined
+        }
+      />
+    );
+  }
 
   const tabs = TABS.filter((t) => !t.sensitive || p.can_see_sensitive);
   const canEditGoals = p.can_manage || p.id === viewerId;
@@ -873,6 +901,7 @@ function EditProfileModal({
   const departments = useFetch<Department[]>(isAdmin ? "/api/departments" : null);
   const people = useFetch<User[]>(isAdmin ? "/api/users" : null);
   const [f, setF] = useState({
+    display_name: profile.name ?? "",
     job_title: profile.job_title ?? "",
     hr_department: profile.hr_department ?? "",
     office_location: profile.office_location ?? "",
@@ -904,6 +933,10 @@ function EditProfileModal({
       const body: Record<string, unknown> = {
         job_title: f.job_title || null,
         hr_department: f.hr_department || null,
+      };
+      // A name is required — only send it when non-empty so we never wipe it.
+      if (f.display_name.trim()) body.display_name = f.display_name.trim();
+      Object.assign(body, {
         office_location: f.office_location || null,
         mobile_phone: f.mobile_phone || null,
         business_phone: f.business_phone || null,
@@ -914,7 +947,7 @@ function EditProfileModal({
         emergency_contact_name: f.emergency_contact_name || null,
         emergency_contact_phone: f.emergency_contact_phone || null,
         emergency_contact_relationship: f.emergency_contact_relationship || null,
-      };
+      });
       if (profile.can_see_sensitive) {
         body.personal_email = f.personal_email || null;
         body.nationality = f.nationality || null;
@@ -939,8 +972,16 @@ function EditProfileModal({
   return (
     <Modal title={`Edit ${profile.name ?? profile.email}`} onClose={onClose} maxWidth={560}>
       <form onSubmit={save}>
+        <div className="field">
+          <label>Full name</label>
+          <input
+            value={f.display_name}
+            onChange={(e) => set("display_name", e.target.value)}
+            placeholder="e.g. Sana Khan"
+          />
+        </div>
         <div className="row">
-          <div className="field"><label>Job title</label><input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} /></div>
+          <div className="field"><label>Job title</label><input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="e.g. CEO" /></div>
           <div className="field"><label>Department (label)</label><input value={f.hr_department} onChange={(e) => set("hr_department", e.target.value)} /></div>
         </div>
         <div className="field"><label>Office location</label><input value={f.office_location} onChange={(e) => set("office_location", e.target.value)} /></div>

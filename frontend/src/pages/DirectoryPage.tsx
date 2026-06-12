@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, FileText, LayoutGrid, List, Upload } from "lucide-react";
+import { Download, FileText, LayoutGrid, List, Mail, Upload } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -430,37 +430,64 @@ export default function DirectoryPage() {
         ) : view === "grid" ? (
           <>
             <div className="muted mb-2 text-xs">{filtered.length} people</div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))" }}>
-              {filtered.map((u) => (
-                <div key={u.id} className="flex flex-col items-center rounded-xl border border-slate-200 p-4 text-center transition hover:shadow-md">
-                  <Link to={`/people/${u.id}`}><PersonAvatar u={u} size={72} /></Link>
-                  <Link to={`/people/${u.id}`} className="mt-2 font-semibold leading-tight hover:text-brand-600">
-                    {u.display_name ?? "—"}
-                  </Link>
-                  <div className="muted text-xs">{u.job_title ?? "—"}</div>
-                  <div className="muted mt-0.5 text-xs">{u.department ?? "—"}</div>
-                  <div className="mt-2 flex flex-wrap justify-center gap-1">
-                    <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>{u.status}</span>
-                    {u.role !== "member" && <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>}
-                  </div>
-                  {u.email && (
-                    <a href={`mailto:${u.email}`} className="muted mt-2 truncate text-xs hover:text-brand-600" style={{ maxWidth: "100%" }}>
-                      {u.email}
-                    </a>
-                  )}
-                  {isAdmin && (
-                    <div className="mt-2 flex flex-wrap justify-center gap-1">
-                      {u.status === "pending" && (
-                        <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
-                      )}
-                      <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
-                      {u.role === "manager" && (
-                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
-                      )}
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))" }}>
+              {filtered.map((u) => {
+                const seed = u.display_name ?? u.email ?? "?";
+                return (
+                  <div
+                    key={u.id}
+                    className="relative flex flex-col items-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 pb-3.5 text-center transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
+                  >
+                    {/* Tinted cover band behind the avatar */}
+                    <div
+                      className="absolute inset-x-0 top-0 h-[52px]"
+                      style={{
+                        background: `linear-gradient(180deg, ${colorFor(seed)}26, transparent)`,
+                      }}
+                    />
+                    <Link to={`/people/${u.id}`} className="relative mt-1.5 rounded-full" style={{ boxShadow: "0 0 0 3px var(--surface)" }}>
+                      <PersonAvatar u={u} size={68} />
+                    </Link>
+                    <Link to={`/people/${u.id}`} className="relative mt-2 font-semibold leading-tight text-ink hover:text-brand-600">
+                      {u.display_name ?? "—"}
+                    </Link>
+                    <div className="muted mt-0.5 text-xs leading-snug">
+                      {u.job_title ?? "—"}
+                      {u.department && <> · {u.department}</>}
                     </div>
-                  )}
-                </div>
-              ))}
+                    {(u.status !== "active" || u.role !== "member") && (
+                      <div className="mt-2 flex flex-wrap justify-center gap-1">
+                        {u.status !== "active" && (
+                          <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>{u.status}</span>
+                        )}
+                        {u.role !== "member" && (
+                          <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
+                        )}
+                      </div>
+                    )}
+                    {u.email && (
+                      <a
+                        href={`mailto:${u.email}`}
+                        className="muted mt-1.5 inline-flex max-w-full items-center gap-1 truncate text-xs hover:text-brand-600"
+                      >
+                        <Mail size={11} className="flex-none" />
+                        <span className="truncate">{u.email}</span>
+                      </a>
+                    )}
+                    {isAdmin && (
+                      <div className="mt-2.5 flex flex-wrap justify-center gap-1 border-t border-[var(--border)] pt-2.5 w-full">
+                        {u.status === "pending" && (
+                          <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
+                        )}
+                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
+                        {u.role === "manager" && (
+                          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (

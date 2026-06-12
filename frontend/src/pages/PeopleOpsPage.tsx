@@ -118,6 +118,29 @@ export default function PeopleOpsPage() {
         </div>
       )}
 
+      {(journeys.data?.length ?? 0) > 0 && (
+        <div
+          className="grid mb-4"
+          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}
+        >
+          <JourneyStat
+            icon={<UserPlus size={18} />}
+            label="Onboardings in progress"
+            value={journeys.data!.filter((j) => j.kind === "onboarding" && j.status === "in_progress").length}
+          />
+          <JourneyStat
+            icon={<UserMinus size={18} />}
+            label="Offboardings in progress"
+            value={journeys.data!.filter((j) => j.kind === "offboarding" && j.status === "in_progress").length}
+          />
+          <JourneyStat
+            icon={<Check size={18} />}
+            label="Completed"
+            value={journeys.data!.filter((j) => j.status === "completed").length}
+          />
+        </div>
+      )}
+
       <div className="card">
         {journeys.loading ? (
           <Loading />
@@ -127,12 +150,15 @@ export default function PeopleOpsPage() {
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
             {journeys.data!.map((j) => {
               const pct = j.total_tasks ? Math.round((j.done_tasks / j.total_tasks) * 100) : 0;
+              const accent = j.kind === "onboarding" ? "var(--ok)" : "var(--warn)";
               return (
                 <button
                   key={j.id}
                   onClick={() => setOpenId(j.id)}
-                  className="flex flex-col rounded-xl border border-slate-200 p-4 text-left transition hover:shadow-md"
+                  className="relative flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
                 >
+                  {/* Kind accent edge */}
+                  <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />
                   <div className="flex items-center gap-3">
                     <span className="org-avatar !h-11 !w-11 !text-sm" style={{ background: colorFor(j.target_name ?? j.id) }}>
                       {jInitials(j.target_name)}
@@ -144,12 +170,24 @@ export default function PeopleOpsPage() {
                         <span className={`badge ${STATUS_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span>
                       </div>
                     </div>
+                    <span
+                      className="flex-none text-lg font-bold [font-variant-numeric:tabular-nums]"
+                      style={{ color: pct === 100 ? "var(--ok)" : "var(--brand-600)" }}
+                    >
+                      {pct}%
+                    </span>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--surface-3)" }}>
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--brand-600)" }} />
+                      <div
+                        className="h-full rounded-full transition-[width] duration-300"
+                        style={{
+                          width: `${pct}%`,
+                          background: `linear-gradient(90deg, color-mix(in srgb, ${accent} 65%, var(--surface)), ${accent})`,
+                        }}
+                      />
                     </div>
-                    <span className="muted text-xs">{j.done_tasks}/{j.total_tasks}</span>
+                    <span className="muted text-xs [font-variant-numeric:tabular-nums]">{j.done_tasks}/{j.total_tasks} tasks</span>
                   </div>
                   <div className="muted mt-2 text-xs">Started {new Date(j.created_at).toLocaleDateString()}</div>
                 </button>
@@ -290,6 +328,28 @@ function TemplatesModal({ onClose }: { onClose: () => void }) {
       </Modal>
     );
   }
+}
+
+function JourneyStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="card flex items-center gap-3 !py-3.5">
+      <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-600">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xl font-bold leading-none [font-variant-numeric:tabular-nums]">{value}</span>
+        <span className="mt-1 block truncate text-xs font-medium text-ink-muted">{label}</span>
+      </span>
+    </div>
+  );
 }
 
 const ORG_COLORS = [

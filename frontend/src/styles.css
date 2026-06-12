@@ -122,15 +122,48 @@
   }
   body {
     @apply text-ink antialiased;
-    background: var(--bg);
+    /* Faint accent wash at the top for depth instead of a flat grey sheet. */
+    background:
+      radial-gradient(
+        1100px 480px at 80% -120px,
+        color-mix(in srgb, var(--accent) 6%, transparent),
+        transparent 65%
+      ),
+      var(--bg);
+    background-attachment: fixed;
     font-family: var(--font-sans);
     font-size: var(--fs);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+  /* Slim, theme-aware scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background: var(--border-strong);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted);
   }
   h1 {
-    @apply text-[1.6rem] font-bold leading-tight;
+    @apply text-[1.6rem] font-bold leading-tight -tracking-[0.02em];
   }
   h2 {
-    @apply text-[1.35rem] font-bold leading-tight;
+    @apply text-[1.35rem] font-bold leading-tight -tracking-[0.015em];
   }
   h3 {
     @apply text-[1.05rem] font-semibold;
@@ -185,7 +218,8 @@
     @apply bg-white/[0.07] text-white no-underline;
   }
   .nav-link.active {
-    @apply bg-brand-600 text-white;
+    @apply text-white;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
     box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent);
   }
   .nav-link.active::before {
@@ -196,13 +230,40 @@
     @apply px-3 pb-1.5 pt-4 text-[11px] font-semibold uppercase tracking-wider;
     color: var(--sidebar-muted);
   }
+  /* Collapsible section header (button). Styled to match .nav-section but with
+     a chevron and hover affordance; overrides the generic button chrome. */
+  .nav-group-head {
+    @apply flex w-full items-center justify-between rounded-md px-3 pb-1.5 pt-4 text-[11px] font-semibold uppercase tracking-wider;
+    color: var(--sidebar-muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+  .nav-group-head:hover {
+    color: var(--sidebar-text);
+    background: transparent;
+  }
+  .nav-group-head .chev {
+    flex: none;
+    opacity: 0.7;
+    transition: transform 0.15s ease;
+  }
+  .nav-group-head.collapsed .chev {
+    transform: rotate(-90deg);
+  }
+  /* Dot shown on a collapsed header when it contains the active page. */
+  .nav-group-dot {
+    @apply h-1.5 w-1.5 rounded-full;
+    background: var(--brand-400);
+  }
   .main {
     @apply flex min-w-0 flex-col;
   }
   .topbar {
-    @apply sticky top-0 z-20 flex h-[60px] items-center justify-between px-6 backdrop-blur;
+    @apply sticky top-0 z-20 flex h-[60px] items-center justify-between px-6 backdrop-blur-md;
     border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
   }
   .topbar .title {
     @apply text-lg font-semibold;
@@ -214,10 +275,19 @@
 
   /* ---- Cards & layout ---- */
   .card {
-    @apply rounded-[10px] shadow-card;
+    @apply shadow-card;
+    border-radius: var(--radius);
     border: 1px solid var(--border);
     background: var(--surface);
     padding: var(--card-pad);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  /* Cards that act as links/buttons lift on hover. */
+  a.card:hover,
+  button.card:hover {
+    @apply shadow-soft no-underline;
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
   }
   .grid {
     display: grid;
@@ -277,14 +347,23 @@
     border-color: var(--border-strong);
     background: var(--surface-2);
   }
+  button:active:not(:disabled),
+  .btn:active {
+    transform: translateY(1px);
+  }
   .btn-primary {
     @apply border-brand-600 bg-brand-600 text-white;
+    /* Soft top highlight gives the solid button a hint of depth. */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent);
+    box-shadow:
+      0 1px 2px color-mix(in srgb, var(--accent) 35%, transparent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
   /* Keep coloured variants readable on hover (don't fall back to the light
      generic hover, which would leave white text on a near-white background). */
   .btn-primary:hover {
     border-color: var(--brand-700);
-    background: var(--brand-700);
+    background-color: var(--brand-700);
     box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent);
   }
   .btn-danger {
@@ -344,6 +423,11 @@
     color: var(--muted);
     opacity: 0.7;
   }
+  input:hover:not(:focus):not([type="checkbox"]):not([type="radio"]),
+  textarea:hover:not(:focus),
+  select:hover:not(:focus) {
+    border-color: var(--border-strong);
+  }
   input:focus,
   textarea:focus,
   select:focus {
@@ -377,6 +461,15 @@
     @apply text-[11px] font-semibold uppercase tracking-wider text-ink-muted;
     padding-top: 7px;
     padding-bottom: 7px;
+    background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  }
+  th:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+  }
+  th:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
   }
   tbody tr {
     @apply transition-colors;
@@ -384,12 +477,25 @@
   tbody tr:hover {
     background: var(--brand-50);
   }
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
 
   /* ---- Badges ---- */
   .badge {
-    @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold;
     background: var(--surface-2);
     color: var(--muted);
+  }
+  /* Status dot on coloured badges for faster scanning. */
+  .badge.green::before,
+  .badge.blue::before,
+  .badge.amber::before,
+  .badge.red::before,
+  .badge.violet::before {
+    content: "";
+    @apply h-1.5 w-1.5 flex-none rounded-full;
+    background: currentColor;
   }
   .badge.green {
     background: color-mix(in srgb, var(--ok) 15%, var(--surface));
@@ -407,6 +513,14 @@
     background: color-mix(in srgb, var(--danger) 15%, var(--surface));
     color: var(--danger);
   }
+  .badge.violet {
+    background: color-mix(in srgb, #8b5cf6 16%, var(--surface));
+    color: #8b5cf6;
+  }
+  .badge.gray {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
   .muted {
     @apply text-ink-muted;
   }
@@ -421,7 +535,7 @@
     @apply max-h-[90vh] w-full max-w-[520px] overflow-auto rounded-2xl p-[22px] shadow-pop;
     background: var(--surface);
     border: 1px solid var(--border);
-    animation: fade-in 0.2s ease;
+    animation: pop-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* ---- Auth / public ---- */
@@ -436,13 +550,15 @@
     box-shadow: var(--shadow-pop);
   }
   .empty {
-    @apply p-10 text-center text-ink-muted;
+    @apply rounded-xl border border-dashed p-10 text-center text-ink-muted;
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--surface-2) 35%, transparent);
   }
   .toast {
-    @apply fixed bottom-5 right-5 z-[100] rounded-[10px] px-[18px] py-3 shadow-pop;
+    @apply fixed bottom-5 right-5 z-[100] rounded-xl px-[18px] py-3 shadow-pop;
     background: var(--toast-bg);
     color: var(--toast-text);
-    animation: fade-in 0.2s ease;
+    animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .toast.error {
     background: var(--danger);
@@ -775,6 +891,7 @@ body {
   width: 168px;
   padding: 12px 10px;
   border: 1px solid var(--border);
+  border-top-width: 3px; /* coloured per-person via inline style */
   border-radius: 14px;
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(2, 6, 23, 0.04);
@@ -813,3 +930,57 @@ body {
   cursor: pointer;
 }
 .org-toggle:hover { border-color: var(--brand-400); color: var(--brand-600); }
+
+/* ============================================================
+   Motion
+   - Keyframes live here (not only in tailwind.config) so plain
+     `animation:` declarations above always resolve.
+   ============================================================ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

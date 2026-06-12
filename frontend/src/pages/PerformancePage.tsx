@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { OneOnOne, Review, ReviewCycle, ReviewFeedback, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, Loading, MetricStrip, Modal, PageHead, useToast } from "../components/ui";
 
 export default function PerformancePage() {
   const { user } = useAuth();
@@ -38,6 +38,20 @@ export default function PerformancePage() {
           </div>
         }
       />
+
+      {/* Summary */}
+      <div className="mb-4">
+        <MetricStrip
+          items={[
+            { value: toReview.data?.filter((r) => r.status !== "submitted").length ?? 0, label: "Reviews to write" },
+            { value: feedbackQueue.data?.length ?? 0, label: "Feedback requested" },
+            { value: oneOnOnes.data?.filter((o) => o.status === "scheduled").length ?? 0, label: "Upcoming 1:1s" },
+            ...(isHr
+              ? [{ value: cycles.data?.filter((c) => c.status === "open").length ?? 0, label: "Open cycles" }]
+              : []),
+          ]}
+        />
+      </div>
 
       {/* 360 feedback requested from me */}
       {(feedbackQueue.data?.length ?? 0) > 0 && (

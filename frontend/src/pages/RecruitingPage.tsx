@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Briefcase, CalendarPlus, ChevronLeft, ChevronRight, FileUp, Plus,
-  Star, Trash2, UserCheck,
+  Star, Target, Trash2, UserCheck, Users,
 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type {
@@ -55,26 +55,65 @@ export default function RecruitingPage() {
       ) : (jobs.data?.length ?? 0) === 0 ? (
         <div className="card"><Empty icon="💼" message="No job openings yet" hint="Create a job to start receiving candidates." /></div>
       ) : (
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
-          {jobs.data!.map((j) => (
-            <button key={j.id} className="flex flex-col rounded-xl border border-slate-200 p-4 text-left transition hover:shadow-md" onClick={() => setOpenJob(j)}>
-              <div className="flex items-center gap-2">
-                <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-700"><Briefcase size={18} /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">{j.title}</div>
-                  <div className="muted text-xs">{j.department_name ?? "—"}{j.location ? ` · ${j.location}` : ""}</div>
-                </div>
-                <span className={`badge ${JOB_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span>
-              </div>
-              <div className="muted mt-3 text-xs">
-                {j.candidate_count} candidate{j.candidate_count === 1 ? "" : "s"} · {j.hired_count}/{j.openings} hired
-                {j.hiring_manager_name ? ` · HM: ${j.hiring_manager_name}` : ""}
-              </div>
-            </button>
-          ))}
-        </div>
+        <>
+          {/* Summary */}
+          <div className="grid mb-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))" }}>
+            <RecruitStat icon={<Briefcase size={18} />} label="Open roles" value={jobs.data!.filter((j) => j.status === "open").length} />
+            <RecruitStat icon={<Users size={18} />} label="Candidates" value={jobs.data!.reduce((s, j) => s + j.candidate_count, 0)} />
+            <RecruitStat icon={<UserCheck size={18} />} label="Hired" value={jobs.data!.reduce((s, j) => s + j.hired_count, 0)} />
+            <RecruitStat
+              icon={<Target size={18} />}
+              label="Positions to fill"
+              value={jobs.data!.reduce((s, j) => s + Math.max(0, j.openings - j.hired_count), 0)}
+            />
+          </div>
+
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))" }}>
+            {jobs.data!.map((j) => {
+              const accent = j.status === "open" ? "var(--ok)" : j.status === "on_hold" ? "var(--warn)" : j.status === "closed" ? "var(--danger)" : "var(--brand-400)";
+              const pct = j.openings ? Math.min(100, Math.round((j.hired_count / j.openings) * 100)) : 0;
+              return (
+                <button
+                  key={j.id}
+                  className="relative flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
+                  onClick={() => setOpenJob(j)}
+                >
+                  <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-700"><Briefcase size={18} /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-semibold">{j.title}</div>
+                      <div className="muted text-xs">{j.department_name ?? "—"}{j.location ? ` · ${j.location}` : ""}</div>
+                    </div>
+                    <span className={`badge ${JOB_BADGE[j.status] ?? ""}`}>{j.status.replace("_", " ")}</span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="badge inline-flex items-center gap-1"><Users size={11} /> {j.candidate_count}</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-3)]">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--ok)" }} />
+                    </div>
+                    <span className="muted text-xs [font-variant-numeric:tabular-nums]">{j.hired_count}/{j.openings} hired</span>
+                  </div>
+                  {j.hiring_manager_name && <div className="muted mt-2 text-xs">Hiring manager · {j.hiring_manager_name}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       {adding && <JobModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); jobs.reload(); }} />}
+    </div>
+  );
+}
+
+function RecruitStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  return (
+    <div className="card flex items-center gap-3 !py-3.5">
+      <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand-50 text-brand-600">{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-xl font-bold leading-none [font-variant-numeric:tabular-nums]">{value}</span>
+        <span className="mt-1 block truncate text-xs font-medium text-ink-muted">{label}</span>
+      </span>
     </div>
   );
 }

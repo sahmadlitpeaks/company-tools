@@ -1,11 +1,12 @@
 """HR dashboard — a single overview for HR staff (gated by the ``hr`` module)."""
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_admin, get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.department import Department
 from app.models.hr import HrDocument, ReviewCycle
@@ -13,6 +14,7 @@ from app.models.people import OnboardingJourney
 from app.models.user import User
 from app.models.workplace import ApprovalRequest
 from app.schemas.hr_overview import CountItem, HrOverview, JoinerItem
+from app.services import hr_reminders
 
 router = APIRouter(prefix="/hr", tags=["hr"])
 
@@ -100,3 +102,38 @@ async def overview(
         for u in sorted((u for u in active if u.hire_date and u.hire_date > today), key=lambda u: u.hire_date)
     ][:8]
     return out
+
+
+# --------------------------------------------------------------------------
+# Automation engine — scheduled HR reminders (admin only)
+# --------------------------------------------------------------------------
+@router.get("/automations")
+async def automations_status(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    """Reminder config, catalogue and last-run metadata for the admin UI."""
+    status = await hr_reminders.get_status(db)
+    # Surface whether external delivery (email/Slack/Teams) is wired up so the
+    # UI can tell admins that reminders are in-app only until it's enabled.
+    status["outbound_enabled"] = settings.NOTIFY_OUTBOUND
+    status["scheduler_enabled"] = settings.RUN_SCHEDULER
+    return status
+
+
+@router.put("/automations")
+async def automations_update(
+    config: dict = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Enable/disable reminders and set their lead times."""
+    cfg = await hr_reminders.set_config(db, config)
+    return {"config": cfg}
+
+
+@router.post("/automations/run")
+async def automations_run(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    """Run all enabled reminders now and report what was created."""
+    return await hr_reminders.run_hr_reminders(db)

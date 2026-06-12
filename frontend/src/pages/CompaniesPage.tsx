@@ -29,7 +29,7 @@ export default function CompaniesPage() {
   return (
     <div>
       <PageHead
-        title="Companys"
+        title="Companies"
         subtitle="The companies / sub-companies content can be scoped to."
         action={
           <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>

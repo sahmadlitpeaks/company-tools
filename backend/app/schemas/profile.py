@@ -5,6 +5,10 @@ from pydantic import BaseModel
 
 
 class ProfileUpdate(BaseModel):
+    # Name fields — editable by HR/admins.
+    display_name: str | None = None
+    given_name: str | None = None
+    surname: str | None = None
     job_title: str | None = None
     hr_department: str | None = None  # free-text label -> user.department
     office_location: str | None = None

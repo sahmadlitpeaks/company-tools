@@ -10,6 +10,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
@@ -36,6 +37,7 @@ from app.services.subscriptions import person_subscriptions
 
 # Fields any manager/HR editor may change vs. admin-only ones.
 _HR_FIELDS = {
+    "display_name", "given_name", "surname",
     "job_title", "office_location", "mobile_phone", "business_phone",
     "personal_email", "nationality", "passport_no", "date_of_birth",
     "employment_type", "hire_date", "probation_end_date", "contract_end_date",
@@ -65,6 +67,19 @@ async def _build(db: AsyncSession, viewer: User, target: User) -> ProfileOut:
     can_view, can_manage, sensitive = _can_view(viewer, target)
     if not can_view:
         raise HTTPException(status_code=403, detail="You can't view this profile")
+
+    # Re-load with the manager + access-department relationships eagerly present.
+    # `db.get()` can hand back an identity-mapped instance whose `manager` isn't
+    # loaded, and accessing `manager_name`/`department_name` below would then try
+    # to lazy-load during serialization — illegal under async (MissingGreenlet).
+    target = (
+        await db.execute(
+            select(User)
+            .options(joinedload(User.manager), selectinload(User.access_department))
+            .where(User.id == target.id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
 
     out = ProfileOut(
         id=target.id,

@@ -39,7 +39,10 @@ function KudosWall() {
   return (
     <div>
       <div className="spread mb-3">
-        <h3 className="m-0">Recognition wall</h3>
+        <h3 className="m-0 flex items-center gap-2">
+          Recognition wall
+          {(feed.data?.length ?? 0) > 0 && <span className="badge amber">{feed.data!.length}</span>}
+        </h3>
         <button className="btn-sm btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setGiving(true)}>
           <Award size={14} /> Give kudos
         </button>
@@ -51,7 +54,8 @@ function KudosWall() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {feed.data!.map((k) => (
-            <div key={k.id} className="card">
+            <div key={k.id} className="card relative overflow-hidden">
+              <span className="absolute inset-y-0 left-0 w-1" style={{ background: "var(--warn)" }} />
               <div className="flex items-center gap-2">
                 <span className="grid h-9 w-9 flex-none place-items-center rounded-full bg-amber-100 text-amber-600"><Award size={18} /></span>
                 <div className="min-w-0">

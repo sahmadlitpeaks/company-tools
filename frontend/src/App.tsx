@@ -32,6 +32,7 @@ import OrgChartPage from "./pages/OrgChartPage";
 import PerformancePage from "./pages/PerformancePage";
 import HrDashboardPage from "./pages/HrDashboardPage";
 import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
+import AutomationsPage from "./pages/AutomationsPage";
 import TimePage from "./pages/TimePage";
 import InboxPage from "./pages/InboxPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="/performance" element={<Protected><PerformancePage /></Protected>} />
           <Route path="/hr" element={<Protected module="hr"><HrDashboardPage /></Protected>} />
           <Route path="/hr/custom-fields" element={<Protected module="hr"><CustomFieldsAdminPage /></Protected>} />
+          <Route path="/hr/automations" element={<Protected module="hr"><AutomationsPage /></Protected>} />
           <Route path="/reports" element={<Protected module="hr"><ReportsPage /></Protected>} />
           <Route path="/payroll" element={<Protected module="hr"><PayrollPage /></Protected>} />
           <Route path="/benefits" element={<Protected module="hr"><BenefitsPage /></Protected>} />
