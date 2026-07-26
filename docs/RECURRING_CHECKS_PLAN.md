@@ -1,5 +1,11 @@
 # Recurring Daily Checks — Implementation Plan
 
+> **Status:** phases 1–6 are implemented and shipped as the **Routine Checks**
+> module (`routine_checks`). See §9 for exactly what landed, what changed from
+> this plan, and what is left. The rest of the document is the original
+> analysis, kept because it explains *why* the design looks the way it does.
+
+
 **Goal:** replace the paper *Morning IT Checks Report* (and the equivalent forms
 used by Facilities and other teams) with a scheduled, auditable workflow inside
 this platform: the system hands each team their checklist every morning, staff
@@ -330,3 +336,84 @@ Each phase is independently shippable and useful on its own.
 | `frontend/src/components/Attachments.tsx` | Accept `task_item` as an entity type |
 | `frontend/src/components/{Layout,MyWork,CommandPalette}.tsx` | Nav entry, "runs awaiting you" card, palette actions |
 | `backend/tests/test_routine_checks.py` *(new)* | Generation idempotency, submit guards, verification, issue → ticket |
+
+---
+
+## 9. What was built
+
+Phases 1–6 are implemented. The feature ships as the **Routine Checks** module
+(permission key `routine_checks`), with two screens: *Routine Checks* (the
+rounds themselves) and *Checklists* (template authoring).
+
+### Delivered
+
+| Phase | Status | Notes |
+|---|---|---|
+| 1 — Checklist templates | ✅ | `checklist_templates` + `checklist_template_items`, admin UI at `/checklists` |
+| 2 — Scheduled generation | ✅ | Hourly job in `services/scheduler.py`; idempotent on `(template_id, run_date)`; late-run alerts to the reviewer |
+| 3 — Item responses + photos | ✅ | OK / Issue / N/A / readings, notes, `entity_type="task_item"` attachments, submit guards |
+| 4 — Manager verification | ✅ | `submitted` → verify / send back, with the decision written to the activity log |
+| 5 — Issues → tickets | ✅ | Ticket inherits the team's category, the checkpoint's asset and the checker's note; SLA engine unchanged |
+| 6 — Compliance reporting | ✅ | `GET /api/checklist-runs/summary` + a Compliance tab: completion, lateness, repeat-offender checkpoints |
+| 7 — Mobile run view | ◐ | The run screen is mobile-shaped (collapsible sections, big OK/Issue targets, `capture="environment"` camera input). Client-side image downscaling and QR-jump-to-section are **not** done. |
+
+### Decisions taken (the §7 questions, resolved)
+
+The five open questions were answered in the design rather than blocking on
+them, in a way that leaves each reversible by configuration:
+
+1. **Rota or fixed assignee — both.** A template routes to a fixed
+   `assignee_id` *or* an `assignee_department_id`. Department runs start
+   unclaimed, are visible to the whole department, and are taken with
+   **Claim**. That covers the two different names appearing on one day's paper
+   form without forcing a choice now.
+2. **One template or several — several supported, one seeded.** The starter IT
+   round is the full 95-item form so it can be validated against paper
+   verbatim. Splitting it per building is now an editing exercise, not a
+   migration.
+3. **Other teams — no code needed.** Team, sections, response types, photo
+   rules and schedule are all template configuration. Facilities and Lab
+   starter templates ship as proof.
+4. **Photos — per checkpoint, off by default.** `photo_required` is a per-item
+   flag; the IT round sets it only on the camera sweeps. Submission is blocked
+   when a required photo is missing, so it is a real control rather than a
+   convention.
+5. **Missed-run escalation — notify, don't escalate.** A run past
+   `due_time + grace_minutes` is flagged late, counted in compliance, and the
+   reviewer is notified once (deduped). Escalation to the manager's manager was
+   left out deliberately — worth adding once there is a month of real data.
+
+### Deviations from the plan above
+
+- **`submitted` is a `Task` status**, not a separate state machine. Runs are
+  filtered out of `GET /api/tasks` by default (`include_runs=true` to include
+  them) and refuse mutation through the tasks API, so the Kanban board is
+  unaffected by a 95-item daily round.
+- **Template edits don't rewrite live runs.** Replacing a template's items
+  affects future runs only; a round already in flight keeps what it was
+  generated with, so the day's evidence stays coherent.
+- **A run with verification required never self-approves.** If no reviewer
+  resolves, it still parks in `submitted` and any admin can sign it off.
+- **Phase 0 (asset inventory) is optional, not a prerequisite.** Checkpoints
+  work without an `asset_id`; linking one just enriches the ticket. The printer
+  table from page 5 is seeded as plain checkpoints, ready to be linked once the
+  printers exist in Asset Tracker.
+
+### Not done
+
+- Client-side image downscaling before upload (a phone photo is 4–8 MB).
+- QR labels that jump to a room's section.
+- Printable/CSV export of a single run and of the compliance report.
+- A "rounds awaiting you" card on the My Work home panel.
+- Per-tenant timezone: `due_time` is evaluated against the server clock, so the
+  backend should run in the business's timezone.
+
+### Rollout from here
+
+1. Grant `routine_checks` to the IT and Facilities departments
+   (Admin → Departments).
+2. **Checklists → Add starter checklists**, then edit the IT round to match
+   reality and set its assignee/rota and reviewer.
+3. Optionally add the printers and meeting-room AV to Asset Tracker and link
+   them to their checkpoints.
+4. Run two weeks in parallel with paper, then drop the paper.

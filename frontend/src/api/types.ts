@@ -682,6 +682,135 @@ export interface TaskDetail extends Task {
   comments: TaskComment[];
 }
 
+// ---- Routine checks (recurring checklists) ----
+export type ResponseType = "ok_issue" | "done" | "text" | "number";
+export type RunItemStatus = "pending" | "ok" | "issue" | "na" | "done";
+
+export interface ChecklistTemplateItem {
+  id: string;
+  template_id: string;
+  section?: string | null;
+  title: string;
+  sort: number;
+  response_type: ResponseType;
+  photo_required: boolean;
+  asset_id?: string | null;
+  auto_ticket_on_issue: boolean;
+  ticket_priority: string;
+}
+
+export interface ChecklistTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  team: string;
+  schedule: "daily" | "weekdays" | "weekly" | "monthly";
+  days_of_week?: number[] | null;
+  day_of_month?: number | null;
+  due_time?: string | null;
+  grace_minutes: number;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  assignee_department_id?: string | null;
+  assignee_department_name?: string | null;
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  company_id?: string | null;
+  requires_verification: boolean;
+  item_count: number;
+  next_run_date?: string | null;
+  created_at: string;
+  items: ChecklistTemplateItem[];
+}
+
+export interface RunItem {
+  id: string;
+  task_id: string;
+  section?: string | null;
+  title: string;
+  sort: number;
+  status: RunItemStatus;
+  note?: string | null;
+  response_type: ResponseType;
+  value?: string | null;
+  photo_required: boolean;
+  done: boolean;
+  asset_id?: string | null;
+  asset_name?: string | null;
+  ticket_id?: string | null;
+  ticket_number?: number | null;
+  responded_by_id?: string | null;
+  responded_by_name?: string | null;
+  responded_at?: string | null;
+  photo_count: number;
+}
+
+export interface ChecklistRun {
+  id: string;
+  title: string;
+  status: string;
+  run_date?: string | null;
+  due_date?: string | null;
+  template_id?: string | null;
+  template_name?: string | null;
+  team?: string | null;
+  assignee_id?: string | null;
+  assignee_name?: string | null;
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  started_at?: string | null;
+  submitted_at?: string | null;
+  verified_at?: string | null;
+  verified_by_id?: string | null;
+  verified_by_name?: string | null;
+  review_note?: string | null;
+  created_at: string;
+  items_total: number;
+  items_answered: number;
+  issues: number;
+  is_late: boolean;
+}
+
+export interface ChecklistRunDetail extends ChecklistRun {
+  description?: string | null;
+  items: RunItem[];
+}
+
+export interface TemplateCompliance {
+  template_id: string;
+  template_name: string;
+  team: string;
+  runs: number;
+  verified: number;
+  submitted: number;
+  open: number;
+  late: number;
+  issues: number;
+  completion_rate: number;
+}
+
+export interface IssueHotspot {
+  title: string;
+  section?: string | null;
+  asset_id?: string | null;
+  asset_name?: string | null;
+  issue_count: number;
+  last_seen?: string | null;
+}
+
+export interface ComplianceSummary {
+  from_date: string;
+  to_date: string;
+  runs: number;
+  verified: number;
+  late: number;
+  issues: number;
+  completion_rate: number;
+  by_template: TemplateCompliance[];
+  hotspots: IssueHotspot[];
+}
+
 export interface ActivityEntry {
   id: string;
   actor_name?: string | null;

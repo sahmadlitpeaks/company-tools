@@ -14,6 +14,8 @@ import BrandingPage from "./pages/BrandingPage";
 import ProductsPage from "./pages/ProductsPage";
 import SharedPage from "./pages/SharedPage";
 import TasksPage from "./pages/TasksPage";
+import RoutineChecksPage from "./pages/RoutineChecksPage";
+import ChecklistTemplatesPage from "./pages/ChecklistTemplatesPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ServiceDeskPage from "./pages/ServiceDeskPage";
 import KnowledgePage from "./pages/KnowledgePage";
@@ -147,6 +149,14 @@ export default function App() {
           <Route
             path="/tasks"
             element={<Protected module="tasks"><TasksPage /></Protected>}
+          />
+          <Route
+            path="/routine-checks"
+            element={<Protected module="routine_checks"><RoutineChecksPage /></Protected>}
+          />
+          <Route
+            path="/checklists"
+            element={<Protected module="routine_checks"><ChecklistTemplatesPage /></Protected>}
           />
           <Route
             path="/approvals"
