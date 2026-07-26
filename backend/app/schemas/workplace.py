@@ -85,6 +85,12 @@ class TaskOut(BaseModel):
     subtasks_total: int = 0
     subtasks_done: int = 0
     comment_count: int = 0
+    # Set when this task is a recurring-checklist run (see /api/checklist-runs).
+    template_id: uuid.UUID | None = None
+    run_date: date | None = None
+    reviewer_id: uuid.UUID | None = None
+    submitted_at: datetime | None = None
+    verified_at: datetime | None = None
 
 
 class TaskDetail(TaskOut):

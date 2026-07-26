@@ -57,6 +57,10 @@ from app.models.worklog import WorkLog  # noqa: F401
 from app.models.timekeeping import TimeEntry, Timesheet, WorkSchedule  # noqa: F401
 from app.models.intake import IntakeSource, Submission  # noqa: F401
 from app.models.workspace import WorkspaceItem  # noqa: F401
+from app.models.checklist import (  # noqa: F401
+    ChecklistTemplate,
+    ChecklistTemplateItem,
+)
 from app.models.workplace import (  # noqa: F401
     Announcement,
     AnnouncementRead,

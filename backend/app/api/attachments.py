@@ -13,18 +13,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
-from app.core.permissions import resolve_permissions
 from app.models.user import User
-from app.models.workplace import ApprovalRequest, Attachment, Task, Ticket
+from app.models.workplace import ApprovalRequest, Attachment, Task, TaskItem, Ticket
 from app.schemas.workplace import AttachmentOut
 from app.services.storage import absolute_path, save_upload
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
-ENTITY = {
-    "approval": (ApprovalRequest, "approvals"),
-    "ticket": (Ticket, "service_desk"),
-    "task": (Task, "tasks"),
+# entity_type -> (model, modules that grant access to it)
+ENTITY: dict[str, tuple[type, tuple[str, ...]]] = {
+    "approval": (ApprovalRequest, ("approvals",)),
+    "ticket": (Ticket, ("service_desk",)),
+    "task": (Task, ("tasks", "routine_checks")),
+    # Photo evidence against a single checklist item.
+    "task_item": (TaskItem, ("tasks", "routine_checks")),
 }
 
 
@@ -32,13 +34,15 @@ def _require(user: User, entity_type: str) -> str:
     info = ENTITY.get(entity_type)
     if not info:
         raise HTTPException(status_code=404, detail="Unknown entity type")
-    module = info[1]
-    allowed = resolve_permissions(
-        role=user.role, is_admin=user.is_admin, permissions=user.permissions
-    )
-    if module not in allowed:
+    modules = info[1]
+    # ``effective_permissions`` (unlike a bare resolve_permissions call) folds in
+    # the user's access department, which is how the routine-checks module is
+    # granted to the IT / Facilities teams.
+    allowed = user.effective_permissions
+    granted = next((m for m in modules if m in allowed), None)
+    if granted is None:
         raise HTTPException(status_code=403, detail="You don't have access")
-    return module
+    return granted
 
 
 async def _ensure_entity(db: AsyncSession, entity_type: str, entity_id: uuid.UUID):

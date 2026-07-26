@@ -10,6 +10,7 @@ import logging
 
 from app.core.database import AsyncSessionLocal
 from app.services.asset_alerts import run_asset_alerts
+from app.services.checklist_runs import run_checklist_generation, run_missed_alerts
 from app.services.hr_reminders import run_hr_reminders
 from app.services.sla_alerts import run_sla_alerts
 
@@ -21,6 +22,12 @@ SLA_INTERVAL_SECONDS = 30 * 60
 # HR reminders are date-based (expiries, birthdays, deadlines); twice a day is
 # plenty and dedup keys keep re-runs from spamming.
 HR_INTERVAL_SECONDS = 12 * 60 * 60
+# Checklist runs are generated hourly: generation is idempotent (unique on
+# template + run_date), so an hourly tick simply picks up templates that became
+# due, including after a restart.
+CHECKLIST_INTERVAL_SECONDS = 60 * 60
+# Late-run nags check a little less often; dedup keys stop repeats.
+CHECKLIST_LATE_INTERVAL_SECONDS = 2 * 60 * 60
 
 
 async def _periodic(name: str, runner, interval: int, warmup: int) -> None:
@@ -43,4 +50,6 @@ def start_scheduler(app) -> None:
             asyncio.create_task(_periodic("asset alerts", run_asset_alerts, ASSET_INTERVAL_SECONDS, 15)),
             asyncio.create_task(_periodic("sla alerts", run_sla_alerts, SLA_INTERVAL_SECONDS, 45)),
             asyncio.create_task(_periodic("hr reminders", run_hr_reminders, HR_INTERVAL_SECONDS, 60)),
+            asyncio.create_task(_periodic("checklist runs", run_checklist_generation, CHECKLIST_INTERVAL_SECONDS, 20)),
+            asyncio.create_task(_periodic("checklist late alerts", run_missed_alerts, CHECKLIST_LATE_INTERVAL_SECONDS, 90)),
         ]

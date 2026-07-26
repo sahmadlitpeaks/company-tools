@@ -5,7 +5,18 @@ knowledge base. They share the same conventions as the rest of the app
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -20,7 +31,8 @@ class Task(UUIDMixin, TimestampMixin, Base):
 
     title: Mapped[str] = mapped_column(String(512))
     description: Mapped[str | None] = mapped_column(Text)
-    # todo | in_progress | blocked | done
+    # todo | in_progress | blocked | submitted | done
+    # ``submitted`` is only used by checklist runs awaiting manager verification.
     status: Mapped[str] = mapped_column(String(16), default="todo", index=True)
     # low | normal | high | urgent
     priority: Mapped[str] = mapped_column(String(16), default="normal")
@@ -41,6 +53,33 @@ class Task(UUIDMixin, TimestampMixin, Base):
     # stays in sync with it.
     onboarding_task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("onboarding_tasks.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    # ---- Checklist runs (see app/models/checklist.py) ----
+    # When set, this task is one occurrence of a recurring checklist template.
+    # (template_id, run_date) is unique so generation is idempotent.
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("checklist_templates.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    run_date: Mapped[date | None] = mapped_column(Date, index=True)
+    # Manager who verifies the submitted run.
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    review_note: Mapped[str | None] = mapped_column(Text)
+    # When the checker opened the run — paired with submitted_at this replaces
+    # the "in / out" times written on the paper form.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "run_date", name="uq_task_template_run_date"),
     )
 
     items: Mapped[list["TaskItem"]] = relationship(
@@ -66,6 +105,33 @@ class TaskItem(UUIDMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(512))
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     sort: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ---- Checklist responses ----
+    # Plain subtasks only ever use ``done``; the fields below are populated for
+    # items generated from a checklist template.
+    # Heading this item sits under, e.g. "HQ Building / Dr T's Office".
+    section: Mapped[str | None] = mapped_column(String(255))
+    # pending | ok | issue | na | done
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    # ok_issue | done | text | number (see app.models.checklist.RESPONSE_TYPES)
+    response_type: Mapped[str] = mapped_column(String(16), default="done")
+    # The reading captured for response_type text/number.
+    value: Mapped[str | None] = mapped_column(String(512))
+    photo_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tracked_assets.id", ondelete="SET NULL"), nullable=True
+    )
+    auto_ticket_on_issue: Mapped[bool] = mapped_column(Boolean, default=False)
+    ticket_priority: Mapped[str] = mapped_column(String(16), default="normal")
+    # Ticket raised from this item, if any.
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True
+    )
+    responded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     task: Mapped["Task"] = relationship(back_populates="items")
 
@@ -238,7 +304,7 @@ class LeaveBalance(UUIDMixin, TimestampMixin, Base):
 class Attachment(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "attachments"
 
-    # approval | ticket | task
+    # approval | ticket | task | task_item
     entity_type: Mapped[str] = mapped_column(String(24), index=True)
     entity_id: Mapped[uuid.UUID] = mapped_column(index=True)
     name: Mapped[str] = mapped_column(String(512))
