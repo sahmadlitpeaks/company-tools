@@ -26,6 +26,7 @@ MODULES: list[tuple[str, str]] = [
     ("subscriptions", "Subscriptions"),
     ("attendance", "Time Tracking"),
     ("tasks", "Tasks"),
+    ("routine_checks", "Routine Checks"),
     ("approvals", "Approvals"),
     ("service_desk", "Service Desk"),
     ("knowledge", "Knowledge Base"),

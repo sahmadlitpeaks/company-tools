@@ -28,7 +28,9 @@ from app.services.people import user_names
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-STATUSES = {"todo", "in_progress", "blocked", "done"}
+# ``submitted`` belongs to checklist runs (awaiting manager verification); it is
+# accepted here so run rows serialise, but runs are edited via /checklist-runs.
+STATUSES = {"todo", "in_progress", "blocked", "submitted", "done"}
 PRIORITIES = {"low", "normal", "high", "urgent"}
 RECURRENCES = {"daily", "weekly", "monthly"}
 
@@ -100,10 +102,17 @@ async def list_tasks(
     mine: bool = Query(False, description="Only tasks assigned to or created by me"),
     due: str | None = Query(None, description="overdue | week"),
     q: str | None = None,
+    include_runs: bool = Query(
+        False,
+        description="Include recurring checklist runs (excluded by default — a "
+        "daily 100-item round would swamp the board; see /api/checklist-runs)",
+    ),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Task).order_by(Task.created_at.desc())
+    if not include_runs:
+        stmt = stmt.where(Task.template_id.is_(None))
     if status:
         stmt = stmt.where(Task.status == status)
     if priority:
@@ -210,6 +219,12 @@ async def update_task(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.template_id:
+        raise HTTPException(
+            status_code=409,
+            detail="This is a checklist run — use /api/checklist-runs to respond, "
+            "submit or verify it",
+        )
     data = payload.model_dump(exclude_unset=True)
     if "status" in data and data["status"] not in STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
@@ -257,6 +272,30 @@ async def update_task(
             due_date=_advance(base, task.recurrence),
             status="todo",
         )
+        # Carry the checklist across, unticked — a recurring task whose subtasks
+        # vanished on the first completion is useless for anything routine.
+        prev_items = (
+            await db.execute(
+                select(TaskItem)
+                .where(TaskItem.task_id == task.id)
+                .order_by(TaskItem.sort.asc())
+            )
+        ).scalars().all()
+        for src in prev_items:
+            nxt.items.append(
+                TaskItem(
+                    title=src.title,
+                    sort=src.sort,
+                    section=src.section,
+                    response_type=src.response_type,
+                    photo_required=src.photo_required,
+                    asset_id=src.asset_id,
+                    auto_ticket_on_issue=src.auto_ticket_on_issue,
+                    ticket_priority=src.ticket_priority,
+                    status="pending",
+                    done=False,
+                )
+            )
         db.add(nxt)
         record(
             db, user=user, action="created", entity_type="task", entity_id=nxt.id,
@@ -327,8 +366,12 @@ async def update_item(
     item = await db.get(TaskItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
         setattr(item, field, value)
+    if "done" in data:
+        # Keep the richer checklist status in step with the plain tick.
+        item.status = "done" if data["done"] else "pending"
     await db.commit()
     await db.refresh(item)
     return TaskItemOut.model_validate(item)

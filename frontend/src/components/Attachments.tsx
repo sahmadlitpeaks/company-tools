@@ -10,10 +10,22 @@ export default function Attachments({
   entityType,
   entityId,
   compact,
+  accept,
+  capture,
+  label = "+ Attach file",
+  heading = "Attachments",
+  onChanged,
 }: {
-  entityType: "approval" | "ticket" | "task";
+  entityType: "approval" | "ticket" | "task" | "task_item";
   entityId: string;
   compact?: boolean;
+  /** Restrict the picker, e.g. "image/*" for photo evidence. */
+  accept?: string;
+  /** On a phone, open the camera straight away instead of the file browser. */
+  capture?: "environment" | "user";
+  label?: string;
+  heading?: string;
+  onChanged?: () => void;
 }) {
   const { notify } = useToast();
   const { data, reload } = useFetch<Attachment[]>(
@@ -33,6 +45,7 @@ export default function Attachments({
       });
       notify("File attached.");
       reload();
+      onChanged?.();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Upload failed", "error");
     }
@@ -42,18 +55,26 @@ export default function Attachments({
   async function remove(id: string) {
     await api(`/api/attachments/${id}`, { method: "DELETE" });
     reload();
+    onChanged?.();
   }
 
   return (
     <div>
       <div className="spread mb-2">
         <h4 className="m-0 inline-flex items-center gap-1.5">
-          <Paperclip size={14} /> Attachments {data?.length ? `(${data.length})` : ""}
+          <Paperclip size={14} /> {heading} {data?.length ? `(${data.length})` : ""}
         </h4>
         <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => fileRef.current?.click()}>
-          + Attach file
+          {label}
         </button>
-        <input ref={fileRef} type="file" hidden onChange={upload} />
+        <input
+          ref={fileRef}
+          type="file"
+          hidden
+          accept={accept}
+          capture={capture}
+          onChange={upload}
+        />
       </div>
       {!data || data.length === 0 ? (
         !compact && <p className="muted text-sm">No files attached.</p>

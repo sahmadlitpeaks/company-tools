@@ -43,6 +43,34 @@ bypasses Azure (returns 404 when `ENVIRONMENT != development`).
 | 7. Email signatures | `api/signatures.py` | templates + `POST /api/signatures/render` | – |
 | 8. URL shortener | `api/shortener.py` | `CRUD /api/short-links` | `GET /s/{code}` (302 redirect) |
 | 9. Secure transfers | `api/transfers.py` | `POST/GET /api/transfers`, `DELETE /api/transfers/{id}` | `GET /api/public/transfers/{token}/meta`, `POST /api/public/transfers/{token}/download` |
+| 10. Routine checks | `api/checklists.py` | `CRUD /api/checklist-templates` + `/generate`, `/generate-due`, `/samples`; `/api/checklist-runs` + `/{id}/claim`, `/submit`, `/verify`, `/items/{id}`, `/summary` | – |
+
+### Routine checks (recurring checklists)
+
+Replaces paper daily rounds. A `ChecklistTemplate` describes the round —
+sections, checkpoints, response types, photo rules, schedule and routing — and
+is department-agnostic, so a new team adopts the feature by authoring a
+template rather than by shipping code.
+
+A **run** is an ordinary `Task` carrying `template_id` + `run_date`, unique
+together. `services/checklist_runs.py` materialises runs from the calendar (via
+the scheduler, hourly) instead of chaining them off completion, so a skipped day
+leaves a visible unsubmitted run rather than silently ending the series. Runs
+are excluded from `GET /api/tasks` unless `include_runs=true`, and cannot be
+mutated through the tasks API.
+
+`TaskItem` carries the response: `status` (`pending|ok|issue|na|done`), a note,
+a reading, a `section` heading, an optional `asset_id` and `photo_required`.
+Photos attach through the generic attachments endpoint with
+`entity_type="task_item"`. Submission is refused while anything is unanswered
+or a required photo is missing; a template with `requires_verification` then
+waits for the reviewer to verify or send it back — the digital counterpart of
+the form's "Checked By" / "Verified By" signatures.
+
+Marking an item `issue` opens a `Ticket` in the owning team's category carrying
+the checkpoint's asset, so the existing SLA engine owns the follow-up.
+`GET /api/checklist-runs/summary` reports completion, lateness and the
+checkpoints that fail most often.
 
 ### Secure transfer encryption (feature #9)
 

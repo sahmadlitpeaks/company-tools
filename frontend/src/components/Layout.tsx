@@ -16,6 +16,8 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
+  ClipboardCheck,
+  ClipboardList,
   LifeBuoy,
   Link2,
   Lock,
@@ -110,6 +112,8 @@ const NAV: NavEntry[] = [
 
   { section: "Workplace" },
   { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
+  { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks" },
+  { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks" },
   { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
   { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
   { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements" },

@@ -33,6 +33,8 @@ const NAV_COMMANDS: Command[] = [
   { id: "go-camp", label: "Campaign Studio", to: "/campaigns", module: "campaigns" },
   { id: "go-tracker", label: "Asset Tracker", to: "/asset-tracker", module: "asset_tracker" },
   { id: "go-tasks", label: "Tasks", to: "/tasks", module: "tasks" },
+  { id: "go-routine", label: "Routine Checks", to: "/routine-checks", module: "routine_checks" },
+  { id: "go-checklists", label: "Checklists", to: "/checklists", module: "routine_checks" },
   { id: "go-appr", label: "Approvals", to: "/approvals", module: "approvals" },
   { id: "go-leave", label: "Leave", to: "/leave", module: "approvals" },
   { id: "go-sd", label: "Service Desk", to: "/service-desk", module: "service_desk" },

@@ -18,6 +18,7 @@ platform's own PostgreSQL database on first login.
 | 8 | **URL Shortener** | Branded short links with click analytics for campaigns. |
 | 9 | **Secure Transfers** | Send a file via an encrypted, single-use link that self-destructs after download (optional password + expiry). |
 | 10 | **Asset Tracker** | Track physical/IT assets (tag, category, location), assign & check-out/check-in to employees, record purchase/warranty info, straight-line depreciation and a maintenance log. |
+| 11 | **Routine Checks** | Recurring daily/weekly rounds for IT, Facilities and any other team: the system issues each day's checklist, staff record OK/Issue (with photos where required), issues open service-desk tickets automatically, and a manager verifies and signs off. Compliance reporting shows completion, lateness and repeat-offender checkpoints. |
 
 Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
 
