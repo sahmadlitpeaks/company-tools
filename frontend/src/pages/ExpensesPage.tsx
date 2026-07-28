@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Download, Plus, Receipt, Send, Trash2, Upload } from "lucide-react";
+import { Camera, Download, Plus, Receipt, Send, Trash2, Upload } from "lucide-react";
 import { api, apiUrl } from "../api/client";
 import type { ExpenseClaim } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -52,6 +52,7 @@ export default function ExpensesPage() {
 function ClaimList({ q, mine }: { q: ReturnType<typeof useFetch<ExpenseClaim[]>>; mine?: boolean }) {
   const { notify } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
 
   async function submit(c: ExpenseClaim) {
@@ -89,7 +90,8 @@ function ClaimList({ q, mine }: { q: ReturnType<typeof useFetch<ExpenseClaim[]>>
       notify(err instanceof Error ? err.message : "Failed", "error");
     }
     setUploadFor(null);
-    if (fileRef.current) fileRef.current.value = "";
+    // Reset whichever input fired, so re-picking the same file still triggers.
+    e.target.value = "";
   }
 
   if (q.loading) return <Loading />;
@@ -97,17 +99,28 @@ function ClaimList({ q, mine }: { q: ReturnType<typeof useFetch<ExpenseClaim[]>>
 
   return (
     <div className="card">
-      <input ref={fileRef} type="file" hidden onChange={onFile} />
-      <table className="table">
+      {/* Two inputs, not one: a receipt is usually photographed at the till,
+          but emailed PDF invoices still need attaching, and `capture` would
+          lock the picker to the camera. */}
+      <input ref={fileRef} type="file" hidden accept="image/*,application/pdf" onChange={onFile} />
+      <input
+        ref={cameraRef}
+        type="file"
+        hidden
+        accept="image/*"
+        capture="environment"
+        onChange={onFile}
+      />
+      <table className="table table-stack">
         <thead><tr>{!mine && <th>Employee</th>}<th>Title</th><th>Category</th><th>Amount</th><th>Status</th><th /></tr></thead>
         <tbody>
           {q.data!.map((c) => (
             <tr key={c.id}>
-              {!mine && <td className="font-medium">{c.user_name}</td>}
-              <td>{c.title}{c.has_receipt && <Receipt size={13} className="ml-1 inline text-ink-muted" />}</td>
-              <td className="capitalize">{c.category}</td>
-              <td>{money(c.amount, c.currency)}</td>
-              <td><span className={`badge ${STATUS_BADGE[c.status]}`}>{c.status}</span></td>
+              {!mine && <td className="font-medium" data-label="Employee">{c.user_name}</td>}
+              <td data-label="Title">{c.title}{c.has_receipt && <Receipt size={13} className="ml-1 inline text-ink-muted" />}</td>
+              <td className="capitalize" data-label="Category">{c.category}</td>
+              <td data-label="Amount">{money(c.amount, c.currency)}</td>
+              <td data-label="Status"><span className={`badge ${STATUS_BADGE[c.status]}`}>{c.status}</span></td>
               <td className="text-right">
                 <span className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
                   {c.has_receipt && (
@@ -115,7 +128,8 @@ function ClaimList({ q, mine }: { q: ReturnType<typeof useFetch<ExpenseClaim[]>>
                   )}
                   {mine && c.status === "draft" && (
                     <>
-                      <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => { setUploadFor(c.id); fileRef.current?.click(); }}><Upload size={13} /></button>
+                      <button className="btn-sm" title="Photograph the receipt" style={{ flex: "0 0 auto" }} onClick={() => { setUploadFor(c.id); cameraRef.current?.click(); }}><Camera size={13} /></button>
+                      <button className="btn-sm" title="Attach a file" style={{ flex: "0 0 auto" }} onClick={() => { setUploadFor(c.id); fileRef.current?.click(); }}><Upload size={13} /></button>
                       <button className="btn-sm btn-primary inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => submit(c)}><Send size={13} /> Submit</button>
                     </>
                   )}

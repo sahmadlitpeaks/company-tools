@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Download, Paperclip, X } from "lucide-react";
+import { Camera, Download, Paperclip, X } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Attachment } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -12,6 +12,7 @@ export default function Attachments({
   compact,
   accept,
   capture,
+  withCamera,
   label = "+ Attach file",
   heading = "Attachments",
   onChanged,
@@ -23,6 +24,12 @@ export default function Attachments({
   accept?: string;
   /** On a phone, open the camera straight away instead of the file browser. */
   capture?: "environment" | "user";
+  /**
+   * Add a separate "Photo" button that opens the camera, keeping the ordinary
+   * file picker too. Use this where a photo is common but not the only thing
+   * people attach — forcing `capture` would block screenshots and PDFs.
+   */
+  withCamera?: boolean;
   label?: string;
   heading?: string;
   onChanged?: () => void;
@@ -32,6 +39,7 @@ export default function Attachments({
     `/api/attachments/by/${entityType}/${entityId}`,
   );
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -49,7 +57,7 @@ export default function Attachments({
     } catch (err) {
       notify(err instanceof Error ? err.message : "Upload failed", "error");
     }
-    if (fileRef.current) fileRef.current.value = "";
+    e.target.value = "";
   }
 
   async function remove(id: string) {
@@ -64,6 +72,15 @@ export default function Attachments({
         <h4 className="m-0 inline-flex items-center gap-1.5">
           <Paperclip size={14} /> {heading} {data?.length ? `(${data.length})` : ""}
         </h4>
+        {withCamera && (
+          <button
+            className="btn-sm inline-flex items-center gap-1"
+            style={{ flex: "0 0 auto" }}
+            onClick={() => cameraRef.current?.click()}
+          >
+            <Camera size={13} /> Photo
+          </button>
+        )}
         <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => fileRef.current?.click()}>
           {label}
         </button>
@@ -75,6 +92,16 @@ export default function Attachments({
           capture={capture}
           onChange={upload}
         />
+        {withCamera && (
+          <input
+            ref={cameraRef}
+            type="file"
+            hidden
+            accept="image/*"
+            capture="environment"
+            onChange={upload}
+          />
+        )}
       </div>
       {!data || data.length === 0 ? (
         !compact && <p className="muted text-sm">No files attached.</p>

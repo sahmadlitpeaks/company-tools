@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, FileText, LayoutGrid, List, Mail, Upload } from "lucide-react";
+import { Download, FileText, LayoutGrid, List, Mail, Phone, Upload } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
@@ -472,6 +472,17 @@ export default function DirectoryPage() {
                       >
                         <Mail size={11} className="flex-none" />
                         <span className="truncate">{u.email}</span>
+                      </a>
+                    )}
+                    {/* Looking someone up to phone them is the whole point of a
+                        directory on a handset — one tap, no copy-paste. */}
+                    {(u.mobile_phone || u.business_phone) && (
+                      <a
+                        href={`tel:${(u.mobile_phone || u.business_phone)!.replace(/[^\d+]/g, "")}`}
+                        className="muted mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs hover:text-brand-600"
+                      >
+                        <Phone size={11} className="flex-none" />
+                        <span className="truncate">{u.mobile_phone || u.business_phone}</span>
                       </a>
                     )}
                     {isAdmin && (

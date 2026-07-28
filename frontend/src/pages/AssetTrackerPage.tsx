@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type {
   AssetAttachment,
@@ -23,6 +24,7 @@ import {
   bytes,
   useToast,
 } from "../components/ui";
+import QrScanner, { isScannerSupported } from "../components/QrScanner";
 
 const STATUSES = ["available", "assigned", "maintenance", "retired"];
 const CONDITIONS = ["new", "good", "fair", "poor", "damaged"];
@@ -843,7 +845,27 @@ export default function AssetTrackerPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [settingLocation, setSettingLocation] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Asset labels encode the `/q/{id}` URL. Scanning with the OS camera already
+   * deep-links here via `?q=`; scanning *inside* the app should land in the
+   * same place, so pull the identifier out of whatever the label carried.
+   */
+  function onScanned(value: string) {
+    setScanning(false);
+    const trimmed = value.trim();
+    try {
+      const url = new URL(trimmed);
+      const fromQuery = url.searchParams.get("q");
+      const fromPath = url.pathname.split("/").filter(Boolean).pop();
+      setQ(fromQuery || fromPath || trimmed);
+    } catch {
+      // Not a URL — a bare asset tag, which is exactly what search wants.
+      setQ(trimmed);
+    }
+  }
   const query = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
@@ -966,6 +988,18 @@ export default function AssetTrackerPage() {
             >
               Print labels
             </button>
+            {/* Where the browser can decode a barcode live, scanning happens
+                in-app. Elsewhere the OS camera + /q/ redirect still works, so
+                there's nothing to fall back to and the button just isn't shown. */}
+            {isScannerSupported() && (
+              <button
+                className="btn inline-flex items-center gap-1.5"
+                style={{ flex: "0 0 auto" }}
+                onClick={() => setScanning(true)}
+              >
+                <ScanLine size={15} /> Scan
+              </button>
+            )}
             <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
               + Add asset
             </button>
@@ -1155,6 +1189,13 @@ export default function AssetTrackerPage() {
         />
       )}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
+      {scanning && (
+        <QrScanner
+          title="Scan an asset label"
+          onScan={onScanned}
+          onClose={() => setScanning(false)}
+        />
+      )}
       {deleting && (
         <ConfirmModal
           title="Delete asset"

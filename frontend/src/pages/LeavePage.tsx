@@ -125,15 +125,15 @@ export default function LeavePage() {
       {team.data && (
         <div className="card mt-4">
           <h3 className="mt-0">Team balances (annual)</h3>
-          <table>
+          <table className="table-stack">
             <thead>
               <tr><th>Employee</th><th>Entitlement</th><th>Used</th><th>Left</th></tr>
             </thead>
             <tbody>
               {team.data.map((m) => (
                 <tr key={m.user_id}>
-                  <td className="font-semibold">{m.user_name}</td>
-                  <td>
+                  <td className="font-semibold" data-label="Employee">{m.user_name}</td>
+                  <td data-label="Entitlement">
                     {user?.is_admin ? (
                       <input
                         type="number"
@@ -148,8 +148,8 @@ export default function LeavePage() {
                       m.entitlement_days
                     )}
                   </td>
-                  <td>{m.used_days}</td>
-                  <td>
+                  <td data-label="Used">{m.used_days}</td>
+                  <td data-label="Left">
                     <span className={`badge ${m.remaining_days <= 0 ? "red" : "green"}`}>{m.remaining_days}</span>
                   </td>
                 </tr>

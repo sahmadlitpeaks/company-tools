@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, API_BASE_URL } from "../../api/client";
+import { api, apiBase } from "../../api/client";
 import type { TransferMeta } from "../../api/types";
 
 function fmtBytes(n: number): string {
@@ -28,7 +28,7 @@ export default function PublicTransferPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/public/transfers/${token}/download`, {
+      const res = await fetch(`${apiBase()}/api/public/transfers/${token}/download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: password || null }),

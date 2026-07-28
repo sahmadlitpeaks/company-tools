@@ -87,7 +87,7 @@ export default function ApprovalsPage() {
         ) : (list.data?.length ?? 0) === 0 ? (
           <Empty message={scope === "mine" ? "You haven't made any requests." : "Nothing to review."} />
         ) : (
-          <table>
+          <table className="table-stack">
             <thead>
               <tr>
                 <th>Type</th>
@@ -101,17 +101,19 @@ export default function ApprovalsPage() {
             <tbody>
               {list.data!.map((a) => (
                 <tr key={a.id}>
-                  <td><span className="badge">{a.type}</span></td>
-                  <td>
+                  <td data-label="Type"><span className="badge">{a.type}</span></td>
+                  <td data-label="Request">
                     <div className="font-semibold">{a.title}</div>
                     {a.details && <div className="muted text-xs">{a.details}</div>}
                   </td>
-                  <td>{scope === "mine" ? a.approver_name ?? "Any manager" : a.requester_name ?? "—"}</td>
-                  <td className="muted text-sm">
+                  <td data-label={scope === "mine" ? "Approver" : "Requester"}>
+                    {scope === "mine" ? a.approver_name ?? "Any manager" : a.requester_name ?? "—"}
+                  </td>
+                  <td className="muted text-sm" data-label="Amount / dates">
                     {money(a.amount) ??
                       (a.start_date ? `${a.start_date}${a.end_date ? ` → ${a.end_date}` : ""}` : "—")}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`badge ${STATUS_BADGE[a.status] ?? ""}`}>{a.status}</span>
                     {a.decision_note && <div className="muted text-xs">“{a.decision_note}”</div>}
                   </td>

@@ -1,5 +1,36 @@
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { refreshStore } from "./session";
+
+/**
+ * Base URL for the API.
+ *
+ * The web build bakes this in (empty => relative URLs, which nginx proxies).
+ * The native shell can't do that — one binary has to reach whichever host the
+ * platform is deployed on — so a runtime override wins when present.
+ */
+const RUNTIME_BASE_KEY = "ag_platform_api_base";
+const BUILT_IN_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+let runtimeBase: string | null =
+  typeof localStorage !== "undefined" ? localStorage.getItem(RUNTIME_BASE_KEY) : null;
+
+/**
+ * Where API calls currently point. A function rather than a constant so a
+ * runtime change (the native shell's server-address screen) takes effect
+ * without a reload.
+ */
+export const apiBase = (): string => runtimeBase ?? BUILT_IN_BASE;
+
+export const serverStore = {
+  get: () => runtimeBase,
+  set: (base: string) => {
+    runtimeBase = base.replace(/\/+$/, "");
+    localStorage.setItem(RUNTIME_BASE_KEY, runtimeBase);
+  },
+  clear: () => {
+    runtimeBase = null;
+    localStorage.removeItem(RUNTIME_BASE_KEY);
+  },
+};
 
 const TOKEN_KEY = "ag_platform_token";
 
@@ -25,29 +56,72 @@ type Options = {
   auth?: boolean;
 };
 
+/**
+ * Swap an expired access token for a fresh one using the device's refresh
+ * token. Only installed apps hold one, so a browser tab simply signs out as it
+ * always did. Concurrent 401s share a single in-flight attempt.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  const refreshToken = refreshStore.get();
+  if (!refreshToken) return false;
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${apiBase()}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        tokenStore.set(data.access_token);
+        if (data.refresh_token) refreshStore.set(data.refresh_token);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        // Cleared on the next tick so callers awaiting this attempt all see it.
+        setTimeout(() => (refreshInFlight = null), 0);
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+function endSession() {
+  tokenStore.clear();
+  refreshStore.clear();
+}
+
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   const { method = "GET", body, form, auth = true } = opts;
-  const headers: Record<string, string> = {};
-  if (auth) {
-    const token = tokenStore.get();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
-  let payload: BodyInit | undefined;
-  if (form) {
-    payload = form;
-  } else if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    payload = JSON.stringify(body);
-  }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    body: payload,
-  });
+  const send = () => {
+    const headers: Record<string, string> = {};
+    if (auth) {
+      const token = tokenStore.get();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    }
+    let payload: BodyInit | undefined;
+    if (form) {
+      payload = form;
+    } else if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+      payload = JSON.stringify(body);
+    }
+    return fetch(`${apiBase()}${path}`, { method, headers, body: payload });
+  };
+
+  let res = await send();
 
   if (res.status === 401 && auth) {
-    tokenStore.clear();
+    // An installed app renews silently; anything else signs out as before.
+    if (await tryRefreshSession()) {
+      res = await send();
+    }
+    if (res.status === 401) endSession();
   }
   if (!res.ok) {
     let detail = res.statusText;
@@ -66,7 +140,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
 }
 
 /** Build an absolute URL to a backend resource (e.g. a QR image). */
-export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
+export const apiUrl = (path: string) => `${apiBase()}${path}`;
 
 /**
  * Fetch a binary resource with the auth header attached. Needed for images and
@@ -74,13 +148,19 @@ export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
  * Bearer token and would 401.
  */
 export async function apiBlob(path: string, auth = true): Promise<Blob> {
-  const headers: Record<string, string> = {};
-  if (auth) {
-    const token = tokenStore.get();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+  const send = () => {
+    const headers: Record<string, string> = {};
+    if (auth) {
+      const token = tokenStore.get();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    }
+    return fetch(`${apiBase()}${path}`, { headers });
+  };
+  let res = await send();
+  if (res.status === 401 && auth) {
+    if (await tryRefreshSession()) res = await send();
+    if (res.status === 401) endSession();
   }
-  const res = await fetch(`${API_BASE_URL}${path}`, { headers });
-  if (res.status === 401 && auth) tokenStore.clear();
   if (!res.ok) {
     let detail = res.statusText;
     try {

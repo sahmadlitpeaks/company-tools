@@ -159,6 +159,55 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
+/**
+ * The handful of destinations worth a permanent thumb-reach tab on a phone:
+ * the things people open while walking a building or between meetings.
+ * Everything else stays in the drawer, which "More" opens.
+ */
+const TABS: { to: string; label: string; icon: LucideIcon; module?: string; end?: boolean }[] = [
+  { to: "/", label: "Home", icon: LayoutDashboard, end: true, module: "dashboard" },
+  { to: "/routine-checks", label: "Checks", icon: ClipboardCheck, module: "routine_checks" },
+  { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
+  { to: "/service-desk", label: "Tickets", icon: LifeBuoy, module: "service_desk" },
+];
+
+function TabBar({
+  can,
+  onMore,
+}: {
+  can: (module: string) => boolean;
+  onMore: () => void;
+}) {
+  // Same permission gate the sidebar uses, so a tab never leads somewhere the
+  // user would just be bounced out of.
+  const visible = TABS.filter((t) => !t.module || can(t.module));
+  return (
+    <nav className="tabbar" aria-label="Primary">
+      {visible.map((t) => (
+        <NavLink
+          key={t.to}
+          to={t.to}
+          end={t.end}
+          className={({ isActive }) => (isActive ? "active" : "")}
+        >
+          <t.icon size={19} />
+          <span>{t.label}</span>
+        </NavLink>
+      ))}
+      <a
+        href="#menu"
+        onClick={(e) => {
+          e.preventDefault();
+          onMore();
+        }}
+      >
+        <Menu size={19} />
+        <span>More</span>
+      </a>
+    </nav>
+  );
+}
+
 function currentTitle(pathname: string): string {
   if (pathname === "/") return "Dashboard";
   const item = NAV.find(
@@ -317,7 +366,7 @@ export default function Layout() {
             >
               <Menu size={18} />
             </button>
-            <div className="flex flex-col leading-tight">
+            <div className="topbar-title flex flex-col leading-tight">
               <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
                 {APP_NAME}
               </span>
@@ -334,7 +383,11 @@ export default function Layout() {
           >
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <BrandSwitcher />
+          {/* Multi-brand switching is a desk activity; on a phone the topbar
+              needs the room for the title and the notification bell. */}
+          <span className="topbar-brand">
+            <BrandSwitcher />
+          </span>
           <span className="mx-1 hidden h-7 w-px bg-[var(--border)] sm:block" />
           <NotificationBell />
           <span className="mx-1 h-7 w-px bg-[var(--border)]" />
@@ -383,6 +436,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <TabBar can={can} onMore={() => setNavOpen(true)} />
       {appearanceOpen && <AppearanceModal onClose={() => setAppearanceOpen(false)} />}
       {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}

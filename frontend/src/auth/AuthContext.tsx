@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { API_BASE_URL, api, tokenStore } from "../api/client";
+import { ApiError, api, apiBase, tokenStore } from "../api/client";
+import { enableWebPush, forgetPushToken } from "../api/push";
+import { loginDeviceFields, refreshStore } from "../api/session";
 import type { User } from "../api/types";
 
 interface AuthState {
@@ -34,15 +36,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    try {
-      const me = await api<User>("/api/auth/me");
-      setUser(me);
-    } catch {
-      tokenStore.clear();
-      setUser(null);
-    } finally {
-      setLoading(false);
+    // Only an outright rejection from the server ends the session. A network
+    // failure — a dropped signal, a request aborted by navigating away — must
+    // not sign someone out; on a phone that would happen constantly. So retry
+    // a couple of times before giving up, and keep the token either way.
+    // (`api()` has already attempted a token refresh before surfacing a 401.)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const me = await api<User>("/api/auth/me");
+        setUser(me);
+        // Installed apps register for push once signed in. Fire-and-forget:
+        // notifications are a bonus, never a gate on using the app.
+        void enableWebPush();
+        break;
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.status === 401 || err.status === 403) {
+            tokenStore.clear();
+            refreshStore.clear();
+            setUser(null);
+          }
+          break; // a real answer from the server, retrying won't help
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+        }
+      }
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -51,17 +72,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(() => {
     // Backend-driven Azure OIDC flow.
-    window.location.href = `${API_BASE_URL}/api/auth/login`;
+    window.location.href = `${apiBase()}/api/auth/login`;
   }, []);
 
   const passwordLogin = useCallback(
     async (email: string, password: string, code?: string) => {
-      const res = await api<{ access_token: string }>("/api/auth/login", {
-        method: "POST",
-        auth: false,
-        body: { email, password, code },
-      });
+      const res = await api<{ access_token: string; refresh_token?: string }>(
+        "/api/auth/login",
+        {
+          method: "POST",
+          auth: false,
+          // Installed apps identify a device and get a refresh token with it;
+          // an ordinary browser tab sends nothing extra and behaves as before.
+          body: { email, password, code, ...loginDeviceFields() },
+        },
+      );
       tokenStore.set(res.access_token);
+      if (res.refresh_token) refreshStore.set(res.refresh_token);
       await refresh();
     },
     [refresh],
@@ -79,7 +106,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // Revoke the device server-side too, so an installed app that is signed out
+    // can't be resumed from its refresh token. Best-effort: a failed call must
+    // still sign this client out locally.
+    const rt = refreshStore.get();
+    if (rt) {
+      void fetch(`${apiBase()}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: rt }),
+      }).catch(() => undefined);
+    }
     tokenStore.clear();
+    refreshStore.clear();
+    forgetPushToken();
     setUser(null);
   }, []);
 

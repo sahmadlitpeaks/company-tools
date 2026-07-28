@@ -5,6 +5,7 @@ import App from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { ToastProvider } from "./components/ui";
+import PwaStatus from "./components/PwaStatus";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <ToastProvider>
           <AuthProvider>
             <App />
+            <PwaStatus />
           </AuthProvider>
         </ToastProvider>
       </ThemeProvider>

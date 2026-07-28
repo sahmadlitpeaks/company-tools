@@ -147,7 +147,7 @@ export default function ServiceDeskPage() {
         ) : (tickets.data?.length ?? 0) === 0 ? (
           <Empty message="No tickets here." />
         ) : (
-          <table>
+          <table className="table-stack">
             <thead>
               <tr>
                 <th>#</th>
@@ -166,8 +166,8 @@ export default function ServiceDeskPage() {
                 const sla = slaState(t);
                 return (
                   <tr key={t.id} className="cursor-pointer" onClick={() => setOpenId(t.id)}>
-                    <td className="text-ink-muted [font-variant-numeric:tabular-nums]">#{t.number}</td>
-                    <td>
+                    <td className="text-ink-muted [font-variant-numeric:tabular-nums]" data-label="#">#{t.number}</td>
+                    <td data-label="Subject">
                       <span className="font-semibold">{t.subject}</span>
                       {t.comment_count > 0 && (
                         <span className="muted ml-2 inline-flex items-center gap-1 text-xs">
@@ -175,13 +175,13 @@ export default function ServiceDeskPage() {
                         </span>
                       )}
                     </td>
-                    <td><span className="badge">{t.category}</span></td>
-                    <td>
+                    <td data-label="Category"><span className="badge">{t.category}</span></td>
+                    <td data-label="Priority">
                       <span className={`badge ${PRIO_BADGE[t.priority] ?? ""}`}>{t.priority}</span>
                     </td>
-                    <td>{sla ? <span className={`badge ${sla.cls}`}>{sla.label}</span> : <span className="muted">—</span>}</td>
-                    <td>{t.requester_name ?? "—"}</td>
-                    <td>
+                    <td data-label="SLA">{sla ? <span className={`badge ${sla.cls}`}>{sla.label}</span> : <span className="muted">—</span>}</td>
+                    <td data-label="Requester">{t.requester_name ?? "—"}</td>
+                    <td data-label="Assignee">
                       {t.assignee_name ?? (
                         isAgent ? (
                           <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={(e) => assignToMe(e, t)}>
@@ -192,7 +192,7 @@ export default function ServiceDeskPage() {
                         )
                       )}
                     </td>
-                    <td><span className={`badge ${STATUS_BADGE[t.status] ?? ""}`}>{t.status.replace("_", " ")}</span></td>
+                    <td data-label="Status"><span className={`badge ${STATUS_BADGE[t.status] ?? ""}`}>{t.status.replace("_", " ")}</span></td>
                     <td className="text-right font-medium text-brand-600">Open ›</td>
                   </tr>
                 );
@@ -428,7 +428,10 @@ function TicketDetailModal({
           )}
 
           <div className="mb-3">
-            <Attachments entityType="ticket" entityId={id} />
+            {/* Tickets are usually raised standing in front of the broken
+                thing — but screenshots and logs still get attached, so the
+                camera is offered *alongside* the file picker, not instead. */}
+            <Attachments entityType="ticket" entityId={id} withCamera />
           </div>
 
           <TicketEffort ticketId={id} initial={t.effort_minutes} onLogged={detail.reload} />

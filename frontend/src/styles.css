@@ -23,7 +23,7 @@
   --border: #e6eaf1;
   --border-strong: #d3dae6;
   --text: #1a2230;
-  --muted: #64748b;
+  --muted: #5d6b80;
 
   /* Status colours */
   --ok: #16a34a;
@@ -31,11 +31,21 @@
   --warn: #d97706;
   --info: #2563eb;
 
+  /* Badge label colours. The pill background is a 15% tint of the status
+     colour, and the status colour itself is too light on top of it to reach
+     the 4.5:1 contrast minimum — so labels use a darkened mix. Dark mode
+     overrides these, where the tint sits on a dark surface instead. */
+  --badge-ok: color-mix(in srgb, var(--ok) 74%, black);
+  --badge-danger: color-mix(in srgb, var(--danger) 74%, black);
+  --badge-warn: color-mix(in srgb, var(--warn) 74%, black);
+  --badge-info: color-mix(in srgb, var(--info) 74%, black);
+  --badge-violet: color-mix(in srgb, #8b5cf6 74%, black);
+
   /* Sidebar (kept dark in light mode for contrast) */
   --sidebar-1: #0c1a2b;
   --sidebar-2: #0a1726;
   --sidebar-text: #cbd5e1;
-  --sidebar-muted: #64748b;
+  --sidebar-muted: #7b8aa5;
 
   /* Toast pill */
   --toast-bg: #0f172a;
@@ -86,10 +96,18 @@
   --warn: #fbbf24;
   --info: #60a5fa;
 
+  /* On a dark surface the status colours are already legible on their own
+     tint; only violet needed lifting. */
+  --badge-ok: var(--ok);
+  --badge-danger: var(--danger);
+  --badge-warn: var(--warn);
+  --badge-info: var(--info);
+  --badge-violet: #b39dfb;
+
   --sidebar-1: #0a1322;
   --sidebar-2: #070e1a;
   --sidebar-text: #c2cdde;
-  --sidebar-muted: #5a6b86;
+  --sidebar-muted: #7b8aa5;
 
   --toast-bg: #e7edf6;
   --toast-text: #0b1220;
@@ -499,23 +517,23 @@
   }
   .badge.green {
     background: color-mix(in srgb, var(--ok) 15%, var(--surface));
-    color: var(--ok);
+    color: var(--badge-ok);
   }
   .badge.blue {
     background: color-mix(in srgb, var(--info) 15%, var(--surface));
-    color: var(--info);
+    color: var(--badge-info);
   }
   .badge.amber {
     background: color-mix(in srgb, var(--warn) 16%, var(--surface));
-    color: var(--warn);
+    color: var(--badge-warn);
   }
   .badge.red {
     background: color-mix(in srgb, var(--danger) 15%, var(--surface));
-    color: var(--danger);
+    color: var(--badge-danger);
   }
   .badge.violet {
     background: color-mix(in srgb, #8b5cf6 16%, var(--surface));
-    color: #8b5cf6;
+    color: var(--badge-violet);
   }
   .badge.gray {
     background: var(--surface-2);
@@ -982,5 +1000,284 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* =====================================================================
+   Installed-app / phone layer
+   =====================================================================
+   Everything below exists so the same SPA is usable one-handed on a phone
+   and as an installed app. It is deliberately centralised: the density
+   tokens (--fs, --ctl-py) and the shared .modal/.card table rules reach
+   every page at once, so this is a stylesheet change rather than 55 page
+   rewrites. */
+
+/* ---- Status bars (offline / update available) ---- */
+.pwa-bar-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.pwa-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 560px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+  font-size: 13px;
+}
+.pwa-bar span {
+  flex: 1 1 auto;
+}
+.pwa-bar.offline {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+}
+/* Keep the bars clear of the bottom tab bar when it's showing. */
+@media (max-width: 1024px) {
+  .pwa-bar-wrap {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
+  }
+}
+
+/* ---- Safe areas (notch / home indicator) ---- */
+@supports (padding: env(safe-area-inset-top)) {
+  .topbar {
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+  }
+  .sidebar {
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .content {
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- Touch ergonomics ----
+   Raising the two density tokens is what lifts every button and input in the
+   app to a thumb-sized target at once. Pinning inputs to 16px is not a taste
+   decision: iOS zooms the whole page when a focused input is smaller. */
+@media (pointer: coarse), (max-width: 640px) {
+  :root {
+    --ctl-py: 12px;
+    --fs: 16px;
+  }
+  button,
+  .btn,
+  a.btn {
+    min-height: 44px;
+  }
+  /* The :not() chain is deliberate: it lifts specificity above the Tailwind
+     size utilities (text-sm, !py-1) that individual controls set, so every
+     field really does end up at 16px rather than most of them. Compact
+     controls — the Tasks board's per-card status select, filter bars — keep
+     their own padding but still get a thumb-sized min-height. */
+  textarea,
+  select:not([multiple]),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    font-size: 16px;
+    min-height: 40px;
+  }
+  /* .btn-sm is the dominant row action across every page; it must still be
+     hittable even though it stays visually smaller. */
+  .btn-sm {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .btn-sm:has(> svg:only-child) {
+    min-width: 40px;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .content {
+    padding-top: 14px;
+  }
+  /* `.row > *` is `flex-1 min-w-0`, which lets filter controls shrink to a
+     sliver rather than wrapping — five selects on a 393px screen collapse to
+     bare chevrons with their labels overlapping. A flex-basis makes them wrap
+     instead. Controls that opt out inline (`flex: 0 0 auto`, used by button
+     groups throughout) are unaffected. */
+  .row > * {
+    flex: 1 1 150px;
+  }
+  .topbar-brand {
+    display: none;
+  }
+  /* The page title must not wrap under the topbar's icon cluster. */
+  .topbar-title {
+    min-width: 0;
+  }
+  .topbar-title > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ---- Modals become bottom sheets on a phone ----
+   Most real work in this app happens inside a modal, and a centred 520px box
+   is the wrong shape on a handset: it floats, it's hard to reach, and the
+   keyboard covers it. */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: end;
+    padding: 0;
+  }
+  .modal {
+    max-width: none;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+    animation: sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  /* Grab handle, so it reads as a sheet rather than a stuck dialog. */
+  .modal::before {
+    content: "";
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: -6px auto 12px;
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* ---- Tables that stack into cards ----
+   Opt-in per table via .table-stack. Each cell carries a data-label, which
+   becomes its heading once the row is a card. Tables without the class keep
+   the previous horizontal-scroll behaviour, so this can be adopted page by
+   page instead of in one sweep. */
+@media (max-width: 640px) {
+  .card table.table-stack,
+  table.table-stack {
+    display: block;
+    width: 100%;
+    overflow-x: visible;
+    white-space: normal;
+  }
+  table.table-stack thead {
+    /* Visually hidden, still read by screen readers via the data-labels. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  table.table-stack tbody,
+  table.table-stack tr,
+  table.table-stack td {
+    display: block;
+    width: auto;
+  }
+  table.table-stack tr {
+    margin-bottom: 10px;
+    padding: 4px 2px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  table.table-stack td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: none;
+    padding: 8px 12px;
+    text-align: right;
+  }
+  table.table-stack td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    text-align: left;
+  }
+  /* A cell with no label (row actions) spans the full width instead. */
+  table.table-stack td[data-label=""]::before,
+  table.table-stack td:not([data-label])::before {
+    content: none;
+  }
+  table.table-stack td:not([data-label]) {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Bottom tab bar ----
+   The five things people actually open on a phone. The drawer still holds
+   everything else. */
+.tabbar {
+  display: none;
+}
+@media (max-width: 1024px) {
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: blur(10px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .tabbar a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 56px;
+    padding: 6px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .tabbar a.active {
+    color: var(--accent);
+  }
+  /* Reserve room so the last row of content isn't trapped under the bar. */
+  .main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 }
