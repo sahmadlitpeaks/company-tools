@@ -6,6 +6,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { ToastProvider } from "./components/ui";
 import PwaStatus from "./components/PwaStatus";
+import NativeGate from "./native/NativeGate";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -13,10 +14,14 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <ThemeProvider>
         <ToastProvider>
-          <AuthProvider>
-            <App />
-            <PwaStatus />
-          </AuthProvider>
+          {/* No-op in a browser; in the native shell this asks which server to
+              talk to, then starts push and deep-link handling. */}
+          <NativeGate>
+            <AuthProvider>
+              <App />
+              <PwaStatus />
+            </AuthProvider>
+          </NativeGate>
         </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>

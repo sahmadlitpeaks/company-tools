@@ -10,6 +10,7 @@ import {
 import { ApiError, api, apiBase, tokenStore } from "../api/client";
 import { enableWebPush, forgetPushToken } from "../api/push";
 import { loginDeviceFields, refreshStore } from "../api/session";
+import { isNative, nativeSsoLogin } from "../native/shell";
 import type { User } from "../api/types";
 
 interface AuthState {
@@ -71,7 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(() => {
-    // Backend-driven Azure OIDC flow.
+    // Backend-driven Azure OIDC flow. In the native shell it has to open in a
+    // system browser rather than replacing the app's own web view.
+    if (isNative()) {
+      void nativeSsoLogin(apiBase());
+      return;
+    }
     window.location.href = `${apiBase()}/api/auth/login`;
   }, []);
 

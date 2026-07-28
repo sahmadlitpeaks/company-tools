@@ -11,6 +11,7 @@ env/
 .env
 *.sqlite3
 *.db
+*.db-journal
 
 # Uploaded media / build output
 staticfiles/

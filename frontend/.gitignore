@@ -4,3 +4,13 @@ dist/
 *.local
 .env
 *.tsbuildinfo
+playwright-report/
+test-results/
+
+# Native shells. These are generated from capacitor.config.ts with
+# `npm run mobile:add` and are not checked in: they need Xcode / Android Studio
+# to build or change, and the per-deployment pieces that do belong in them
+# (google-services.json, the APNs capability, signing) are secrets or come from
+# your own Apple/Google accounts. See docs/MOBILE_APP_PLAN.md.
+/ios/
+/android/

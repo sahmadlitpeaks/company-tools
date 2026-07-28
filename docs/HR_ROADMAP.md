@@ -127,7 +127,7 @@ Legend: ✅ done · ⚠️ partial · ❌ missing
 | **Slack/Teams outbound** | ❌ | P14 |
 | **Public API + webhooks** | ⚠️ | P14 |
 | Multi-entity / multi-currency | ⚠️ (currency on records) | P14 |
-| Mobile | responsive web only (no native app) |
+| Mobile | ✅ installable PWA + Capacitor iOS/Android shell (see `MOBILE_APP_PLAN.md`) |
 
 ---
 
@@ -212,7 +212,9 @@ mobile-responsive pass. *(~1.5–2 wk)*
 - **Job boards (P6):** build our own careers site; Indeed/LinkedIn posting as
   optional adapters after core ATS.
 - **Email/Slack (P14):** depends on SMTP/webhook access in the environment.
-- **Mobile:** responsive web, no native app.
+- **Mobile:** ~~responsive web, no native app~~ — **superseded**. The SPA is now an
+  installable PWA wrapped by a Capacitor shell for iOS/Android, with push
+  notifications and a phone-first ergonomics layer. See `MOBILE_APP_PLAN.md`.
 - **Multi-entity:** support multiple legal entities + currencies as attributes;
   not separate tenant databases.
 

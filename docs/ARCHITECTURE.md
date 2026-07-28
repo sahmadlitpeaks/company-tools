@@ -27,8 +27,26 @@
 6. SPA stores the token and sends it as `Authorization: Bearer` on every
    `/api/*` call. `get_current_user` validates it and loads the `User` row.
 
-`POST /api/auth/dev-login?email=...` is a development-only shortcut that
-bypasses Azure (returns 404 when `ENVIRONMENT != development`).
+`POST /api/auth/login` is the password path (email + password, plus a TOTP
+`code` when 2FA is on) and returns the same app JWT.
+
+### Device sessions
+
+An 8-hour access token with no renewal is fine for a browser tab and unusable
+on a phone, so clients that identify a device get a **refresh token** as well:
+
+- `POST /api/auth/login` with a `device` field (or `POST /api/auth/device-session`
+  after SSO) mints one. A plain browser sends no `device` and is unchanged —
+  no long-lived credential is created for it.
+- `POST /api/auth/refresh` rotates: the presented token is revoked and a new
+  pair issued. Only the SHA-256 of each token is stored (`refresh_tokens`).
+- Presenting a token that was already rotated out is treated as a **leak**, not
+  a mistake: the whole device chain is revoked.
+- `POST /api/auth/logout` revokes one device; `GET/DELETE /api/auth/sessions`
+  let a user see and revoke their own.
+
+MFA is checked once, at sign-in; refresh does not re-prompt. Revocation is what
+ends a session.
 
 ## Modules & key endpoints
 
@@ -99,6 +117,36 @@ copies it from the UI.
 - Landing pages store their layout as a JSON block list in `LandingPage.blocks`
   (rendered by the SPA builder/public page) plus a self-contained static HTML
   snapshot in `LandingPage.html` for portability/embedding.
+
+## Mobile
+
+The phone experience is the **same React SPA**, not a second codebase:
+
+- **Installable PWA** — `vite-plugin-pwa` generates the manifest and service
+  worker. The app shell is precached; `/api` GETs are NetworkFirst so a
+  backgrounded app opens with last-known data. Mutations are never cached or
+  replayed — submissions are validated server-side across many fields, so a
+  blind replay would surface confusing late failures. Offline shows a clear
+  state instead, and a new build prompts rather than reloading underneath
+  someone mid-task.
+- **Native shell** — Capacitor wraps the same `dist/` into iOS/Android apps.
+  The web assets are **bundled in the binary**, and the app asks for the server
+  address on first run (`src/native/ServerSetup.tsx`), because the platform is
+  host-agnostic but a store binary can't be rebuilt per deployment. Generate
+  the projects with `npm run mobile:add`; they're gitignored (see
+  `frontend/.gitignore` for why).
+- **Push** — devices register their FCM/APNs token at `POST /api/devices`.
+  Delivery hangs off `notify_user()`, so every existing alert in the platform
+  pushes without per-feature work. Gated by `PUSH_ENABLED`, separate from
+  `NOTIFY_OUTBOUND`.
+- **Ergonomics** — the phone layer lives at the end of `src/styles.css`: the
+  `--fs`/`--ctl-py` density tokens lift every control to a thumb-sized target
+  and pin fields to 16px (below that, iOS zooms on focus), modals dock as
+  bottom sheets, `.table-stack` turns wide tables into labelled cards, and a
+  permission-filtered bottom tab bar carries the field workflows.
+
+`frontend/e2e/core.spec.ts` runs these against a Pixel 5 viewport via the
+`mobile` Playwright project.
 
 ## Storage
 

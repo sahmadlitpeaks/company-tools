@@ -22,6 +22,13 @@ platform's own PostgreSQL database on first login.
 
 Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
 
+**On a phone:** the platform installs as an app. Add it to your home screen and
+it runs full-screen, opens with the last data it loaded when the signal drops,
+stays signed in, and can send push notifications for approvals, tickets and
+overdue checks. Routine checks, expense receipts and ticket photos use the
+camera directly, and asset QR labels can be scanned in-app. See
+[Mobile app](#mobile-app).
+
 **Multi-brand:** the platform is brand-aware. Define each company brand (AG Holding,
 Agiomix, Timepiece, …) in **Admin → Brands** with its logo, colours and contact
 details; a brand switcher in the header sets the active brand, which themes email
@@ -88,6 +95,53 @@ admin** (Employee Directory → *Add user*) or provisioned via **Azure SSO**
 
 To customise the port, secrets, Azure SSO or SMTP, copy `.env.example` to `.env`
 and edit it before running compose.
+
+## Mobile app
+
+The phone app is the same web app, so there is nothing extra to deploy.
+
+**Install it (no app store needed).** Open the platform in the phone's browser
+and choose *Add to Home Screen*. It then runs as a standalone app: full screen,
+offline-tolerant, and it stays signed in instead of asking for a password
+daily.
+
+**Push notifications** (optional). Create a Firebase project, then set on the
+backend:
+
+```bash
+PUSH_ENABLED=true
+FCM_PROJECT_ID=your-firebase-project
+FCM_SERVICE_ACCOUNT_JSON=/path/to/service-account.json   # or the JSON inline
+```
+
+Every notification the platform already raises — approvals, tickets, SLA
+breaches, late routine checks, leave decisions — is pushed automatically, and
+each person's existing muted categories are respected. For web push, also set
+`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_SENDER_ID`,
+`VITE_FIREBASE_APP_ID` and `VITE_FIREBASE_VAPID_KEY` at build time; without
+them the app simply doesn't offer web push.
+
+**Store builds (iOS / Android).** The same build is wrapped by Capacitor:
+
+```bash
+cd frontend
+npm run mobile:add        # generate the ios/ and android/ projects (once)
+npm run mobile:sync       # build the web app and copy it into them
+npm run mobile:ios        # or: npm run mobile:android
+```
+
+The native projects are generated rather than checked in — they need Xcode /
+Android Studio to build, and the parts that vary per company (Firebase's
+`google-services.json`, the APNs capability, signing certificates) come from
+your own Apple and Google accounts.
+
+Because one binary has to work against whatever host the platform is deployed
+on, the app asks for the **server address** on first launch and remembers it.
+Add that origin to `BACKEND_CORS_ORIGINS` — unlike the browser, the app is a
+cross-origin client.
+
+For an internal tool, prefer **Apple Business Manager** custom app distribution
+and **Google Play** internal/managed distribution over public store listings.
 
 ## Azure app registration
 
