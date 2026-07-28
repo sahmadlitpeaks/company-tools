@@ -18,6 +18,26 @@ export const refreshStore = {
   clear: () => localStorage.removeItem(REFRESH_KEY),
 };
 
+/**
+ * Drop cached API responses.
+ *
+ * The service worker caches `/api` GETs keyed by URL only — it has no idea
+ * which account fetched them. On a shared or handed-down phone that would let
+ * one person's data surface for the next, so the cache is emptied whenever a
+ * session ends.
+ */
+export async function clearApiCache(): Promise<void> {
+  try {
+    if (typeof caches === "undefined") return;
+    const names = await caches.keys();
+    await Promise.all(
+      names.filter((n) => n.includes("api-get")).map((n) => caches.delete(n)),
+    );
+  } catch {
+    /* best effort — never block signing out */
+  }
+}
+
 /** True when we're a home-screen/native app rather than a browser tab. */
 export function isInstalled(): boolean {
   if (typeof window === "undefined") return false;

@@ -1,4 +1,4 @@
-import { refreshStore } from "./session";
+import { clearApiCache, refreshStore } from "./session";
 
 /**
  * Base URL for the API.
@@ -93,6 +93,7 @@ async function tryRefreshSession(): Promise<boolean> {
 function endSession() {
   tokenStore.clear();
   refreshStore.clear();
+  void clearApiCache();
 }
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {

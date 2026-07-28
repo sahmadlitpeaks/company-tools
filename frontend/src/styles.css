@@ -392,7 +392,9 @@
   .btn-danger:hover {
     border-color: color-mix(in srgb, var(--danger) 50%, var(--surface));
     background: color-mix(in srgb, var(--danger) 12%, var(--surface));
-    color: var(--danger);
+    /* Hovering tints the background, which drops plain --danger below the 4.5:1
+       minimum. Same problem the badges have, so the same theme-aware token. */
+    color: var(--badge-danger);
   }
   .btn-danger-solid {
     @apply cursor-pointer rounded-[10px] px-3.5 py-2 font-semibold text-white;

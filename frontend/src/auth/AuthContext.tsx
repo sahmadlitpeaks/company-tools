@@ -9,7 +9,7 @@ import {
 } from "react";
 import { ApiError, api, apiBase, tokenStore } from "../api/client";
 import { enableWebPush, forgetPushToken } from "../api/push";
-import { loginDeviceFields, refreshStore } from "../api/session";
+import { clearApiCache, loginDeviceFields, refreshStore } from "../api/session";
 import { isNative, nativeSsoLogin } from "../native/shell";
 import type { User } from "../api/types";
 
@@ -55,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (err.status === 401 || err.status === 403) {
             tokenStore.clear();
             refreshStore.clear();
+            void clearApiCache();
             setUser(null);
           }
           break; // a real answer from the server, retrying won't help
@@ -126,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStore.clear();
     refreshStore.clear();
     forgetPushToken();
+    void clearApiCache();
     setUser(null);
   }, []);
 
