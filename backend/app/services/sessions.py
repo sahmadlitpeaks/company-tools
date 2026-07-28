@@ -89,18 +89,13 @@ async def revoke_token(db: AsyncSession, row: RefreshToken) -> None:
     row.revoked_at = _now()
 
 
-async def revoke_user_tokens(
-    db: AsyncSession, user_id: uuid.UUID, *, keep_id: uuid.UUID | None = None
-) -> None:
-    """Revoke every live refresh token for a user (optionally sparing one)."""
-    stmt = (
+async def revoke_user_tokens(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Revoke every live refresh token for a user — every device signs out."""
+    await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
         .values(revoked_at=_now())
     )
-    if keep_id is not None:
-        stmt = stmt.where(RefreshToken.id != keep_id)
-    await db.execute(stmt)
 
 
 async def list_sessions(db: AsyncSession, user_id: uuid.UUID) -> list[RefreshToken]:
