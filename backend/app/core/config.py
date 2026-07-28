@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Session JWT
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    # Refresh tokens are issued only to clients that identify a device (the
+    # mobile app / installed PWA), so the browser session is unchanged.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 60
 
     # Storage
     MEDIA_ROOT: str = "./media"
@@ -63,6 +66,14 @@ class Settings(BaseSettings):
     TEAMS_WEBHOOK_URL: str = ""
     # Master switch: also email/Slack/Teams in-app notifications as created.
     NOTIFY_OUTBOUND: bool = False
+
+    # Push notifications (Firebase Cloud Messaging HTTP v1) for the mobile app
+    # and installed PWA. Independent of NOTIFY_OUTBOUND on purpose: wanting
+    # alerts on your phone is not the same as wanting them emailed.
+    PUSH_ENABLED: bool = False
+    FCM_PROJECT_ID: str = ""
+    # Either a path to the service-account JSON file, or the JSON itself.
+    FCM_SERVICE_ACCOUNT_JSON: str = ""
 
     @property
     def cors_origins(self) -> list[str]:

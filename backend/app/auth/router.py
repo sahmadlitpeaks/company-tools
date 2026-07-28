@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -15,8 +18,17 @@ from app.core.security import (
     verify_password,
 )
 from app.core.urls import frontend_base_url
+from app.models.device import RefreshToken
 from app.models.user import User
+from app.schemas.device import SessionOut
 from app.schemas.user import UserOut
+from app.services.sessions import (
+    issue_refresh_token,
+    list_sessions,
+    resolve_refresh_token,
+    revoke_token,
+    revoke_user_tokens,
+)
 from app.services.activity import record
 from app.services.app_settings import (
     email_domain_allowed,
@@ -30,6 +42,19 @@ class LoginIn(BaseModel):
     email: str
     password: str
     code: str | None = None  # TOTP code when 2FA is enabled
+    # Naming a device opts this client into a refresh token (mobile app /
+    # installed PWA). Omitted by the browser SPA, which keeps a JWT only.
+    device: str | None = None
+    platform: str | None = None
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
+class DeviceSessionIn(BaseModel):
+    device: str | None = None
+    platform: str | None = None
 
 
 class ChangePasswordIn(BaseModel):
@@ -91,11 +116,112 @@ async def password_login(payload: LoginIn, db: AsyncSession = Depends(get_db)):
         subject=str(user.id),
         extra={"email": user.email, "name": user.display_name},
     )
-    return {
+    out = {
         "access_token": token,
         "token_type": "bearer",
         "must_change_password": user.must_change_password,
     }
+    if payload.device:
+        out["refresh_token"] = await issue_refresh_token(
+            db,
+            user_id=user.id,
+            device_label=payload.device,
+            platform=payload.platform,
+        )
+        await db.commit()
+    return out
+
+
+@router.post("/refresh", response_model=dict)
+async def refresh(body: RefreshIn, db: AsyncSession = Depends(get_db)):
+    """Exchange a refresh token for a new access token (rotating the refresh).
+
+    Deliberately does not re-prompt for 2FA: the code was checked when the
+    device was first signed in, and revoking the device is what ends the
+    session.
+    """
+    row, error = await resolve_refresh_token(db, body.refresh_token)
+    if row is None:
+        await db.commit()  # persist any revocations triggered by reuse detection
+        raise HTTPException(status_code=401, detail=error or "Invalid refresh token")
+
+    user = await db.get(User, row.user_id)
+    if user is None or not user.is_active or user.status != "active":
+        await revoke_user_tokens(db, row.user_id)
+        await db.commit()
+        raise HTTPException(status_code=403, detail="Account is not active")
+
+    new_refresh = await issue_refresh_token(
+        db,
+        user_id=user.id,
+        device_label=row.device_label,
+        platform=row.platform,
+        replaces=row,
+    )
+    row.last_used_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {
+        "access_token": create_access_token(
+            subject=str(user.id),
+            extra={"email": user.email, "name": user.display_name},
+        ),
+        "token_type": "bearer",
+        "refresh_token": new_refresh,
+        "must_change_password": user.must_change_password,
+    }
+
+
+@router.post("/device-session", response_model=dict)
+async def device_session(
+    body: DeviceSessionIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Attach a refresh token to an already-authenticated session.
+
+    Password login can hand one over directly, but the Azure SSO flow ends in a
+    browser redirect that only carries the access token. An installed app calls
+    this straight afterwards so SSO users get the same stay-signed-in behaviour.
+    """
+    token = await issue_refresh_token(
+        db, user_id=user.id, device_label=body.device, platform=body.platform
+    )
+    await db.commit()
+    return {"refresh_token": token}
+
+
+@router.post("/logout", response_model=dict)
+async def logout(body: RefreshIn, db: AsyncSession = Depends(get_db)):
+    """Revoke one device's refresh token. Unauthenticated on purpose — holding
+    the token is the proof, and a client signing out may already have a dead
+    access token."""
+    row, _ = await resolve_refresh_token(db, body.refresh_token)
+    if row is not None:
+        await revoke_token(db, row)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/sessions", response_model=list[SessionOut])
+async def my_sessions(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """The signed-in user's live device sessions."""
+    return await list_sessions(db, user.id)
+
+
+@router.delete("/sessions/{session_id}", response_model=dict)
+async def revoke_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = await db.get(RefreshToken, session_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await revoke_token(db, row)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/change-password", response_model=dict)

@@ -110,3 +110,4 @@ from app.models.training import (  # noqa: F401
     CourseAssignment,
 )
 from app.models.api_token import ApiToken  # noqa: F401
+from app.models.device import PushDevice, RefreshToken  # noqa: F401

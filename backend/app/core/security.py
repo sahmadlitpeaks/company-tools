@@ -77,3 +77,17 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
         )
     except JWTError:
         return None
+
+
+# ---- Refresh tokens (opaque, stored hashed — see models/device.py) ----
+REFRESH_TOKEN_PREFIX = "rt_"
+
+
+def create_refresh_token() -> tuple[str, str]:
+    """Return ``(raw_token, sha256_hex)``. Only the hash is ever persisted."""
+    raw = REFRESH_TOKEN_PREFIX + base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
+    return raw, hash_refresh_token(raw)
+
+
+def hash_refresh_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()

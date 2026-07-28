@@ -46,19 +46,30 @@ async def notify_user(
     )
     db.add(n)
 
-    # Best-effort fan-out to email/Slack/Teams when enabled (never breaks the
-    # flow). Respects each user's muted categories.
-    if settings.NOTIFY_OUTBOUND:
-        try:
-            from app.services.dispatch import deliver_notification
+    # Best-effort fan-out to external channels when enabled (never breaks the
+    # flow). Respects each user's muted categories. Push is gated separately
+    # from email/Slack/Teams — see services/push.py for why.
+    from app.services.push import push_enabled
 
+    push_on = push_enabled()
+    if settings.NOTIFY_OUTBOUND or push_on:
+        try:
             target = await db.get(User, user_id)
             muted = (target.notify_muted or []) if target else []
             if category not in muted:
-                deliver_notification(
-                    to_email=target.email if target else None,
-                    title=title, body=body, link=link,
-                )
+                if settings.NOTIFY_OUTBOUND:
+                    from app.services.dispatch import deliver_notification
+
+                    deliver_notification(
+                        to_email=target.email if target else None,
+                        title=title, body=body, link=link,
+                    )
+                if push_on:
+                    from app.services.push import push_to_user
+
+                    await push_to_user(
+                        db, user_id=user_id, title=title, body=body, link=link
+                    )
         except Exception:
             pass
 
