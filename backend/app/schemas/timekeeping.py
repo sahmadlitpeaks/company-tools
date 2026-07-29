@@ -34,6 +34,48 @@ class TimeEntryUpdate(BaseModel):
     note: str | None = None
 
 
+class TimeBreakOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entry_id: uuid.UUID
+    user_id: uuid.UUID
+    started_at: datetime
+    ended_at: datetime | None = None
+
+
+class TimeCorrectionCreate(BaseModel):
+    entry_id: uuid.UUID
+    requested_clock_in: datetime | None = None
+    requested_clock_out: datetime | None = None
+    requested_minutes: int | None = None
+    reason: str
+
+
+class TimeCorrectionDecision(BaseModel):
+    status: str
+    note: str | None = None
+
+
+class TimeCorrectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entry_id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str | None = None
+    approval_request_id: uuid.UUID | None = None
+    requested_clock_in: datetime | None = None
+    requested_clock_out: datetime | None = None
+    requested_minutes: int | None = None
+    reason: str
+    status: str
+    decided_by_id: uuid.UUID | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+    created_at: datetime
+
+
 class TimesheetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -60,12 +102,27 @@ class TimesheetDecision(BaseModel):
 
 class TimeSummary(BaseModel):
     open_entry: TimeEntryOut | None = None
+    active_break: TimeBreakOut | None = None
     today_minutes: int = 0
+    today_break_minutes: int = 0
+    today_elapsed_minutes: int = 0
+    today_completed_work_seconds: int = 0
+    today_completed_break_seconds: int = 0
+    open_completed_break_seconds: int = 0
     week_minutes: int = 0
     week_expected_minutes: int = 0
     week_overtime_minutes: int = 0
     week_status: str = "open"
     pending_approvals: int = 0
+    # Day-timeline data for Calamari-style progress bar (local UI).
+    today_entries: list[TimeEntryOut] = []
+    today_breaks: list[TimeBreakOut] = []
+    daily_expected_minutes: int = 480
+
+
+class TimeTodayResetOut(BaseModel):
+    deleted_entries: int
+    reopened_timesheet: bool
 
 
 class ScheduleBase(BaseModel):

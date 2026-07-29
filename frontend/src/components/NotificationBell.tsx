@@ -1,13 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Settings2 } from "lucide-react";
+import { AlarmClock, Bell, PartyPopper, Settings2, Tag, type LucideIcon } from "lucide-react";
 import { api } from "../api/client";
 import type { AppNotification } from "../api/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
-const ICON: Record<string, string> = {
-  asset: "🏷",
-  warranty: "⏰",
-  info: "🔔",
+/** Cap list length; older items stay on /inbox if needed later. */
+const MAX_ITEMS = 12;
+/** Max rows visible before the list scrolls (each row sizes to its content). */
+const VISIBLE_ROWS = 6;
+
+const ICON: Record<string, LucideIcon> = {
+  asset: Tag,
+  warranty: AlarmClock,
+  info: Bell,
 };
 
 function timeAgo(iso: string): string {
@@ -25,7 +49,6 @@ export default function NotificationBell() {
   const [items, setItems] = useState<AppNotification[]>([]);
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState<{ categories: string[]; muted: string[] } | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
 
   async function loadPrefs() {
     try {
@@ -34,9 +57,12 @@ export default function NotificationBell() {
       /* ignore */
     }
   }
+
   async function toggleMute(cat: string) {
     if (!prefs) return;
-    const muted = prefs.muted.includes(cat) ? prefs.muted.filter((c) => c !== cat) : [...prefs.muted, cat];
+    const muted = prefs.muted.includes(cat)
+      ? prefs.muted.filter((c) => c !== cat)
+      : [...prefs.muted, cat];
     setPrefs({ ...prefs, muted });
     try {
       await api("/api/notifications/preferences", { method: "PUT", body: { muted } });
@@ -56,7 +82,8 @@ export default function NotificationBell() {
 
   const loadItems = useCallback(async () => {
     try {
-      setItems(await api<AppNotification[]>("/api/notifications"));
+      const list = await api<AppNotification[]>("/api/notifications");
+      setItems(list.slice(0, MAX_ITEMS));
     } catch {
       /* ignore */
     }
@@ -68,18 +95,10 @@ export default function NotificationBell() {
     return () => window.clearInterval(t);
   }, [loadCount]);
 
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
-
-  function toggle() {
-    const next = !open;
+  function onOpenChange(next: boolean) {
     setOpen(next);
     if (next) void loadItems();
+    if (!next) setShowPrefs(false);
   }
 
   async function openItem(n: AppNotification) {
@@ -107,82 +126,157 @@ export default function NotificationBell() {
   }
 
   return (
-    <div className="bell" ref={ref}>
-      <button
-        className="bell-btn"
-        onClick={toggle}
-        aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
-        title="Notifications"
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
+            title="Notifications"
+          />
+        }
       >
-        <Bell size={18} />
-        {count > 0 && <span className="bell-badge">{count > 9 ? "9+" : count}</span>}
-      </button>
-      {open && (
-        <div className="bell-menu">
-          <div className="bell-head spread">
-            <strong>Notifications</strong>
-            <span className="flex gap-1">
-              <button className="btn-sm" title="Preferences" onClick={() => { setShowPrefs((v) => !v); if (!prefs) void loadPrefs(); }}>
-                <Settings2 size={13} />
-              </button>
-              {count > 0 && (
-                <button className="btn-sm" onClick={markAll}>
-                  Mark all read
-                </button>
-              )}
-            </span>
+        <Bell data-icon="inline-start" />
+        {count > 0 && (
+          <Badge
+            variant="destructive"
+            className="absolute -top-1 -right-1 size-4 min-w-4 justify-center p-0 text-[10px]"
+          >
+            {count > 9 ? "9+" : count}
+          </Badge>
+        )}
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-0"
+      >
+        <PopoverHeader className="flex flex-row items-start justify-between gap-3 p-4">
+          <div className="flex min-w-0 flex-col gap-1">
+            <PopoverTitle className="text-base">Notifications</PopoverTitle>
+            <PopoverDescription>
+              {count > 0 ? `${count} unread` : "You're up to date"}
+            </PopoverDescription>
           </div>
-          {showPrefs && prefs && (
-            <div className="bell-prefs" style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="Preferences"
+              aria-label="Notification preferences"
+              onClick={() => {
+                setShowPrefs((v) => !v);
+                if (!prefs) void loadPrefs();
+              }}
+            >
+              <Settings2 />
+            </Button>
+            {count > 0 && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void markAll()}>
+                Mark all read
+              </Button>
+            )}
+          </div>
+        </PopoverHeader>
+        <Separator />
+        {showPrefs && prefs && (
+          <>
+            <div className="flex flex-col gap-3 p-4">
+              <p className="text-xs text-muted-foreground">
                 Mute email/Slack/Teams for (in-app stays on):
-              </div>
-              <div className="flex flex-wrap gap-1">
+              </p>
+              <div className="flex flex-wrap gap-2">
                 {prefs.categories.map((c) => {
                   const muted = prefs.muted.includes(c);
                   return (
-                    <button
+                    <Button
                       key={c}
-                      className={muted ? "btn-sm" : "btn-sm btn-primary"}
-                      style={{ flex: "0 0 auto", textTransform: "capitalize" }}
-                      onClick={() => toggleMute(c)}
+                      type="button"
+                      size="sm"
+                      variant={muted ? "outline" : "secondary"}
+                      className="capitalize"
                       title={muted ? "Muted — click to enable" : "On — click to mute"}
+                      onClick={() => void toggleMute(c)}
                     >
-                      {muted ? `🔕 ${c}` : c}
-                    </button>
+                      {muted ? `Muted · ${c}` : c}
+                    </Button>
                   );
                 })}
               </div>
             </div>
-          )}
-          <div className="bell-list">
-            {items.length === 0 ? (
-              <div className="empty" style={{ padding: 24 }}>
-                You're all caught up. 🎉
-              </div>
-            ) : (
-              items.map((n) => (
-                <button
-                  key={n.id}
-                  className={`bell-item ${n.is_read ? "" : "unread"}`}
-                  onClick={() => openItem(n)}
-                >
-                  <span className="bell-icon">{ICON[n.category] ?? "🔔"}</span>
-                  <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                    <span style={{ fontWeight: 600, display: "block" }}>{n.title}</span>
-                    {n.body && (
-                      <span className="muted" style={{ fontSize: 13 }}>{n.body}</span>
+            <Separator />
+          </>
+        )}
+        {/*
+          max-height ≈ VISIBLE_ROWS × ~4.5rem so ~6 items show; each row
+          keeps natural height (title + body + time) and longer lists scroll.
+        */}
+        <div
+          className="overflow-y-auto overscroll-contain"
+          style={{ maxHeight: `calc(${VISIBLE_ROWS} * 4.5rem)` }}
+        >
+          {items.length === 0 ? (
+            <Empty className="border-0 py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <PartyPopper />
+                </EmptyMedia>
+                <EmptyTitle>You're all caught up</EmptyTitle>
+                <EmptyDescription>No new notifications right now.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ul className="flex list-none flex-col gap-0 p-0 m-0">
+              {items.map((n, i) => {
+                const CategoryIcon = ICON[n.category] ?? Bell;
+                return <li key={n.id} className="m-0 p-0">
+                  {i > 0 ? <Separator /> : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => void openItem(n)}
+                    className={cn(
+                      "h-auto w-full items-start justify-start gap-3 px-4 py-3 text-left whitespace-normal",
+                      "hover:bg-muted/80 focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30",
+                      !n.is_read && "bg-primary/5"
                     )}
-                    <span className="muted" style={{ fontSize: 11, display: "block" }}>
-                      {timeAgo(n.created_at)}
+                  >
+                    <span
+                      className="mt-0.5 grid size-9 shrink-0 place-items-center bg-primary/15 text-base text-foreground leading-none"
+                      aria-hidden
+                    >
+                       <CategoryIcon />
                     </span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium leading-snug text-foreground">
+                        {n.title}
+                      </span>
+                      {n.body ? (
+                        <span className="mt-1 block text-xs leading-relaxed whitespace-normal text-muted-foreground">
+                          {n.body}
+                        </span>
+                      ) : null}
+                      <span className="mt-1.5 block text-xs text-muted-foreground">
+                        {timeAgo(n.created_at)}
+                      </span>
+                    </span>
+                    {!n.is_read ? (
+                      <span
+                        className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+                        aria-label="Unread"
+                      />
+                    ) : null}
+                  </Button>
+                </li>;
+              })}
+            </ul>
+          )}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -1,10 +1,28 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, FileText, LayoutGrid, List, Mail, Upload } from "lucide-react";
+import { Download, FileText, LayoutGrid, List, Mail, Upload, Users } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
+  ConfirmDialog,
   Empty,
   ErrorBox,
   ListSkeleton,
@@ -15,16 +33,18 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { useBrand } from "../brand/BrandContext";
 
-const ROLE_BADGE: Record<string, string> = {
-  admin: "blue",
-  manager: "amber",
-  member: "",
+type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+
+const ROLE_BADGE: Record<string, BadgeVariant> = {
+  admin: "info",
+  manager: "warning",
+  member: "secondary",
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  active: "green",
-  pending: "amber",
-  disabled: "red",
+const STATUS_BADGE: Record<string, BadgeVariant> = {
+  active: "success",
+  pending: "warning",
+  disabled: "destructive",
 };
 
 function AccessModal({
@@ -40,11 +60,13 @@ function AccessModal({
   const { data: cat } = useFetch<ModuleCatalogue>("/api/users/modules");
   const { data: departments } = useFetch<Department[]>("/api/departments");
   const [role, setRole] = useState(u.role);
-  const [status, setStatus] = useState(u.status);
+  const [status, setRecordStatus] = useState(u.status);
   const [deptId, setDeptId] = useState(u.department_id ?? "");
   // What the person should end up with — we derive grant/revoke diffs on save.
-  const [desired, setDesired] = useState<Set<string>>(new Set(u.effective_permissions));
-  const [busy, setBusy] = useState(false);
+  const [desired, setDesired] = useState<Set<string>>(
+    () => new Set(u.effective_permissions),
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Base permissions implied by the chosen department (or the role default).
   const dept = departments?.find((d) => d.id === deptId);
@@ -59,7 +81,7 @@ function AccessModal({
   }
 
   async function save() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const extra = [...desired].filter((k) => !base.has(k));
       const revoked = [...base].filter((k) => !desired.has(k));
@@ -79,7 +101,9 @@ function AccessModal({
       onClose();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -91,82 +115,74 @@ function AccessModal({
       onClose={onClose}
       maxWidth={580}
     >
-      <div className="grid grid-cols-3 gap-3">
-        <label className="field">
-          <span className="mb-1 block text-sm font-medium">Role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="member">Member</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
-        <label className="field">
-          <span className="mb-1 block text-sm font-medium">Status</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="pending">Pending approval</option>
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
-          </select>
-        </label>
-        <label className="field">
-          <span className="mb-1 block text-sm font-medium">Department</span>
-          <select value={deptId} onChange={(e) => setDeptId(e.target.value)} disabled={isAdminRole}>
-            <option value="">None</option>
-            {(departments ?? []).map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <FieldGroup className="grid gap-3 sm:grid-cols-3">
+        <Field>
+          <FieldLabel htmlFor="directory-access-role">Role</FieldLabel>
+          <Select items={[{ value: "member", label: "Member" }, { value: "manager", label: "Manager" }, { value: "admin", label: "Admin" }]} value={role} onValueChange={(value) => setRole(value ?? "")}>
+            <SelectTrigger className="w-full" id="directory-access-role"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value="member">Member</SelectItem><SelectItem value="manager">Manager</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectGroup></SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="directory-access-status">Status</FieldLabel>
+          <Select items={[{ value: "pending", label: "Pending approval" }, { value: "active", label: "Active" }, { value: "disabled", label: "Disabled" }]} value={status} onValueChange={(value) => setRecordStatus(value ?? "")}>
+            <SelectTrigger className="w-full" id="directory-access-status"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value="pending">Pending approval</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="disabled">Disabled</SelectItem></SelectGroup></SelectContent>
+          </Select>
+        </Field>
+        <Field data-disabled={isAdminRole}>
+          <FieldLabel htmlFor="directory-access-department">Department</FieldLabel>
+          <Select items={[{ value: null, label: "None" }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name }))]} value={deptId || null} onValueChange={(value) => setDeptId(value ?? "")} disabled={isAdminRole}>
+            <SelectTrigger className="w-full" id="directory-access-department"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value={null}>None</SelectItem>{(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectGroup></SelectContent>
+          </Select>
+        </Field>
+      </FieldGroup>
 
       {isAdminRole ? (
-        <p className="muted mt-1 text-sm">
+        <p className="mt-3 text-sm text-muted-foreground">
           Admins have full access to every module and settings.
         </p>
       ) : (
         <>
-          <p className="muted mt-1 text-sm">
+          <p className="mt-3 text-sm text-muted-foreground">
             Base access comes from the {dept ? <strong>{dept.name}</strong> : `${role} role`}.
             Tick to grant extra modules to this person, or untick to revoke.
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
+          <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
             {cat?.modules.map((m) => {
               const inBase = base.has(m.key);
               const on = desired.has(m.key);
               const tag = on && !inBase ? "granted" : !on && inBase ? "revoked" : null;
               return (
-                <label
+                <FieldLabel
                   key={m.key}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                  className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-muted"
                 >
-                  <input
-                    type="checkbox"
-                    className="!w-auto"
+                  <Checkbox
                     checked={on}
-                    onChange={() => toggle(m.key)}
+                    onCheckedChange={() => toggle(m.key)}
                   />
                   <span className="flex-1">{m.label}</span>
-                  {tag === "granted" && <span className="badge green">+grant</span>}
-                  {tag === "revoked" && <span className="badge red">revoked</span>}
-                </label>
+                  {tag === "granted" && <Badge variant="success">+grant</Badge>}
+                  {tag === "revoked" && <Badge variant="destructive">revoked</Badge>}
+                </FieldLabel>
               );
             })}
           </div>
         </>
       )}
 
-      <div className="row mt-4" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          className="btn-primary"
-          style={{ flex: "0 0 auto" }}
-          disabled={busy}
+        </Button>
+        <Button aria-label="Save" type="button"
+          disabled={isSubmitting}
           onClick={save}
         >
-          {busy ? "Saving…" : "Save access"}
-        </button>
+          {isSubmitting ? "Saving…" : "Save access"}
+        </Button>
       </div>
     </Modal>
   );
@@ -184,12 +200,12 @@ function ManageBrandsModal({
   const { notify } = useToast();
   const { brands } = useBrand();
   const [ids, setIds] = useState<string[]>(u.managed_company_ids ?? []);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   function toggle(id: string) {
     setIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   }
   async function save() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/users/${u.id}/brands`, {
         method: "PUT",
@@ -200,41 +216,41 @@ function ManageBrandsModal({
       onClose();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
   return (
     <Modal title={`Company access — ${u.display_name ?? u.email}`} onClose={onClose}>
-      <div className="muted mb-3 text-sm">
+      <div className="mb-3 text-sm text-muted-foreground">
         Choose which companies this manager can manage.
       </div>
       <div className="flex flex-col gap-1">
         {brands.map((b) => (
-          <label
+          <FieldLabel
             key={b.id}
-            className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-slate-50"
+            className="flex items-center gap-2.5 px-2 py-2 hover:bg-muted"
           >
-            <input
-              type="checkbox"
-              className="!w-auto"
+            <Checkbox
               checked={ids.includes(b.id)}
-              onChange={() => toggle(b.id)}
+              onCheckedChange={() => toggle(b.id)}
             />
             <span
-              className="h-3.5 w-3.5 rounded-full ring-1 ring-black/10"
+              className="size-3.5 ring-1 ring-foreground/10"
               style={{ background: b.primary_color }}
             />
             <span className="font-medium">{b.name}</span>
-          </label>
+          </FieldLabel>
         ))}
       </div>
-      <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+      <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancel
-        </button>
-        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>
-          {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
+        <Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>
+          {isSubmitting ? "Saving…" : "Save"}
+        </Button>
       </div>
     </Modal>
   );
@@ -247,29 +263,17 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-const AVATAR_COLORS = [
-  "#0ea5e9", "#6366f1", "#ec4899", "#f59e0b", "#10b981",
-  "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#3b82f6",
-];
-function colorFor(s: string): string {
-  let h = 0;
-  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
-
 function PersonAvatar({ u, size = 64 }: { u: User; size?: number }) {
-  const seed = u.display_name ?? u.email ?? "?";
   return (
-    <span
-      className="grid flex-none place-items-center overflow-hidden rounded-full font-semibold text-white"
-      style={{ height: size, width: size, background: colorFor(seed), fontSize: size * 0.36 }}
-    >
-      {u.avatar_url ? (
-        <img src={u.avatar_url} alt="" className="h-full w-full object-cover" />
-      ) : (
-        initials(u.display_name, u.email ?? undefined)
-      )}
-    </span>
+    <Avatar className="flex-none" style={{ height: size, width: size }}>
+      {u.avatar_url && <AvatarImage src={u.avatar_url} alt="" />}
+      <AvatarFallback
+        className="bg-primary font-semibold text-primary-foreground"
+        style={{ fontSize: size * 0.36 }}
+      >
+        {initials(u.display_name, u.email ?? undefined)}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -281,6 +285,7 @@ export default function DirectoryPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
+  const [resetting, setResetting] = useState<User | null>(null);
   // Set when a reset couldn't be emailed, so the admin can read the password out.
   const [resetShown, setResetShown] = useState<{ who: string; password: string } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -312,21 +317,14 @@ export default function DirectoryPage() {
 
   async function resetPassword(u: User) {
     const who = u.display_name ?? u.email;
-    // Their existing password stops working the moment this runs.
-    if (!window.confirm(`Issue a new temporary password for ${who}? Their current password will stop working.`))
-      return;
-    try {
-      const r = await api<{
-        credentials_emailed: boolean;
-        sent_to: string | null;
-        temp_password: string | null;
-      }>(`/api/users/${u.id}/reset-password`, { method: "POST" });
-      if (r.credentials_emailed) notify(`New password emailed to ${r.sent_to}.`);
-      else setResetShown({ who: who ?? "", password: r.temp_password ?? "" });
-      reload();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
-    }
+    const r = await api<{
+      credentials_emailed: boolean;
+      sent_to: string | null;
+      temp_password: string | null;
+    }>(`/api/users/${u.id}/reset-password`, { method: "POST" });
+    if (r.credentials_emailed) notify(`New password emailed to ${r.sent_to}.`);
+    else setResetShown({ who: who ?? "", password: r.temp_password ?? "" });
+    reload();
   }
 
   async function sync() {
@@ -365,78 +363,82 @@ export default function DirectoryPage() {
 
   return (
     <div>
-      <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+      <Input aria-label="Import CSV" ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
       <PageHead
         title="Employee Directory"
         subtitle="Synced from Azure Entra ID into the platform database."
         action={
           user?.is_admin && (
             <div className="flex flex-wrap gap-2">
-              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/template.csv", "employees-template.csv").catch(() => notify("Download failed", "error"))}>
-                <FileText size={15} /> Template
-              </button>
-              <button className="btn inline-flex items-center gap-1.5" onClick={() => importRef.current?.click()}>
-                <Upload size={15} /> Import
-              </button>
-              <button className="btn inline-flex items-center gap-1.5" onClick={() => downloadFile("/api/users/export.csv", "employees.csv").catch(() => notify("Export failed", "error"))}>
-                <Download size={15} /> Export
-              </button>
-              <button className="btn" onClick={sync} disabled={syncing}>
+              <Button type="button" variant="outline" onClick={() => downloadFile("/api/users/template.csv", "employees-template.csv").catch(() => notify("Download failed", "error"))}>
+                <FileText data-icon="inline-start" /> Template
+              </Button>
+              <Button type="button" variant="outline" onClick={() => importRef.current?.click()}>
+                <Upload data-icon="inline-start" /> Import
+              </Button>
+              <Button type="button" variant="outline" onClick={() => downloadFile("/api/users/export.csv", "employees.csv").catch(() => notify("Export failed", "error"))}>
+                <Download data-icon="inline-start" /> Export
+              </Button>
+              <Button type="button" variant="outline" onClick={sync} disabled={syncing}>
                 {syncing ? "Syncing…" : "Sync from Entra ID"}
-              </button>
-              <button className="btn-primary" onClick={() => setAdding(true)}>
+              </Button>
+              <Button type="button" onClick={() => setAdding(true)}>
                 Add user
-              </button>
+              </Button>
             </div>
           )
         }
       />
       {isAdmin && pendingCount > 0 && (
-        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+        <div className="mb-3 border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning-foreground">
           <strong>{pendingCount}</strong> account{pendingCount > 1 ? "s" : ""} awaiting
           approval. Review and activate them below.
         </div>
       )}
-      <div className="card">
-        <div className="mb-3 flex flex-wrap items-end gap-2">
-          <div className="field" style={{ marginBottom: 0, flex: "1 1 220px" }}>
-            <input
+      <Card className={view === "list" ? "py-0" : undefined}>
+        <CardContent className={view === "list" ? "p-0" : undefined}>
+        <FieldGroup className={`grid gap-2 ${view === "list" ? "p-4" : ""} sm:grid-cols-[minmax(13rem,1fr)_auto_auto_auto] sm:items-end`}>
+          <Field>
+            <FieldLabel htmlFor="directory-search" className="sr-only">Search</FieldLabel>
+            <Input id="directory-search" aria-label="Search by name, email, department…"
               placeholder="Search by name, email, department…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
-              <option value="">All departments</option>
-              {departments.map((d) => <option key={d} value={d as string}>{d}</option>)}
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="pending">Pending</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </div>
-          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
-            <button
-              className={`px-2.5 py-1.5 ${view === "grid" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="directory-department-filter" className="sr-only">Department</FieldLabel>
+            <Select items={[{ value: null, label: "All departments" }, ...departments.map((d) => ({ value: d as string, label: d }))]} value={deptFilter || null} onValueChange={(value) => setDeptFilter(value ?? "")}>
+              <SelectTrigger id="directory-department-filter" aria-label="Department filter"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup><SelectItem value={null}>All departments</SelectItem>{departments.map((d) => <SelectItem key={d} value={d as string}>{d}</SelectItem>)}</SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="directory-status-filter" className="sr-only">Status</FieldLabel>
+            <Select items={[{ value: null, label: "All statuses" }, { value: "active", label: "Active" }, { value: "pending", label: "Pending" }, { value: "disabled", label: "Disabled" }]} value={statusFilter || null} onValueChange={(value) => setStatusFilter(value ?? "")}>
+              <SelectTrigger id="directory-status-filter" aria-label="Status filter"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup><SelectItem value={null}>All statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="disabled">Disabled</SelectItem></SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <div className="flex">
+            <Button type="button" size="icon"
+              variant={view === "grid" ? "default" : "outline"}
               onClick={() => setView("grid")}
               title="Grid view"
+              aria-label="Grid view"
             >
-              <LayoutGrid size={16} />
-            </button>
-            <button
-              className={`px-2.5 py-1.5 ${view === "list" ? "bg-brand-600 text-white" : "text-ink-muted"}`}
+              <LayoutGrid />
+            </Button>
+            <Button type="button" size="icon"
+              variant={view === "list" ? "default" : "outline"}
               onClick={() => setView("list")}
               title="List view"
+              aria-label="List view"
             >
-              <List size={16} />
-            </button>
+              <List />
+            </Button>
           </div>
-        </div>
+        </FieldGroup>
 
         {loading ? (
           <ListSkeleton rows={6} />
@@ -444,150 +446,159 @@ export default function DirectoryPage() {
           <ErrorBox message={error} />
         ) : filtered.length === 0 ? (
           <Empty
-            icon="👥"
+            icon={<Users />}
             message="No employees found"
             hint="Adjust filters, or run a sync to import staff from Azure Entra ID."
           />
         ) : view === "grid" ? (
           <>
-            <div className="muted mb-2 text-xs">{filtered.length} people</div>
+            <div className="mb-2 text-xs text-muted-foreground">{filtered.length} people</div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))" }}>
-              {filtered.map((u) => {
-                const seed = u.display_name ?? u.email ?? "?";
-                return (
-                  <div
+              {filtered.map((u) => (
+                  <Card
                     key={u.id}
-                    className="relative flex flex-col items-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 pb-3.5 text-center transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-soft"
+                    size="sm"
                   >
-                    {/* Tinted cover band behind the avatar */}
-                    <div
-                      className="absolute inset-x-0 top-0 h-[52px]"
-                      style={{
-                        background: `linear-gradient(180deg, ${colorFor(seed)}26, transparent)`,
-                      }}
-                    />
-                    <Link to={`/people/${u.id}`} className="relative mt-1.5 rounded-full" style={{ boxShadow: "0 0 0 3px var(--surface)" }}>
+                    <CardContent className="flex flex-col items-center text-center">
+                    <Link
+                      to={`/people/${u.id}`}
+                      aria-label={u.display_name ?? "View profile"}
+                      title={u.display_name ?? "View profile"}
+                      className="mt-1.5"
+                    >
                       <PersonAvatar u={u} size={68} />
                     </Link>
-                    <Link to={`/people/${u.id}`} className="relative mt-2 font-semibold leading-tight text-ink hover:text-brand-600">
+                    <Link to={`/people/${u.id}`} className="mt-2 font-semibold leading-tight text-foreground hover:text-primary">
                       {u.display_name ?? "—"}
                     </Link>
-                    <div className="muted mt-0.5 text-xs leading-snug">
+                    <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
                       {u.job_title ?? "—"}
                       {u.department && <> · {u.department}</>}
                     </div>
                     {(u.status !== "active" || u.role !== "member") && (
                       <div className="mt-2 flex flex-wrap justify-center gap-1">
                         {u.status !== "active" && (
-                          <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>{u.status}</span>
+                          <Badge variant={STATUS_BADGE[u.status] ?? "secondary"}>{u.status}</Badge>
                         )}
                         {u.role !== "member" && (
-                          <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
+                          <Badge variant={ROLE_BADGE[u.role] ?? "secondary"}>{u.role}</Badge>
                         )}
                       </div>
                     )}
                     {u.email && (
                       <a
                         href={`mailto:${u.email}`}
-                        className="muted mt-1.5 inline-flex max-w-full items-center gap-1 truncate text-xs hover:text-brand-600"
+                        className="mt-1.5 inline-flex max-w-full items-center gap-1 truncate text-xs text-muted-foreground hover:text-primary"
                       >
-                        <Mail size={11} className="flex-none" />
+                        <Mail className="size-3 flex-none" />
                         <span className="truncate">{u.email}</span>
                       </a>
                     )}
                     {isAdmin && (
-                      <div className="mt-2.5 flex flex-wrap justify-center gap-1 border-t border-[var(--border)] pt-2.5 w-full">
+                      <div className="mt-2.5 flex w-full flex-wrap justify-center gap-1 border-t pt-2.5">
                         {u.status === "pending" && (
-                          <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
+                          <Button type="button" size="sm" onClick={() => approve(u)}>Approve</Button>
                         )}
-                        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setEditingAccess(u)}>Access</Button>
                         {(u.email || u.personal_email) && (
-                          <button
-                            className="btn-sm"
-                            style={{ flex: "0 0 auto" }}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
                             title="Email them a new temporary password"
-                            onClick={() => resetPassword(u)}
+                            onClick={() => setResetting(u)}
                           >
                             Reset password
-                          </button>
+                          </Button>
                         )}
                         {u.role === "manager" && (
-                          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setManaging(u)}>Companies</Button>
                         )}
                       </div>
                     )}
-                  </div>
-                );
-              })}
+                    </CardContent>
+                  </Card>
+              ))}
             </div>
           </>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Department</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                {isAdmin && <th></th>}
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                {isAdmin && <TableHead></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filtered.map((u) => (
-                <tr key={u.id}>
-                  <td>
+                <TableRow key={u.id}>
+                  <TableCell>
                     <div className="flex items-center gap-2.5">
                       <PersonAvatar u={u} size={32} />
                       <div className="min-w-0">
                         <Link
                           to={`/people/${u.id}`}
-                          className="font-semibold hover:text-brand-600 hover:underline"
+                           className="font-semibold text-foreground hover:underline"
                         >
                           {u.display_name ?? "—"}
                         </Link>
-                        <div className="muted text-xs">{u.job_title ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">{u.job_title ?? "—"}</div>
                       </div>
                     </div>
-                  </td>
-                  <td>{u.department ?? "—"}</td>
-                  <td>{u.email}</td>
-                  <td>
-                    <span className={`badge ${ROLE_BADGE[u.role] ?? ""}`}>{u.role}</span>
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS_BADGE[u.status] ?? ""}`}>
+                  </TableCell>
+                  <TableCell>{u.department ?? "—"}</TableCell>
+                  <TableCell>{u.email}</TableCell>
+                  <TableCell>
+                    <Badge variant={ROLE_BADGE[u.role] ?? "secondary"}>{u.role}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[u.status] ?? "secondary"}>
                       {u.status}
-                    </span>
-                  </td>
+                    </Badge>
+                  </TableCell>
                   {isAdmin && (
-                    <td className="text-right">
+                    <TableCell className="text-right">
                       <div className="inline-flex items-center gap-1.5">
                         {u.status === "pending" && (
-                          <button
-                            className="btn-sm btn-primary"
+                          <Button type="button" size="sm"
                             onClick={() => approve(u)}
                           >
                             Approve
-                          </button>
+                          </Button>
                         )}
                         {u.role === "manager" && (
-                          <button className="btn-sm" onClick={() => setManaging(u)}>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setManaging(u)}>
                             Brands ({u.managed_company_ids?.length ?? 0})
-                          </button>
+                          </Button>
                         )}
-                        <button className="btn-sm" onClick={() => setEditingAccess(u)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setEditingAccess(u)}>
                           Access
-                        </button>
+                        </Button>
+                        {(u.email || u.personal_email) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            title="Email them a new temporary password"
+                            onClick={() => setResetting(u)}
+                          >
+                            Reset password
+                          </Button>
+                        )}
                       </div>
-                    </td>
+                    </TableCell>
                   )}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {managing && (
         <ManageBrandsModal
@@ -615,37 +626,50 @@ export default function DirectoryPage() {
         />
       )}
 
+      {resetting && (
+        <ConfirmDialog
+          title="Issue a new temporary password?"
+          message={`The current password for ${resetting.display_name ?? resetting.email} will stop working immediately.`}
+          confirmLabel="Reset password"
+          danger
+          onConfirm={() => resetPassword(resetting)}
+          onClose={() => setResetting(null)}
+        />
+      )}
+
       {resetShown && (
         <Modal title="New temporary password" onClose={() => setResetShown(null)}>
-          <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
-            <p className="text-sm">
+          <Alert>
+            <AlertTitle>Email could not be sent</AlertTitle>
+            <AlertDescription>
               The password for <strong>{resetShown.who}</strong> was reset, but the email
               could not be sent. Pass it on now — it can't be shown again.
-            </p>
-          </div>
-          <div className="field">
-            <label>Temporary password</label>
-            <input readOnly value={resetShown.password} style={{ fontFamily: "monospace" }} />
-          </div>
-          <p className="muted text-xs">They must change it at their next sign-in.</p>
-          <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+            </AlertDescription>
+          </Alert>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="directory-reset-password">Temporary password</FieldLabel>
+              <Input id="directory-reset-password" readOnly value={resetShown.password} className="font-mono" />
+              <FieldDescription>They must change it at their next sign-in.</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => {
                 void navigator.clipboard?.writeText(resetShown.password);
                 notify("Password copied.");
               }}
             >
               Copy
-            </button>
-            <button
-              className="btn-primary"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button
+              type="button"
               onClick={() => setResetShown(null)}
             >
               Done
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -661,7 +685,7 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     role: "member",
     password: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Shown when the invite email couldn't be delivered and the admin has to
   // pass the password on themselves.
   const [handover, setHandover] = useState<{ email: string; password: string } | null>(null);
@@ -673,7 +697,7 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       notify("Password must be at least 8 characters.", "error");
       return;
     }
-    setBusy(true);
+    setIsSubmitting(true);
     const email = form.email.trim().toLowerCase();
     try {
       const created = await api<{
@@ -696,50 +720,54 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         // Account exists and works; only the email failed. Keep the modal open
         // so the password isn't lost — it is not recoverable afterwards.
         setHandover({ email, password: created.temp_password });
-        setBusy(false);
       } else {
         notify("User added.");
         onSaved();
       }
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   if (handover) {
     return (
       <Modal title="User added — send these details" onClose={onSaved}>
-        <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
-          <p className="text-sm">
+        <Alert>
+          <AlertTitle>Invite email could not be sent</AlertTitle>
+          <AlertDescription>
             The account is ready, but the invite email could not be sent (SMTP may not be
             configured). Pass these on now — the password can't be shown again, though you
             can always issue a new one from the person's profile.
-          </p>
-        </div>
-        <div className="field">
-          <label>Email</label>
-          <input readOnly value={handover.email} />
-        </div>
-        <div className="field">
-          <label>Temporary password</label>
-          <input readOnly value={handover.password} style={{ fontFamily: "monospace" }} />
-        </div>
-        <p className="muted text-xs">They'll be required to change it at first sign-in.</p>
-        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button
-            className="btn"
-            style={{ flex: "0 0 auto" }}
+          </AlertDescription>
+        </Alert>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="directory-handover-email">Email</FieldLabel>
+            <Input id="directory-handover-email" readOnly value={handover.email} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="directory-handover-password">Temporary password</FieldLabel>
+            <Input id="directory-handover-password" readOnly value={handover.password} className="font-mono" />
+            <FieldDescription>They'll be required to change it at first sign-in.</FieldDescription>
+          </Field>
+        </FieldGroup>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
             onClick={() => {
               void navigator.clipboard?.writeText(handover.password);
               notify("Password copied.");
             }}
           >
             Copy password
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={onSaved}>
+          </Button>
+          <Button type="button" onClick={onSaved}>
             Done
-          </button>
+          </Button>
         </div>
       </Modal>
     );
@@ -747,54 +775,55 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
   return (
     <Modal title="Add user" onClose={onClose}>
-      <form onSubmit={submit}>
-        <div className="field">
-          <label>Full name *</label>
-          <input
+      <form className="flex flex-col gap-5" onSubmit={submit}>
+        <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="rd-directorypage-631-full-name">Full name *</FieldLabel>
+          <Input id="rd-directorypage-631-full-name"
             required
             value={form.display_name}
             onChange={(e) => set("display_name", e.target.value)}
           />
-        </div>
-        <div className="field">
-          <label>Email *</label>
-          <input
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-directorypage-639-email">Email *</FieldLabel>
+          <Input id="rd-directorypage-639-email" aria-label="person@agholding.net"
             type="email"
             required
             placeholder="person@agholding.net"
             value={form.email}
             onChange={(e) => set("email", e.target.value)}
           />
-        </div>
-        <div className="field">
-          <label>Role</label>
-          <select value={form.role} onChange={(e) => set("role", e.target.value)}>
-            <option value="member">Member</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div className="field">
-          <label>Initial password</label>
-          <input
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-directorypage-649-role">Role</FieldLabel>
+          <Select items={[{ value: "member", label: "Member" }, { value: "manager", label: "Manager" }, { value: "admin", label: "Admin" }]} value={form.role} onValueChange={(value) => set("role", value ?? "")}>
+            <SelectTrigger className="w-full" id="rd-directorypage-649-role"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value="member">Member</SelectItem><SelectItem value="manager">Manager</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectGroup></SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-directorypage-657-initial-password">Initial password</FieldLabel>
+          <Input id="rd-directorypage-657-initial-password" aria-label="Set a temporary password (optional)"
             type="text"
             placeholder="Leave blank to generate one and email it"
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
           />
-          <p className="muted mt-1 text-xs">
+          <FieldDescription>
             Leave this blank and a temporary password is generated and emailed to the
             person automatically. Set one only if you'd rather hand it over yourself.
             Either way they must change it the first time they sign in.
-          </p>
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+          </FieldDescription>
+        </Field>
+        </FieldGroup>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Adding…" : "Add user"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Adding…" : "Add user"}
+          </Button>
         </div>
       </form>
     </Modal>

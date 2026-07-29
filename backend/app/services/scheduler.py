@@ -7,12 +7,16 @@ deployments, prefer an external cron hitting the manual endpoints instead.
 """
 import asyncio
 import logging
+from collections.abc import Coroutine
+from typing import Any
 
 from app.core.database import AsyncSessionLocal
 from app.services.asset_alerts import run_asset_alerts
 from app.services.checklist_runs import run_checklist_generation, run_missed_alerts
 from app.services.hr_reminders import run_hr_reminders
 from app.services.sla_alerts import run_sla_alerts
+from app.services.time_reminders import run_time_reminders
+from app.services.backups import run_scheduled_backup
 
 log = logging.getLogger("scheduler")
 
@@ -28,6 +32,8 @@ HR_INTERVAL_SECONDS = 12 * 60 * 60
 CHECKLIST_INTERVAL_SECONDS = 60 * 60
 # Late-run nags check a little less often; dedup keys stop repeats.
 CHECKLIST_LATE_INTERVAL_SECONDS = 2 * 60 * 60
+TIME_INTERVAL_SECONDS = 12 * 60 * 60
+BACKUP_INTERVAL_SECONDS = 60 * 60
 
 
 async def _periodic(name: str, runner, interval: int, warmup: int) -> None:
@@ -43,13 +49,25 @@ async def _periodic(name: str, runner, interval: int, warmup: int) -> None:
         await asyncio.sleep(interval)
 
 
-def start_scheduler(app) -> None:
-    @app.on_event("startup")
-    async def _start() -> None:  # pragma: no cover - timing-dependent
-        app.state.scheduler_tasks = [
-            asyncio.create_task(_periodic("asset alerts", run_asset_alerts, ASSET_INTERVAL_SECONDS, 15)),
-            asyncio.create_task(_periodic("sla alerts", run_sla_alerts, SLA_INTERVAL_SECONDS, 45)),
-            asyncio.create_task(_periodic("hr reminders", run_hr_reminders, HR_INTERVAL_SECONDS, 60)),
-            asyncio.create_task(_periodic("checklist runs", run_checklist_generation, CHECKLIST_INTERVAL_SECONDS, 20)),
-            asyncio.create_task(_periodic("checklist late alerts", run_missed_alerts, CHECKLIST_LATE_INTERVAL_SECONDS, 90)),
-        ]
+def start_scheduler() -> list[asyncio.Task[Any]]:
+    """Start the in-process jobs and return handles for lifespan cleanup."""
+    jobs: list[Coroutine[Any, Any, None]] = [
+        _periodic("asset alerts", run_asset_alerts, ASSET_INTERVAL_SECONDS, 15),
+        _periodic("sla alerts", run_sla_alerts, SLA_INTERVAL_SECONDS, 45),
+        _periodic("hr reminders", run_hr_reminders, HR_INTERVAL_SECONDS, 60),
+        _periodic(
+            "checklist runs",
+            run_checklist_generation,
+            CHECKLIST_INTERVAL_SECONDS,
+            20,
+        ),
+        _periodic(
+            "checklist late alerts",
+            run_missed_alerts,
+            CHECKLIST_LATE_INTERVAL_SECONDS,
+            90,
+        ),
+        _periodic("time reminders", run_time_reminders, TIME_INTERVAL_SECONDS, 90),
+        _periodic("backups", run_scheduled_backup, BACKUP_INTERVAL_SECONDS, 120),
+    ]
+    return [asyncio.create_task(job) for job in jobs]

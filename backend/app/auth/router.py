@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.azure import build_oauth, fetch_graph_me
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.core.config import settings
 from app.core import totp
 from app.core.security import (
     create_access_token,
@@ -24,6 +25,7 @@ from app.services.app_settings import (
     get_azure_config,
 )
 from app.services.users import upsert_user_from_graph
+from app.services.qrcodes import generate_qr_png
 
 
 class LoginIn(BaseModel):
@@ -41,10 +43,30 @@ class MfaCodeIn(BaseModel):
     code: str
 
 
+class MfaDisableIn(BaseModel):
+    """Disable/remove 2FA. When enabled, prove identity with a TOTP code *or*
+    the account password (so testers / recovery can clear state without the app).
+    Pending setup (secret stored but not yet enabled) can be cleared with no proof."""
+    code: str | None = None
+    password: str | None = None
+
+
 async def _is_first_user(db: AsyncSession) -> bool:
     return (await db.scalar(select(func.count(User.id)))) == 0
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "ag_platform_session",
+        token,
+        max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        secure=settings.ENVIRONMENT.lower() == "production",
+        samesite="lax",
+        path="/",
+    )
 
 
 @router.get("/config")
@@ -68,7 +90,11 @@ async def login(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=dict)
-async def password_login(payload: LoginIn, db: AsyncSession = Depends(get_db)):
+async def password_login(
+    payload: LoginIn,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Sign in with an email + password (for users not using Azure SSO)."""
     email = (payload.email or "").strip().lower()
     user = (
@@ -91,6 +117,7 @@ async def password_login(payload: LoginIn, db: AsyncSession = Depends(get_db)):
         subject=str(user.id),
         extra={"email": user.email, "name": user.display_name},
     )
+    _set_auth_cookie(response, token)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -125,7 +152,10 @@ async def change_password(
 
 @router.get("/mfa/status")
 async def mfa_status(user: User = Depends(get_current_user)):
-    return {"enabled": user.mfa_enabled}
+    return {
+        "enabled": bool(user.mfa_enabled),
+        "pending": bool(user.mfa_secret and not user.mfa_enabled),
+    }
 
 
 @router.post("/mfa/setup")
@@ -134,6 +164,11 @@ async def mfa_setup(
 ):
     """Generate a pending TOTP secret + provisioning URI to show as a QR code.
     Not active until confirmed via /mfa/enable."""
+    if user.mfa_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="2FA is already enabled — disable it first to set up again",
+        )
     secret = totp.generate_secret()
     user.mfa_secret = secret
     user.mfa_enabled = False
@@ -142,6 +177,19 @@ async def mfa_setup(
         "secret": secret,
         "otpauth_uri": totp.provisioning_uri(secret, account=user.email or str(user.id)),
     }
+
+
+@router.get("/mfa/qr.png")
+async def mfa_qr(user: User = Depends(get_current_user)):
+    """Render the caller's pending provisioning secret without exposing it in a URL."""
+    if not user.mfa_secret or user.mfa_enabled:
+        raise HTTPException(status_code=404, detail="No pending 2FA setup")
+    uri = totp.provisioning_uri(user.mfa_secret, account=user.email or str(user.id))
+    return Response(
+        content=generate_qr_png(uri, fill_color="#0b5cab", back_color="#ffffff"),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/mfa/enable")
@@ -163,18 +211,31 @@ async def mfa_enable(
 
 @router.post("/mfa/disable")
 async def mfa_disable(
-    payload: MfaCodeIn,
+    payload: MfaDisableIn = MfaDisableIn(),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.mfa_enabled and not totp.verify(user.mfa_secret or "", payload.code):
-        raise HTTPException(status_code=400, detail="Invalid code")
+    """Fully remove 2FA state (secret + enabled flag) so setup can be retried.
+
+    - Pending setup: no proof required.
+    - Enabled: require a valid authenticator code *or* the account password.
+    """
+    if user.mfa_enabled:
+        code_ok = bool(payload.code) and totp.verify(user.mfa_secret or "", payload.code)
+        password_ok = bool(payload.password) and verify_password(
+            payload.password or "", user.password_hash
+        )
+        if not code_ok and not password_ok:
+            raise HTTPException(
+                status_code=400,
+                detail="Enter a valid authenticator code or your account password",
+            )
     user.mfa_enabled = False
     user.mfa_secret = None
     record(db, user=user, action="updated", entity_type="auth", entity_id=user.id,
            summary="Disabled two-factor authentication")
     await db.commit()
-    return {"enabled": False}
+    return {"enabled": False, "pending": False}
 
 
 @router.get("/callback")
@@ -229,9 +290,19 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         subject=str(user.id),
         extra={"email": user.email, "name": user.display_name},
     )
-    # Hand the token back to the SPA.
-    redirect = f"{frontend_base_url()}/auth/callback#token={app_token}"
-    return RedirectResponse(redirect)
+    response = RedirectResponse(f"{frontend_base_url()}/auth/callback")
+    _set_auth_cookie(response, app_token)
+    return response
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response):
+    response.delete_cookie(
+        "ag_platform_session",
+        path="/",
+        secure=settings.ENVIRONMENT.lower() == "production",
+        samesite="lax",
+    )
 
 
 @router.get("/me", response_model=UserOut)

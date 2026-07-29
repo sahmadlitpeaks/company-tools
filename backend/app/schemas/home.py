@@ -26,3 +26,13 @@ class WhosOutToday(BaseModel):
 class HomeFeed(BaseModel):
     celebrations: list[Celebration] = []
     whos_out: list[WhosOutToday] = []
+
+
+class DashboardPreferencesIn(BaseModel):
+    widget_order: list[str]
+    hidden_widgets: list[str]
+
+
+class DashboardPreferencesOut(DashboardPreferencesIn):
+    available_widgets: list[str]
+    is_default: bool = False

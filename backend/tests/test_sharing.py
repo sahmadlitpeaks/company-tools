@@ -221,6 +221,33 @@ async def test_search_and_public_qr(client, auth):
     assert qr.status_code == 200 and qr.headers["content-type"] == "image/png"
 
 
+async def test_search_enforces_module_permissions(client, auth):
+    from helpers import make_member
+
+    await _upload_brochure(client, auth)
+    member_headers, member_id = await make_member(
+        client, auth, "search-limited@agholding.net"
+    )
+    await client.patch(
+        f"/api/users/{member_id}",
+        headers=auth,
+        json={"permissions": ["dashboard", "directory"]},
+    )
+    response = await client.get("/api/search?q=Sample", headers=member_headers)
+    assert response.status_code == 200, response.text
+    hits = response.json()["hits"]
+    assert not any(hit["kind"] in {"brochure", "product", "asset"} for hit in hits)
+
+    people = (
+        await client.get("/api/search?q=search-limited", headers=member_headers)
+    ).json()["hits"]
+    assert any(
+        hit["kind"] == "person"
+        and hit["href"] == f"/people/{member_id}"
+        for hit in people
+    )
+
+
 async def test_check_endpoint_gates(client, auth):
     bid = await _upload_brochure(client, auth)
     await client.post(

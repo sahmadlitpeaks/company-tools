@@ -1,7 +1,16 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useEffect, useState } from "react";
 import { AlarmClock, BellRing, Mail, Play, Zap } from "lucide-react";
 import { api } from "../api/client";
 import { ErrorState, Loading, PageHead, useToast } from "../components/ui";
+import { cn } from "../lib/utils";
+import { numericInput } from "../utils/numbers";
 
 interface ReminderRule {
   enabled: boolean;
@@ -31,7 +40,7 @@ const NO_LEAD = new Set(["birthday", "work_anniversary", "timesheet"]);
 
 export default function AutomationsPage() {
   const { notify } = useToast();
-  const [status, setStatus] = useState<AutomationsStatus | null>(null);
+  const [status, setRecordStatus] = useState<AutomationsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<Record<string, ReminderRule>>({});
   const [saving, setSaving] = useState(false);
@@ -42,7 +51,7 @@ export default function AutomationsPage() {
     setError(null);
     try {
       const s = await api<AutomationsStatus>("/api/hr/automations");
-      setStatus(s);
+      setRecordStatus(s);
       setConfig(s.config);
       setDirty(false);
     } catch (e) {
@@ -101,22 +110,18 @@ export default function AutomationsPage() {
         subtitle="Scheduled reminders that run on their own — expiries, deadlines, birthdays and more."
         action={
           <div className="flex flex-none gap-2">
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+            <Button type="button" variant="outline"
               disabled={running}
               onClick={runNow}
             >
-              <Play size={15} /> {running ? "Running…" : "Run now"}
-            </button>
-            <button
-              className="btn-primary inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+              <Play data-icon="inline-start" /> {running ? "Running…" : "Run now"}
+            </Button>
+            <Button aria-label="Save" type="button"
               disabled={!dirty || saving}
               onClick={save}
             >
               {saving ? "Saving…" : "Save changes"}
-            </button>
+            </Button>
           </div>
         }
       />
@@ -156,18 +161,19 @@ export default function AutomationsPage() {
       </div>
 
       {!status.outbound_enabled && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <Mail size={16} className="mt-0.5 flex-none" />
-          <div>
+        <Alert className="mb-4">
+          <Mail />
+          <AlertDescription>
             Reminders are currently delivered <strong>in-app only</strong>. To also send
             them by email, Slack or Teams, set <code>NOTIFY_OUTBOUND=true</code> (and the
             matching SMTP / webhook variables) on the backend.
-          </div>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Reminder rules */}
-      <div className="card !p-0">
+      <Card>
+        <CardContent className="p-0">
         {status.catalogue.map((item, i) => {
           const rule = config[item.key] ?? { enabled: false, lead_days: 0 };
           const lastCount = status.last_result?.by_type?.[item.key] ?? 0;
@@ -175,65 +181,56 @@ export default function AutomationsPage() {
             <div
               key={item.key}
               className={`flex flex-wrap items-center gap-4 p-4 ${
-                i > 0 ? "border-t border-[var(--border)]" : ""
+                i > 0 ? "border-t border-border" : ""
               }`}
             >
               {/* Toggle */}
-              <button
-                role="switch"
-                aria-checked={rule.enabled}
+              <Switch
+                checked={rule.enabled}
                 aria-label={`Toggle ${item.label}`}
-                onClick={() => update(item.key, { enabled: !rule.enabled })}
-                className="relative h-6 w-11 flex-none rounded-full border-0 !p-0 transition-colors"
-                style={{
-                  background: rule.enabled ? "var(--brand-600)" : "var(--surface-3)",
-                }}
-              >
-                <span
-                  className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
-                  style={{ left: rule.enabled ? "22px" : "2px" }}
-                />
-              </button>
+                onCheckedChange={(enabled) => update(item.key, { enabled })}
+              />
 
               {/* Label */}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 font-semibold text-ink">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
                   {item.label}
                   {lastCount > 0 && (
-                    <span className="badge green">{lastCount} last run</span>
+                    <Badge variant="success">{lastCount} last run</Badge>
                   )}
                 </div>
-                <div className="muted text-[13px]">{item.description}</div>
+                <div className="text-[13px] text-muted-foreground">{item.description}</div>
               </div>
 
               {/* Lead time */}
               {NO_LEAD.has(item.key) ? (
-                <span className="muted flex-none text-xs">
+                <span className="flex-none text-xs text-muted-foreground">
                   {item.key === "timesheet" ? "weekly" : "on the day"}
                 </span>
               ) : (
-                <label className="flex flex-none items-center gap-2 text-sm">
-                  <span className="muted">notify</span>
-                  <input
+                <Label className="flex flex-none items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">notify</span>
+                  <Input
                     type="number"
                     min={0}
                     max={365}
                     value={rule.lead_days}
                     disabled={!rule.enabled}
                     onChange={(e) =>
-                      update(item.key, { lead_days: Number(e.target.value) })
+                      update(item.key, { lead_days: numericInput(e.target.value, rule.lead_days) })
                     }
-                    className="!w-16 text-center"
+                    className="w-16 text-center"
                   />
-                  <span className="muted">days before</span>
-                </label>
+                  <span className="text-muted-foreground">days before</span>
+                </Label>
               )}
             </div>
           );
         })}
-      </div>
+        </CardContent>
+      </Card>
 
-      <p className="muted mt-3 text-xs">
+      <p className="mt-3 text-xs text-muted-foreground">
         Reminders run automatically twice a day and are de-duplicated, so the same alert
         is never sent twice. Use <strong>Run now</strong> to trigger them immediately.
       </p>
@@ -254,29 +251,30 @@ function StatusTile({
   sub?: string;
   tone?: "default" | "ok" | "warn" | "muted";
 }) {
-  const color =
+  const colorClass =
     tone === "ok"
-      ? "var(--ok)"
+      ? "text-success"
       : tone === "warn"
-        ? "var(--warn)"
+        ? "text-warning-foreground"
         : tone === "muted"
-          ? "var(--muted)"
-          : "var(--brand-600)";
+          ? "text-muted-foreground"
+          : "text-primary";
   return (
-    <div className="card flex items-center gap-3 !py-3.5">
+    <Card>
+      <CardContent className="flex items-center gap-3">
       <span
-        className="grid h-10 w-10 flex-none place-items-center rounded-xl"
-        style={{ background: "var(--brand-50)", color }}
+        className="grid size-10 flex-none place-items-center bg-primary/10 text-foreground"
       >
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[15px] font-bold leading-tight" style={{ color }}>
+        <span className={cn("block truncate text-[15px] font-bold leading-tight", colorClass)}>
           {value}
         </span>
-        <span className="block truncate text-xs font-medium text-ink-muted">{label}</span>
-        {sub && <span className="block truncate text-[11px] text-ink-muted/80">{sub}</span>}
+        <span className="block truncate text-xs font-medium text-muted-foreground">{label}</span>
+        {sub && <span className="block truncate text-[11px] text-muted-foreground/80">{sub}</span>}
       </span>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

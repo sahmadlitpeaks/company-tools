@@ -14,7 +14,13 @@ from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.permissions import is_hr
 from app.models.hr import Holiday
-from app.models.timekeeping import TimeEntry, Timesheet, WorkSchedule
+from app.models.timekeeping import (
+    TimeBreak,
+    TimeCorrectionRequest,
+    TimeEntry,
+    Timesheet,
+    WorkSchedule,
+)
 from app.models.user import User
 from app.models.workplace import ApprovalRequest
 from app.schemas.timekeeping import (
@@ -22,10 +28,15 @@ from app.schemas.timekeeping import (
     ScheduleCreate,
     ScheduleOut,
     ScheduleUpdate,
+    TimeBreakOut,
+    TimeCorrectionCreate,
+    TimeCorrectionDecision,
+    TimeCorrectionOut,
     TimeEntryCreate,
     TimeEntryOut,
     TimeEntryUpdate,
     TimeSummary,
+    TimeTodayResetOut,
     TimesheetDecision,
     TimesheetOut,
 )
@@ -130,6 +141,28 @@ def _locked(status: str) -> bool:
     return status in ("submitted", "approved")
 
 
+def _utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _duration_minutes(start: datetime, end: datetime) -> int:
+    return max(0, int((_utc(end) - _utc(start)).total_seconds() // 60))
+
+
+def _duration_seconds(start: datetime, end: datetime) -> int:
+    return max(0, int((_utc(end) - _utc(start)).total_seconds()))
+
+
+async def _break_minutes(
+    db: AsyncSession, entry_id: uuid.UUID, *, until: datetime | None = None
+) -> int:
+    rows = (
+        await db.execute(select(TimeBreak).where(TimeBreak.entry_id == entry_id))
+    ).scalars().all()
+    now = until or datetime.now(timezone.utc)
+    return sum(_duration_minutes(row.started_at, row.ended_at or now) for row in rows)
+
+
 # ---- Clock in/out --------------------------------------------------------
 @router.post("/clock", response_model=TimeEntryOut)
 async def clock(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
@@ -148,11 +181,20 @@ async def clock(db: AsyncSession = Depends(get_db), user: User = Depends(get_cur
     ).scalar_one_or_none()
     now = datetime.now(timezone.utc)
     if open_entry:
+        active_break = (
+            await db.execute(
+                select(TimeBreak).where(
+                    TimeBreak.entry_id == open_entry.id,
+                    TimeBreak.ended_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if active_break:
+            active_break.ended_at = now
         open_entry.clock_out = now
         ci = open_entry.clock_in
-        if ci and ci.tzinfo is None:
-            ci = ci.replace(tzinfo=timezone.utc)
-        open_entry.minutes = max(0, int((now - ci).total_seconds() // 60)) if ci else 0
+        gross = _duration_minutes(ci, now) if ci else 0
+        open_entry.minutes = max(0, gross - await _break_minutes(db, open_entry.id, until=now))
         entry = open_entry
     else:
         entry = TimeEntry(
@@ -162,6 +204,206 @@ async def clock(db: AsyncSession = Depends(get_db), user: User = Depends(get_cur
     await db.commit()
     await db.refresh(entry)
     return TimeEntryOut.model_validate(entry)
+
+
+@router.post("/break", response_model=TimeBreakOut)
+async def toggle_break(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Start or end a break inside the caller's active clock entry."""
+    open_entry = (
+        await db.execute(
+            select(TimeEntry).where(
+                TimeEntry.user_id == user.id,
+                TimeEntry.clock_in.is_not(None),
+                TimeEntry.clock_out.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if not open_entry:
+        raise HTTPException(status_code=409, detail="Clock in before starting a break")
+    active = (
+        await db.execute(
+            select(TimeBreak).where(
+                TimeBreak.entry_id == open_entry.id,
+                TimeBreak.ended_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if active:
+        active.ended_at = now
+        row = active
+    else:
+        row = TimeBreak(
+            entry_id=open_entry.id,
+            user_id=user.id,
+            started_at=now,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+def _correction_out(row: TimeCorrectionRequest, name: str | None = None) -> TimeCorrectionOut:
+    out = TimeCorrectionOut.model_validate(row)
+    out.user_name = name
+    return out
+
+
+@router.post("/corrections", response_model=TimeCorrectionOut, status_code=201)
+async def request_correction(
+    body: TimeCorrectionCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    entry = await db.get(TimeEntry, body.entry_id)
+    if not entry or entry.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if not body.reason.strip():
+        raise HTTPException(status_code=422, detail="Explain why the entry needs changing")
+    if body.requested_minutes is not None and body.requested_minutes < 0:
+        raise HTTPException(status_code=422, detail="Minutes cannot be negative")
+    pending = (
+        await db.execute(
+            select(TimeCorrectionRequest).where(
+                TimeCorrectionRequest.entry_id == entry.id,
+                TimeCorrectionRequest.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if pending:
+        raise HTTPException(status_code=409, detail="A correction is already pending")
+    approval = ApprovalRequest(
+        type="time_correction",
+        title=f"Time correction for {entry.work_date.isoformat()}",
+        details=body.reason.strip(),
+        requester_id=user.id,
+        approver_id=user.manager_id,
+    )
+    db.add(approval)
+    await db.flush()
+    row = TimeCorrectionRequest(
+        entry_id=entry.id,
+        user_id=user.id,
+        approval_request_id=approval.id,
+        requested_clock_in=body.requested_clock_in,
+        requested_clock_out=body.requested_clock_out,
+        requested_minutes=body.requested_minutes,
+        reason=body.reason.strip(),
+    )
+    db.add(row)
+    if user.manager_id:
+        await notify_user(
+            db,
+            user_id=user.manager_id,
+            title="Time correction to review",
+            body=f"{user.display_name or user.email} requested a time-entry correction.",
+            link="/time",
+            category="approval",
+        )
+    record(
+        db,
+        user=user,
+        action="created",
+        entity_type="time_correction",
+        entity_id=row.id,
+        summary=f"Requested a time correction for {entry.work_date.isoformat()}",
+    )
+    await db.commit()
+    await db.refresh(row)
+    return _correction_out(row, user.display_name or user.email)
+
+
+@router.get("/corrections", response_model=list[TimeCorrectionOut])
+async def list_corrections(
+    scope: str = "mine",
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(TimeCorrectionRequest).order_by(TimeCorrectionRequest.created_at.desc())
+    if scope == "review":
+        if not (is_hr(user) or user.role == "manager"):
+            raise HTTPException(status_code=403, detail="Manager or HR access required")
+        if not is_hr(user):
+            reports = select(User.id).where(User.manager_id == user.id)
+            stmt = stmt.where(TimeCorrectionRequest.user_id.in_(reports))
+        stmt = stmt.where(TimeCorrectionRequest.status == "pending")
+    else:
+        stmt = stmt.where(TimeCorrectionRequest.user_id == user.id)
+    rows = (await db.execute(stmt)).scalars().all()
+    labels = await user_labels(db, {r.user_id for r in rows})
+    return [
+        _correction_out(r, (labels.get(r.user_id) or {}).get("name"))
+        for r in rows
+    ]
+
+
+@router.post("/corrections/{correction_id}/decision", response_model=TimeCorrectionOut)
+async def decide_correction(
+    correction_id: uuid.UUID,
+    body: TimeCorrectionDecision,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = await db.get(TimeCorrectionRequest, correction_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Correction not found")
+    target = await db.get(User, row.user_id)
+    if not (is_hr(user) or (target and target.manager_id == user.id)):
+        raise HTTPException(status_code=403, detail="Only the manager or HR can decide")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail="Already decided")
+    if body.status not in {"approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="Invalid decision")
+    entry = await db.get(TimeEntry, row.entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if body.status == "approved":
+        if row.requested_clock_in is not None:
+            entry.clock_in = row.requested_clock_in
+        if row.requested_clock_out is not None:
+            entry.clock_out = row.requested_clock_out
+        if row.requested_minutes is not None:
+            entry.minutes = row.requested_minutes
+        elif entry.clock_in and entry.clock_out:
+            entry.minutes = max(
+                0,
+                _duration_minutes(entry.clock_in, entry.clock_out)
+                - await _break_minutes(db, entry.id, until=entry.clock_out),
+            )
+        entry.source = "manual"
+    row.status = body.status
+    row.decided_by_id = user.id
+    row.decided_at = datetime.now(timezone.utc)
+    row.decision_note = body.note
+    if row.approval_request_id:
+        approval = await db.get(ApprovalRequest, row.approval_request_id)
+        if approval and approval.status == "pending":
+            approval.status = body.status
+            approval.decided_by_id = user.id
+            approval.decided_at = row.decided_at
+            approval.decision_note = body.note
+    await notify_user(
+        db,
+        user_id=row.user_id,
+        title=f"Time correction {body.status}",
+        body=f"Your correction for {entry.work_date.isoformat()} was {body.status}.",
+        link="/time",
+        category="approval",
+    )
+    record(
+        db,
+        user=user,
+        action="updated",
+        entity_type="time_correction",
+        entity_id=row.id,
+        summary=f"{body.status.title()} a time correction",
+    )
+    await db.commit()
+    await db.refresh(row)
+    return _correction_out(row, target.display_name if target else None)
 
 
 # ---- Entries -------------------------------------------------------------
@@ -244,6 +486,82 @@ async def delete_entry(
         raise HTTPException(status_code=409, detail="That week is already submitted")
     await db.delete(entry)
     await db.commit()
+
+
+@router.delete("/today", response_model=TimeTodayResetOut)
+async def reset_today(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete the caller's entries for today and reopen the current week.
+
+    This is intentionally self-service and date-scoped. It also clears an open
+    clock/break through the entry's database cascades, while retaining any
+    linked approval record as cancelled audit history.
+    """
+    today = date.today()
+    week_start = _monday(today)
+    entries = (
+        await db.execute(
+            select(TimeEntry).where(
+                TimeEntry.user_id == user.id,
+                TimeEntry.work_date == today,
+            )
+        )
+    ).scalars().all()
+
+    entry_ids = [entry.id for entry in entries]
+    if entry_ids:
+        corrections = (
+            await db.execute(
+                select(TimeCorrectionRequest).where(
+                    TimeCorrectionRequest.entry_id.in_(entry_ids)
+                )
+            )
+        ).scalars().all()
+        approval_ids = {
+            correction.approval_request_id
+            for correction in corrections
+            if correction.approval_request_id
+        }
+        for approval_id in approval_ids:
+            approval = await db.get(ApprovalRequest, approval_id)
+            if approval and approval.status == "pending":
+                approval.status = "cancelled"
+                approval.decided_at = datetime.now(timezone.utc)
+                approval.decision_note = "Time entry was cleared by its owner."
+        for entry in entries:
+            await db.delete(entry)
+
+    timesheet = (
+        await db.execute(
+            select(Timesheet).where(
+                Timesheet.user_id == user.id,
+                Timesheet.week_start == week_start,
+            )
+        )
+    ).scalar_one_or_none()
+    reopened = bool(timesheet and timesheet.status != "open")
+    if timesheet:
+        timesheet.status = "open"
+        timesheet.submitted_at = None
+        timesheet.decided_by_id = None
+        timesheet.decided_at = None
+        timesheet.note = None
+
+    record(
+        db,
+        user=user,
+        action="deleted",
+        entity_type="user",
+        entity_id=user.id,
+        summary=f"Cleared {len(entries)} time entries for {today.isoformat()}",
+    )
+    await db.commit()
+    return TimeTodayResetOut(
+        deleted_entries=len(entries),
+        reopened_timesheet=reopened,
+    )
 
 
 # ---- Timesheets ----------------------------------------------------------
@@ -408,17 +726,100 @@ async def summary(db: AsyncSession = Depends(get_db), user: User = Depends(get_c
         )
     ).scalars().all()
     open_entry = next((e for e in entries if e.clock_in and not e.clock_out), None)
+    active_break = None
+    today_break_minutes = 0
+    today_completed_work_seconds = 0
+    today_completed_break_seconds = 0
+    open_completed_break_seconds = 0
+    today_elapsed_minutes = sum(e.minutes for e in entries if e.work_date == today)
+    if open_entry:
+        open_break_rows = (
+            await db.execute(
+                select(TimeBreak).where(
+                    TimeBreak.entry_id == open_entry.id,
+                )
+            )
+        ).scalars().all()
+        active_break = next((row for row in open_break_rows if row.ended_at is None), None)
+        open_completed_break_seconds = sum(
+            _duration_seconds(row.started_at, row.ended_at)
+            for row in open_break_rows
+            if row.ended_at is not None
+        )
+        today_completed_break_seconds += open_completed_break_seconds
+        today_break_minutes = await _break_minutes(db, open_entry.id)
+        if open_entry.clock_in:
+            today_elapsed_minutes += max(
+                0,
+                _duration_minutes(open_entry.clock_in, datetime.now(timezone.utc))
+                - today_break_minutes,
+            )
+    closed_today = [e for e in entries if e.work_date == today and e.id != getattr(open_entry, "id", None)]
+    closed_break_rows: list[TimeBreak] = []
+    if closed_today:
+        closed_break_rows = (
+            await db.execute(
+                select(TimeBreak).where(TimeBreak.entry_id.in_([e.id for e in closed_today]))
+            )
+        ).scalars().all()
+        today_break_minutes += sum(
+            _duration_minutes(b.started_at, b.ended_at or datetime.now(timezone.utc))
+            for b in closed_break_rows
+        )
+        today_completed_break_seconds += sum(
+            _duration_seconds(b.started_at, b.ended_at)
+            for b in closed_break_rows
+            if b.ended_at is not None
+        )
+    break_seconds_by_entry: dict[uuid.UUID, int] = {}
+    for row in closed_break_rows:
+        break_seconds_by_entry[row.entry_id] = (
+            break_seconds_by_entry.get(row.entry_id, 0)
+            + _duration_seconds(row.started_at, row.ended_at)
+        )
+    for entry in closed_today:
+        if entry.clock_in and entry.clock_out:
+            today_completed_work_seconds += max(
+                0,
+                _duration_seconds(entry.clock_in, entry.clock_out)
+                - break_seconds_by_entry.get(entry.id, 0),
+            )
+        else:
+            today_completed_work_seconds += max(0, entry.minutes * 60)
     week_minutes = sum(e.minutes for e in entries)
     holidays = await _holidays(db)
     sched = await _schedule_for(db, user)
     expected = _expected_minutes(sched, week_start, holidays)
+    daily_expected = (
+        sched.daily_minutes if sched and sched.daily_minutes else _DEFAULT_DAILY_MINUTES
+    )
+    today_entries = [e for e in entries if e.work_date == today]
+    # All breaks for today's entries (closed + open) for the day timeline bar.
+    today_break_rows: list[TimeBreak] = []
+    if today_entries:
+        today_break_rows = (
+            await db.execute(
+                select(TimeBreak).where(
+                    TimeBreak.entry_id.in_([e.id for e in today_entries])
+                )
+            )
+        ).scalars().all()
     out = TimeSummary(
         open_entry=TimeEntryOut.model_validate(open_entry) if open_entry else None,
+        active_break=TimeBreakOut.model_validate(active_break) if active_break else None,
         today_minutes=sum(e.minutes for e in entries if e.work_date == today),
+        today_break_minutes=today_break_minutes,
+        today_elapsed_minutes=today_elapsed_minutes,
+        today_completed_work_seconds=today_completed_work_seconds,
+        today_completed_break_seconds=today_completed_break_seconds,
+        open_completed_break_seconds=open_completed_break_seconds,
         week_minutes=week_minutes,
         week_expected_minutes=expected,
         week_overtime_minutes=max(week_minutes - expected, 0),
         week_status=await _week_status(db, user.id, week_start),
+        today_entries=[TimeEntryOut.model_validate(e) for e in today_entries],
+        today_breaks=[TimeBreakOut.model_validate(b) for b in today_break_rows],
+        daily_expected_minutes=daily_expected,
     )
     pend = await approvals(db, user)
     out.pending_approvals = len(pend)

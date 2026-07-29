@@ -1,6 +1,9 @@
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import {
-  ArrowUpRight,
   CalendarClock,
   CalendarOff,
   CheckCircle2,
@@ -14,7 +17,7 @@ import { Zap } from "lucide-react";
 import type { HrCountItem, HrJoiner, HrOverview } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, PageHead } from "../components/ui";
+import { Empty, Loading, MetricCard, PageHead } from "../components/ui";
 
 export default function HrDashboardPage() {
   const { user } = useAuth();
@@ -58,20 +61,16 @@ export default function HrDashboardPage() {
           user?.is_admin ? (
             <Link
               to="/hr/automations"
-              className="btn inline-flex items-center gap-1.5 hover:no-underline"
-              style={{ flex: "0 0 auto" }}
+              className={buttonVariants({ variant: "outline" })}
             >
-              <Zap size={15} /> Automations
+               <Zap data-icon="inline-start" /> Automations
             </Link>
           ) : undefined
         }
       />
 
       {/* KPI tiles */}
-      <div
-        className="grid mb-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}
-      >
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icon={Users} label="Headcount" value={data.headcount} to="/directory" />
         <Kpi icon={CalendarOff} label="On leave today" value={data.on_leave_today} to="/leave" />
         <Kpi
@@ -89,17 +88,14 @@ export default function HrDashboardPage() {
       </div>
 
       {/* Attention + breakdowns */}
-      <div
-        className="grid mb-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}
-      >
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <AttentionCard items={attention} />
         <BarCard title="Headcount by department" rows={data.by_department} />
         <BarCard title="By employment type" rows={data.by_employment_type} />
       </div>
 
       {/* Joiners */}
-      <div className="grid cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <JoinerCard
           title="Recent joiners"
           hint="last 30 days"
@@ -129,22 +125,8 @@ function Kpi({
   to: string;
 }) {
   return (
-    <Link to={to} className="card group flex items-center gap-3.5 !py-4 hover:no-underline">
-      <span className="grid h-11 w-11 flex-none place-items-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100">
-        <Icon size={20} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[26px] font-bold leading-none -tracking-[0.02em] text-ink [font-variant-numeric:tabular-nums]">
-          {value}
-        </span>
-        <span className="mt-1 block truncate text-[13px] font-medium text-ink-muted">
-          {label}
-        </span>
-      </span>
-      <ArrowUpRight
-        size={16}
-        className="flex-none text-ink-muted opacity-0 transition-opacity group-hover:opacity-70"
-      />
+    <Link to={to} aria-label={label} title={label} className="block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <MetricCard value={value} label={label} icon={<Icon />} />
     </Link>
   );
 }
@@ -156,14 +138,15 @@ function AttentionCard({
 }) {
   const open = items.filter((i) => i.count > 0);
   return (
-    <div className="card">
-      <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="m-0">Needs attention</h3>
-        {open.length > 0 && <span className="badge amber">{open.length}</span>}
-      </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Needs attention</CardTitle>
+        {open.length > 0 && <CardAction><Badge variant="warning">{open.length}</Badge></CardAction>}
+      </CardHeader>
+      <CardContent>
       {open.length === 0 ? (
-        <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-4 text-sm text-ink-muted">
-          <CheckCircle2 size={18} className="flex-none" style={{ color: "var(--ok)" }} />
+        <div className="flex items-center gap-2.5 border border-dashed px-3 py-4 text-sm text-muted-foreground">
+          <CheckCircle2 className="flex-none text-success" />
           All clear — nothing needs your attention right now.
         </div>
       ) : (
@@ -172,25 +155,23 @@ function AttentionCard({
             <Link
               key={i.label}
               to={i.to}
-              className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm text-ink hover:bg-[var(--surface-2)] hover:no-underline"
+              className="flex items-center justify-between gap-2 px-2.5 py-2 text-sm text-foreground hover:bg-muted hover:no-underline"
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="flex-none"
-                  style={{ color: i.count > 0 ? "var(--warn)" : "var(--muted)" }}
-                >
+                <span className={i.count > 0 ? "flex-none text-warning" : "flex-none text-muted-foreground"}>
                   {i.icon}
                 </span>
-                <span className={`truncate ${i.count === 0 ? "text-ink-muted" : "font-medium"}`}>
+                <span className={`truncate ${i.count === 0 ? "text-muted-foreground" : "font-medium"}`}>
                   {i.label}
                 </span>
               </span>
-              <span className={`badge ${i.count > 0 ? "amber" : ""}`}>{i.count}</span>
+              <Badge variant={i.count > 0 ? "warning" : "secondary"}>{i.count}</Badge>
             </Link>
           ))}
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -198,15 +179,13 @@ function BarCard({ title, rows }: { title: string; rows: HrCountItem[] }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   const total = rows.reduce((s, r) => s + r.count, 0);
   return (
-    <div className="card">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="m-0">{title}</h3>
-        <span className="text-xs text-ink-muted">{total} total</span>
-      </div>
+    <Card>
+      <CardHeader><CardTitle>{title}</CardTitle><CardDescription>{total} total</CardDescription></CardHeader>
+      <CardContent>
       {rows.length === 0 ? (
-        <p className="muted text-sm">No data yet.</p>
+        <p className="text-sm text-muted-foreground">No data yet.</p>
       ) : (
-        <div className="space-y-2.5">
+        <div className="flex flex-col gap-2.5">
           {rows.map((r) => (
             <div key={r.label}>
               <div className="flex items-baseline justify-between text-sm">
@@ -215,12 +194,11 @@ function BarCard({ title, rows }: { title: string; rows: HrCountItem[] }) {
                   {r.count}
                 </span>
               </div>
-              <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div className="mt-1 h-2 overflow-hidden bg-muted">
                 <div
-                  className="h-full rounded-full transition-[width] duration-300"
+                  className="h-full bg-primary"
                   style={{
                     width: `${(r.count / max) * 100}%`,
-                    background: "linear-gradient(90deg, var(--brand-400), var(--brand-600))",
                   }}
                 />
               </div>
@@ -228,7 +206,8 @@ function BarCard({ title, rows }: { title: string; rows: HrCountItem[] }) {
           ))}
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -251,15 +230,13 @@ function JoinerCard({
   empty: string;
 }) {
   return (
-    <div className="card">
-      <div className="mb-2.5 flex items-baseline justify-between">
-        <h3 className="m-0">{title}</h3>
-        <span className="text-xs text-ink-muted">{hint}</span>
-      </div>
+    <Card>
+      <CardHeader><CardTitle>{title}</CardTitle><CardDescription>{hint}</CardDescription></CardHeader>
+      <CardContent>
       {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-[var(--border-strong)] px-4 py-6 text-center">
-          <UserPlus size={20} className="text-ink-muted opacity-60" />
-          <span className="text-sm text-ink-muted">{empty}</span>
+        <div className="flex flex-col items-center gap-1.5 border border-dashed px-4 py-6 text-center">
+          <UserPlus className="text-muted-foreground opacity-60" />
+          <span className="text-sm text-muted-foreground">{empty}</span>
         </div>
       ) : (
         <div className="-mx-1.5">
@@ -267,20 +244,21 @@ function JoinerCard({
             <Link
               key={j.id}
               to={`/people/${j.id}`}
-              className="flex items-center gap-3 rounded-lg px-2.5 py-2 text-ink hover:bg-[var(--surface-2)] hover:no-underline"
+              className="flex items-center gap-3 px-2.5 py-2 text-foreground hover:bg-muted hover:no-underline"
             >
-              <span className="avatar !h-8 !w-8 text-[11px]">{joinerInitials(j.name)}</span>
+              <Avatar className="size-8"><AvatarFallback>{joinerInitials(j.name)}</AvatarFallback></Avatar>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{j.name || "—"}</span>
                 {j.job_title && (
-                  <span className="block truncate text-xs text-ink-muted">{j.job_title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{j.job_title}</span>
                 )}
               </span>
-              {j.hire_date && <span className="badge flex-none">{j.hire_date}</span>}
+              {j.hire_date && <Badge variant="secondary">{j.hire_date}</Badge>}
             </Link>
           ))}
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

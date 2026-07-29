@@ -1,0 +1,3 @@
+# Private internal application — do not index authenticated product surfaces.
+User-agent: *
+Disallow: /

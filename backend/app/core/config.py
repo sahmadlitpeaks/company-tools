@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # Storage
     MEDIA_ROOT: str = "./media"
     MEDIA_URL: str = "/media"
+    BACKUP_ROOT: str = "./backups"
+    BACKUP_RETENTION_DAYS: int = 30
+    BACKUP_HOUR_DUBAI: int = 2
+    BACKUP_IMPORT_MAX_BYTES: int = 5 * 1024 * 1024 * 1024
+    AI_BASE_URL: str = ""
+    AI_API_KEY: str = ""
+    AI_MODEL: str = ""
+    AI_MAX_INPUT_CHARS: int = 2000
+    AI_MAX_CONTEXT_CHARS: int = 12000
 
     # SMTP (optional — used to email secure-transfer links)
     SMTP_HOST: str = ""

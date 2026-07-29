@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Bookmark, Plus, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "../api/client";
 import type { SavedView } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { useToast } from "./ui";
+import { ConfirmDialog, useToast } from "./ui";
 
 /** A row of saved filter chips for a list surface, with a "save current" affordance. */
 export default function SavedViews({
@@ -19,6 +21,7 @@ export default function SavedViews({
   const views = useFetch<SavedView[]>(`/api/views?surface=${surface}`);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const [deleting, setDeleting] = useState<SavedView | null>(null);
 
   async function save() {
     if (!name.trim()) return;
@@ -31,38 +34,39 @@ export default function SavedViews({
     notify("View saved.");
     views.reload();
   }
-  async function remove(e: React.MouseEvent, v: SavedView) {
-    e.stopPropagation();
+  async function remove(v: SavedView) {
     await api(`/api/views/${v.id}`, { method: "DELETE" });
     views.reload();
   }
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
-      <span className="muted inline-flex items-center gap-1 text-xs">
-        <Bookmark size={13} /> Views
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+        <Bookmark /> Views
       </span>
       {(views.data ?? []).map((v) => (
-        <span
+        <Button
+          type="button"
           key={v.id}
-          className="badge group inline-flex cursor-pointer items-center gap-1 hover:bg-brand-50"
+          variant="secondary"
+          size="xs"
+          className="group cursor-pointer"
           onClick={() => onApply(v.params)}
           title={v.params || "no filters"}
         >
           {v.name}
           <X
-            size={11}
-            className="opacity-40 transition-opacity hover:text-red-600 hover:opacity-100"
-            onClick={(e) => remove(e, v)}
+            className="opacity-40 transition-opacity hover:text-destructive hover:opacity-100"
+            onClick={(e) => { e.stopPropagation(); setDeleting(v); }}
           />
-        </span>
+        </Button>
       ))}
-      {(views.data?.length ?? 0) === 0 && <span className="muted text-xs">none yet</span>}
+      {(views.data?.length ?? 0) === 0 && <span className="text-xs text-muted-foreground">none yet</span>}
       {saving ? (
         <span className="inline-flex items-center gap-1">
-          <input
+          <Input aria-label="View name"
             autoFocus
-            className="!w-36 !py-1 text-xs"
+            className="w-36"
             placeholder="View name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -74,21 +78,31 @@ export default function SavedViews({
               if (e.key === "Escape") setSaving(false);
             }}
           />
-          <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={save}>
+          <Button type="button" size="sm" onClick={save}>
             Save
-          </button>
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setSaving(false)}>
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setSaving(false)}>
             Cancel
-          </button>
+          </Button>
         </span>
       ) : (
-        <button
-          className="btn-sm inline-flex items-center gap-1"
-          style={{ flex: "0 0 auto" }}
+        <Button type="button"
+          size="sm"
+          variant="outline"
           onClick={() => setSaving(true)}
         >
-          <Plus size={12} /> Save current
-        </button>
+          <Plus data-icon="inline-start" /> Save current
+        </Button>
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title="Delete saved view"
+          message={`Delete saved view “${deleting.name}”?`}
+          confirmLabel="Delete view"
+          danger
+          onConfirm={() => remove(deleting)}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </div>
   );

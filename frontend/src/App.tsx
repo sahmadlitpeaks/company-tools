@@ -60,16 +60,26 @@ import LandingBuilderPage from "./pages/LandingBuilderPage";
 import SignaturesPage from "./pages/SignaturesPage";
 import ShortenerPage from "./pages/ShortenerPage";
 import TransfersPage from "./pages/TransfersPage";
+import CafePage from "./pages/CafePage";
+import BookingsPage from "./pages/BookingsPage";
 import PublicCardPage from "./pages/public/PublicCardPage";
 import PublicLandingPage from "./pages/public/PublicLandingPage";
 import PublicTransferPage from "./pages/public/PublicTransferPage";
 import PublicDocPage from "./pages/public/PublicDocPage";
+import VisitorsPage from "./pages/VisitorsPage";
+import PublicVisitorPage from "./pages/public/PublicVisitorPage";
+import PurchasesPage from "./pages/PurchasesPage";
+import CalendarPage from "./pages/CalendarPage";
+import IdeasPage from "./pages/IdeasPage";
+import AiHelpPage from "./pages/AiHelpPage";
+import LostFoundPage from "./pages/LostFoundPage";
 
 export default function App() {
   const { user, loading } = useAuth();
 
   return (
     <Routes>
+      <Route path="/visit/:token" element={<PublicVisitorPage />} />
       {/* Public, unauthenticated routes */}
       <Route path="/c/:slug" element={<PublicCardPage />} />
       <Route path="/p/:slug" element={<PublicLandingPage />} />
@@ -89,6 +99,7 @@ export default function App() {
         <Route path="*" element={<ForcePasswordChange />} />
       ) : (
         <Route element={<Layout />}>
+          <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/" element={<DashboardPage />} />
           <Route
             path="/directory"
@@ -170,6 +181,14 @@ export default function App() {
             path="/service-desk"
             element={<Protected module="service_desk"><ServiceDeskPage /></Protected>}
           />
+          <Route path="/cafe" element={<Protected module="cafe"><CafePage /></Protected>} />
+          <Route path="/bookings" element={<Protected module="bookings"><BookingsPage /></Protected>} />
+          <Route path="/visitors" element={<Protected module="visitors"><VisitorsPage /></Protected>} />
+          <Route path="/purchases" element={<Protected module="purchases"><PurchasesPage /></Protected>} />
+          <Route path="/calendar" element={<Protected module="calendar"><CalendarPage /></Protected>} />
+          <Route path="/ideas" element={<Protected module="ideas"><IdeasPage /></Protected>} />
+          <Route path="/ai-help" element={<Protected module="ai_help"><AiHelpPage /></Protected>} />
+          <Route path="/lost-found" element={<Protected module="lost_found"><LostFoundPage /></Protected>} />
           <Route
             path="/knowledge"
             element={<Protected module="knowledge"><KnowledgePage /></Protected>}

@@ -1,9 +1,15 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import { api } from "../api/client";
 import type { Department, ModuleCatalogue } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function DepartmentsPage() {
   const { notify } = useToast();
@@ -11,9 +17,9 @@ export default function DepartmentsPage() {
   const cat = useFetch<ModuleCatalogue>("/api/users/modules");
   const [editing, setEditing] = useState<Department | null>(null);
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
 
   async function remove(d: Department) {
-    if (!confirm(`Delete the “${d.name}” department? Members keep their personal grants.`)) return;
     await api(`/api/departments/${d.id}`, { method: "DELETE" });
     notify("Department deleted.");
     depts.reload();
@@ -28,9 +34,7 @@ export default function DepartmentsPage() {
         title="Departments"
         subtitle="Group staff and grant a set of modules to everyone in the group."
         action={
-          <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-            <Plus size={15} /> New department
-          </button>
+          <Button type="button" onClick={() => setAdding(true)}><Plus data-icon="inline-start" /> New department</Button>
         }
       />
 
@@ -39,34 +43,30 @@ export default function DepartmentsPage() {
       ) : (depts.data?.length ?? 0) === 0 ? (
         <Empty message="No departments yet." />
       ) : (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
           {depts.data!.map((d) => (
-            <div key={d.id} className="card">
-              <div className="spread">
-                <h3 className="m-0">{d.name}</h3>
-                <span className="badge inline-flex items-center gap-1">
-                  <Users size={12} /> {d.member_count}
-                </span>
-              </div>
-              {d.description && <p className="muted mt-1 text-sm">{d.description}</p>}
+            <Card key={d.id}>
+              <CardHeader>
+                <CardTitle>{d.name}</CardTitle>
+                <Badge><Users data-icon="inline-start" /> {d.member_count}</Badge>
+                <CardAction className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditing(d)}><Pencil data-icon="inline-start" /> Edit</Button>
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setDeleteTarget(d)}><Trash2 data-icon="inline-start" /> Delete</Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent>
+              {d.description && <p className="text-sm text-muted-foreground">{d.description}</p>}
               <div className="mt-2 flex flex-wrap gap-1">
-                {d.permissions.length === 0 && <span className="muted text-xs">No modules</span>}
+                {d.permissions.length === 0 && <span className="text-xs text-muted-foreground">No modules</span>}
                 {d.permissions.slice(0, 8).map((p) => (
-                  <span key={p} className="badge">{labelFor(p)}</span>
+                  <Badge key={p} variant="secondary">{labelFor(p)}</Badge>
                 ))}
                 {d.permissions.length > 8 && (
-                  <span className="badge">+{d.permissions.length - 8} more</span>
+                  <Badge variant="secondary">+{d.permissions.length - 8} more</Badge>
                 )}
               </div>
-              <div className="mt-3 flex gap-2">
-                <button className="btn-sm inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setEditing(d)}>
-                  <Pencil size={13} /> Edit
-                </button>
-                <button className="btn-sm btn-danger inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => remove(d)}>
-                  <Trash2 size={13} /> Delete
-                </button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
@@ -84,6 +84,16 @@ export default function DepartmentsPage() {
             setEditing(null);
             depts.reload();
           }}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete department "${deleteTarget.name}"?`}
+          message={`Delete the "${deleteTarget.name}" department? Members will keep their personal grants.`}
+          confirmLabel="Delete department"
+          danger
+          onConfirm={() => remove(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
     </div>
@@ -104,8 +114,10 @@ function DepartmentModal({
   const { notify } = useToast();
   const [name, setName] = useState(dept?.name ?? "");
   const [description, setDescription] = useState(dept?.description ?? "");
-  const [perms, setPerms] = useState<Set<string>>(new Set(dept?.permissions ?? ["dashboard"]));
-  const [busy, setBusy] = useState(false);
+  const [perms, setPerms] = useState<Set<string>>(
+    () => new Set(dept?.permissions ?? ["dashboard"]),
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   function toggle(key: string) {
     setPerms((s) => {
@@ -117,7 +129,7 @@ function DepartmentModal({
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const body = { name: name.trim(), description: description || null, permissions: [...perms] };
       if (dept) {
@@ -129,46 +141,51 @@ function DepartmentModal({
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={dept ? `Edit ${dept.name}` : "New department"} onClose={onClose} maxWidth={580}>
-      <form onSubmit={save}>
-        <div className="field">
-          <label>Name *</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Description</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
-        <div className="field">
-          <div className="spread">
-            <label className="!mb-0">Modules ({perms.size})</label>
-            <button
+      <form onSubmit={save} className="flex flex-col gap-5">
+        <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="rd-departmentspage-140-name">Name *</FieldLabel>
+          <Input id="rd-departmentspage-140-name" required value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-departmentspage-144-description">Description</FieldLabel>
+          <Input id="rd-departmentspage-144-description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <FieldSet>
+          <div className="flex items-center justify-between gap-3">
+            <FieldLegend variant="label">Modules ({perms.size})</FieldLegend>
+            <Button
               type="button"
-              className="!border-0 !bg-transparent !p-0 text-xs font-medium text-brand-600"
+              variant="link"
+              size="sm"
               onClick={() => setPerms(new Set(modules.map((m) => m.key)))}
             >
               Select all
-            </button>
+            </Button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
             {modules.map((m) => (
-              <label key={m.key} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
-                <input type="checkbox" className="!w-auto" checked={perms.has(m.key)} onChange={() => toggle(m.key)} />
+              <FieldLabel key={m.key} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-muted">
+                <Checkbox checked={perms.has(m.key)} onCheckedChange={() => toggle(m.key)} />
                 {m.label}
-              </label>
+              </FieldLabel>
             ))}
           </div>
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : dept ? "Save changes" : "Create department"}
-          </button>
+        </FieldSet>
+        </FieldGroup>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : dept ? "Save changes" : "Create department"}
+          </Button>
         </div>
       </form>
     </Modal>

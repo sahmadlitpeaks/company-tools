@@ -1,156 +1,66 @@
-import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import {
-  Award,
-  Banknote,
-  HeartPulse,
-  Briefcase,
-  BarChart3,
-  Boxes,
   ChevronDown,
-  Clock,
-  CreditCard,
-  Inbox,
-  FolderOpen,
-  HeartHandshake,
-  LayoutDashboard,
-  LayoutGrid,
-  LayoutTemplate,
-  ClipboardCheck,
-  ClipboardList,
-  LifeBuoy,
-  Link2,
-  Lock,
-  Magnet,
-  Mail,
-  Megaphone,
-  Menu,
-  Moon,
-  Network,
-  Package,
-  Palette,
-  Plane,
-  QrCode,
-  Building2,
-  ScrollText,
-  Webhook,
-  GitBranch,
-  ReceiptText,
-  GraduationCap,
-  ShieldCheck,
-  Settings as SettingsIcon,
-  Share2,
   KeyRound,
-  Sliders,
-  Smartphone,
-  Stamp,
+  Moon,
+  Search,
   Sun,
-  Target,
-  UserCog,
-  UserRound,
-  Users,
-  Wallet,
-  BookText,
-  Zap,
-  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
-import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
-import CommandPalette from "./CommandPalette";
+import CommandPalette, { ROUTINE_NAV_ITEMS } from "./CommandPalette";
 import { ChangePasswordModal } from "./ChangePassword";
-import AppearanceModal from "../theme/AppearanceModal";
+import { ConfirmDialog } from "./ui";
 import { useTheme } from "../theme/ThemeContext";
+import { AppSidebar } from "./app-sidebar";
+import { currentNavSection, currentNavTitle, NAV_GROUPS } from "./navigation";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 export const APP_NAME = "AG Holding";
 
-type NavEntry =
-  | { section: string; adminOnly?: boolean }
-  | {
-      to: string;
-      label: string;
-      icon: LucideIcon;
-      end?: boolean;
-      adminOnly?: boolean;
-      module?: string;
-    };
-
-const NAV: NavEntry[] = [
-  { section: "Home" },
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, module: "dashboard" },
-  { to: "/hub", label: "My Workspace", icon: LayoutGrid },
-
-  { section: "Me" },
-  { to: "/profile", label: "My Profile", icon: UserRound },
-  { to: "/security", label: "Security (2FA)", icon: ShieldCheck },
-
-  { section: "People" },
-  { to: "/hr", label: "HR Dashboard", icon: HeartHandshake, module: "hr" },
-  { to: "/directory", label: "Employee Directory", icon: Users, module: "directory" },
-  { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops" },
-  { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops" },
-  { to: "/recruiting", label: "Recruiting", icon: Briefcase, module: "recruiting" },
-
-  { section: "Talent" },
-  { to: "/performance", label: "Performance", icon: Target },
-  { to: "/training", label: "Training", icon: GraduationCap },
-  { to: "/engagement", label: "Engagement", icon: Award },
-
-  { section: "Time & Pay" },
-  { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance" },
-  { to: "/leave", label: "Leave", icon: Plane, module: "approvals" },
-  { to: "/expenses", label: "Expenses", icon: ReceiptText },
-  { to: "/payroll", label: "Payroll", icon: Banknote, module: "hr" },
-  { to: "/benefits", label: "Benefits", icon: HeartPulse, module: "hr" },
-
-  { section: "HR Tools" },
-  { to: "/reports", label: "Reports", icon: BarChart3, module: "hr" },
-  { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr" },
-  { to: "/hr/automations", label: "Automations", icon: Zap, module: "hr" },
-
-  { section: "Workplace" },
-  { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals" },
-  { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks" },
-  { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks" },
-  { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk" },
-  { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge" },
-  { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements" },
-
-  { section: "Marketing" },
-  { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards" },
-  { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets" },
-  { to: "/branding", label: "Brand Center", icon: Palette, module: "branding" },
-  { to: "/products", label: "Products & Brochures", icon: Package, module: "products" },
-  { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns" },
-  { to: "/shared", label: "Shared Links", icon: Share2, module: "shared" },
-
-  { section: "Sales" },
-  { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm" },
-  { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm" },
-
-  { section: "Operations" },
-  { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker" },
-  { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker" },
-  { to: "/subscriptions", label: "Subscriptions", icon: Wallet, module: "subscriptions" },
-
-  { section: "Tools" },
-  { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes" },
-  { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate, module: "landing_pages" },
-  { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures" },
-  { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener" },
-  { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers" },
-
-  { section: "Admin", adminOnly: true },
-  { to: "/companies", label: "Companies", icon: Building2, adminOnly: true },
-  { to: "/departments", label: "Departments", icon: ShieldCheck, adminOnly: true },
-  { to: "/approval-workflows", label: "Approval Workflows", icon: GitBranch, adminOnly: true },
-  { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
-  { to: "/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true },
-  { to: "/api-tokens", label: "API Tokens", icon: KeyRound, adminOnly: true },
-  { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
-];
+// AppSidebar owns route navigation in the checkpoint layout, so merge the
+// manager routes into the shared source it consumes.
+const requestsGroup = NAV_GROUPS.find(
+  (group) => group.section === "Requests & Support",
+);
+if (requestsGroup) {
+  const knownPaths = new Set(requestsGroup.items.map((item) => item.to));
+  const routineItems = ROUTINE_NAV_ITEMS.filter(
+    (item) => !knownPaths.has(item.to),
+  );
+  const approvalsIndex = requestsGroup.items.findIndex(
+    (item) => item.to === "/approvals",
+  );
+  requestsGroup.items.splice(approvalsIndex + 1, 0, ...routineItems);
+}
 
 function initials(name?: string | null, email?: string): string {
   const src = (name || email || "?").trim();
@@ -159,21 +69,24 @@ function initials(name?: string | null, email?: string): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-function currentTitle(pathname: string): string {
-  if (pathname === "/") return "Dashboard";
-  const item = NAV.find(
-    (n) => "to" in n && n.to !== "/" && pathname.startsWith(n.to as string),
-  );
-  return (item && "label" in item ? item.label : "") || "Internal Platform";
+function SidebarRouteCloser({ pathname }: { pathname: string }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, pathname, setOpenMobile]);
+
+  return null;
 }
 
 export default function Layout() {
   const { user, logout, can } = useAuth();
   const theme = useTheme();
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const location = useLocation();
 
-  // Global ⌘K / Ctrl+K to open the command palette.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -184,209 +97,146 @@ export default function Layout() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const isDark =
-    theme.mode === "dark" ||
-    (theme.mode === "system" &&
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-color-scheme: dark)").matches);
 
-  // Filter nav by permission, then group items under their section header so
-  // each section can be collapsed independently.
-  type NavItem = Extract<NavEntry, { to: string }>;
-  const navItems = NAV.filter((item) => {
-    if ("section" in item) return !item.adminOnly || user?.is_admin;
-    if (item.adminOnly && !user?.is_admin) return false;
-    if (item.module && !can(item.module)) return false;
-    return true;
-  });
-  const navGroups: { section: string; items: NavItem[] }[] = [];
-  for (const item of navItems) {
-    if ("section" in item) navGroups.push({ section: item.section, items: [] });
-    else if (navGroups.length) navGroups[navGroups.length - 1].items.push(item);
-  }
-  const visibleGroups = navGroups.filter((g) => g.items.length > 0);
+  const isDark = theme.mode === "dark";
 
-  // Per-section collapse state, remembered across sessions.
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
-    try {
-      return new Set<string>(JSON.parse(localStorage.getItem("ag_nav_collapsed") || "[]"));
-    } catch {
-      return new Set();
-    }
-  });
-  function toggleSection(name: string) {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      localStorage.setItem("ag_nav_collapsed", JSON.stringify([...next]));
-      return next;
-    });
-  }
-  const location = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const title = currentNavTitle(location.pathname);
+  const sectionLabel = currentNavSection(location.pathname) ?? APP_NAME;
 
-  const title = currentTitle(location.pathname);
-
-  // Dynamic document title per route.
   useEffect(() => {
     document.title = `${title} — ${APP_NAME}`;
   }, [title]);
-
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
-    setNavOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
 
   const name = user?.display_name ?? user?.email;
   const role = user?.is_admin ? "Administrator" : user?.job_title ?? "Employee";
 
   return (
-   <BrandProvider>
-    <div className="app-shell">
-      {navOpen && (
-        <div
-          className="sidebar-backdrop"
-          onClick={() => setNavOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      <aside className={`sidebar ${navOpen ? "open" : ""}`}>
-        <div className="brand">
-          <span className="logo">AG</span>
-          <span>AG Holding</span>
-        </div>
-        <nav className="nav-scroll">
-          {visibleGroups.map((g) => {
-            const isCollapsed = collapsedSections.has(g.section);
-            const hasActive = g.items.some((it) =>
-              it.end ? location.pathname === it.to : location.pathname.startsWith(it.to),
-            );
-            return (
-              <div key={g.section} className="nav-group">
-                <button
-                  type="button"
-                  className={`nav-group-head ${isCollapsed ? "collapsed" : ""}`}
-                  onClick={() => toggleSection(g.section)}
-                  aria-expanded={!isCollapsed}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    {g.section}
-                    {isCollapsed && hasActive && <span className="nav-group-dot" />}
-                  </span>
-                  <ChevronDown size={13} className="chev" />
-                </button>
-                {!isCollapsed &&
-                  g.items.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-                    >
-                      <item.icon className="nav-icon" size={18} strokeWidth={2} />
-                      {item.label}
-                    </NavLink>
-                  ))}
-              </div>
-            );
-          })}
-        </nav>
-        <div className="sidebar-foot">Internal Platform · v1</div>
-      </aside>
+    <BrandProvider>
+      <SidebarProvider>
+        <SidebarRouteCloser pathname={location.pathname} />
+        <AppSidebar isAdmin={!!user?.is_admin} can={can} />
 
-      <div className="main">
-        <header className="topbar">
-          <div className="flex items-center gap-2">
-            <button
-              className="menu-btn"
-              aria-label="Open menu"
-              onClick={() => setNavOpen((o) => !o)}
-            >
-              <Menu size={18} />
-            </button>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-ink-muted">
-                {APP_NAME}
-              </span>
-              <span className="text-[15px] font-semibold">{title}</span>
-            </div>
-          </div>
-          <div className="flex flex-none items-center gap-2">
-          <GlobalSearch />
-          <button
-            className="bell-btn"
-            title={isDark ? "Switch to light" : "Switch to dark"}
-            aria-label="Toggle dark mode"
-            onClick={() => theme.setField("mode", isDark ? "light" : "dark")}
-          >
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <BrandSwitcher />
-          <span className="mx-1 hidden h-7 w-px bg-[var(--border)] sm:block" />
-          <NotificationBell />
-          <span className="mx-1 h-7 w-px bg-[var(--border)]" />
-          <div className="profile" ref={menuRef}>
-            <button className="profile-btn" aria-label="Account menu" onClick={() => setMenuOpen((o) => !o)}>
-              <span className="avatar">{initials(user?.display_name, user?.email ?? undefined)}</span>
-              <span className="profile-meta">
-                <span className="profile-name">{name}</span>
-                <span className="profile-role">{role}</span>
-              </span>
-              <ChevronDown size={14} className="caret" />
-            </button>
-            {menuOpen && (
-              <div className="profile-menu">
-                <div className="profile-menu-head">
-                  <div style={{ fontWeight: 600 }}>{name}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{user?.email}</div>
-                </div>
-                <button
-                  className="profile-menu-item flex items-center gap-2"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setAppearanceOpen(true);
-                  }}
-                >
-                  <Sliders size={15} /> Appearance
-                </button>
-                <button
-                  className="profile-menu-item flex items-center gap-2"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setPasswordOpen(true);
-                  }}
-                >
-                  <KeyRound size={15} /> Change password
-                </button>
-                <button className="profile-menu-item" onClick={logout}>
-                  Sign out
-                </button>
+        <SidebarInset>
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
+            <SidebarTrigger className="-ml-1" aria-label="Open navigation menu" />
+            <Separator
+              orientation="vertical"
+              className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+            />
+            <Breadcrumb className="min-w-0 flex-1">
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink render={<Link to="/" />}>
+                    {sectionLabel}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="truncate">{title}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 justify-start px-2 text-muted-foreground sm:h-8 sm:w-40 lg:w-64"
+                aria-label="Search people, tools, and everything"
+                onClick={() => window.setTimeout(() => setPaletteOpen(true), 0)}
+              >
+                <Search data-icon="inline-start" />
+                <span className="hidden min-w-0 flex-1 truncate text-left sm:block">
+                  Search people, tools…
+                </span>
+                <kbd className="ml-auto hidden border bg-muted px-1.5 font-mono text-[10px] text-foreground lg:block">
+                  Ctrl K
+                </kbd>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title={isDark ? "Switch to light" : "Switch to dark"}
+                aria-label="Toggle dark mode"
+                onClick={theme.toggleMode}
+              >
+                {isDark ? <Sun /> : <Moon />}
+              </Button>
+              <div className="hidden lg:block">
+                <BrandSwitcher />
               </div>
-            )}
-          </div>
-          </div>
-        </header>
-        <main className="content">
-          <Outlet />
-        </main>
-      </div>
-      {appearanceOpen && <AppearanceModal onClose={() => setAppearanceOpen(false)} />}
-      {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
-      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
-    </div>
-   </BrandProvider>
+              <Separator
+                orientation="vertical"
+                className="mx-1 hidden data-vertical:h-7 data-vertical:self-auto lg:block"
+              />
+              <NotificationBell />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-9 min-w-0 justify-start px-1.5"
+                      aria-label="Account menu"
+                    />
+                  }
+                >
+                  <Avatar className="size-8">
+                    <AvatarFallback className="text-foreground">
+                      {initials(user?.display_name, user?.email ?? undefined)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="hidden min-w-0 flex-col items-start leading-tight md:flex">
+                    <span className="max-w-40 truncate text-sm font-medium">{name}</span>
+                    <span className="max-w-40 truncate text-xs text-muted-foreground">{role}</span>
+                  </span>
+                  <ChevronDown data-icon="inline-end" className="hidden md:block" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      <span className="block truncate font-medium text-foreground">{name}</span>
+                      <span className="block truncate">{user?.email}</span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
+                      <KeyRound />
+                      Change password
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setSignOutOpen(true)}
+                    >
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </header>
+          <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
+            <Outlet />
+          </main>
+        </SidebarInset>
+
+        {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
+        {signOutOpen ? (
+          <ConfirmDialog
+            title="Sign out"
+            message="Sign out of the internal platform on this device?"
+            confirmLabel="Sign out"
+            onConfirm={logout}
+            onClose={() => setSignOutOpen(false)}
+          />
+        ) : null}
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      </SidebarProvider>
+    </BrandProvider>
   );
 }

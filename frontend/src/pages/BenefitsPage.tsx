@@ -1,9 +1,19 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
-import { Plus, Trash2, Users } from "lucide-react";
+import { FileText, HeartPulse, Plus, Trash2, Users } from "lucide-react";
 import { api } from "../api/client";
 import type { BenefitEnrollment, BenefitPlan, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const CATEGORIES = [
   "health", "dental", "vision", "life", "disability", "retirement", "wellness", "other",
@@ -21,9 +31,9 @@ export default function BenefitsPage() {
   const plans = useFetch<BenefitPlan[]>("/api/benefits/plans?include_inactive=true");
   const [tab, setTab] = useState<"plans" | "enrollments">("plans");
   const [editPlan, setEditPlan] = useState<BenefitPlan | "new" | null>(null);
+  const [deletePlanTarget, setDeletePlanTarget] = useState<BenefitPlan | null>(null);
 
   async function delPlan(p: BenefitPlan) {
-    if (!confirm(`Delete plan "${p.name}" and all its enrollments?`)) return;
     try {
       await api(`/api/benefits/plans/${p.id}`, { method: "DELETE" });
       plans.reload();
@@ -39,44 +49,30 @@ export default function BenefitsPage() {
         subtitle="Plans, employee enrollments and dependents."
         action={
           tab === "plans" ? (
-            <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setEditPlan("new")}>
-              <Plus size={15} /> New plan
-            </button>
+            <Button type="button" onClick={() => setEditPlan("new")}><Plus data-icon="inline-start" /> New plan</Button>
           ) : undefined
         }
       />
 
-      <div className="row mb-4" style={{ gap: 8 }}>
-        <button className={tab === "plans" ? "btn-primary" : "btn"} style={{ flex: "0 0 auto" }} onClick={() => setTab("plans")}>Plans</button>
-        <button className={tab === "enrollments" ? "btn-primary" : "btn"} style={{ flex: "0 0 auto" }} onClick={() => setTab("enrollments")}>Enrollments</button>
-      </div>
+      <ToggleGroup className="mb-4" value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as "plans" | "enrollments")}><ToggleGroupItem value="plans">Plans</ToggleGroupItem><ToggleGroupItem value="enrollments">Enrollments</ToggleGroupItem></ToggleGroup>
 
       {tab === "plans" ? (
         plans.loading ? (
           <Loading />
         ) : (plans.data?.length ?? 0) === 0 ? (
-          <div className="card"><Empty icon="🩺" message="No benefit plans yet" hint="Add a plan employees can enroll in." /></div>
+          <Card><CardContent><Empty icon={<HeartPulse />} message="No benefit plans yet" hint="Add a plan employees can enroll in." /></CardContent></Card>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {plans.data!.map((p) => (
-              <div key={p.id} className="card">
-                <div className="spread">
-                  <div>
-                    <div className="font-semibold">{p.name} {!p.active && <span className="badge gray">inactive</span>}</div>
-                    <div className="muted text-sm capitalize">{p.category}{p.carrier ? ` · ${p.carrier}` : ""}</div>
-                  </div>
-                  <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-                    <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditPlan(p)}>Edit</button>
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => delPlan(p)}><Trash2 size={13} /></button>
-                  </div>
-                </div>
-                {p.description && <p className="muted text-sm mt-2">{p.description}</p>}
-                <div className="row mt-3 text-sm" style={{ gap: 16 }}>
+              <Card key={p.id}>
+                <CardHeader><CardTitle>{p.name} {!p.active && <Badge variant="secondary">inactive</Badge>}</CardTitle><div className="text-sm capitalize text-muted-foreground">{p.category}{p.carrier ? ` · ${p.carrier}` : ""}</div><CardAction className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setEditPlan(p)}>Edit</Button><Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeletePlanTarget(p)}><Trash2 /></Button></CardAction></CardHeader>
+                {p.description && <CardContent className="text-sm text-muted-foreground">{p.description}</CardContent>}
+                <CardFooter className="flex flex-wrap gap-4 text-sm">
                   <span>Employee: <strong>{money(p.employee_cost, p.currency)}</strong>/mo</span>
                   <span>Employer: <strong>{money(p.employer_cost, p.currency)}</strong>/mo</span>
-                  <span className="inline-flex items-center gap-1"><Users size={13} /> {p.enrolled_count} enrolled</span>
-                </div>
-              </div>
+                  <span className="inline-flex items-center gap-1"><Users /> {p.enrolled_count} enrolled</span>
+                </CardFooter>
+              </Card>
             ))}
           </div>
         )
@@ -89,6 +85,16 @@ export default function BenefitsPage() {
           plan={editPlan === "new" ? null : editPlan}
           onClose={() => setEditPlan(null)}
           onSaved={() => { setEditPlan(null); plans.reload(); }}
+        />
+      )}
+      {deletePlanTarget && (
+        <ConfirmDialog
+          title={`Delete benefit plan "${deletePlanTarget.name}"?`}
+          message={`Delete "${deletePlanTarget.name}" and all of its enrollments?`}
+          confirmLabel="Delete plan"
+          danger
+          onConfirm={() => delPlan(deletePlanTarget)}
+          onClose={() => setDeletePlanTarget(null)}
         />
       )}
     </div>
@@ -108,11 +114,11 @@ function PlanModal({ plan, onClose, onSaved }: { plan: BenefitPlan | null; onClo
     active: plan?.active ?? true,
     enrollment_open: plan?.enrollment_open ?? true,
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function save() {
     if (!f.name.trim()) return;
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const body = { ...f, name: f.name.trim() };
       if (plan) await api(`/api/benefits/plans/${plan.id}`, { method: "PATCH", body });
@@ -121,35 +127,34 @@ function PlanModal({ plan, onClose, onSaved }: { plan: BenefitPlan | null; onClo
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={plan ? "Edit plan" : "New benefit plan"} onClose={onClose} maxWidth={560}>
-      <div className="field"><label>Name</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-      <div className="row" style={{ gap: 8 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Category</label>
-          <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className="field" style={{ flex: 1 }}><label>Carrier</label><input value={f.carrier} onChange={(e) => setF({ ...f, carrier: e.target.value })} /></div>
+      <FieldGroup>
+      <Field><FieldLabel htmlFor="rd-benefitspage-130-name">Name</FieldLabel><Input id="rd-benefitspage-130-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field><FieldLabel htmlFor="rd-benefitspage-133-category">Category</FieldLabel><Select items={CATEGORIES.map((c) => ({ value: c, label: c }))} value={f.category} onValueChange={(value) => setF({ ...f, category: value ?? "" })}><SelectTrigger className="w-full" id="rd-benefitspage-133-category"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+        <Field><FieldLabel htmlFor="rd-benefitspage-138-carrier">Carrier</FieldLabel><Input id="rd-benefitspage-138-carrier" value={f.carrier} onChange={(e) => setF({ ...f, carrier: e.target.value })} /></Field>
       </div>
-      <div className="field"><label>Description</label><textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></div>
-      <div className="row" style={{ gap: 8 }}>
-        <div className="field" style={{ flex: 1 }}><label>Employee cost/mo</label><input type="number" step="0.01" value={f.employee_cost} onChange={(e) => setF({ ...f, employee_cost: e.target.value })} /></div>
-        <div className="field" style={{ flex: 1 }}><label>Employer cost/mo</label><input type="number" step="0.01" value={f.employer_cost} onChange={(e) => setF({ ...f, employer_cost: e.target.value })} /></div>
-        <div className="field" style={{ width: 90 }}><label>Currency</label><input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} /></div>
+      <Field><FieldLabel htmlFor="rd-benefitspage-140-description">Description</FieldLabel><Textarea id="rd-benefitspage-140-description" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field><FieldLabel htmlFor="rd-benefitspage-142-employee-cost-mo">Employee cost/mo</FieldLabel><Input id="rd-benefitspage-142-employee-cost-mo" type="number" step="0.01" value={f.employee_cost} onChange={(e) => setF({ ...f, employee_cost: e.target.value })} /></Field>
+        <Field><FieldLabel htmlFor="rd-benefitspage-143-employer-cost-mo">Employer cost/mo</FieldLabel><Input id="rd-benefitspage-143-employer-cost-mo" type="number" step="0.01" value={f.employer_cost} onChange={(e) => setF({ ...f, employer_cost: e.target.value })} /></Field>
+        <Field><FieldLabel htmlFor="rd-benefitspage-144-currency">Currency</FieldLabel><Input id="rd-benefitspage-144-currency" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} /></Field>
       </div>
-      <div className="row" style={{ gap: 16 }}>
-        <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Active</label>
-        <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={f.enrollment_open} onChange={(e) => setF({ ...f, enrollment_open: e.target.checked })} /> Enrollment open</label>
+      <div className="flex flex-wrap gap-4">
+        <FieldLabel className="flex items-center gap-2"><Checkbox checked={f.active} onCheckedChange={(checked) => setF({ ...f, active: checked })} /> Active</FieldLabel>
+        <FieldLabel className="flex items-center gap-2"><Checkbox checked={f.enrollment_open} onCheckedChange={(checked) => setF({ ...f, enrollment_open: checked })} /> Enrollment open</FieldLabel>
       </div>
-      <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
+      </FieldGroup>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );
@@ -159,6 +164,7 @@ function EnrollmentsTab({ plans }: { plans: BenefitPlan[] }) {
   const { notify } = useToast();
   const enrollments = useFetch<BenefitEnrollment[]>("/api/benefits/enrollments");
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BenefitEnrollment | null>(null);
 
   async function update(e: BenefitEnrollment, status: string) {
     try {
@@ -169,7 +175,6 @@ function EnrollmentsTab({ plans }: { plans: BenefitPlan[] }) {
     }
   }
   async function del(e: BenefitEnrollment) {
-    if (!confirm("Remove this enrollment?")) return;
     try {
       await api(`/api/benefits/enrollments/${e.id}`, { method: "DELETE" });
       enrollments.reload();
@@ -179,38 +184,41 @@ function EnrollmentsTab({ plans }: { plans: BenefitPlan[] }) {
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-3">
-        <h3 className="m-0">Enrollments</h3>
-        <button className="btn-sm btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}><Plus size={14} /> Enroll employee</button>
-      </div>
+    <Card className="py-0">
+      <CardHeader className="py-(--card-spacing)"><CardTitle>Enrollments</CardTitle><CardAction><Button type="button" size="sm" onClick={() => setAdding(true)}><Plus data-icon="inline-start" /> Enroll employee</Button></CardAction></CardHeader>
       {enrollments.loading ? (
-        <Loading />
+        <CardContent><Loading /></CardContent>
       ) : (enrollments.data?.length ?? 0) === 0 ? (
-        <Empty icon="📝" message="No enrollments yet" hint="Enroll an employee into a plan." />
+        <CardContent><Empty icon={<FileText />} message="No enrollments yet" hint="Enroll an employee into a plan." /></CardContent>
       ) : (
-        <table className="table">
-          <thead><tr><th>Employee</th><th>Plan</th><th>Coverage</th><th>Cost/mo</th><th>Status</th><th /></tr></thead>
-          <tbody>
+        <CardContent className="p-0"><Table>
+          <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Plan</TableHead><TableHead>Coverage</TableHead><TableHead className="text-right">Cost/mo</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
+          <TableBody>
             {enrollments.data!.map((e) => (
-              <tr key={e.id}>
-                <td className="font-medium">{e.employee_name}</td>
-                <td>{e.plan_name} <span className="muted capitalize">· {e.category}</span></td>
-                <td className="capitalize">{e.coverage_level.replace(/_/g, " ")}</td>
-                <td>{money(e.elected_cost, e.currency ?? undefined)}</td>
-                <td>
-                  <select className="!w-auto" value={e.status} onChange={(ev) => update(e, ev.target.value)}>
-                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td className="text-right"><button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(e)}><Trash2 size={13} /></button></td>
-              </tr>
+              <TableRow key={e.id}>
+                <TableCell className="font-medium">{e.employee_name}</TableCell>
+                <TableCell>{e.plan_name} <span className="capitalize text-muted-foreground">· {e.category}</span></TableCell>
+                <TableCell className="capitalize">{e.coverage_level.replace(/_/g, " ")}</TableCell>
+                <TableCell className="text-right tabular-nums">{money(e.elected_cost, e.currency ?? undefined)}</TableCell>
+                <TableCell><Select items={STATUSES.map((s) => ({ value: s, label: s }))} value={e.status} onValueChange={(value) => value !== null && update(e, value)}><SelectTrigger aria-label={`Status for ${e.employee_name}`}><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectGroup></SelectContent></Select></TableCell>
+                <TableCell className="text-right"><Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeleteTarget(e)}><Trash2 /></Button></TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table></CardContent>
       )}
       {adding && <EnrollModal plans={plans} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); enrollments.reload(); }} />}
-    </div>
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Remove ${deleteTarget.employee_name} from "${deleteTarget.plan_name}"?`}
+          message={`Remove ${deleteTarget.employee_name}'s enrollment in "${deleteTarget.plan_name}"?`}
+          confirmLabel="Remove enrollment"
+          danger
+          onConfirm={() => del(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -220,45 +228,33 @@ function EnrollModal({ plans, onClose, onSaved }: { plans: BenefitPlan[]; onClos
   const [planId, setPlanId] = useState(plans[0]?.id ?? "");
   const [userId, setUserId] = useState("");
   const [coverage, setCoverage] = useState("employee");
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function save() {
     if (!planId || !userId) { notify("Pick a plan and employee", "error"); return; }
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/benefits/enrollments", { method: "POST", body: { plan_id: planId, user_id: userId, coverage_level: coverage } });
       notify("Employee enrolled.");
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="Enroll employee" onClose={onClose} maxWidth={480}>
-      <div className="field">
-        <label>Plan</label>
-        <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
-          {plans.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <label>Employee</label>
-        <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-          <option value="">Select…</option>
-          {(people.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <label>Coverage level</label>
-        <select value={coverage} onChange={(e) => setCoverage(e.target.value)}>
-          {COVERAGE.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-        </select>
-      </div>
-      <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Enroll"}</button>
+      <FieldGroup>
+      <Field><FieldLabel htmlFor="rd-benefitspage-241-plan">Plan</FieldLabel><Select items={plans.filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))} value={planId || null} onValueChange={(value) => setPlanId(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-241-plan"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{plans.filter((p) => p.active).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+      <Field><FieldLabel htmlFor="rd-benefitspage-247-employee">Employee</FieldLabel><Select items={[{ value: null, label: "Select…" }, ...(people.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={userId || null} onValueChange={(value) => setUserId(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-247-employee"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select…</SelectItem>{(people.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+      <Field><FieldLabel htmlFor="rd-benefitspage-254-coverage-level">Coverage level</FieldLabel><Select items={COVERAGE.map((c) => ({ value: c, label: c.replace(/_/g, " ") }))} value={coverage} onValueChange={(value) => setCoverage(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-254-coverage-level"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{COVERAGE.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+      </FieldGroup>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Saving…" : "Enroll"}</Button>
       </div>
     </Modal>
   );

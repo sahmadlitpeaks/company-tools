@@ -174,7 +174,7 @@ export interface SharedDoc {
 }
 
 export interface SearchHit {
-  kind: "brochure" | "asset" | "product";
+  kind: "brochure" | "asset" | "product" | "person" | "task" | "ticket" | "knowledge" | "document" | "idea" | "lost_found";
   id: string;
   title: string;
   subtitle?: string | null;
@@ -652,6 +652,7 @@ export interface Task {
   created_by_id?: string | null;
   created_by_name?: string | null;
   company_id?: string | null;
+  project_id?: string | null;
   completed_at?: string | null;
   created_at: string;
   onboarding_task_id?: string | null;
@@ -1548,6 +1549,45 @@ export interface TimeEntry {
   source: string;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  owner_id?: string | null;
+  owner_name?: string | null;
+  company_id?: string | null;
+  task_count: number;
+  completed_tasks: number;
+  progress: number;
+  created_at: string;
+}
+
+export interface TimeBreak {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  started_at: string;
+  ended_at?: string | null;
+}
+
+export interface TimeCorrection {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  user_name?: string | null;
+  approval_request_id?: string | null;
+  requested_clock_in?: string | null;
+  requested_clock_out?: string | null;
+  requested_minutes?: number | null;
+  reason: string;
+  status: string;
+  decision_note?: string | null;
+  created_at: string;
+}
+
 export interface Timesheet {
   id?: string | null;
   user_id: string;
@@ -1567,12 +1607,31 @@ export interface Timesheet {
 
 export interface TimeSummary {
   open_entry?: TimeEntry | null;
+  active_break?: TimeBreak | null;
   today_minutes: number;
+  today_break_minutes: number;
+  today_elapsed_minutes: number;
+  today_completed_work_seconds: number;
+  today_completed_break_seconds: number;
+  open_completed_break_seconds: number;
   week_minutes: number;
   week_expected_minutes: number;
   week_overtime_minutes: number;
   week_status: string;
   pending_approvals: number;
+  /** Today's clock entries for the day timeline bar. */
+  today_entries?: TimeEntry[];
+  /** All breaks on today's entries (including open). */
+  today_breaks?: TimeBreak[];
+  /** Expected work minutes for a single day from the schedule. */
+  daily_expected_minutes?: number;
+}
+
+export interface DashboardPreferences {
+  widget_order: string[];
+  hidden_widgets: string[];
+  available_widgets: string[];
+  is_default: boolean;
 }
 
 export interface WorkSchedule {

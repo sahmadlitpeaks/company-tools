@@ -1,3 +1,5 @@
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import {
   CheckSquare,
@@ -9,7 +11,7 @@ import {
 } from "lucide-react";
 import type { WorkLog, WorkLogSummary, WorkspaceItem, WorkSummary } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { Loading, PageHead } from "../components/ui";
+import { Loading, MetricCard, PageHead } from "../components/ui";
 import { hm } from "./WorkLogPage";
 
 export default function HubPage() {
@@ -25,14 +27,14 @@ export default function HubPage() {
     <div>
       <PageHead title="My Workspace" subtitle="Everything you're working on — tasks, time, tickets and docs in one place." />
 
-      <div className="grid cols-4 mb-5">
+      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat icon={<CheckSquare size={16} />} value={w.tasks_open} label="Open tasks" to="/tasks" />
         <Stat icon={<Clock3 size={16} />} value={hm(wsum.data?.total_minutes ?? 0)} label="Time logged" to="/work-log" />
         <Stat icon={<LifeBuoy size={16} />} value={w.tickets_open + w.tickets_assigned} label="My tickets" to="/service-desk" />
         <Stat icon={<FolderHeart size={16} />} value={docs.data?.length ?? 0} label="My docs" to="/my-docs" />
       </div>
 
-      <div className="grid cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Tasks */}
         <Panel title="My tasks" to="/tasks" addTo="/tasks?new=1">
           {w.my_tasks.length === 0 ? (
@@ -87,45 +89,39 @@ export default function HubPage() {
 
 function Stat({ icon, value, label, to }: { icon: React.ReactNode; value: React.ReactNode; label: string; to: string }) {
   return (
-    <Link to={to} className="card stat">
-      <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: "var(--brand-50)", color: "var(--brand-600)" }}>
-          {icon}
-        </span>
-        <div className="value" style={{ fontSize: 24 }}>{value}</div>
-      </div>
-      <div className="label">{label}</div>
+    <Link to={to} aria-label={label} title={label} className="block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <MetricCard value={value} label={label} icon={icon} />
     </Link>
   );
 }
 
 function Panel({ title, to, addTo, children }: { title: string; to: string; addTo: string; children: React.ReactNode }) {
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h4 className="m-0">{title}</h4>
-        <span className="flex items-center gap-2">
-          <Link to={addTo} className="btn-sm inline-flex items-center gap-1"><Plus size={13} /> Add</Link>
-          <Link to={to} className="text-xs font-medium text-brand-600">View all ›</Link>
-        </span>
-      </div>
-      <div className="flex flex-col">{children}</div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardAction className="col-start-1 row-span-1 row-start-2 flex items-center gap-2 justify-self-start sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end">
+          <Link to={addTo} className={buttonVariants({ variant: "outline", size: "sm" })}><Plus data-icon="inline-start" /> Add</Link>
+          <Link to={to} className={buttonVariants({ variant: "link", size: "sm" })}>View all ›</Link>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col">{children}</CardContent>
+    </Card>
   );
 }
 
 function Row({ label, meta, warn, icon }: { label: string; meta?: string; warn?: boolean; icon?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2 last:border-0">
+    <div className="flex items-center justify-between gap-2 border-b py-2 last:border-0">
       <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
         {icon}
         {label}
       </span>
-      {meta && <span className={`flex-none text-xs ${warn ? "text-red-600" : "text-ink-muted"}`}>{meta}</span>}
+      {meta && <span className={`flex-none text-xs ${warn ? "text-destructive" : "text-muted-foreground"}`}>{meta}</span>}
     </div>
   );
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="muted text-sm">{text}</p>;
+  return <p className="text-sm text-muted-foreground">{text}</p>;
 }

@@ -1,3 +1,4 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuth } from "./AuthContext";
@@ -18,15 +19,18 @@ export default function Protected({
 
   if (!ok)
     return (
-      <div className="center-screen" style={{ minHeight: "60vh" }}>
-        <div className="login-card text-center">
-          <ShieldAlert className="mx-auto mb-3 text-ink-muted" size={36} />
-          <h2 className="mb-1">No access</h2>
-          <p className="muted">
+      <div className="grid min-h-[60vh] place-items-center bg-linear-to-br from-primary/30 to-background p-5">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <ShieldAlert className="mx-auto text-foreground" aria-hidden="true" />
+            <CardTitle>No access</CardTitle>
+            <CardDescription>
             You don't have permission to view this area. Ask an administrator if
             you need it.
-          </p>
-        </div>
+            </CardDescription>
+          </CardHeader>
+          <CardContent />
+        </Card>
       </div>
     );
 

@@ -21,16 +21,22 @@ import type {
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const STATUSES = ["active", "trial", "paused", "cancelled", "expired"];
 const CYCLES = ["monthly", "quarterly", "annual", "weekly", "one_time"];
-const STATUS_BADGE: Record<string, string> = {
-  active: "green",
-  trial: "blue",
-  paused: "amber",
-  cancelled: "red",
-  expired: "red",
+const STATUS_BADGE: Record<string, "success" | "info" | "warning" | "destructive"> = {
+  active: "success", trial: "info", paused: "warning", cancelled: "destructive", expired: "destructive",
 };
 
 function money(v?: string | null, ccy = "USD") {
@@ -52,7 +58,7 @@ export default function SubscriptionsPage() {
   const { user } = useAuth();
   const isAdmin = !!user?.is_admin;
   const [tab, setTab] = useState<"list" | "report">("list");
-  const [status, setStatus] = useState("");
+  const [status, setRecordStatus] = useState("");
   const [q, setQ] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const qs = useMemo(() => {
@@ -111,42 +117,38 @@ export default function SubscriptionsPage() {
         title="Subscriptions"
         subtitle="SaaS & tools the company pays for — billing, renewals and who holds a seat."
         action={
-          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/subscriptions/template.csv", "subscriptions-template.csv").catch(
                   () => notify("Download failed", "error"),
                 )
               }
             >
-              <FileText size={15} /> Template
-            </button>
-            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => importRef.current?.click()}>
-              <Upload size={15} /> Import
-            </button>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+              <FileText data-icon="inline-start" /> Template
+            </Button>
+            <Button type="button" variant="outline" onClick={() => importRef.current?.click()}>
+              <Upload data-icon="inline-start" /> Import
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/subscriptions/export.csv", "subscriptions.csv").catch(() =>
                   notify("Export failed", "error"),
                 )
               }
             >
-              <Download size={15} /> Export
-            </button>
-            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
-              <Plus size={15} /> New
-            </button>
+              <Download data-icon="inline-start" /> Export
+            </Button>
+            <Button type="button" onClick={() => setAdding(true)}>
+              <Plus data-icon="inline-start" /> New
+            </Button>
           </div>
         }
       />
-      <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+      <Input aria-label="Import Csv" ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
 
       {s && (
-        <div className="grid mb-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+        <div className="mb-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
           <Metric icon={<Wallet size={16} />} label="Subscriptions" value={s.total} />
           <Metric icon={<Wallet size={16} />} label="Monthly spend" value={money(s.monthly_spend)} />
           <Metric icon={<CalendarClock size={16} />} label="Renewing ≤30d" value={s.renewing_soon} />
@@ -156,113 +158,114 @@ export default function SubscriptionsPage() {
 
       {/* Renewing-soon banner */}
       {(renewals.data?.length ?? 0) > 0 && (
-        <div className="card mb-4" style={{ borderColor: "var(--amber-300, #fcd34d)" }}>
-          <div className="spread mb-2">
-            <h4 className="m-0 inline-flex items-center gap-2">
-              <CalendarClock size={16} /> Renewing in the next 30 days ({renewals.data!.length})
-            </h4>
+        <Card className="mb-4 ring-warning/40">
+          <CardHeader className="grid grid-cols-[1fr_auto] items-center">
+            <CardTitle className="inline-flex items-center gap-2">
+              <CalendarClock /> Renewing in the next 30 days ({renewals.data!.length})
+            </CardTitle>
             {isAdmin && (
-              <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={remindOwners}>
-                <BellRing size={13} /> Remind owners
-              </button>
+              <Button type="button" variant="outline" size="sm" onClick={remindOwners}>
+                <BellRing data-icon="inline-start" /> Remind owners
+              </Button>
             )}
-          </div>
-          <div className="flex flex-col gap-1">
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
             {renewals.data!.slice(0, 6).map((r) => (
-              <button
+              <Button type="button"
                 key={r.id}
-                className="flex items-center justify-between rounded-lg px-2 py-1 text-left text-sm hover:bg-slate-50"
+                variant="ghost"
+                className="h-auto w-full justify-between px-2 py-1 text-left"
                 onClick={() => setOpenId(r.id)}
               >
                 <span className="font-medium">{r.name}</span>
-                <span className="muted">{r.end_date} · {money(r.monthly_cost, r.currency)}/mo</span>
-              </button>
+                <span className="text-muted-foreground">{r.end_date} · {money(r.monthly_cost, r.currency)}/mo</span>
+              </Button>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="mb-4 flex gap-2">
-        <button className={`btn-sm ${tab === "list" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto" }} onClick={() => setTab("list")}>
-          Subscriptions
-        </button>
-        <button className={`btn-sm ${tab === "report" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto" }} onClick={() => setTab("report")}>
-          Spend report
-        </button>
-      </div>
+      <ToggleGroup className="mb-4" value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline">
+        <ToggleGroupItem value="list">Subscriptions</ToggleGroupItem>
+        <ToggleGroupItem value="report">Spend report</ToggleGroupItem>
+      </ToggleGroup>
 
       {tab === "report" ? (
         <SpendReport />
       ) : (
       <>
-      <div className="card mb-4">
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-            <label>Search</label>
-            <input placeholder="Name or vendor…" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All</option>
-              {STATUSES.map((st) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+      <Card className="mb-4"><CardContent>
+        <FieldGroup className="grid gap-3 sm:grid-cols-[3fr_1fr]">
+          <Field><FieldLabel htmlFor="subscriptions-search">Search</FieldLabel>
+            <Input id="subscriptions-search" placeholder="Name or vendor…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </Field>
+          <Field><FieldLabel htmlFor="subscriptions-status">Status</FieldLabel>
+            <Select
+              items={[{ value: null, label: "All" }, ...STATUSES.map((st) => ({ value: st, label: st }))]}
+              value={status || null}
+              onValueChange={(value) => setRecordStatus(value ?? "")}
+            >
+              <SelectTrigger id="subscriptions-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value={null}>All</SelectItem>
+                {STATUSES.map((st) => <SelectItem key={st} value={st}>{st}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
+      </CardContent></Card>
 
-      <div className="card">
+      <Card className="py-0"><CardContent className="p-0">
         {subs.loading ? (
           <Loading />
         ) : (subs.data?.length ?? 0) === 0 ? (
           <Empty message="No subscriptions yet." />
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Subscription</th>
-                <th>Assignment</th>
-                <th>Billing</th>
-                <th>Seats</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader><TableRow>
+                <TableHead>Subscription</TableHead><TableHead>Assignment</TableHead><TableHead className="text-right">Billing</TableHead>
+                <TableHead className="text-right">Seats</TableHead><TableHead>Status</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
               {subs.data!.map((sub) => (
-                <tr key={sub.id} className="cursor-pointer" onClick={() => setOpenId(sub.id)}>
-                  <td>
-                    <div className="font-semibold">{sub.name}</div>
-                    {sub.vendor && <div className="muted text-xs">{sub.vendor}</div>}
-                  </td>
-                  <td>
-                    <span className="badge">{sub.scope}</span>
+                <TableRow key={sub.id}>
+                  <TableCell className="max-w-[24rem] whitespace-normal">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto max-w-full justify-start p-0 text-left font-semibold text-foreground"
+                      aria-label={`Open subscription: ${sub.name}`}
+                      onClick={() => setOpenId(sub.id)}
+                    >
+                      <span className="truncate">{sub.name}</span>
+                    </Button>
+                    {sub.vendor && <div className="text-xs text-muted-foreground">{sub.vendor}</div>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <Badge variant="secondary">{sub.scope}</Badge>
                     {sub.scope === "department" && sub.department_name && (
-                      <span className="muted text-xs"> · {sub.department_name}</span>
+                      <span className="text-xs text-muted-foreground"> · {sub.department_name}</span>
                     )}
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {money(sub.monthly_cost, sub.currency)}
-                    <span className="muted text-xs">/mo</span>
+                    <span className="text-xs text-muted-foreground">/mo</span>
                     {sub.cost != null && (
-                      <div className="muted text-xs">
+                      <div className="text-xs text-muted-foreground">
                         {money(sub.cost, sub.currency)}
                         {CYCLE_LABEL[sub.billing_cycle] ?? ""}
                         {sub.cost_type === "per_seat" ? " / seat" : ""}
                       </div>
                     )}
-                  </td>
-                  <td>{sub.scope === "person" ? sub.active_seats : "—"}</td>
-                  <td><span className={`badge ${STATUS_BADGE[sub.status] ?? ""}`}>{sub.status}</span></td>
-                  <td className="text-right font-medium text-brand-600">Open ›</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{sub.scope === "person" ? sub.active_seats : "—"}</TableCell>
+                  <TableCell><Badge variant={STATUS_BADGE[sub.status] ?? "secondary"}>{sub.status}</Badge></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </CardContent></Card>
       </>
       )}
 
@@ -283,8 +286,8 @@ function SpendReport() {
   const max = (rows: { monthly: string }[]) =>
     Math.max(1, ...rows.map((r) => Number(r.monthly)));
   return (
-    <div className="space-y-4">
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
         <Metric icon={<Wallet size={16} />} label="Monthly total" value={money(data.monthly_total)} />
         <Metric icon={<Wallet size={16} />} label="Annual total" value={money(data.annual_total)} />
         <Metric label="Active seats" value={data.active_seats} />
@@ -301,21 +304,22 @@ function SpendReport() {
 
 function BarCard({ title, rows, max }: { title: string; rows: SpendBucket[]; max: number }) {
   return (
-    <div className="card">
-      <h4 className="mb-2 mt-0">{title}</h4>
+    <Card>
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardContent>
       {rows.length === 0 ? (
-        <p className="muted text-sm">No data.</p>
+        <p className="text-sm text-muted-foreground">No data.</p>
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {rows.map((r) => (
             <div key={r.label}>
               <div className="flex justify-between text-sm">
-                <span className="truncate">{r.label} <span className="muted text-xs">· {r.count}</span></span>
+                <span className="truncate">{r.label} <span className="text-xs text-muted-foreground">· {r.count}</span></span>
                 <span className="font-medium">{money(r.monthly)}</span>
               </div>
-              <div className="mt-0.5 h-1.5 rounded-full bg-slate-100">
+              <div className="mt-0.5 h-1.5 bg-muted">
                 <div
-                  className="h-1.5 rounded-full bg-brand-500"
+                  className="h-1.5 bg-primary"
                   style={{ width: `${(Number(r.monthly) / max) * 100}%` }}
                 />
               </div>
@@ -323,16 +327,17 @@ function BarCard({ title, rows, max }: { title: string; rows: SpendBucket[]; max
           ))}
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
-    <div className="card">
-      <div className="muted flex items-center gap-1.5 text-xs">{icon} {label}</div>
+    <Card size="sm"><CardContent>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">{icon} {label}</div>
       <div className="mt-1 text-xl font-bold">{value}</div>
-    </div>
+    </CardContent></Card>
   );
 }
 
@@ -362,12 +367,12 @@ function SubscriptionModal({
       user_ids: [],
     },
   );
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: keyof FormState, v: unknown) => setF((p) => ({ ...p, [k]: v }));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const body: Record<string, unknown> = {
         name: (f.name ?? "").trim(),
@@ -396,93 +401,111 @@ function SubscriptionModal({
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={initial ? `Edit ${initial.name}` : "New subscription"} onClose={onClose} maxWidth={620}>
       <form onSubmit={save}>
-        <div className="row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Name *</label>
-            <input required value={f.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="ChatGPT Team" />
-          </div>
-          <div className="field">
-            <label>Vendor</label>
-            <input value={f.vendor ?? ""} onChange={(e) => set("vendor", e.target.value)} placeholder="OpenAI" />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field"><label>Plan</label><input value={f.plan ?? ""} onChange={(e) => set("plan", e.target.value)} /></div>
-          <div className="field"><label>Login URL</label><input value={f.url ?? ""} onChange={(e) => set("url", e.target.value)} /></div>
-        </div>
+        <FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field><FieldLabel htmlFor="subscription-name">Name *</FieldLabel><Input id="subscription-name" required value={f.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="ChatGPT Team" /></Field>
+          <Field><FieldLabel htmlFor="subscription-vendor">Vendor</FieldLabel><Input id="subscription-vendor" value={f.vendor ?? ""} onChange={(e) => set("vendor", e.target.value)} placeholder="OpenAI" /></Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field><FieldLabel htmlFor="subscription-plan">Plan</FieldLabel><Input id="subscription-plan" value={f.plan ?? ""} onChange={(e) => set("plan", e.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="subscription-url">Login URL</FieldLabel><Input id="subscription-url" value={f.url ?? ""} onChange={(e) => set("url", e.target.value)} /></Field>
+        </FieldGroup>
 
-        <div className="row">
-          <div className="field">
-            <label>Assignment</label>
-            <select value={f.scope} onChange={(e) => set("scope", e.target.value)}>
-              <option value="company">Company-wide</option>
-              <option value="department">Department</option>
-              <option value="person">Specific people (seats)</option>
-            </select>
-          </div>
+        <FieldGroup className="grid gap-3 sm:grid-cols-3">
+          <Field><FieldLabel htmlFor="subscription-scope">Assignment</FieldLabel>
+            <Select
+              items={[{ value: "company", label: "Company-wide" }, { value: "department", label: "Department" }, { value: "person", label: "Specific people (seats)" }]}
+              value={f.scope}
+              onValueChange={(value) => set("scope", value ?? "")}
+            >
+              <SelectTrigger id="subscription-scope" aria-label="Assignment" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="company">Company-wide</SelectItem>
+                <SelectItem value="department">Department</SelectItem>
+                <SelectItem value="person">Specific people (seats)</SelectItem>
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
           {f.scope === "department" && (
-            <div className="field">
-              <label>Department</label>
-              <select value={f.department_id ?? ""} onChange={(e) => set("department_id", e.target.value)}>
-                <option value="">Select…</option>
-                {(departments.data ?? []).map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
+            <Field><FieldLabel htmlFor="subscription-department">Department</FieldLabel>
+              <Select
+                items={[{ value: null, label: "Select…" }, ...(departments.data ?? []).map((d) => ({ value: d.id, label: d.name }))]}
+                value={f.department_id || null}
+                onValueChange={(value) => set("department_id", value ?? "")}
+              >
+                <SelectTrigger id="subscription-department" aria-label="Department" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value={null}>Select…</SelectItem>
+                  {(departments.data ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>
+            </Field>
           )}
-          <div className="field">
-            <label>Status</label>
-            <select value={f.status} onChange={(e) => set("status", e.target.value)}>
-              {STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
-            </select>
-          </div>
-        </div>
+          <Field><FieldLabel htmlFor="subscription-state">Status</FieldLabel>
+            <Select items={STATUSES.map((st) => ({ value: st, label: st }))} value={f.status} onValueChange={(value) => set("status", value ?? "")}>
+              <SelectTrigger id="subscription-state" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {STATUSES.map((st) => <SelectItem key={st} value={st}>{st}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
 
-        <div className="row">
-          <div className="field">
-            <label>Cost type</label>
-            <select value={f.cost_type} onChange={(e) => set("cost_type", e.target.value)}>
-              <option value="flat">Flat total</option>
-              <option value="per_seat">Per seat</option>
-            </select>
-          </div>
-          <div className="field">
-            <label>{f.cost_type === "per_seat" ? "Cost / seat" : "Cost"}</label>
-            <input type="number" step="0.01" value={f.cost ?? ""} onChange={(e) => set("cost", e.target.value)} />
-          </div>
-          <div className="field" style={{ maxWidth: 90 }}>
-            <label>Currency</label>
-            <input value={f.currency ?? "USD"} onChange={(e) => set("currency", e.target.value.toUpperCase())} />
-          </div>
-          <div className="field">
-            <label>Billing</label>
-            <select value={f.billing_cycle} onChange={(e) => set("billing_cycle", e.target.value)}>
-              {CYCLES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
-            </select>
-          </div>
-        </div>
+        <FieldGroup className="grid gap-3 sm:grid-cols-4">
+          <Field><FieldLabel htmlFor="subscription-cost-type">Cost type</FieldLabel>
+            <Select
+              items={[{ value: "flat", label: "Flat total" }, { value: "per_seat", label: "Per seat" }]}
+              value={f.cost_type}
+              onValueChange={(value) => set("cost_type", value ?? "")}
+            >
+              <SelectTrigger id="subscription-cost-type" aria-label="Cost type" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="flat">Flat total</SelectItem><SelectItem value="per_seat">Per seat</SelectItem>
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel htmlFor="subscription-cost">{f.cost_type === "per_seat" ? "Cost / seat" : "Cost"}</FieldLabel><Input id="subscription-cost" type="number" step="0.01" value={f.cost ?? ""} onChange={(e) => set("cost", e.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="subscription-currency">Currency</FieldLabel><Input id="subscription-currency" value={f.currency ?? "USD"} onChange={(e) => set("currency", e.target.value.toUpperCase())} /></Field>
+          <Field><FieldLabel htmlFor="subscription-cycle">Billing</FieldLabel>
+            <Select
+              items={CYCLES.map((c) => ({ value: c, label: c.replace("_", " ") }))}
+              value={f.billing_cycle}
+              onValueChange={(value) => set("billing_cycle", value ?? "")}
+            >
+              <SelectTrigger id="subscription-cycle" aria-label="Billing" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {CYCLES.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
 
-        <div className="row">
-          <div className="field"><label>Start date</label><input type="date" value={f.start_date ?? ""} onChange={(e) => set("start_date", e.target.value)} /></div>
-          <div className="field"><label>End / renewal date</label><input type="date" value={f.end_date ?? ""} onChange={(e) => set("end_date", e.target.value)} /></div>
-          <div className="field">
-            <label>Owner</label>
-            <select value={f.owner_id ?? ""} onChange={(e) => set("owner_id", e.target.value)}>
-              <option value="">—</option>
-              {(users.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <FieldGroup className="grid gap-3 sm:grid-cols-3">
+          <Field><FieldLabel htmlFor="subscription-start">Start date</FieldLabel><Input id="subscription-start" type="date" value={f.start_date ?? ""} onChange={(e) => set("start_date", e.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="subscription-end">End / renewal date</FieldLabel><Input id="subscription-end" type="date" value={f.end_date ?? ""} onChange={(e) => set("end_date", e.target.value)} /></Field>
+          <Field><FieldLabel htmlFor="subscription-owner">Owner</FieldLabel>
+            <Select
+              items={[{ value: null, label: "—" }, ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]}
+              value={f.owner_id || null}
+              onValueChange={(value) => set("owner_id", value ?? "")}
+            >
+              <SelectTrigger id="subscription-owner" aria-label="Owner" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value={null}>—</SelectItem>
+                {(users.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
 
         {!initial && f.scope === "person" && (
           <SeatPicker
@@ -492,14 +515,15 @@ function SubscriptionModal({
           />
         )}
 
-        <div className="field"><label>Notes</label><textarea rows={2} value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} /></div>
+        <Field><FieldLabel htmlFor="subscription-notes">Notes</FieldLabel><Textarea id="subscription-notes" rows={2} value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} /></Field>
 
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : initial ? "Save changes" : "Create"}
-          </button>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : initial ? "Save changes" : "Create"}
+          </Button>
         </div>
+        </FieldGroup>
       </form>
     </Modal>
   );
@@ -522,19 +546,21 @@ function SeatPicker({
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
   }
   return (
-    <div className="field">
-      <label>Assign people ({selected.length})</label>
-      <input placeholder="Search staff…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
+    <Field>
+      <FieldLabel htmlFor="seat-search">Assign people ({selected.length})</FieldLabel>
+      <Input id="seat-search" placeholder="Search staff…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="mt-2 max-h-44 overflow-auto border border-border">
         {filtered.slice(0, 60).map((u) => (
-          <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-slate-50">
-            <input type="checkbox" className="!w-auto" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} />
+          <Field key={u.id} orientation="horizontal" className="px-2 py-1.5 hover:bg-muted">
+            <Checkbox id={`seat-${u.id}`} checked={selected.includes(u.id)} onCheckedChange={() => toggle(u.id)} />
+            <FieldLabel htmlFor={`seat-${u.id}`}>
             <span>{u.display_name ?? u.email}</span>
-            {u.job_title && <span className="muted text-xs">· {u.job_title}</span>}
-          </label>
+            {u.job_title && <span className="text-xs text-muted-foreground">· {u.job_title}</span>}
+            </FieldLabel>
+          </Field>
         ))}
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -552,6 +578,7 @@ function SubscriptionDetail({
   const users = useFetch<User[]>("/api/users");
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const data = sub.data;
 
@@ -567,7 +594,7 @@ function SubscriptionDetail({
     onChanged();
   }
   async function remove() {
-    if (!data || !confirm(`Delete subscription “${data.name}”?`)) return;
+    if (!data) return;
     await api(`/api/subscriptions/${id}`, { method: "DELETE" });
     notify("Subscription deleted.");
     onChanged();
@@ -591,36 +618,36 @@ function SubscriptionDetail({
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`badge ${STATUS_BADGE[data.status] ?? ""}`}>{data.status}</span>
-            <span className="badge">{data.scope}</span>
-            {data.vendor && <span className="badge">{data.vendor}</span>}
-            <span className="muted text-sm">
+            <Badge variant={STATUS_BADGE[data.status] ?? "secondary"}>{data.status}</Badge>
+            <Badge variant="secondary">{data.scope}</Badge>
+            {data.vendor && <Badge variant="secondary">{data.vendor}</Badge>}
+            <span className="text-sm text-muted-foreground">
               {money(data.monthly_cost, data.currency)}/mo
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-sm">
-            {data.plan && <Field label="Plan" value={data.plan} />}
-            <Field label="Billing" value={`${money(data.cost, data.currency)}${CYCLE_LABEL[data.billing_cycle] ?? ""}${data.cost_type === "per_seat" ? " / seat" : ""}`} />
-            {data.start_date && <Field label="Start" value={data.start_date} />}
-            {data.end_date && <Field label="End / renewal" value={data.end_date} />}
-            {data.owner_name && <Field label="Owner" value={data.owner_name} />}
-            {data.department_name && <Field label="Department" value={data.department_name} />}
+            {data.plan && <DetailField label="Plan" value={data.plan} />}
+            <DetailField label="Billing" value={`${money(data.cost, data.currency)}${CYCLE_LABEL[data.billing_cycle] ?? ""}${data.cost_type === "per_seat" ? " / seat" : ""}`} />
+            {data.start_date && <DetailField label="Start" value={data.start_date} />}
+            {data.end_date && <DetailField label="End / renewal" value={data.end_date} />}
+            {data.owner_name && <DetailField label="Owner" value={data.owner_name} />}
+            {data.department_name && <DetailField label="Department" value={data.department_name} />}
           </div>
           {data.url && (
-            <a href={data.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-brand-600">
+            <Button render={<a href={data.url} target="_blank" rel="noreferrer" />} variant="link" className="mt-2 px-0">
               Open login ↗
-            </a>
+            </Button>
           )}
-          {data.notes && <p className="muted mt-2 text-sm">{data.notes}</p>}
+          {data.notes && <p className="mt-2 text-sm text-muted-foreground">{data.notes}</p>}
 
           {data.scope === "person" && (
             <div className="mt-4">
-              <div className="spread mb-1">
-                <h4 className="m-0">Seats ({data.active_seats} active)</h4>
-                <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <h4>Seats ({data.active_seats} active)</h4>
+                <Button type="button" variant="outline" size="sm" onClick={() => setAdding((v) => !v)}>
                   {adding ? "Done" : "+ Add people"}
-                </button>
+                </Button>
               </div>
               {adding && (
                 <AddSeats
@@ -633,24 +660,24 @@ function SubscriptionDetail({
                   }}
                 />
               )}
-              <div className="mt-2 divide-y divide-slate-100">
-                {data.seats.length === 0 && <p className="muted text-sm">No one assigned yet.</p>}
+              <div className="mt-2 divide-y divide-border">
+                {data.seats.length === 0 && <p className="text-sm text-muted-foreground">No one assigned yet.</p>}
                 {data.seats.map((seat) => (
                   <div key={seat.id} className="flex items-center justify-between py-1.5 text-sm">
                     <div>
                       {seat.user_name}
-                      {seat.user_title && <span className="muted text-xs"> · {seat.user_title}</span>}
-                      {seat.status === "revoked" && <span className="badge red ml-2">revoked</span>}
+                      {seat.user_title && <span className="text-xs text-muted-foreground"> · {seat.user_title}</span>}
+                      {seat.status === "revoked" && <Badge variant="destructive" className="ml-2">revoked</Badge>}
                     </div>
                     <div className="flex gap-1">
                       {seat.status === "active" && (
-                        <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => revokeSeat(seat.id)}>
-                          <UserMinus size={13} /> Revoke
-                        </button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => revokeSeat(seat.id)}>
+                          <UserMinus data-icon="inline-start" /> Revoke
+                        </Button>
                       )}
-                      <button className="btn-sm btn-danger inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => removeSeat(seat.id)}>
-                        <Trash2 size={13} />
-                      </button>
+                      <Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => removeSeat(seat.id)}>
+                        <Trash2 />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -658,11 +685,21 @@ function SubscriptionDetail({
             </div>
           )}
 
-          <div className="row mt-4" style={{ justifyContent: "space-between" }}>
-            <button className="btn btn-danger" style={{ flex: "0 0 auto" }} onClick={remove}>Delete</button>
-            <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setEditing(true)}>Edit</button>
+          <div className="mt-4 flex justify-between gap-2">
+            <Button type="button" variant="destructive" onClick={() => setDeleting(true)}>Delete</Button>
+            <Button type="button" onClick={() => setEditing(true)}>Edit</Button>
           </div>
         </>
+      )}
+      {deleting && data && (
+        <ConfirmDialog
+          title="Delete subscription"
+          message={`Delete subscription “${data.name}”?`}
+          confirmLabel="Delete subscription"
+          danger
+          onConfirm={remove}
+          onClose={() => setDeleting(false)}
+        />
       )}
     </Modal>
   );
@@ -671,28 +708,27 @@ function SubscriptionDetail({
 function AddSeats({ users, existing, onAdd }: { users: User[]; existing: string[]; onAdd: (ids: string[]) => void }) {
   const [sel, setSel] = useState<string[]>([]);
   return (
-    <div className="rounded-lg border border-slate-200 p-2">
+    <div className="border border-border p-2">
       <SeatPicker
         users={users.filter((u) => !existing.includes(u.id))}
         selected={sel}
         onChange={setSel}
       />
-      <button
-        className="btn-primary mt-1"
-        style={{ flex: "0 0 auto" }}
+      <Button type="button"
+        className="mt-1"
         disabled={!sel.length}
         onClick={() => { onAdd(sel); setSel([]); }}
       >
         Add {sel.length || ""}
-      </button>
+      </Button>
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="muted text-xs">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div>{value}</div>
     </div>
   );

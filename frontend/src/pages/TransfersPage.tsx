@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import type { SecureTransfer, SecureTransferCreated } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ListSkeleton,
   Modal,
@@ -11,37 +11,43 @@ import {
   bytes,
   useToast,
 } from "../components/ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Clock3, Flame, KeyRound, LockKeyhole, Mail, Paperclip, Upload } from "lucide-react";
 
 function statusBadge(t: SecureTransfer) {
   if (t.is_consumed)
-    return <span className="badge">{t.one_time ? "downloaded" : "revoked"}</span>;
+    return <Badge variant="secondary">{t.one_time ? "downloaded" : "revoked"}</Badge>;
   if (t.expires_at && new Date(t.expires_at) < new Date())
-    return <span className="badge">expired</span>;
-  return <span className="badge green">active</span>;
+    return <Badge variant="secondary">expired</Badge>;
+  return <Badge variant="success">active</Badge>;
 }
 
 function ShareResult({ url, onClose }: { url: string; onClose: () => void }) {
   const { notify } = useToast();
   return (
     <Modal title="Secure link created" onClose={onClose}>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="text-muted-foreground">
         Share this single-use link with the recipient. For security it's shown
         <strong> only once</strong> — it can't be retrieved later.
       </p>
-      <div className="field">
-        <input readOnly value={url} onFocus={(e) => e.target.select()} />
-      </div>
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button
-          className="btn-primary"
-          style={{ flex: "0 0 auto" }}
+      <Field><Input aria-label="Url" readOnly value={url} onFocus={(e) => e.target.select()} /></Field>
+      <div className="flex justify-end">
+        <Button type="button"
           onClick={() => {
             void navigator.clipboard.writeText(url);
             notify("Link copied.");
           }}
         >
           Copy link
-        </button>
+        </Button>
       </div>
     </Modal>
   );
@@ -59,7 +65,7 @@ export default function TransfersPage() {
     one_time: true,
     expires_in_hours: 72,
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<SecureTransfer | null>(null);
 
@@ -70,7 +76,7 @@ export default function TransfersPage() {
       notify("Choose a file to send.", "error");
       return;
     }
-    setBusy(true);
+    setIsSubmitting(true);
     const fd = new FormData();
     fd.append("file", file);
     fd.append("recipient_email", form.recipient_email);
@@ -92,7 +98,7 @@ export default function TransfersPage() {
     } catch (err) {
       notify(err instanceof Error ? err.message : "Upload failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -109,173 +115,178 @@ export default function TransfersPage() {
         subtitle="Send a file via an encrypted, single-use link that self-destructs after download."
       />
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <div className="card">
-          <h3 className="mt-0">Send a file securely</h3>
+        <Card>
+          <CardHeader><CardTitle>Send a file securely</CardTitle></CardHeader>
+          <CardContent>
           <form onSubmit={submit}>
-            <div className="field">
-              <label>File *</label>
-              <button
+            <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="transfer-file">File *</FieldLabel>
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => fileRef.current?.click()}
-                className={`flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-                  fileName
-                    ? "border-brand-300 bg-brand-50"
-                    : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50"
-                }`}
+                className="h-auto w-full flex-col gap-1 border-dashed p-6 text-center"
               >
-                <span className="text-2xl">{fileName ? "📎" : "⬆️"}</span>
-                <span className="font-semibold text-ink">
+                {fileName ? <Paperclip data-icon="inline-start" aria-hidden="true" /> : <Upload data-icon="inline-start" aria-hidden="true" />}
+                <span className="font-semibold">
                   {fileName || "Click to choose a file"}
                 </span>
-                <span className="text-xs text-ink-muted">
+                <span className="text-xs text-muted-foreground">
                   Encrypted on upload · up to 100&nbsp;MB
                 </span>
-              </button>
-              <input
+              </Button>
+              <Input id="transfer-file"
                 ref={fileRef}
                 type="file"
                 hidden
                 onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
               />
-            </div>
-            <div className="field">
-              <label>Recipient email *</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="transfer-email">Recipient email *</FieldLabel>
+              <Input id="transfer-email"
                 required
                 type="email"
                 value={form.recipient_email}
                 onChange={(e) => setForm({ ...form, recipient_email: e.target.value })}
               />
-            </div>
-            <div className="field">
-              <label>Message (optional)</label>
-              <textarea
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="transfer-message">Message (optional)</FieldLabel>
+              <Textarea id="transfer-message"
                 rows={2}
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
               />
-            </div>
-            <div className="row">
-              <div className="field">
-                <label>Password (optional)</label>
-                <input
+            </Field>
+            <FieldGroup className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="transfer-password">Password (optional)</FieldLabel>
+                <Input id="transfer-password"
                   type="text"
                   placeholder="extra protection"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
-              </div>
-              <div className="field">
-                <label>Expires in</label>
-                <select
-                  value={form.expires_in_hours}
-                  onChange={(e) =>
-                    setForm({ ...form, expires_in_hours: Number(e.target.value) })
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="transfer-expiry">Expires in</FieldLabel>
+                <Select
+                  items={[
+                    { value: "1", label: "1 hour" },
+                    { value: "24", label: "24 hours" },
+                    { value: "72", label: "3 days" },
+                    { value: "168", label: "7 days" },
+                    { value: "0", label: "No expiry" },
+                  ]}
+                  value={String(form.expires_in_hours)}
+                  onValueChange={(value) =>
+                    setForm({ ...form, expires_in_hours: Number(value ?? "0") })
                   }
                 >
-                  <option value={1}>1 hour</option>
-                  <option value={24}>24 hours</option>
-                  <option value={72}>3 days</option>
-                  <option value={168}>7 days</option>
-                  <option value={0}>No expiry</option>
-                </select>
-              </div>
-            </div>
-            <div className="field">
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  style={{ width: "auto" }}
+                  <SelectTrigger id="transfer-expiry" aria-label="Expires in" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup>
+                    <SelectItem value="1">1 hour</SelectItem>
+                    <SelectItem value="24">24 hours</SelectItem>
+                    <SelectItem value="72">3 days</SelectItem>
+                    <SelectItem value="168">7 days</SelectItem>
+                    <SelectItem value="0">No expiry</SelectItem>
+                  </SelectGroup></SelectContent>
+                </Select>
+              </Field>
+            </FieldGroup>
+            <Field orientation="horizontal">
+                <Checkbox
+                  id="transfer-one-time"
                   checked={form.one_time}
-                  onChange={(e) => setForm({ ...form, one_time: e.target.checked })}
+                  onCheckedChange={(checked) => setForm({ ...form, one_time: checked === true })}
                 />
-                Delete file after first download (burn-after-read)
-              </label>
-            </div>
-            <button className="btn-primary" disabled={busy}>
-              {busy ? "Encrypting…" : "Create secure link"}
-            </button>
+                <FieldLabel htmlFor="transfer-one-time">Delete file after first download (burn-after-read)</FieldLabel>
+            </Field>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Encrypting…" : "Create secure link"}
+            </Button>
+            </FieldGroup>
           </form>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="card bg-gradient-to-br from-slate-50 to-white">
-          <h3 className="mt-0">How it works</h3>
-          <ul className="space-y-3">
+        <Card>
+          <CardHeader><CardTitle>How it works</CardTitle></CardHeader>
+          <CardContent><ul className="flex flex-col gap-3">
             {[
-              ["🔐", <>Your file is <strong>encrypted</strong> the moment it's uploaded.</>],
-              ["🔑", <>The decryption key lives only in the share link — never in our database.</>],
-              ["✉️", <>We email the link to the recipient (or you copy &amp; send it).</>],
-              ["🔥", <>On download it's decrypted and, by default, <strong>permanently deleted</strong>.</>],
-              ["⏱", <>Links also self-expire after the window you choose.</>],
-            ].map(([icon, text], i) => (
-              <li key={i} className="flex gap-3">
-                <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white shadow-card">
-                  {icon}
+              { icon: LockKeyhole, text: <>Your file is <strong>encrypted</strong> the moment it's uploaded.</> },
+              { icon: KeyRound, text: <>The decryption key lives only in the share link — never in our database.</> },
+              { icon: Mail, text: <>We email the link to the recipient (or you copy &amp; send it).</> },
+              { icon: Flame, text: <>On download it's decrypted and, by default, <strong>permanently deleted</strong>.</> },
+              { icon: Clock3, text: <>Links also self-expire after the window you choose.</> },
+            ].map(({ icon: StepIcon, text }) => (
+              <li key={StepIcon.displayName} className="flex gap-3">
+                <span className="grid size-8 flex-none place-items-center bg-muted">
+                  <StepIcon aria-hidden="true" />
                 </span>
-                <span className="pt-1 text-sm text-ink-muted">{text}</span>
+                <span className="pt-1 text-sm text-muted-foreground">{text}</span>
               </li>
             ))}
-          </ul>
-        </div>
+          </ul></CardContent>
+        </Card>
       </div>
 
       <h3 className="mt-6">Sent files</h3>
       {loading ? (
         <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty icon="🔒" message="No secure transfers yet" hint="Send an encrypted, single-use file using the form above." />
+        <Empty icon={<LockKeyhole />} message="No secure transfers yet" hint="Send an encrypted, single-use file using the form above." />
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>File</th>
-                <th>Recipient</th>
-                <th>Protection</th>
-                <th>Downloads</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="py-0"><CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow>
+                <TableHead>File</TableHead>
+                <TableHead>Recipient</TableHead>
+                <TableHead>Protection</TableHead>
+                <TableHead className="text-right">Downloads</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
               {data.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    {t.filename}
-                    <div className="muted" style={{ fontWeight: 400 }}>
+                <TableRow key={t.id}>
+                  <TableCell className="max-w-[28rem] whitespace-normal">
+                    <span className="block truncate font-semibold" title={t.filename}>{t.filename}</span>
+                    <div className="font-normal text-muted-foreground">
                       {bytes(t.size_bytes)}
                     </div>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {t.recipient_email}
-                    {t.email_sent && <span className="badge blue" style={{ marginLeft: 6 }}>emailed</span>}
-                  </td>
-                  <td>
-                    {t.has_password && <span className="badge">password</span>}{" "}
-                    {t.one_time && <span className="badge">one-time</span>}
-                  </td>
-                  <td>{t.download_count}</td>
-                  <td>{statusBadge(t)}</td>
-                  <td>
+                    {t.email_sent && <Badge variant="info" className="ml-2">emailed</Badge>}
+                  </TableCell>
+                  <TableCell>
+                    {t.has_password && <Badge variant="secondary">password</Badge>}{" "}
+                    {t.one_time && <Badge variant="secondary">one-time</Badge>}
+                  </TableCell>
+                   <TableCell className="text-right tabular-nums">{t.download_count}</TableCell>
+                  <TableCell>{statusBadge(t)}</TableCell>
+                  <TableCell>
                     {!t.is_consumed && (
-                      <button
-                        className="btn-sm btn-danger"
+                      <Button type="button" variant="destructive" size="sm"
                         onClick={() => setRevoking(t)}
                       >
                         Revoke
-                      </button>
+                      </Button>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </CardContent></Card>
       )}
 
       {shareUrl && <ShareResult url={shareUrl} onClose={() => setShareUrl(null)} />}
       {revoking && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Revoke transfer"
           message={`Revoke and permanently delete the file sent to ${revoking.recipient_email}? The share link will stop working immediately.`}
           confirmLabel="Revoke & delete"

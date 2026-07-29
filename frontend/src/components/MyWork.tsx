@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   CheckSquare,
+  PartyPopper,
   LifeBuoy,
   Stamp,
   UserCheck,
@@ -10,7 +11,16 @@ import { api } from "../api/client";
 import type { WorkSummary } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { useToast } from "./ui";
+import { MetricCard, useToast } from "./ui";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 /** Personal "what needs me today" panel shown at the top of the dashboard. */
 export default function MyWork() {
@@ -34,10 +44,11 @@ export default function MyWork() {
     data.onboarding_open === 0;
 
   return (
-    <div className="mb-5">
-      <h3 className="mb-3">My work</h3>
+    <div className="flex flex-col gap-4">
+      <h3 className="m-0">My work</h3>
 
-      <div className="grid cols-4 mb-4">
+      {/* Exactly 4 cards → exactly 4 columns (not auto-fill, which invents empty tracks). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {can("tasks") && (
           <StatCard
             to="/tasks"
@@ -78,11 +89,13 @@ export default function MyWork() {
       </div>
 
       {nothing ? (
-        <div className="card text-center text-ink-muted">
-          You're all caught up — nothing needs you right now. 🎉
-        </div>
+        <Card size="sm">
+          <CardContent className="flex items-center justify-center gap-2 text-center text-muted-foreground">
+            <PartyPopper aria-hidden="true" /> You're all caught up — nothing needs you right now.
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {can("tasks") && data.my_tasks.length > 0 && (
             <Panel title="My tasks" to="/tasks">
               {data.my_tasks.slice(0, 5).map((t) => (
@@ -110,29 +123,30 @@ export default function MyWork() {
             </Panel>
           )}
           {data.my_onboarding_tasks.length > 0 && (
-            <div className="card">
-              <div className="spread mb-2">
-                <h4 className="m-0 inline-flex items-center gap-1.5">
-                  <UserCheck size={15} /> My onboarding actions
-                </h4>
-              </div>
-              <div className="flex flex-col">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserCheck /> My onboarding actions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col">
                 {data.my_onboarding_tasks.slice(0, 6).map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2 last:border-0"
+                    className="flex items-center justify-between gap-2 border-b py-2 last:border-0"
                   >
                     <span className="truncate text-sm font-medium">{t.title}</span>
-                    <button
-                      className="btn-sm btn-primary inline-flex flex-none items-center gap-1"
+                    <Button
+                      type="button"
+                      size="sm"
                       onClick={() => completeOnboarding(t.id)}
                     >
-                      <CheckSquare size={13} /> Done
-                    </button>
+                      <CheckSquare data-icon="inline-start" /> Done
+                    </Button>
                   </div>
                 ))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -156,45 +170,45 @@ function StatCard({
   danger?: boolean;
 }) {
   return (
-    <Link to={to} className="card stat">
-      <div className="flex items-center gap-2">
-        <span
-          className="grid h-8 w-8 place-items-center rounded-lg"
-          style={{
-            background: danger && value > 0 ? "color-mix(in srgb, var(--danger) 15%, var(--surface))" : "var(--brand-50)",
-            color: danger && value > 0 ? "var(--danger)" : "var(--brand-600)",
-          }}
-        >
-          {icon}
-        </span>
-        <div className="value" style={{ fontSize: 26 }}>{value}</div>
-      </div>
-      <div className="label">{label}</div>
-      {sub && <div className="muted text-xs">{sub}</div>}
+    <Link
+      to={to}
+      aria-label={label}
+      title={label}
+      className="block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <MetricCard
+        value={value}
+        label={label}
+        sub={sub}
+        icon={icon}
+        tone={danger && value > 0 ? "destructive" : "default"}
+      />
     </Link>
   );
 }
 
 function Panel({ title, to, children }: { title: string; to: string; children: React.ReactNode }) {
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h4 className="m-0">{title}</h4>
-        <Link to={to} className="text-xs font-medium text-brand-600">
-          View all ›
-        </Link>
-      </div>
-      <div className="flex flex-col">{children}</div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardAction>
+          <Link to={to} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "hover:no-underline")}>
+            View all ›
+          </Link>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col">{children}</CardContent>
+    </Card>
   );
 }
 
 function Row({ label, meta, warn }: { label: string; meta?: string; warn?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2 last:border-0">
+    <div className="flex items-center justify-between gap-2 border-b py-2 last:border-0">
       <span className="truncate text-sm font-medium">{label}</span>
       {meta && (
-        <span className={`flex-none text-xs ${warn ? "text-red-600" : "text-ink-muted"}`}>
+        <span className={`flex-none text-xs ${warn ? "text-destructive" : "text-muted-foreground"}`}>
           {meta}
         </span>
       )}

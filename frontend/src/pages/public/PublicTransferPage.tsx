@@ -1,5 +1,11 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { CircleCheck, Clock3, Download, Flame, LockKeyhole, ShieldCheck } from "lucide-react";
 import { api, API_BASE_URL } from "../../api/client";
 import type { TransferMeta } from "../../api/types";
 
@@ -14,7 +20,7 @@ export default function PublicTransferPage() {
   const [meta, setMeta] = useState<TransferMeta | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
@@ -25,7 +31,7 @@ export default function PublicTransferPage() {
   }, [token]);
 
   async function download() {
-    setBusy(true);
+    setIsSubmitting(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/api/public/transfers/${token}/download`, {
@@ -54,124 +60,102 @@ export default function PublicTransferPage() {
     } catch {
       setError("Network error. Please try again.");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
-  const card = (children: React.ReactNode) => (
-    <div className="center-screen" style={{ background: "#0c1a2b" }}>
-      <div className="login-card" style={{ maxWidth: 440 }}>
-        {children}
-      </div>
-    </div>
+  const card = (title: React.ReactNode, children: React.ReactNode) => (
+    <main className="grid min-h-dvh place-items-center bg-muted p-5">
+      <Card className="w-full max-w-md">
+        <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-4">{children}</CardContent>
+      </Card>
+    </main>
   );
 
   if (notFound)
     return card(
-      <>
-        <h2>Link not found</h2>
-        <p className="muted">This secure transfer doesn't exist.</p>
-      </>,
+      "Link not found",
+      <p className="text-muted-foreground">This secure transfer doesn't exist.</p>,
     );
-  if (!meta) return card(<p className="muted">Loading…</p>);
+  if (!meta) return card("Secure transfer", <p className="text-muted-foreground">Loading…</p>);
 
   if (meta.status === "consumed")
     return card(
-      <>
-        <h2>🔥 File no longer available</h2>
-        <p className="muted">
-          This file has already been downloaded or was revoked by the sender.
-          Secure links are single-use.
-        </p>
-      </>,
+      <span className="flex items-center gap-2"><Flame aria-hidden="true" /> File no longer available</span>,
+      <p className="text-muted-foreground">
+        This file has already been downloaded or was revoked by the sender.
+        Secure links are single-use.
+      </p>,
     );
   if (meta.status === "expired")
     return card(
-      <>
-        <h2>⏰ Link expired</h2>
-        <p className="muted">
-          This secure link has expired and the file has been deleted.
-        </p>
-      </>,
+      <span className="flex items-center gap-2"><Clock3 aria-hidden="true" /> Link expired</span>,
+      <p className="text-muted-foreground">
+        This secure link has expired and the file has been deleted.
+      </p>,
     );
 
   if (done)
     return card(
-      <>
-        <h2>✅ Download started</h2>
-        <p className="muted">
-          {meta.filename} is downloading. This link has now been consumed and the
-          file deleted from our servers.
-        </p>
-      </>,
+      <span className="flex items-center gap-2"><CircleCheck aria-hidden="true" /> Download started</span>,
+      <p className="text-muted-foreground">
+        {meta.filename} is downloading. This link has now been consumed and the
+        file deleted from our servers.
+      </p>,
     );
 
   return card(
+    "A file was shared with you",
     <>
       <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 14,
-          background: "var(--brand)",
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
-          fontSize: 26,
-          marginBottom: 14,
-        }}
+        className="grid size-14 place-items-center bg-primary text-2xl text-primary-foreground"
       >
-        🔒
+        <ShieldCheck aria-hidden="true" />
       </div>
-      <h2 style={{ margin: "0 0 4px" }}>A file was shared with you</h2>
       {meta.sender_name && (
-        <p className="muted" style={{ marginTop: 0 }}>from {meta.sender_name}</p>
+        <p className="text-muted-foreground">from {meta.sender_name}</p>
       )}
       {meta.message && (
-        <div
-          className="card"
-          style={{ background: "#f8fafc", padding: 12, marginBottom: 14 }}
-        >
-          {meta.message}
-        </div>
+        <Alert><AlertDescription className="text-foreground">{meta.message}</AlertDescription></Alert>
       )}
-      <div className="spread" style={{ marginBottom: 16 }}>
+      <div className="flex items-center justify-between gap-2">
         <strong>{meta.filename}</strong>
-        <span className="muted">{fmtBytes(meta.size_bytes)}</span>
+        <span className="text-muted-foreground">{fmtBytes(meta.size_bytes)}</span>
       </div>
 
-      {meta.requires_password && (
-        <div className="field">
-          <label>This file is password protected</label>
-          <input
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-      )}
-
-      {error && (
-        <div
-          className="card"
-          style={{ borderColor: "#fecaca", color: "#b91c1c", marginBottom: 12 }}
-        >
-          {error}
-        </div>
-      )}
-
-      <button
-        className="btn-primary"
-        style={{ width: "100%", padding: 12 }}
-        disabled={busy}
-        onClick={download}
+      <form
+        className="flex flex-col gap-4"
+        aria-busy={isSubmitting || undefined}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void download();
+        }}
       >
-        {busy ? "Decrypting…" : "Download file"}
-      </button>
-      <p className="muted" style={{ fontSize: 12, marginTop: 12, textAlign: "center" }}>
-        🔥 This is a single-use link — the file is deleted after you download it.
-      </p>
+        {meta.requires_password && (
+          <Field>
+            <FieldLabel htmlFor="transfer-password" className="flex items-center gap-2"><LockKeyhole aria-hidden="true" /> This file is password protected</FieldLabel>
+            <Input id="transfer-password" aria-label="Enter password"
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
+        )}
+
+        {error && (
+          <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+        )}
+
+        <Button aria-label="Download" type="submit" className="w-full" disabled={isSubmitting}>
+          {!isSubmitting && <Download data-icon="inline-start" />}
+          {isSubmitting ? "Decrypting…" : "Download file"}
+        </Button>
+        <FieldDescription className="text-center">
+          <Flame aria-hidden="true" /> This is a single-use link — the file is deleted after you download it.
+        </FieldDescription>
+      </form>
     </>,
   );
 }

@@ -1,3 +1,9 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import {
   Check,
@@ -55,35 +61,38 @@ export default function ShareControl({
     <span className="inline-flex items-center gap-1.5">
       {isPublic ? (
         <>
-          <span
-            className="badge green inline-flex items-center gap-1"
+          <Badge
+            variant="success"
             title="Publicly accessible"
           >
-            <Globe size={12} /> Public
-          </span>
-          <button
-            className="btn-sm inline-flex items-center gap-1.5"
+            <Globe data-icon="inline-start" /> Public
+          </Badge>
+          <Button type="button"
+            size="sm"
+            variant="outline"
             onClick={copy}
             title={shareUrl}
           >
-            {copied ? <Check size={14} /> : <Copy size={14} />} Copy
-          </button>
-          <button
-            className="btn-sm inline-flex items-center gap-1.5"
+            {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />} Copy
+          </Button>
+          <Button type="button"
+            size="sm"
+            variant="outline"
             onClick={() => setOpen(true)}
             title="Sharing options"
           >
-            <Settings2 size={14} /> Manage
-          </button>
+            <Settings2 data-icon="inline-start" /> Manage
+          </Button>
         </>
       ) : (
-        <button
-          className="btn-sm inline-flex items-center gap-1.5"
+        <Button type="button"
+          size="sm"
+          variant="outline"
           onClick={() => setOpen(true)}
           title="Make public and create a short link"
         >
-          <Share2 size={14} /> Share
-        </button>
+          <Share2 data-icon="inline-start" /> Share
+        </Button>
       )}
 
       {open && (
@@ -136,14 +145,14 @@ function ShareModal({
   const [passcode, setPasscode] = useState("");
   const [removePasscode, setRemovePasscode] = useState(false);
   const [lead, setLead] = useState(requireLead);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const qrSrc = shareUrl
     ? apiUrl(`/api/public/qr.png?data=${encodeURIComponent(shareUrl)}`)
     : "";
 
   async function save() {
-    setBusy(true);
+    setIsSubmitting(true);
     const settings: ShareSettings = {
       expires_in_days: days,
       require_lead: lead,
@@ -165,12 +174,12 @@ function ShareModal({
     } catch (e) {
       notify(e instanceof Error ? e.message : "Could not share", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
   async function makePrivate() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const info = await api<ShareInfo>(`${base}/unshare`, { method: "POST" });
       onChange(info);
@@ -179,67 +188,74 @@ function ShareModal({
     } catch (e) {
       notify(e instanceof Error ? e.message : "Could not update", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={`Share “${name}”`} onClose={onClose} maxWidth={460}>
       {isPublic && shareUrl && (
-        <div className="mb-4 flex items-center gap-4 rounded-xl border border-border bg-slate-50 p-3">
+        <div className="mb-4 flex flex-col items-start gap-4 border border-border bg-muted p-3 sm:flex-row sm:items-center">
           <img
             src={qrSrc}
             alt="QR code"
             width={96}
             height={96}
-            className="flex-none rounded-lg bg-white p-1"
+            className="flex-none bg-card p-1"
           />
           <div className="min-w-0">
-            <div className="muted mb-1 text-xs uppercase tracking-wide">
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
               Public link
             </div>
             <code className="block truncate text-sm font-medium">{shareUrl}</code>
             <div className="mt-2 flex gap-2">
-              <button
-                className="btn-sm"
+              <Button type="button"
+                size="sm"
+                variant="outline"
                 onClick={() => {
                   navigator.clipboard?.writeText(shareUrl);
                   notify("Link copied.");
                 }}
               >
                 Copy link
-              </button>
-              <a className="btn-sm" href={shareUrl} target="_blank" rel="noreferrer">
+              </Button>
+              <Button size="sm" variant="outline" render={<a href={shareUrl} target="_blank" rel="noreferrer" />}>
                 Open
-              </a>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="field">
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-          <Clock size={14} /> Expiry
-        </label>
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-          {EXPIRY_OPTIONS.map((o) => (
-            <option key={o.days} value={o.days}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+      <FieldGroup>
+      <Field>
+        <FieldLabel htmlFor="share-expiry">
+          <Clock /> Expiry
+        </FieldLabel>
+        <Select items={EXPIRY_OPTIONS.map((o) => ({ value: o.days, label: o.label }))} value={days} onValueChange={(value) => value !== null && setDays(value)}>
+          <SelectTrigger id="share-expiry" className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {EXPIRY_OPTIONS.map((o) => (
+                <SelectItem key={o.days} value={o.days}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         {expiresAt && (
-          <p className="muted mt-1 text-xs">
+          <FieldDescription>
             Currently expires {new Date(expiresAt).toLocaleDateString()}
-          </p>
+          </FieldDescription>
         )}
-      </div>
+      </Field>
 
-      <div className="field">
-        <label className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-          <KeyRound size={14} /> Passcode {hasPasscode && "(set)"}
-        </label>
-        <input
+      <Field>
+        <FieldLabel htmlFor="share-passcode">
+          <KeyRound /> Passcode {hasPasscode && "(set)"}
+        </FieldLabel>
+        <Input id="share-passcode"
           type="text"
           value={passcode}
           disabled={removePasscode}
@@ -247,45 +263,45 @@ function ShareModal({
           onChange={(e) => setPasscode(e.target.value)}
         />
         {hasPasscode && (
-          <label className="muted mt-1 flex items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
+          <Field orientation="horizontal">
+            <Checkbox
+              id="share-remove-passcode"
               checked={removePasscode}
-              onChange={(e) => setRemovePasscode(e.target.checked)}
+              onCheckedChange={(checked) => setRemovePasscode(Boolean(checked))}
             />
-            Remove passcode
-          </label>
+            <FieldLabel htmlFor="share-remove-passcode">Remove passcode</FieldLabel>
+          </Field>
         )}
-      </div>
+      </Field>
 
-      <label className="field flex items-center gap-2 text-sm font-medium">
-        <input
-          type="checkbox"
+      <Field orientation="horizontal">
+        <Checkbox
+          id="share-capture-lead"
           checked={lead}
-          onChange={(e) => setLead(e.target.checked)}
+          onCheckedChange={(checked) => setLead(Boolean(checked))}
         />
-        <UserPlus size={14} /> Capture a lead before download
-      </label>
+        <FieldLabel htmlFor="share-capture-lead"><UserPlus /> Capture a lead before download</FieldLabel>
+      </Field>
+      </FieldGroup>
 
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4 flex flex-col-reverse items-stretch justify-between gap-2 sm:flex-row sm:items-center">
         {isPublic ? (
-          <button
-            className="btn-danger inline-flex items-center gap-1.5"
+          <Button type="button"
+            variant="destructive"
             onClick={makePrivate}
-            disabled={busy}
+            disabled={isSubmitting}
           >
-            <Lock size={14} /> Make private
-          </button>
+            <Lock data-icon="inline-start" /> Make private
+          </Button>
         ) : (
           <span />
         )}
-        <button
-          className="btn-primary inline-flex items-center gap-1.5"
+        <Button aria-label="Save" type="button"
           onClick={save}
-          disabled={busy}
+          disabled={isSubmitting}
         >
-          <Share2 size={14} /> {isPublic ? "Save changes" : "Create public link"}
-        </button>
+          <Share2 data-icon="inline-start" /> {isPublic ? "Save changes" : "Create public link"}
+        </Button>
       </div>
     </Modal>
   );

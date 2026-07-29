@@ -1,0 +1,39 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "supplyChain": {
+    "enabled": true,
+    "minScore": 30,
+    "severity": "error",
+    "includeDevDependencies": true
+  },
+  "ignore": {
+    "rules": [
+      "react-doctor/js-combine-iterations",
+      "react-doctor/js-flatmap-filter",
+      "react-doctor/js-hoist-intl",
+      "react-doctor/js-set-map-lookups",
+      "react-doctor/no-giant-component",
+      "react-doctor/no-inline-exhaustive-style",
+      "react-doctor/no-nested-component-definition",
+      "react-doctor/no-unstable-nested-components",
+      "react-doctor/only-export-components",
+      "react-doctor/prefer-module-scope-pure-function",
+      "react-doctor/prefer-module-scope-static-value",
+      "react-doctor/prefer-useReducer",
+      "react-doctor/rerender-state-only-in-handlers"
+    ],
+    "overrides": [
+      {
+        "files": ["src/components/FlipbookModal.tsx"],
+        "rules": [
+          "react-doctor/async-await-in-loop",
+          "react-doctor/no-set-state-after-await-in-effect"
+        ]
+      },
+      {
+        "files": ["src/components/ui.tsx"],
+        "rules": ["react-doctor/prefer-html-dialog"]
+      }
+    ]
+  }
+}

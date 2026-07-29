@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
-import { Database, Trash2 } from "lucide-react";
+import { Database, FlaskConical, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmModal, useToast } from "./ui";
+import { ConfirmDialog, useToast } from "./ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface DemoStatus {
   seeded: boolean;
@@ -18,27 +28,38 @@ interface DemoStatus {
 export default function DemoDataCard({ variant = "banner" }: { variant?: "banner" | "card" }) {
   const { user } = useAuth();
   const { notify } = useToast();
-  const [status, setStatus] = useState<DemoStatus | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [status, setRecordStatus] = useState<DemoStatus | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirm, setConfirm] = useState<"load" | "clear" | null>(null);
 
   async function load() {
     try {
-      setStatus(await api<DemoStatus>("/api/demo/status"));
+      setRecordStatus(await api<DemoStatus>("/api/demo/status"));
     } catch {
-      setStatus(null);
+      setRecordStatus(null);
     }
   }
   useEffect(() => {
-    if (user?.is_admin) void load();
-  }, [user]);
+    if (!user?.is_admin) return;
+    let cancelled = false;
+    void api<DemoStatus>("/api/demo/status")
+      .then((nextStatus) => {
+        if (!cancelled) setRecordStatus(nextStatus);
+      })
+      .catch(() => {
+        if (!cancelled) setRecordStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.is_admin]);
 
   // Hidden outright where seeding is blocked (i.e. production) rather than
   // shown as a disabled control — there is nothing an admin can do with it.
   if (!user?.is_admin || !status || !status.allowed) return null;
 
   async function run(action: "seed" | "clear") {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const r = await api<{ records?: number; removed?: number }>(`/api/demo/${action}`, { method: "POST" });
       notify(action === "seed" ? `Loaded ${r.records} demo records.` : `Removed ${r.removed} demo records.`);
@@ -46,7 +67,7 @@ export default function DemoDataCard({ variant = "banner" }: { variant?: "banner
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
       setConfirm(null);
     }
   }
@@ -59,20 +80,20 @@ export default function DemoDataCard({ variant = "banner" }: { variant?: "banner
 
   const buttons = status.allowed && (
     status.seeded ? (
-      <button className="btn btn-danger inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} disabled={busy} onClick={() => setConfirm("clear")}>
-        <Trash2 size={15} /> Remove demo data
-      </button>
+      <Button type="button" variant="destructive" disabled={isSubmitting} onClick={() => setConfirm("clear")}>
+        <Trash2 data-icon="inline-start" /> Remove demo data
+      </Button>
     ) : (
-      <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} disabled={busy} onClick={() => setConfirm("load")}>
-        <Database size={15} /> Load demo data
-      </button>
+      <Button type="button" disabled={isSubmitting} onClick={() => setConfirm("load")}>
+        <Database data-icon="inline-start" /> Load demo data
+      </Button>
     )
   );
 
   const modals = (
     <>
       {confirm === "load" && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Load demo data?"
           message="This adds sample users, brands, assets, leads, cards, tickets, onboarding journeys and more across every screen so you can see how it looks. It's clearly tagged and can be removed in one click. Don't use this on production."
           confirmLabel="Load sample data"
@@ -81,7 +102,7 @@ export default function DemoDataCard({ variant = "banner" }: { variant?: "banner
         />
       )}
       {confirm === "clear" && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Remove demo data?"
           message="This deletes only the records that were created by the demo loader. Your real data is untouched."
           confirmLabel="Remove"
@@ -93,36 +114,43 @@ export default function DemoDataCard({ variant = "banner" }: { variant?: "banner
     </>
   );
 
+  const statusLabel = !status.allowed
+    ? "Disabled"
+    : status.seeded
+      ? "Loaded"
+      : "Not loaded";
+
   if (variant === "card") {
     return (
-      <div className="card">
-        <div className="spread mb-3">
-          <h3 className="m-0 flex items-center gap-2">
-            <span className="text-xl">🧪</span> Demo / sample data
-          </h3>
-          <span className={`badge ${!status.allowed ? "amber" : status.seeded ? "green" : ""}`}>
-            {!status.allowed ? "Disabled" : status.seeded ? "Loaded" : "Not loaded"}
-          </span>
-        </div>
-        <p className="muted mt-0 text-sm">{detail}</p>
-        {buttons}
-        {modals}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FlaskConical aria-hidden="true" /> Demo / sample data
+          </CardTitle>
+          <CardDescription>{detail}</CardDescription>
+          <CardAction>
+            <Badge variant={!status.allowed ? "warning" : status.seeded ? "success" : "secondary"}>
+              {statusLabel}
+            </Badge>
+          </CardAction>
+        </CardHeader>
+        {(buttons || modals) && <CardContent className="flex flex-wrap gap-2"><p className="sr-only" role="status" aria-live="polite">Demo data status: {statusLabel}. {detail}</p>{buttons}{modals}</CardContent>}
+      </Card>
     );
   }
 
   return (
-    <div
-      className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl px-5 py-3.5"
-      style={{ background: "var(--surface-2)", border: "1px dashed var(--border-strong)" }}
-    >
-      <Database size={18} className="text-brand-600" />
-      <div className="min-w-0 flex-1">
-        <div className="font-semibold">Demo / sample data</div>
-        <div className="muted text-xs">{detail}</div>
-      </div>
-      {buttons}
-      {modals}
-    </div>
+    <Card size="sm" className="border-dashed">
+      <CardHeader className="flex flex-row items-center gap-3">
+        <Database className="size-5 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <CardTitle>Demo / sample data</CardTitle>
+          <CardDescription>{detail}</CardDescription>
+        </div>
+        {buttons && <CardAction className="static self-center">{buttons}</CardAction>}
+      </CardHeader>
+      <CardContent className="sr-only" role="status" aria-live="polite">Demo data status: {statusLabel}. {detail}</CardContent>
+      {modals ? <CardContent className="contents">{modals}</CardContent> : null}
+    </Card>
   );
 }

@@ -51,7 +51,7 @@ export default function PdfThumb({
   if (failed)
     return (
       <span
-        className="grid flex-none place-items-center rounded-lg bg-slate-100 text-ink-muted"
+        className="grid flex-none place-items-center bg-primary/15 text-foreground"
         style={{ width: size, height: size }}
       >
         <FileText size={size * 0.5} />
@@ -61,7 +61,7 @@ export default function PdfThumb({
   return (
     <canvas
       ref={canvasRef}
-      className="flex-none rounded-lg border border-border bg-white object-cover shadow-sm"
+      className="flex-none border border-border bg-card object-cover shadow-sm"
       style={{ width: size, height: size }}
     />
   );

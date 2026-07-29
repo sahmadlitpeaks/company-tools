@@ -1,4 +1,6 @@
+import asyncio
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,18 +16,24 @@ from app.api import (
     assets,
     audit,
     analytics,
+    ai_help,
     companies,
     branding,
+    bookings,
     campaigns,
+    calendar,
+    cafe,
     cards,
     checklists,
     crm,
     demo,
     intake,
+    ideas,
     departments,
     knowledge,
     landing,
     leave,
+    lost_found,
     me as me_api,
     people,
     notifications,
@@ -36,6 +44,7 @@ from app.api import (
     api_tokens,
     approval_workflows,
     benefits,
+    backups,
     engagement,
     expenses,
     payroll,
@@ -44,6 +53,7 @@ from app.api import (
     performance,
     phones,
     profiles,
+    purchases,
     recruiting,
     reports,
     subscriptions,
@@ -59,6 +69,7 @@ from app.api import (
     tracker,
     transfers,
     users,
+    visitors,
     views,
     worklog,
     workspace,
@@ -71,10 +82,45 @@ from app.core.database import get_db
 from app.core.permissions import require_module
 from app.services.storage import ensure_media_root
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Seed defaults and own background jobs for the full application lifetime."""
+    from app.core.database import AsyncSessionLocal
+    from app.services.bootstrap import (
+        ensure_default_admin,
+        ensure_default_departments,
+        ensure_default_leave_types,
+    )
+
+    async with AsyncSessionLocal() as db:
+        # Production starts with only the bootstrap admin; sample departments and
+        # leave types remain development/test conveniences.
+        await ensure_default_admin(db)
+        if settings.ENVIRONMENT != "production":
+            await ensure_default_departments(db)
+            await ensure_default_leave_types(db)
+
+    tasks: list[asyncio.Task] = []
+    if settings.RUN_SCHEDULER:
+        from app.services.scheduler import start_scheduler
+
+        tasks = start_scheduler()
+    app.state.scheduler_tasks = tasks
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="0.1.0",
     description="Internal company platform with Azure SSO.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
@@ -106,32 +152,6 @@ ensure_media_root()
 app.mount(
     settings.MEDIA_URL, StaticFiles(directory=settings.MEDIA_ROOT), name="media"
 )
-
-
-if settings.RUN_SCHEDULER:
-    from app.services.scheduler import start_scheduler
-
-    start_scheduler(app)
-
-
-@app.on_event("startup")
-async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tests
-    from app.core.database import AsyncSessionLocal
-    from app.services.bootstrap import (
-        ensure_default_admin,
-        ensure_default_departments,
-        ensure_default_leave_types,
-    )
-
-    async with AsyncSessionLocal() as db:
-        # A fresh production install starts bare: just the admin, who then builds
-        # departments, leave types and everyone else. The sample departments and
-        # leave types are dev/test convenience only, so they're seeded outside
-        # production (the demo-data seeder is gated the same way).
-        await ensure_default_admin(db)
-        if settings.ENVIRONMENT != "production":
-            await ensure_default_departments(db)
-            await ensure_default_leave_types(db)
 
 
 @app.get("/health", tags=["meta"])
@@ -175,6 +195,7 @@ app.include_router(approval_workflows.router, prefix=api_prefix)
 app.include_router(approval_workflows.steps_router, prefix=api_prefix)
 app.include_router(api_tokens.router, prefix=api_prefix)
 app.include_router(api_tokens.public_router, prefix=api_prefix)
+app.include_router(backups.router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
 app.include_router(recruiting.router, prefix=api_prefix, dependencies=_mod("recruiting"))
@@ -188,7 +209,9 @@ app.include_router(products.public_router, prefix=api_prefix)
 app.include_router(landing.public_router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
 app.include_router(shares.public_router, prefix=api_prefix)
+app.include_router(shares.search_router, prefix=api_prefix)
 app.include_router(intake.public_router, prefix=api_prefix)
+app.include_router(visitors.public_router, prefix=api_prefix)
 
 # Module-gated feature routers (403 unless the user has the permission).
 app.include_router(cards.router, prefix=api_prefix, dependencies=_mod("cards"))
@@ -215,6 +238,7 @@ app.include_router(
 app.include_router(
     checklists.runs_router, prefix=api_prefix, dependencies=_mod("routine_checks")
 )
+app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(leave.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
@@ -223,6 +247,14 @@ app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("a
 app.include_router(people.router, prefix=api_prefix, dependencies=_mod("people_ops"))
 app.include_router(worklog.router, prefix=api_prefix, dependencies=_mod("worklog"))
 app.include_router(workspace.router, prefix=api_prefix, dependencies=_mod("workspace"))
+app.include_router(cafe.router, prefix=api_prefix, dependencies=_mod("cafe"))
+app.include_router(bookings.router, prefix=api_prefix, dependencies=_mod("bookings"))
+app.include_router(visitors.router, prefix=api_prefix, dependencies=_mod("visitors"))
+app.include_router(purchases.router, prefix=api_prefix, dependencies=_mod("purchases"))
+app.include_router(calendar.router, prefix=api_prefix, dependencies=_mod("calendar"))
+app.include_router(ideas.router, prefix=api_prefix, dependencies=_mod("ideas"))
+app.include_router(ai_help.router, prefix=api_prefix, dependencies=_mod("ai_help"))
+app.include_router(lost_found.router, prefix=api_prefix, dependencies=_mod("lost_found"))
 
 
 # ---- Public short-link redirect (feature #8): https://host/s/{code} ----

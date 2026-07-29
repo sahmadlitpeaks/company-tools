@@ -1,10 +1,16 @@
 import { useState } from "react";
+import { QrCode } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   AuthImage,
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ListSkeleton,
   Modal,
@@ -24,10 +30,10 @@ function EditModal({
   const { notify } = useToast();
   const [label, setLabel] = useState(qr.label);
   const [target, setTarget] = useState(qr.target_url);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/qrcodes/${qr.id}`, {
         method: "PATCH",
@@ -38,34 +44,38 @@ function EditModal({
       onClose();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
   return (
     <Modal title="Edit QR code" onClose={onClose}>
       <form onSubmit={save}>
-        <div className="field">
-          <label>Label</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Destination URL</label>
-          <input value={target} onChange={(e) => setTarget(e.target.value)} />
-        </div>
+        <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="qr-edit-label">Label</FieldLabel>
+          <Input id="qr-edit-label" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="qr-edit-target">Destination URL</FieldLabel>
+          <Input id="qr-edit-target" value={target} onChange={(e) => setTarget(e.target.value)} />
+        </Field>
         {qr.dynamic && (
-          <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+          <p className="text-xs text-muted-foreground">
             This is a dynamic code — the printed QR keeps working; only the
             destination changes.
-          </div>
+          </p>
         )}
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : "Save"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save"}
+          </Button>
         </div>
+        </FieldGroup>
       </form>
     </Modal>
   );
@@ -83,6 +93,7 @@ export default function QRCodesPage() {
     back_color: "#ffffff",
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const previewPath =
     form.target_url.length > 3
@@ -93,10 +104,17 @@ export default function QRCodesPage() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    await api("/api/qrcodes", { method: "POST", body: form });
-    notify("QR code saved.");
-    setForm({ ...form, label: "", target_url: "" });
-    reload();
+    setIsSubmitting(true);
+    try {
+      await api("/api/qrcodes", { method: "POST", body: form });
+      notify("QR code saved.");
+      setForm({ ...form, label: "", target_url: "" });
+      reload();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function remove(id: string) {
@@ -110,111 +128,115 @@ export default function QRCodesPage() {
         title="QR Codes"
         subtitle="Generate QR codes for products, links and print collateral."
       />
-      <div className="grid cols-2">
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>Create a QR code</h3>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Create a QR code</CardTitle></CardHeader>
+          <CardContent>
           <form onSubmit={create}>
-            <div className="field">
-              <label>Label *</label>
-              <input
+            <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="qr-label">Label *</FieldLabel>
+              <Input id="qr-label"
                 required
                 value={form.label}
                 onChange={(e) => set("label", e.target.value)}
               />
-            </div>
-            <div className="field">
-              <label>Target URL *</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="qr-target">Target URL *</FieldLabel>
+              <Input id="qr-target"
                 required
                 placeholder="https://…"
                 value={form.target_url}
                 onChange={(e) => set("target_url", e.target.value)}
               />
-            </div>
-            <div className="row">
-              <div className="field">
-                <label>Foreground</label>
-                <input
+            </Field>
+            <FieldGroup className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="qr-foreground">Foreground</FieldLabel>
+                <Input id="qr-foreground"
                   type="color"
                   value={form.fill_color}
                   onChange={(e) => set("fill_color", e.target.value)}
                 />
-              </div>
-              <div className="field">
-                <label>Background</label>
-                <input
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="qr-background">Background</FieldLabel>
+                <Input id="qr-background"
                   type="color"
                   value={form.back_color}
                   onChange={(e) => set("back_color", e.target.value)}
                 />
-              </div>
-            </div>
-            <button className="btn-primary">Save QR code</button>
+              </Field>
+            </FieldGroup>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save QR code"}
+            </Button>
+            </FieldGroup>
           </form>
-        </div>
-        <div className="card" style={{ display: "grid", placeItems: "center" }}>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="grid min-h-64 place-items-center">
           {previewPath ? (
-            <div style={{ textAlign: "center" }}>
+              <div className="text-center">
               <AuthImage path={previewPath} width={200} height={200} alt="QR preview" />
-              <div className="muted" style={{ marginTop: 8 }}>
+               <div className="mt-2 text-muted-foreground">
                 Live preview
               </div>
             </div>
           ) : (
-            <div className="muted">Enter a URL to preview the QR code.</div>
+            <div className="text-muted-foreground">Enter a URL to preview the QR code.</div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <h3 style={{ marginTop: 24 }}>Saved QR codes</h3>
+      <h3 className="mt-6">Saved QR codes</h3>
       {loading ? (
         <ListSkeleton rows={3} />
       ) : !data || data.length === 0 ? (
-        <Empty icon="▣" message="No saved QR codes yet" hint="Create one above — it'll appear here with scan analytics." />
+        <Empty icon={<QrCode />} message="No saved QR codes yet" hint="Create one above — it'll appear here with scan analytics." />
       ) : (
-        <div className="grid cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {data.map((qr) => (
-            <div className="card" key={qr.id} style={{ textAlign: "center" }}>
+            <Card key={qr.id} className="text-center">
+              <CardContent className="flex flex-col items-center gap-2">
               <AuthImage
                 path={`/api/qrcodes/${qr.id}/image.png`}
                 width={140}
                 height={140}
                 alt={qr.label}
               />
-              <div style={{ fontWeight: 600, marginTop: 8 }}>{qr.label}</div>
-              <div className="muted" style={{ fontSize: 12, wordBreak: "break-all" }}>
+              <div className="font-semibold">{qr.label}</div>
+              <div className="break-all text-xs text-muted-foreground">
                 {qr.target_url}
               </div>
-              <div className="row" style={{ gap: 6, marginTop: 8, justifyContent: "center" }}>
-                <span className="badge blue">{qr.scan_count} scans</span>
-                {qr.dynamic && <span className="badge">dynamic</span>}
+              <div className="flex justify-center gap-2">
+                <Badge variant="info">{qr.scan_count} scans</Badge>
+                {qr.dynamic && <Badge variant="secondary">dynamic</Badge>}
               </div>
-              <div className="row" style={{ gap: 6, marginTop: 10 }}>
-                <button
-                  className="btn btn-sm"
-                  style={{ flex: "0 0 auto" }}
+              </CardContent>
+              <CardFooter className="justify-center gap-2">
+                <Button type="button" variant="outline" size="sm"
                   onClick={() =>
                     downloadFile(`/api/qrcodes/${qr.id}/image.png`, `${qr.label}.png`)
                   }
                 >
                   PNG
-                </button>
-                <button
-                  className="btn-sm"
-                  style={{ flex: "0 0 auto" }}
+                </Button>
+                <Button type="button" variant="outline" size="sm"
                   onClick={() => setEditing(qr)}
                 >
                   Edit
-                </button>
-                <button
-                  className="btn-sm btn-danger"
-                  style={{ flex: "0 0 auto" }}
+                </Button>
+                <Button type="button" variant="destructive" size="sm"
                   onClick={() => setDeleting(qr)}
                 >
                   Delete
-                </button>
-              </div>
-            </div>
+                </Button>
+              </CardFooter>
+            </Card>
           ))}
         </div>
       )}
@@ -222,7 +244,7 @@ export default function QRCodesPage() {
         <EditModal qr={editing} onClose={() => setEditing(null)} onSaved={reload} />
       )}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete QR code"
           message={`Delete the QR code “${deleting.label}”? Printed codes will stop working.`}
           confirmLabel="Delete"

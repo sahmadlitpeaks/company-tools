@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.models.operations import Idea, LostFoundReport
 from app.models.user import User
 from app.models.workplace import ApprovalRequest, Attachment, Task, TaskItem, Ticket
 from app.schemas.workplace import AttachmentOut
@@ -27,6 +28,8 @@ ENTITY: dict[str, tuple[type, tuple[str, ...]]] = {
     "task": (Task, ("tasks", "routine_checks")),
     # Photo evidence against a single checklist item.
     "task_item": (TaskItem, ("tasks", "routine_checks")),
+    "idea": (Idea, ("ideas",)),
+    "lost_found": (LostFoundReport, ("lost_found",)),
 }
 
 

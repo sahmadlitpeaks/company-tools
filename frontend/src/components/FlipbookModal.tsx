@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import HTMLFlipBook from "react-pageflip";
 import {
@@ -17,8 +18,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 /** A single rasterised PDF page. react-pageflip needs each page to forward a ref. */
 const Page = forwardRef<HTMLDivElement, { src: string; number: number }>(
   ({ src, number }, ref) => (
-    <div className="fb-page" ref={ref}>
-      <img src={src} alt={`Page ${number}`} draggable={false} />
+    <div className="overflow-hidden bg-white" ref={ref}>
+      <img
+        className="block size-full select-none bg-white object-contain [-webkit-user-drag:none]"
+        src={src}
+        alt="Document page"
+        draggable={false}
+        data-page={number}
+      />
     </div>
   ),
 );
@@ -110,15 +117,15 @@ export default function FlipbookModal({
   const ready = pages.length > 0 && !error;
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-900/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
         <span className="flex min-w-0 items-center gap-2.5">
           {brandLogo ? (
             <img
               src={brandLogo}
-              alt={brandName ?? ""}
-              className="h-7 w-auto flex-none rounded bg-white/90 p-0.5"
+              alt="Brand logo"
+              className="h-7 w-auto flex-none bg-card/90 p-0.5"
             />
           ) : brandName ? (
             <span className="flex-none text-sm font-semibold text-white/90">
@@ -133,16 +140,18 @@ export default function FlipbookModal({
               Page {Math.min(current + 1, total)}–{Math.min(current + 2, total)} of {total}
             </span>
           )}
-          <button
-            className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+          <Button type="button"
+            size="icon-sm"
+            variant="secondary"
             title="Download PDF"
             aria-label="Download PDF"
             onClick={() => downloadFile(url, name)}
           >
-            <Download size={17} />
-          </button>
-          <button
-            className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+            <Download />
+          </Button>
+          <Button type="button"
+            size="icon-sm"
+            variant="secondary"
             title="Fullscreen"
             aria-label="Toggle fullscreen"
             onClick={() => {
@@ -150,17 +159,18 @@ export default function FlipbookModal({
               else document.documentElement.requestFullscreen?.();
             }}
           >
-            <Maximize2 size={17} />
-          </button>
+            <Maximize2 />
+          </Button>
           {onClose && (
-            <button
-              className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+            <Button type="button"
+              size="icon-sm"
+              variant="secondary"
               title="Close (Esc)"
               aria-label="Close viewer"
               onClick={onClose}
             >
-              <X size={18} />
-            </button>
+              <X />
+            </Button>
           )}
         </div>
       </div>
@@ -170,12 +180,12 @@ export default function FlipbookModal({
         {error ? (
           <div className="text-center text-white/80">
             <p className="mb-3">{error}</p>
-            <button
-              className="btn"
+            <Button type="button"
+              variant="secondary"
               onClick={() => downloadFile(url, name)}
             >
               Download instead
-            </button>
+            </Button>
           </div>
         ) : !ready ? (
           <div className="flex flex-col items-center gap-3 text-white/80">
@@ -186,14 +196,16 @@ export default function FlipbookModal({
           </div>
         ) : (
           <>
-            <button
-              className="absolute left-3 z-10 grid h-11 w-11 place-items-center rounded-full border-0 bg-white/10 text-white hover:bg-white/25 disabled:opacity-30"
+            <Button type="button"
+              size="icon-lg"
+              variant="secondary"
+              className="absolute left-3"
               onClick={() => flip(-1)}
               disabled={current === 0}
               aria-label="Previous page"
             >
-              <ChevronLeft size={22} />
-            </button>
+              <ChevronLeft />
+            </Button>
             {/* @ts-expect-error react-pageflip's types omit children */}
             <HTMLFlipBook
               ref={bookRef}
@@ -207,21 +219,23 @@ export default function FlipbookModal({
               showCover
               maxShadowOpacity={0.5}
               mobileScrollSupport
-              className="flipbook"
+              className="shadow-2xl"
               onFlip={(e: { data: number }) => setCurrent(e.data)}
             >
               {pages.map((src, i) => (
-                <Page key={i} src={src} number={i + 1} />
+                <Page key={src} src={src} number={i + 1} />
               ))}
             </HTMLFlipBook>
-            <button
-              className="absolute right-3 z-10 grid h-11 w-11 place-items-center rounded-full border-0 bg-white/10 text-white hover:bg-white/25 disabled:opacity-30"
+            <Button type="button"
+              size="icon-lg"
+              variant="secondary"
+              className="absolute right-3"
               onClick={() => flip(1)}
               disabled={current >= total - 1}
               aria-label="Next page"
             >
-              <ChevronRight size={22} />
-            </button>
+              <ChevronRight />
+            </Button>
           </>
         )}
       </div>

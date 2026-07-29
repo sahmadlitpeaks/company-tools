@@ -1,10 +1,20 @@
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState } from "react";
-import { CalendarOff, CalendarPlus, Download, Plane, Plus, Settings2, Trash2 } from "lucide-react";
+import { CalendarOff, CalendarPlus, Download, PartyPopper, Plane, Plus, Settings2, Trash2 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Holiday, LeaveBalance, LeaveType, WhosOutItem } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Loading, Modal, PageHead, useToast } from "../components/ui";
+import { numericInput } from "../utils/numbers";
 
 export default function LeavePage() {
   const { user } = useAuth();
@@ -38,46 +48,40 @@ export default function LeavePage() {
         title="Leave"
         subtitle="Balances by type, the holiday calendar, and who's off across the team."
         action={
-          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            <Button type="button" variant="outline"
               onClick={() => downloadFile("/api/leave/calendar.ics", "leave.ics").catch(() => notify("Download failed", "error"))}
             >
-              <Download size={15} /> Calendar (iCal)
-            </button>
+              <Download data-icon="inline-start" /> Calendar (iCal)
+            </Button>
             {isAdmin && (
-              <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setManagingTypes(true)}>
-                <Settings2 size={15} /> Leave types
-              </button>
+              <Button type="button" variant="outline" onClick={() => setManagingTypes(true)}><Settings2 data-icon="inline-start" /> Leave types</Button>
             )}
-            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setRequesting(true)}>
-              <Plane size={15} /> Request leave
-            </button>
+            <Button type="button" onClick={() => setRequesting(true)}><Plane data-icon="inline-start" /> Request leave</Button>
           </div>
         }
       />
 
       {/* Per-type balance cards */}
-      <div className="grid mb-5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+      <div className="mb-5 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
         {!b ? (
           <Loading />
         ) : (
           b.by_type.map((t) => (
-            <div key={t.leave_type_id} className="card">
+            <Card key={t.leave_type_id}><CardContent>
               <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
+                <span className="size-2.5" style={{ background: t.color }} />
                 <span className="font-semibold">{t.name}</span>
-                {!t.paid && <span className="badge">unpaid</span>}
+                {!t.paid && <Badge variant="secondary">unpaid</Badge>}
               </div>
               <div className="mt-2 flex items-end gap-1">
-                <span className="text-2xl font-bold" style={{ color: "var(--brand-600)" }}>{t.remaining_days}</span>
-                <span className="muted mb-0.5 text-sm">/ {t.entitlement_days} left</span>
+                <span className="text-2xl font-bold text-primary">{t.remaining_days}</span>
+                <span className="mb-0.5 text-sm text-muted-foreground">/ {t.entitlement_days} left</span>
               </div>
-              <div className="muted mt-1 text-xs">
+              <div className="mt-1 text-xs text-muted-foreground">
                 {t.used_days} taken{t.pending_days ? ` · ${t.pending_days} pending` : ""}
               </div>
-            </div>
+            </CardContent></Card>
           ))
         )}
       </div>
@@ -86,77 +90,63 @@ export default function LeavePage() {
         <LeaveCalendar whosOut={out.data ?? []} holidays={holidays.data ?? []} />
       </div>
 
-      <div className="grid cols-2">
-        <div className="card">
-          <h3 className="mt-0 inline-flex items-center gap-2">
-            <CalendarOff size={18} className="text-brand-600" /> Who's out
-          </h3>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="py-0"><CardHeader className="py-(--card-spacing)"><CardTitle className="inline-flex items-center gap-2"><CalendarOff /> Who's out</CardTitle></CardHeader>
           {out.loading ? (
-            <Loading />
+            <CardContent><Loading /></CardContent>
           ) : (out.data?.length ?? 0) === 0 ? (
-            <p className="muted">Everyone's in. 🎉</p>
+            <CardContent><p className="inline-flex items-center gap-2 text-muted-foreground"><PartyPopper aria-hidden="true" /> Everyone's in.</p></CardContent>
           ) : (
-            <table>
-              <tbody>
-                {out.data!.map((o, i) => (
-                  <tr key={i}>
-                    <td className="font-semibold">{o.user_name ?? "—"}</td>
-                    <td>
+            <CardContent className="p-0"><Table><TableBody>
+                {out.data!.map((o) => (
+                  <TableRow key={JSON.stringify(o)}>
+                    <TableCell className="font-semibold">{o.user_name ?? "—"}</TableCell>
+                    <TableCell>
                       {o.leave_type_name && (
-                        <span className="badge" style={{ background: o.color ? `${o.color}22` : undefined }}>
+                        <Badge variant="secondary" style={{ background: o.color ? `${o.color}22` : undefined }}>
                           {o.leave_type_name}
-                        </span>
+                        </Badge>
                       )}
-                    </td>
-                    <td className="muted text-sm">
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
                       {o.start_date}
                       {o.end_date && o.end_date !== o.start_date ? ` → ${o.end_date}` : ""}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody></Table></CardContent>
           )}
-        </div>
+        </Card>
 
         <HolidayCalendar holidays={holidays} isAdmin={isAdmin} onChange={() => { holidays.reload(); balance.reload(); }} />
       </div>
 
       {team.data && (
-        <div className="card mt-4">
-          <h3 className="mt-0">Team balances (annual)</h3>
-          <table>
-            <thead>
-              <tr><th>Employee</th><th>Entitlement</th><th>Used</th><th>Left</th></tr>
-            </thead>
-            <tbody>
+        <Card className="mt-4 py-0"><CardHeader className="py-(--card-spacing)"><CardTitle>Team balances (annual)</CardTitle></CardHeader><CardContent className="p-0"><Table>
+            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead className="text-right">Entitlement</TableHead><TableHead className="text-right">Used</TableHead><TableHead className="text-right">Left</TableHead></TableRow></TableHeader><TableBody>
               {team.data.map((m) => (
-                <tr key={m.user_id}>
-                  <td className="font-semibold">{m.user_name}</td>
-                  <td>
+                <TableRow key={m.user_id}>
+                  <TableCell className="font-semibold">{m.user_name}</TableCell>
+                  <TableCell className="text-right tabular-nums">
                     {user?.is_admin ? (
-                      <input
+                      <Input aria-label="Numeric value"
                         type="number"
                         defaultValue={m.entitlement_days}
-                        className="!w-16 !py-1 text-sm"
+                        className="w-16"
                         onBlur={(e) => {
-                          const v = Number(e.target.value);
+                          const v = numericInput(e.target.value, m.entitlement_days);
                           if (v !== m.entitlement_days) setEntitlement(m, v);
                         }}
                       />
                     ) : (
                       m.entitlement_days
                     )}
-                  </td>
-                  <td>{m.used_days}</td>
-                  <td>
-                    <span className={`badge ${m.remaining_days <= 0 ? "red" : "green"}`}>{m.remaining_days}</span>
-                  </td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{m.used_days}</TableCell>
+                  <TableCell className="text-right tabular-nums"><Badge variant={m.remaining_days <= 0 ? "destructive" : "success"}>{m.remaining_days}</Badge></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody></Table></CardContent></Card>
       )}
 
       {requesting && (
@@ -190,7 +180,7 @@ function RequestLeaveModal({
     half_day: false,
     title: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedType = types.find((t) => t.id === f.leave_type_id);
   const singleDay = !!f.start_date && (!f.end_date || f.end_date === f.start_date);
@@ -199,7 +189,7 @@ function RequestLeaveModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!f.start_date) return;
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const type = types.find((t) => t.id === f.leave_type_id);
       await api("/api/approvals", {
@@ -216,35 +206,35 @@ function RequestLeaveModal({
       onDone();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="Request leave" onClose={onClose} maxWidth={480}>
-      <form onSubmit={submit}>
-        <div className="field">
-          <label>Leave type</label>
-          <select value={f.leave_type_id} onChange={(e) => setF((p) => ({ ...p, leave_type_id: e.target.value }))}>
+      <form onSubmit={submit} className="flex flex-col gap-4"><FieldGroup>
+        <Field><FieldLabel htmlFor="leave-type">Leave type</FieldLabel>
+          <Select items={[{ value: null, label: "Select leave type…" }, ...types.map((t) => ({ value: t.id, label: `${t.name}${t.paid ? "" : " (unpaid)"}` }))]} value={f.leave_type_id || null} onValueChange={(value) => setF((p) => ({ ...p, leave_type_id: value ?? "" }))}>
+            <SelectTrigger id="leave-type" aria-label="Leave type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select leave type…</SelectItem>
             {types.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}{t.paid ? "" : " (unpaid)"}</option>
+              <SelectItem key={t.id} value={t.id}>{t.name}{t.paid ? "" : " (unpaid)"}</SelectItem>
             ))}
-          </select>
-        </div>
-        <div className="row">
-          <div className="field"><label>From</label><input type="date" value={f.start_date} onChange={(e) => setF((p) => ({ ...p, start_date: e.target.value }))} required /></div>
-          <div className="field"><label>To</label><input type="date" value={f.end_date} onChange={(e) => setF((p) => ({ ...p, end_date: e.target.value }))} /></div>
+            </SelectGroup></SelectContent>
+          </Select>
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field><FieldLabel htmlFor="leave-from">From</FieldLabel><Input id="leave-from" type="date" value={f.start_date} onChange={(e) => setF((p) => ({ ...p, start_date: e.target.value }))} required /></Field>
+          <Field><FieldLabel htmlFor="leave-to">To</FieldLabel><Input id="leave-to" type="date" value={f.end_date} onChange={(e) => setF((p) => ({ ...p, end_date: e.target.value }))} /></Field>
         </div>
         {canHalfDay && (
-          <label className="row" style={{ gap: 6, marginBottom: 8 }}>
-            <input type="checkbox" checked={f.half_day} onChange={(e) => setF((p) => ({ ...p, half_day: e.target.checked }))} />
-            Take as a half day (½)
-          </label>
+          <Field orientation="horizontal"><Checkbox id="leave-half-day" checked={f.half_day} onCheckedChange={(checked) => setF((p) => ({ ...p, half_day: Boolean(checked) }))} /><FieldLabel htmlFor="leave-half-day">Take as a half day (½)</FieldLabel></Field>
         )}
-        <div className="field"><label>Note (optional)</label><input value={f.title} onChange={(e) => setF((p) => ({ ...p, title: e.target.value }))} placeholder="Reason / details" /></div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>{busy ? "Submitting…" : "Submit"}</button>
+        <Field><FieldLabel htmlFor="leave-note">Note (optional)</FieldLabel><Input id="leave-note" aria-label="Reason / details" value={f.title} onChange={(e) => setF((p) => ({ ...p, title: e.target.value }))} placeholder="Reason / details" /></Field>
+        </FieldGroup><div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Submitting…" : "Submit"}</Button>
         </div>
       </form>
     </Modal>
@@ -263,10 +253,12 @@ function HolidayCalendar({
   const { notify } = useToast();
   const [day, setDay] = useState("");
   const [name, setName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!day || !name.trim()) return;
+    setIsSubmitting(true);
     try {
       await api("/api/leave/holidays", { method: "POST", body: { day, name: name.trim() } });
       setDay("");
@@ -275,6 +267,8 @@ function HolidayCalendar({
       onChange();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function del(id: string) {
@@ -286,35 +280,26 @@ function HolidayCalendar({
   const upcoming = (holidays.data ?? []).filter((h) => h.day >= new Date().toISOString().slice(0, 10));
 
   return (
-    <div className="card">
-      <h3 className="mt-0 inline-flex items-center gap-2">
-        <CalendarPlus size={18} className="text-brand-600" /> Public holidays
-      </h3>
+    <Card><CardHeader><CardTitle className="inline-flex items-center gap-2"><CalendarPlus /> Public holidays</CardTitle></CardHeader><CardContent>
       {holidays.loading ? (
         <Loading />
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-border">
           {(upcoming.length ? upcoming : holidays.data ?? []).slice(0, 8).map((h) => (
-            <div key={h.id} className="flex items-center justify-between py-1.5 text-sm">
-              <span><span className="font-medium">{h.name}</span> <span className="muted">· {h.day}</span></span>
+          <div key={h.id} className="flex items-start justify-between gap-2 py-2 text-sm sm:items-center">
+              <span className="min-w-0"><span className="font-medium">{h.name}</span> <span className="text-muted-foreground">· {h.day}</span></span>
               {isAdmin && (
-                <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(h.id)}>
-                  <Trash2 size={13} />
-                </button>
+                <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(h.id)}><Trash2 /></Button>
               )}
             </div>
           ))}
-          {(holidays.data?.length ?? 0) === 0 && <p className="muted text-sm">No holidays set.</p>}
+          {(holidays.data?.length ?? 0) === 0 && <p className="text-sm text-muted-foreground">No holidays set.</p>}
         </div>
       )}
       {isAdmin && (
-        <form onSubmit={add} className="row mt-2" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0 }}><label>Date</label><input type="date" value={day} onChange={(e) => setDay(e.target.value)} /></div>
-          <div className="field" style={{ marginBottom: 0, flex: 2 }}><label>Name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="National Day" /></div>
-          <button className="btn inline-flex items-center gap-1" style={{ flex: "0 0 auto" }}><Plus size={14} /> Add</button>
-        </form>
+        <form onSubmit={add} className="mt-2 grid items-end gap-4 sm:grid-cols-[1fr_2fr_auto]"><Field><FieldLabel htmlFor="holiday-date">Date</FieldLabel><Input id="holiday-date" type="date" value={day} onChange={(e) => setDay(e.target.value)} /></Field><Field><FieldLabel htmlFor="holiday-name">Name</FieldLabel><Input id="holiday-name" aria-label="National Day" value={name} onChange={(e) => setName(e.target.value)} placeholder="National Day" /></Field><Button type="submit" variant="outline" disabled={isSubmitting}><Plus data-icon="inline-start" /> {isSubmitting ? "Adding…" : "Add"}</Button></form>
       )}
-    </div>
+    </CardContent></Card>
   );
 }
 
@@ -328,17 +313,21 @@ function LeaveTypesModal({
   onChange: () => void;
 }) {
   const { notify } = useToast();
-  const [form, setForm] = useState({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#6366f1" });
+  const [form, setForm] = useState({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#737373" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return;
+    setIsSubmitting(true);
     try {
       await api("/api/leave/types", { method: "POST", body: form });
-      setForm({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#6366f1" });
+      setForm({ name: "", default_days: 0, carryover_max: 0, accrual_period: "annual", paid: true, color: "#737373" });
       onChange();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function patch(id: string, body: Record<string, unknown>) {
@@ -352,60 +341,40 @@ function LeaveTypesModal({
 
   return (
     <Modal title="Leave types" onClose={onClose} maxWidth={560}>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-border">
         {types.map((t) => (
           <div key={t.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-            <span className="h-3 w-3 flex-none rounded-full" style={{ background: t.color }} />
+            <span className="size-3 flex-none" style={{ background: t.color }} />
             <span className="flex-1 font-medium">{t.name}{t.paid ? "" : " (unpaid)"}</span>
-            <label className="muted text-xs">Days</label>
-            <input
+            <FieldLabel htmlFor={`leave-days-${t.id}`} className="text-xs text-muted-foreground">Days</FieldLabel>
+            <Input id={`leave-days-${t.id}`}
               type="number"
               defaultValue={t.default_days}
-              className="!w-14 !py-1"
+              className="w-14"
               title="Default annual days"
-              onBlur={(e) => { const v = Number(e.target.value); if (v !== t.default_days) patch(t.id, { default_days: v }); }}
+              onBlur={(e) => { const v = numericInput(e.target.value, t.default_days); if (v !== t.default_days) patch(t.id, { default_days: v }); }}
             />
-            <label className="muted text-xs">Carryover</label>
-            <input
+            <FieldLabel htmlFor={`leave-carryover-${t.id}`} className="text-xs text-muted-foreground">Carryover</FieldLabel>
+            <Input id={`leave-carryover-${t.id}`}
               type="number"
               defaultValue={t.carryover_max}
-              className="!w-14 !py-1"
+              className="w-14"
               title="Max days carried to next year"
-              onBlur={(e) => { const v = Number(e.target.value); if (v !== t.carryover_max) patch(t.id, { carryover_max: v }); }}
+              onBlur={(e) => { const v = numericInput(e.target.value, t.carryover_max); if (v !== t.carryover_max) patch(t.id, { carryover_max: v }); }}
             />
-            <select
-              className="!w-auto !py-1"
-              defaultValue={t.accrual_period}
-              title="Accrual schedule"
-              onChange={(e) => patch(t.id, { accrual_period: e.target.value })}
-            >
-              <option value="annual">Annual</option>
-              <option value="monthly">Monthly</option>
-            </select>
-            <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => remove(t.id)}>
-              <Trash2 size={13} />
-            </button>
+            <Select items={[{ value: "annual", label: "Annual" }, { value: "monthly", label: "Monthly" }]} value={t.accrual_period} onValueChange={(value) => value !== null && patch(t.id, { accrual_period: value })}>
+              <SelectTrigger id={`leave-accrual-${t.id}`} aria-label="Accrual schedule" className="w-full" title="Accrual schedule"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="annual">Annual</SelectItem><SelectItem value="monthly">Monthly</SelectItem></SelectGroup></SelectContent>
+            </Select>
+            <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => remove(t.id)}><Trash2 /></Button>
           </div>
         ))}
       </div>
-      <form onSubmit={add} className="mt-3 rounded-lg border border-slate-200 p-2">
-        <div className="row">
-          <div className="field"><label>Name</label><input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></div>
-          <div className="field" style={{ maxWidth: 90 }}><label>Default days</label><input type="number" value={form.default_days} onChange={(e) => setForm((p) => ({ ...p, default_days: Number(e.target.value) }))} /></div>
-          <div className="field" style={{ maxWidth: 90 }}><label>Carryover</label><input type="number" value={form.carryover_max} onChange={(e) => setForm((p) => ({ ...p, carryover_max: Number(e.target.value) }))} /></div>
-          <div className="field" style={{ maxWidth: 70 }}><label>Color</label><input type="color" value={form.color} onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))} /></div>
-        </div>
-        <div className="field" style={{ maxWidth: 160 }}>
-          <label>Accrual</label>
-          <select value={form.accrual_period} onChange={(e) => setForm((p) => ({ ...p, accrual_period: e.target.value }))}>
-            <option value="annual">Annual (full upfront)</option>
-            <option value="monthly">Monthly (1/12 per month)</option>
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="!w-auto" checked={form.paid} onChange={(e) => setForm((p) => ({ ...p, paid: e.target.checked }))} /> Paid leave
-        </label>
-        <button className="btn-primary mt-2" style={{ flex: "0 0 auto" }}>Add type</button>
+      <form onSubmit={add} className="mt-4 flex flex-col gap-4 border border-border p-3 sm:p-4"><FieldGroup><div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="leave-type-name">Name</FieldLabel><Input id="leave-type-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></Field><Field><FieldLabel htmlFor="leave-default-days">Default days</FieldLabel><Input id="leave-default-days" type="number" value={form.default_days} onChange={(e) => setForm((p) => ({ ...p, default_days: numericInput(e.target.value, p.default_days) }))} /></Field><Field><FieldLabel htmlFor="leave-carryover">Carryover</FieldLabel><Input id="leave-carryover" type="number" value={form.carryover_max} onChange={(e) => setForm((p) => ({ ...p, carryover_max: numericInput(e.target.value, p.carryover_max) }))} /></Field><Field><FieldLabel htmlFor="leave-color">Color</FieldLabel><Input id="leave-color" type="color" value={form.color} onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))} /></Field></div>
+        <Field><FieldLabel htmlFor="leave-accrual">Accrual</FieldLabel><Select items={[{ value: "annual", label: "Annual (full upfront)" }, { value: "monthly", label: "Monthly (1/12 per month)" }]} value={form.accrual_period} onValueChange={(value) => setForm((p) => ({ ...p, accrual_period: value ?? "" }))}><SelectTrigger id="leave-accrual" aria-label="Accrual" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="annual">Annual (full upfront)</SelectItem><SelectItem value="monthly">Monthly (1/12 per month)</SelectItem></SelectGroup></SelectContent></Select></Field>
+        <Field orientation="horizontal"><Checkbox id="leave-paid" checked={form.paid} onCheckedChange={(checked) => setForm((p) => ({ ...p, paid: Boolean(checked) }))} /><FieldLabel htmlFor="leave-paid">Paid leave</FieldLabel></Field></FieldGroup>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Adding…" : "Add type"}
+        </Button>
       </form>
     </Modal>
   );
@@ -449,30 +418,37 @@ function LeaveCalendar({ whosOut, holidays }: { whosOut: WhosOutItem[]; holidays
   // Build the grid: lead with blanks so the 1st lands on the right weekday (Mon start).
   const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = Monday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array(firstDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  const cells: { id: string; day: number | null }[] = [
+    ...Array.from({ length: firstDow }, (_, index) => ({
+      id: `leading-${year}-${month}-${index}`,
+      day: null,
+    })),
+    ...Array.from({ length: daysInMonth }, (_, index) => ({
+      id: iso(new Date(year, month, index + 1)),
+      day: index + 1,
+    })),
   ];
-  while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length % 7 !== 0) {
+    cells.push({ id: `trailing-${year}-${month}-${cells.length}`, day: null });
+  }
   const todayKey = iso(new Date());
 
   return (
-    <div className="card">
-      <div className="spread mb-3">
-        <h3 className="m-0 inline-flex items-center gap-2"><CalendarOff size={18} className="text-brand-600" /> Team calendar</h3>
-        <div className="inline-flex items-center gap-2">
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset((o) => o - 1)}>‹</button>
+    <Card><CardHeader>
+        <CardTitle className="inline-flex items-center gap-2"><CalendarOff /> Team calendar</CardTitle>
+        <CardAction className="col-start-1 row-span-1 row-start-2 flex flex-wrap items-center gap-2 justify-self-start sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end">
+          <Button type="button" size="icon-sm" variant="outline" aria-label="Previous month" onClick={() => setOffset((o) => o - 1)}>‹</Button>
           <span className="min-w-[150px] text-center text-sm font-semibold">{monthLabel}</span>
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset((o) => o + 1)}>›</button>
-          {offset !== 0 && <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setOffset(0)}>Today</button>}
-        </div>
-      </div>
-      <div className="grid grid-cols-7 gap-1">
+          <Button type="button" size="icon-sm" variant="outline" aria-label="Next month" onClick={() => setOffset((o) => o + 1)}>›</Button>
+          {offset !== 0 && <Button type="button" size="sm" variant="outline" onClick={() => setOffset(0)}>Today</Button>}
+        </CardAction>
+      </CardHeader><CardContent className="overflow-x-auto">
+      <div className="grid min-w-[42rem] grid-cols-7 gap-1">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-          <div key={d} className="muted pb-1 text-center text-xs font-medium">{d}</div>
+          <div key={d} className="pb-1 text-center text-xs font-medium text-muted-foreground">{d}</div>
         ))}
-        {cells.map((day, i) => {
-          if (day === null) return <div key={i} />;
+        {cells.map(({ id, day }, i) => {
+          if (day === null) return <div key={id} />;
           const key = iso(new Date(year, month, day));
           const holiday = holByDay.get(key);
           const people = outByDay.get(key) ?? [];
@@ -480,34 +456,31 @@ function LeaveCalendar({ whosOut, holidays }: { whosOut: WhosOutItem[]; holidays
           const weekend = (i % 7) >= 5;
           return (
             <div
-              key={i}
-              className="min-h-[78px] rounded-lg border p-1.5"
-              style={{
-                borderColor: isToday ? "var(--brand-400)" : "var(--border)",
-                background: holiday ? "var(--brand-50)" : weekend ? "var(--surface-2)" : "var(--surface)",
-              }}
+              key={id}
+              className={`min-h-[78px] border p-1.5 ${isToday ? "border-primary" : "border-border"} ${holiday ? "bg-primary/10" : weekend ? "bg-muted" : "bg-card"}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-xs ${isToday ? "font-bold text-brand-700" : "muted"}`}>{day}</span>
+                <span className={`text-xs ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>{day}</span>
               </div>
-              {holiday && <div className="truncate text-[10px] font-medium text-brand-700" title={holiday}>🎉 {holiday}</div>}
+              {holiday && <div className="flex items-center gap-1 truncate text-[10px] font-medium text-primary" title={holiday}><PartyPopper aria-hidden="true" /> {holiday}</div>}
               <div className="mt-1 flex flex-wrap gap-0.5">
                 {people.slice(0, 4).map((p, j) => (
-                  <span
+                  <Avatar
                     key={j}
                     title={p.name}
-                    className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-semibold text-white"
-                    style={{ background: p.color || "#64748b" }}
+                    className="size-5"
                   >
-                    {initials(p.name)}
-                  </span>
+                    <AvatarFallback className="text-[9px] font-semibold text-primary-foreground" style={{ background: p.color || "var(--primary)" }}>
+                      {initials(p.name)}
+                    </AvatarFallback>
+                  </Avatar>
                 ))}
-                {people.length > 4 && <span className="muted text-[10px]">+{people.length - 4}</span>}
+                {people.length > 4 && <span className="text-[10px] text-muted-foreground">+{people.length - 4}</span>}
               </div>
             </div>
           );
         })}
-      </div>
-    </div>
+      </div></CardContent>
+    </Card>
   );
 }

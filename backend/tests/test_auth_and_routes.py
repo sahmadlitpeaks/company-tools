@@ -31,6 +31,27 @@ async def test_default_admin_can_sign_in(client):
     assert "access_token" in body and body["must_change_password"] is True
 
 
+async def test_login_cookie_auth_and_logout(client):
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "admin@agholding.net", "password": "admin"},
+    )
+    assert login.status_code == 200
+    set_cookie = login.headers["set-cookie"].lower()
+    assert "ag_platform_session=" in set_cookie
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+
+    # The SPA authenticates with the HttpOnly session cookie, without exposing
+    # the bearer token to JavaScript or browser storage.
+    assert (await client.get("/api/auth/me")).status_code == 200
+
+    logout = await client.post("/api/auth/logout")
+    assert logout.status_code == 204
+    assert "ag_platform_session=" in logout.headers["set-cookie"].lower()
+    assert (await client.get("/api/auth/me")).status_code == 401
+
+
 async def test_bad_credentials_rejected(client):
     r = await client.post(
         "/api/auth/login", json={"email": "admin@agholding.net", "password": "wrong"}

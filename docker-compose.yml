@@ -27,6 +27,10 @@ services:
 
   backend:
     build: ./backend
+    # Exposed for local Vite (`npm run dev` on :5173 proxies here). Production
+    # still goes through the frontend nginx single-origin setup on APP_PORT.
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform}@db:5432/${POSTGRES_DB:-platform}
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -36,8 +40,15 @@ services:
       # domain or to force https behind TLS termination.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080,http://localhost:5173,http://127.0.0.1:5173}
       MEDIA_ROOT: /data/media
+      BACKUP_ROOT: /data/backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_HOUR_DUBAI: ${BACKUP_HOUR_DUBAI:-2}
+      BACKUP_IMPORT_MAX_BYTES: ${BACKUP_IMPORT_MAX_BYTES:-5368709120}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
@@ -53,6 +64,7 @@ services:
         condition: service_healthy
     volumes:
       - media:/data/media
+      - backups:/data/backups
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -72,3 +84,4 @@ services:
 volumes:
   pgdata:
   media:
+  backups:

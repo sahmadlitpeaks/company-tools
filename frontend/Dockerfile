@@ -1,10 +1,11 @@
 # Multi-stage: build the SPA with Vite, then serve it from nginx and let nginx
 # reverse-proxy the API so the whole app lives on a single origin.
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
+RUN npm install --global npm@12.0.1
 RUN npm ci
 
 COPY . .

@@ -1,5 +1,12 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { CircleCheck, Download, Globe2, Mail, MessageCircle, Phone } from "lucide-react";
 import { api } from "../../api/client";
 
 interface PublicCard {
@@ -25,6 +32,7 @@ export default function PublicCardPage() {
   const [error, setError] = useState(false);
   const [lead, setLead] = useState({ name: "", email: "", phone: "", message: "" });
   const [sent, setSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     api<PublicCard>(`/api/public/cards/${slug}`, { auth: false })
@@ -34,6 +42,7 @@ export default function PublicCardPage() {
 
   async function submitLead(e: React.FormEvent) {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       await api(`/api/public/cards/${slug}/leads`, {
         method: "POST",
@@ -43,6 +52,8 @@ export default function PublicCardPage() {
       setSent(true);
     } catch {
       /* ignore */
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -71,129 +82,108 @@ export default function PublicCardPage() {
 
   if (error)
     return (
-      <div className="center-screen">
-        <div className="login-card">
-          <h2>Card not found</h2>
-          <p className="muted">This digital card is unavailable or inactive.</p>
-        </div>
+      <div className="grid min-h-dvh place-items-center bg-muted p-5">
+        <Card className="w-full max-w-md"><CardHeader><CardTitle>Card not found</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">This digital card is unavailable or inactive.</p></CardContent></Card>
       </div>
     );
-  if (!card) return <div className="center-screen" style={{ color: "#fff" }}>Loading…</div>;
+  if (!card) return <div className="grid min-h-dvh place-items-center bg-muted p-5 text-foreground">Loading…</div>;
 
-  const accent = card.accent_color || "#0b5cab";
+  const accent = card.accent_color || "var(--primary)";
 
   return (
-    <div className="center-screen" style={{ background: "#0c1a2b" }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
-        <div className="login-card" style={{ padding: 0, overflow: "hidden" }}>
-          <div style={{ background: accent, height: 96 }} />
-          <div style={{ padding: "0 26px 26px", marginTop: -44 }}>
-            <div
-              style={{
-                width: 88,
-                height: 88,
-                borderRadius: "50%",
-                background: "#fff",
-                border: `4px solid #fff`,
-                overflow: "hidden",
-                display: "grid",
-                placeItems: "center",
-                fontSize: 30,
-                fontWeight: 700,
-                color: accent,
-                boxShadow: "var(--shadow)",
-              }}
-            >
-              {card.photo_url ? (
-                <img
-                  src={card.photo_url}
-                  alt=""
-                  width={88}
-                  height={88}
-                  style={{ objectFit: "cover" }}
-                />
-              ) : (
-                card.full_name.charAt(0)
-              )}
+    <main className="grid min-h-dvh place-items-center bg-muted p-5">
+      <div className="w-full max-w-[420px]">
+        <Card className="py-0">
+          <CardContent className="h-24 p-0" aria-hidden="true" style={{ background: accent }} />
+          <CardHeader className="-mt-11">
+            <Avatar className="size-22 bg-background ring-4 ring-background">
+              {card.photo_url && <AvatarImage src={card.photo_url} alt={card.full_name} />}
+              <AvatarFallback className="text-3xl font-bold" style={{ color: accent }}>
+                {card.full_name.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="mt-3">
+              <CardTitle className="text-xl">{card.full_name}</CardTitle>
+              <div className="text-muted-foreground">{card.title}</div>
+              <div className="font-semibold" style={{ color: accent }}>{card.company}</div>
             </div>
-            <h2 style={{ margin: "14px 0 2px" }}>{card.full_name}</h2>
-            <div className="muted">{card.title}</div>
-            <div style={{ fontWeight: 600, color: accent }}>{card.company}</div>
-            {card.bio && <p className="muted">{card.bio}</p>}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {card.bio && <p className="text-muted-foreground">{card.bio}</p>}
 
-            <div className="row" style={{ flexDirection: "column", gap: 8, marginTop: 14 }}>
-              {card.phone && <a className="btn" href={`tel:${card.phone}`}>📞 {card.phone}</a>}
+            <div className="flex flex-col gap-2">
+              {card.phone && <Button variant="outline" render={<a href={`tel:${card.phone}`} />}><Phone data-icon="inline-start" /> {card.phone}</Button>}
               {card.whatsapp && (
-                <a className="btn" href={`https://wa.me/${card.whatsapp.replace(/\D/g, "")}`}>
-                  💬 WhatsApp
-                </a>
+                <Button variant="outline" render={<a href={`https://wa.me/${card.whatsapp.replace(/\D/g, "")}`} />}>
+                  <MessageCircle data-icon="inline-start" /> WhatsApp
+                </Button>
               )}
-              {card.email && <a className="btn" href={`mailto:${card.email}`}>✉ {card.email}</a>}
+              {card.email && <Button variant="outline" render={<a href={`mailto:${card.email}`} />}><Mail data-icon="inline-start" /> {card.email}</Button>}
               {card.website && (
-                <a className="btn" href={card.website} target="_blank" rel="noreferrer">
-                  🌐 Website
-                </a>
+                <Button variant="outline" render={<a href={card.website} target="_blank" rel="noreferrer" />}>
+                  <Globe2 data-icon="inline-start" /> Website
+                </Button>
               )}
               {card.linkedin && (
-                <a className="btn" href={card.linkedin} target="_blank" rel="noreferrer">
+                <Button variant="outline" render={<a href={card.linkedin} target="_blank" rel="noreferrer" />}>
                   in LinkedIn
-                </a>
+                </Button>
               )}
-              <button className="btn-primary" onClick={saveContact}>
-                ⬇ Save contact
-              </button>
+              <Button type="button" onClick={saveContact}>
+                <Download data-icon="inline-start" /> Save contact
+              </Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        {card.lead_capture_enabled && (
-          <div className="login-card" style={{ marginTop: 16 }}>
-            {sent ? (
-              <div style={{ textAlign: "center" }}>
-                <h3>Thank you! 🎉</h3>
-                <p className="muted">Your details were shared. We'll be in touch.</p>
-              </div>
-            ) : (
-              <form onSubmit={submitLead}>
-                <h3 style={{ marginTop: 0 }}>Share your details</h3>
-                <div className="field">
-                  <input
-                    required
-                    placeholder="Your name *"
-                    value={lead.name}
-                    onChange={(e) => setLead({ ...lead, name: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <input
-                    placeholder="Email"
-                    value={lead.email}
-                    onChange={(e) => setLead({ ...lead, email: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <input
-                    placeholder="Phone"
-                    value={lead.phone}
-                    onChange={(e) => setLead({ ...lead, phone: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <textarea
-                    rows={2}
-                    placeholder="Message (optional)"
-                    value={lead.message}
-                    onChange={(e) => setLead({ ...lead, message: e.target.value })}
-                  />
-                </div>
-                <button className="btn-primary" style={{ width: "100%" }}>
-                  Send
-                </button>
+        {card.lead_capture_enabled && (sent ? (
+          <Card className="mt-4">
+                <CardHeader><CardTitle className="flex items-center gap-2"><CircleCheck aria-hidden="true" /> Thank you!</CardTitle></CardHeader>
+                <CardContent><p className="text-muted-foreground">Your details were shared. We'll be in touch.</p></CardContent>
+          </Card>
+          ) : (
+              <form onSubmit={submitLead} aria-busy={isSubmitting || undefined} className="mt-4">
+              <Card>
+                <CardHeader><CardTitle>Share your details</CardTitle></CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <FieldGroup>
+                    <Field><FieldLabel htmlFor="public-card-name" className="sr-only">Your name</FieldLabel>
+                      <Input id="public-card-name" aria-label="Your name *"
+                        required
+                        placeholder="Your name *"
+                        value={lead.name}
+                        onChange={(e) => setLead({ ...lead, name: e.target.value })}
+                      /></Field>
+                    <Field><FieldLabel htmlFor="public-card-email" className="sr-only">Email</FieldLabel>
+                      <Input id="public-card-email" aria-label="Email"
+                        type="email"
+                        placeholder="Email"
+                        value={lead.email}
+                        onChange={(e) => setLead({ ...lead, email: e.target.value })}
+                      /></Field>
+                    <Field><FieldLabel htmlFor="public-card-phone" className="sr-only">Phone</FieldLabel>
+                      <Input id="public-card-phone" aria-label="Phone"
+                        type="tel"
+                        placeholder="Phone"
+                        value={lead.phone}
+                        onChange={(e) => setLead({ ...lead, phone: e.target.value })}
+                      /></Field>
+                    <Field><FieldLabel htmlFor="public-card-message" className="sr-only">Message</FieldLabel>
+                      <Textarea id="public-card-message" aria-label="Message (optional)"
+                        rows={2}
+                        placeholder="Message (optional)"
+                        value={lead.message}
+                        onChange={(e) => setLead({ ...lead, message: e.target.value })}
+                      /></Field>
+                  </FieldGroup>
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? "Sending…" : "Send"}
+                  </Button>
+                </CardContent>
+              </Card>
               </form>
-            )}
-          </div>
-        )}
+            ))}
       </div>
-    </div>
+    </main>
   );
 }

@@ -6,6 +6,14 @@ import { ListSkeleton, Modal, PageHead, useToast } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
 import { useBrand } from "../brand/BrandContext";
 import { SIGNATURE_DESIGNS, type SigData } from "../signatures/templates";
+import DOMPurify from "dompurify";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const FIELDS: { key: keyof SigData; label: string }[] = [
   { key: "full_name", label: "Full name" },
@@ -19,40 +27,52 @@ const FIELDS: { key: keyof SigData; label: string }[] = [
 function TemplateForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { notify } = useToast();
   const [form, setForm] = useState({ name: "", html: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   return (
     <Modal title="New signature template" onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await api("/api/signatures/templates", { method: "POST", body: form });
-          notify("Template created.");
-          onSaved();
-          onClose();
+          setIsSubmitting(true);
+          try {
+            await api("/api/signatures/templates", { method: "POST", body: form });
+            notify("Template created.");
+            onSaved();
+            onClose();
+          } catch (err) {
+            notify(err instanceof Error ? err.message : "Failed", "error");
+          } finally {
+            setIsSubmitting(false);
+          }
         }}
       >
-        <div className="field">
-          <label>Name *</label>
-          <input
+        <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="signature-name">Name *</FieldLabel>
+          <Input id="signature-name"
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
+            disabled={isSubmitting}
           />
-        </div>
-        <div className="field">
-          <label>HTML (use {"{{ full_name }}"}, {"{{ title }}"}, …)</label>
-          <textarea
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="signature-html">HTML (use {"{{ full_name }}"}, {"{{ title }}"}, …)</FieldLabel>
+          <Textarea id="signature-html"
             required
             rows={8}
-            style={{ fontFamily: "monospace", fontSize: 12 }}
+            className="font-mono text-xs"
             value={form.html}
             onChange={(e) => setForm({ ...form, html: e.target.value })}
+            disabled={isSubmitting}
           />
+        </Field>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save template"}
+          </Button>
         </div>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }}>
-            Save template
-          </button>
-        </div>
+        </FieldGroup>
       </form>
     </Modal>
   );
@@ -79,7 +99,7 @@ export default function SignaturesPage() {
       phone: user?.business_phone ?? user?.mobile_phone ?? active?.phone ?? "",
       website: active?.website ?? "agholding.net",
       company: active?.name ?? "AG Holding",
-      accent: active?.accent_color ?? "#0b5cab",
+      accent: active?.accent_color ?? "#f78d2b",
     };
     for (const f of FIELDS) {
       const v = overrides[f.key];
@@ -134,63 +154,58 @@ export default function SignaturesPage() {
         subtitle="Pick a design, tweak the details, then paste it into Outlook or Gmail."
         action={
           user?.is_admin && (
-            <button className="btn" onClick={() => setCreating(true)}>
+            <Button type="button" variant="outline" onClick={() => setCreating(true)}>
               + Custom template
-            </button>
+            </Button>
           )
         }
       />
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <div className="card">
-          <h3 className="mt-0 flex items-center gap-2">
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2">
+            <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
               1
             </span>
             Choose a design
-          </h3>
+          </CardTitle></CardHeader>
+          <CardContent>
           <div className="grid grid-cols-2 gap-2.5">
             {SIGNATURE_DESIGNS.map((d) => {
               const id = `design:${d.id}`;
               const active = selected === id;
               return (
-                <button
+                <Button type="button"
                   key={d.id}
+                  variant={active ? "default" : "outline"}
                   onClick={() => setSelected(id)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    active
-                      ? "border-brand-500 bg-brand-50 ring-2 ring-brand-500"
-                      : "border-[var(--border)] bg-white hover:border-brand-300 hover:bg-slate-50"
-                  }`}
+                  className="h-auto flex-col items-start p-3 text-left"
                 >
                   <div className="font-semibold">{d.name}</div>
-                  <div className="text-xs text-ink-muted">{d.description}</div>
-                </button>
+                  <div className={cn("text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")}>{d.description}</div>
+                </Button>
               );
             })}
           </div>
 
           {templates.data && templates.data.length > 0 && (
             <>
-              <div className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              <div className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Custom templates
               </div>
               <div className="flex flex-col gap-2">
                 {templates.data.map((t) => {
                   const id = `custom:${t.id}`;
                   return (
-                    <button
+                    <Button type="button"
                       key={t.id}
+                      variant={selected === id ? "default" : "outline"}
                       onClick={() => setSelected(id)}
-                      className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-left ${
-                        selected === id
-                          ? "border-brand-200 bg-brand-50 text-brand-800"
-                          : "border-[var(--border)] bg-white hover:bg-slate-50"
-                      }`}
+                      className="h-auto w-full justify-between px-3 py-2.5 text-left"
                     >
                       <span className="font-semibold">{t.name}</span>
-                      {t.is_default && <span className="badge">default</span>}
-                    </button>
+                      {t.is_default && <Badge variant="secondary">default</Badge>}
+                    </Button>
                   );
                 })}
               </div>
@@ -198,49 +213,49 @@ export default function SignaturesPage() {
           )}
 
           <h3 className="mt-6 flex items-center gap-2">
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">
+            <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
               2
             </span>
             Your details
           </h3>
-          <div className="muted mb-3 text-xs">
+          <div className="mb-3 text-xs text-muted-foreground">
             Pre-filled from your directory profile — edit anything you like.
           </div>
-          <div className="grid grid-cols-2 gap-x-3">
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
             {FIELDS.map((f) => (
-              <div className="field" key={f.key}>
-                <label>{f.label}</label>
-                <input
+              <Field key={f.key}>
+                <FieldLabel htmlFor={`signature-${f.key}`}>{f.label}</FieldLabel>
+                <Input id={`signature-${f.key}`}
                   placeholder={String(data[f.key] ?? "")}
                   value={overrides[f.key] ?? ""}
                   onChange={(e) =>
                     setOverrides((o) => ({ ...o, [f.key]: e.target.value }))
                   }
                 />
-              </div>
+              </Field>
             ))}
-          </div>
-        </div>
+          </FieldGroup>
+          </CardContent>
+        </Card>
 
-        <div className="card lg:sticky lg:top-[84px]">
-          <div className="spread">
-            <h3 className="mt-0">Live preview</h3>
+        <Card className="lg:sticky lg:top-[84px]">
+          <CardHeader className="grid grid-cols-[1fr_auto] items-center">
+            <CardTitle>Live preview</CardTitle>
             <div className="flex flex-none gap-1.5">
-              <button className="btn-sm" onClick={downloadHtml}>
+              <Button type="button" variant="outline" size="sm" onClick={downloadHtml}>
                 Download .html
-              </button>
-              <button className="btn-sm btn-primary" onClick={copyHtml}>
+              </Button>
+              <Button type="button" size="sm" onClick={copyHtml}>
                 Copy signature
-              </button>
+              </Button>
             </div>
-          </div>
+          </CardHeader>
+          <CardContent>
           {rendered ? (
             <>
-              <div className="muted mb-2 text-xs">Exactly how it will appear in an email:</div>
-              <div className="rounded-xl border border-[var(--border)] bg-gradient-to-b from-slate-50 to-white p-5 shadow-card">
-                <div dangerouslySetInnerHTML={{ __html: rendered }} />
-              </div>
-              <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-ink-muted">
+              <div className="mb-2 text-xs text-muted-foreground">Exactly how it will appear in an email:</div>
+              <Card><CardContent><div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} /></CardContent></Card>
+              <div className="mt-3 bg-muted p-3 text-xs text-foreground">
                 <strong>To use it:</strong> click <em>Copy signature</em>, then in
                 Outlook go to <em>File → Options → Mail → Signatures</em> (or Gmail{" "}
                 <em>Settings → General → Signature</em>) and paste.
@@ -249,7 +264,8 @@ export default function SignaturesPage() {
           ) : (
             <ListSkeleton rows={3} />
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {creating && (

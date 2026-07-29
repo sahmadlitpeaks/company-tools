@@ -1,9 +1,11 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useRef, useState } from "react";
 import { Camera, Download, Paperclip, X } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Attachment } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { bytes, useToast } from "./ui";
+import { bytes, ConfirmDialog, useToast } from "./ui";
 import CameraCapture, { canUseLiveCamera } from "./CameraCapture";
 
 /** Reusable file attachments list + uploader for any office-ops entity. */
@@ -18,7 +20,13 @@ export default function Attachments({
   heading = "Attachments",
   onChanged,
 }: {
-  entityType: "approval" | "ticket" | "task" | "task_item";
+  entityType:
+    | "approval"
+    | "ticket"
+    | "task"
+    | "task_item"
+    | "idea"
+    | "lost_found";
   entityId: string;
   compact?: boolean;
   /** Restrict the picker, e.g. "image/*" for photo evidence. */
@@ -37,12 +45,13 @@ export default function Attachments({
   );
   const fileRef = useRef<HTMLInputElement>(null);
   const [shooting, setShooting] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Attachment | null>(null);
 
-  async function send(file: File) {
+  async function send(file: File, successMessage = "File attached.") {
     const fd = new FormData();
     fd.append("file", file);
     await api(`/api/attachments/by/${entityType}/${entityId}`, { method: "POST", form: fd });
-    notify("Photo attached.");
+    notify(successMessage);
     reload();
     onChanged?.();
   }
@@ -64,33 +73,43 @@ export default function Attachments({
     else fileRef.current?.click();
   }
 
-  async function remove(id: string) {
-    await api(`/api/attachments/${id}`, { method: "DELETE" });
-    reload();
-    onChanged?.();
+  async function removeConfirmed() {
+    if (!pendingRemove) return;
+    try {
+      await api(`/api/attachments/${pendingRemove.id}`, { method: "DELETE" });
+      notify(`Removed ${pendingRemove.name}.`);
+      setPendingRemove(null);
+      reload();
+      onChanged?.();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error("Remove failed");
+      notify(error.message, "error");
+      throw error;
+    }
   }
 
   return (
-    <div>
-      <div className="spread mb-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="m-0 inline-flex items-center gap-1.5">
-          <Paperclip size={14} /> {heading} {data?.length ? `(${data.length})` : ""}
+          <Paperclip data-icon="inline-start" /> {heading} {data?.length ? `(${data.length})` : ""}
         </h4>
         <span className="flex flex-none items-center gap-1.5">
           {camera && (
-            <button
-              className="btn-sm btn-primary inline-flex items-center gap-1"
-              style={{ flex: "0 0 auto" }}
+            <Button
+              type="button"
+              size="sm"
               onClick={takePhoto}
             >
-              <Camera size={13} /> Take photo
-            </button>
+              <Camera data-icon="inline-start" /> Take photo
+            </Button>
           )}
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => fileRef.current?.click()}>
+          <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
             {label}
-          </button>
+          </Button>
         </span>
-        <input
+        <Input
+          aria-label={`Upload ${heading.toLowerCase()}`}
           ref={fileRef}
           type="file"
           hidden
@@ -100,34 +119,35 @@ export default function Attachments({
         />
       </div>
       {!data || data.length === 0 ? (
-        !compact && <p className="muted text-sm">No files attached.</p>
+        !compact && <p className="text-sm text-muted-foreground">No files attached.</p>
       ) : (
         <div className="flex flex-col gap-1">
           {data.map((a) => (
             <div
               key={a.id}
-              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5"
-              style={{ background: "var(--surface-2)" }}
+              className="flex items-center justify-between gap-2 bg-muted px-2 py-1.5"
             >
               <span className="truncate text-sm font-medium">{a.name}</span>
               <span className="flex flex-none items-center gap-2">
-                <span className="muted text-xs">{bytes(a.size_bytes)}</span>
-                <button
-                  className="btn-sm"
-                  style={{ flex: "0 0 auto" }}
+                <span className="text-xs text-muted-foreground">{bytes(a.size_bytes)}</span>
+                <Button type="button"
+                  size="icon-sm"
+                  variant="outline"
                   title="Download"
+                  aria-label={`Download ${a.name}`}
                   onClick={() => downloadFile(`/api/attachments/${a.id}/download`, a.name)}
                 >
-                  <Download size={13} />
-                </button>
-                <button
-                  className="btn-sm btn-danger"
-                  style={{ flex: "0 0 auto" }}
+                  <Download />
+                </Button>
+                <Button type="button"
+                  size="icon-sm"
+                  variant="destructive"
                   title="Remove"
-                  onClick={() => remove(a.id)}
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setPendingRemove(a)}
                 >
-                  <X size={13} />
-                </button>
+                  <X />
+                </Button>
               </span>
             </div>
           ))}
@@ -138,12 +158,22 @@ export default function Attachments({
           onClose={() => setShooting(false)}
           onCapture={async (file) => {
             try {
-              await send(file);
+              await send(file, "Photo attached.");
             } catch (err) {
               notify(err instanceof Error ? err.message : "Upload failed", "error");
               throw err; // keep the viewfinder open so the shot isn't lost
             }
           }}
+        />
+      )}
+      {pendingRemove && (
+        <ConfirmDialog
+          title="Remove attachment?"
+          message={`Delete “${pendingRemove.name}”? This cannot be undone.`}
+          confirmLabel="Remove"
+          danger
+          onConfirm={removeConfirmed}
+          onClose={() => setPendingRemove(null)}
         />
       )}
     </div>

@@ -1,3 +1,10 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Eye, Megaphone, Pin, Plus, Trash2 } from "lucide-react";
@@ -5,7 +12,7 @@ import { api } from "../api/client";
 import type { Announcement } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmModal, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function AnnouncementsPage() {
   const { user } = useAuth();
@@ -40,9 +47,9 @@ export default function AnnouncementsPage() {
         subtitle="Company-wide news and notices."
         action={
           canPost && (
-            <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-              <Plus size={15} /> Post announcement
-            </button>
+            <Button type="button" onClick={() => setAdding(true)}>
+              <Plus data-icon="inline-start" /> Post announcement
+            </Button>
           )
         }
       />
@@ -50,46 +57,43 @@ export default function AnnouncementsPage() {
       {feed.loading ? (
         <Loading />
       ) : (feed.data?.length ?? 0) === 0 ? (
-        <Empty icon="📣" message="No announcements yet" />
+        <Empty icon={<Megaphone />} message="No announcements yet" />
       ) : (
         <div className="flex flex-col gap-3">
           {feed.data!.map((a) => (
-            <div
+            <Card
               key={a.id}
-              className="card"
+              className={a.is_read ? undefined : "border-l-3 border-l-primary"}
               onMouseEnter={() => markRead(a)}
-              style={{
-                borderLeft: a.is_read ? undefined : "3px solid var(--accent)",
-              }}
             >
-              <div className="spread">
-                <h3 className="m-0 inline-flex items-center gap-2">
-                  {a.pinned && <Pin size={15} className="text-brand-600" />}
-                  <Megaphone size={16} className="text-brand-600" />
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <CardTitle className="inline-flex flex-wrap items-center gap-2">
+                  {a.pinned && <Pin className="text-primary" />}
+                  <Megaphone className="text-primary" />
                   {a.title}
-                  {!a.is_read && <span className="badge amber">New</span>}
-                  {!a.is_published && <span className="badge">Draft</span>}
-                </h3>
-                <div className="row" style={{ flex: "0 0 auto", gap: 8 }}>
+                  {!a.is_read && <Badge>New</Badge>}
+                  {!a.is_published && <Badge variant="secondary">Draft</Badge>}
+                </CardTitle>
+                <div className="flex shrink-0 items-center gap-2">
                   {canPost && (
-                    <span className="muted inline-flex items-center gap-1 text-xs">
-                      <Eye size={12} /> {a.read_count}
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Eye /> {a.read_count}
                     </span>
                   )}
                   {(user?.is_admin || a.author_id === user?.id) && (
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => setDeleting(a)}>
-                      <Trash2 size={13} />
-                    </button>
+                    <Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeleting(a)}>
+                      <Trash2 />
+                    </Button>
                   )}
                 </div>
-              </div>
-              <div className="mt-2 text-sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+              </CardHeader>
+              <CardContent className="whitespace-pre-wrap text-sm leading-relaxed">
                 {a.body}
-              </div>
-              <div className="muted mt-2 text-xs">
+              </CardContent>
+              <CardFooter className="text-xs text-muted-foreground">
                 {a.author_name ?? "—"} · {new Date(a.created_at).toLocaleString()}
-              </div>
-            </div>
+              </CardFooter>
+            </Card>
           ))}
         </div>
       )}
@@ -104,7 +108,7 @@ export default function AnnouncementsPage() {
         />
       )}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete announcement"
           message={`Delete "${deleting.title}"? This can't be undone.`}
           confirmLabel="Delete"
@@ -120,50 +124,54 @@ export default function AnnouncementsPage() {
 function AnnouncementModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { notify } = useToast();
   const [form, setForm] = useState({ title: "", body: "", pinned: false, is_published: true });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/announcements", { method: "POST", body: form });
       notify("Announcement posted.");
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="Post announcement" onClose={onClose} maxWidth={560}>
-      <form onSubmit={submit}>
-        <div className="field">
-          <label>Title *</label>
-          <input required value={form.title} onChange={(e) => set("title", e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Message</label>
-          <textarea rows={6} value={form.body} onChange={(e) => set("body", e.target.value)} />
-        </div>
-        <div className="row" style={{ gap: 18 }}>
-          <label className="inline-flex items-center gap-2 text-sm font-medium" style={{ flex: "0 0 auto" }}>
-            <input type="checkbox" checked={form.pinned} onChange={(e) => set("pinned", e.target.checked)} />
+      <form onSubmit={submit} className="flex flex-col gap-5">
+        <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="rd-announcementspage-143-title">Title *</FieldLabel>
+          <Input id="rd-announcementspage-143-title" required value={form.title} onChange={(e) => set("title", e.target.value)} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-announcementspage-147-message">Message</FieldLabel>
+          <Textarea id="rd-announcementspage-147-message" rows={6} value={form.body} onChange={(e) => set("body", e.target.value)} />
+        </Field>
+        <div className="flex flex-wrap gap-5">
+          <FieldLabel className="inline-flex items-center gap-2">
+            <Checkbox checked={form.pinned} onCheckedChange={(checked) => set("pinned", checked)} />
             Pin to top
-          </label>
-          <label className="inline-flex items-center gap-2 text-sm font-medium" style={{ flex: "0 0 auto" }}>
-            <input type="checkbox" checked={form.is_published} onChange={(e) => set("is_published", e.target.checked)} />
+          </FieldLabel>
+          <FieldLabel className="inline-flex items-center gap-2">
+            <Checkbox checked={form.is_published} onCheckedChange={(checked) => set("is_published", checked)} />
             Publish &amp; notify everyone
-          </label>
+          </FieldLabel>
         </div>
-        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+        </FieldGroup>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Posting…" : "Post"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Posting…" : "Post"}
+          </Button>
         </div>
       </form>
     </Modal>

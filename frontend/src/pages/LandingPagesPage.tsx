@@ -1,3 +1,8 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSurface } from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -5,10 +10,11 @@ import type { LandingPage } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import type { LandingLead } from "../api/types";
 import { Monitor, Smartphone } from "lucide-react";
+import DOMPurify from "dompurify";
 import { parseBlocks } from "../landing/blocks";
 import { BlockList } from "../landing/BlockRenderer";
 import {
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ListSkeleton,
   Loading,
@@ -29,29 +35,22 @@ function LeadsModal({ page, onClose }: { page: LandingPage; onClose: () => void 
       ) : !data || data.length === 0 ? (
         <Empty message="No leads captured yet. Add a Lead form block and publish the page." />
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Contact</th>
-              <th>Message</th>
-              <th>When</th>
-            </tr>
-          </thead>
-          <tbody>
+         <TableSurface><Table>
+          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Message</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
+          <TableBody>
             {data.map((l) => (
-              <tr key={l.id}>
-                <td style={{ fontWeight: 600 }}>{l.name ?? "—"}</td>
-                <td>
+              <TableRow key={l.id}>
+                <TableCell className="font-semibold">{l.name ?? "—"}</TableCell>
+                <TableCell>
                   <div>{l.email}</div>
-                  <div className="muted">{l.phone}</div>
-                </td>
-                <td className="muted">{l.message ?? "—"}</td>
-                <td className="muted">{new Date(l.created_at).toLocaleDateString()}</td>
-              </tr>
+                  <div className="text-muted-foreground">{l.phone}</div>
+                </TableCell>
+                <TableCell className="max-w-80 whitespace-normal text-muted-foreground"><p className="line-clamp-3">{l.message ?? "—"}</p></TableCell>
+                <TableCell className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+         </Table></TableSurface>
       )}
     </Modal>
   );
@@ -62,8 +61,8 @@ function PreviewModal({ page, onClose }: { page: LandingPage; onClose: () => voi
   const blocks = parseBlocks(page.blocks);
   return (
     <Modal title={`Preview — ${page.title}`} maxWidth={1040} onClose={onClose}>
-      <div className="spread mb-3">
-        <div className="muted text-xs">
+      <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="text-xs text-muted-foreground">
           {page.status === "published" ? (
             <>
               Live at <code>/p/{page.slug}</code> ·{" "}
@@ -75,36 +74,34 @@ function PreviewModal({ page, onClose }: { page: LandingPage; onClose: () => voi
             <>Draft preview — not publicly visible until published.</>
           )}
         </div>
-        <div className="flex flex-none gap-1 rounded-lg border border-[var(--border)] p-0.5">
-          <button
-            className={`flex items-center gap-1 rounded-md border-0 px-2.5 py-1 text-sm ${device === "desktop" ? "bg-brand-50 text-brand-700" : "bg-transparent"}`}
-            onClick={() => setDevice("desktop")}
+        <ToggleGroup value={[device]} onValueChange={(value) => value[0] && setDevice(value[0] as "desktop" | "mobile")} variant="outline" spacing={0}>
+          <ToggleGroupItem value="desktop"
             aria-label="Desktop preview"
           >
-            <Monitor size={15} /> Desktop
-          </button>
-          <button
-            className={`flex items-center gap-1 rounded-md border-0 px-2.5 py-1 text-sm ${device === "mobile" ? "bg-brand-50 text-brand-700" : "bg-transparent"}`}
-            onClick={() => setDevice("mobile")}
+            <Monitor data-icon="inline-start" /> Desktop
+          </ToggleGroupItem>
+          <ToggleGroupItem value="mobile"
             aria-label="Mobile preview"
           >
-            <Smartphone size={15} /> Mobile
-          </button>
-        </div>
+            <Smartphone data-icon="inline-start" /> Mobile
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
-      <div className="grid max-h-[70vh] place-items-start overflow-auto rounded-xl bg-slate-100 p-3">
-        <div
-          className="mx-auto overflow-hidden rounded-lg bg-white shadow-soft transition-all"
+      <div className="grid max-h-[70vh] place-items-start overflow-auto bg-muted p-3">
+        <Card
+          className="mx-auto transition-colors"
           style={{ width: device === "mobile" ? 390 : "100%" }}
         >
+          <CardContent className="p-0">
           {blocks.length > 0 ? (
             <BlockList blocks={blocks} />
           ) : page.html ? (
-            <div dangerouslySetInnerHTML={{ __html: page.html }} />
+            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(page.html) }} />
           ) : (
-            <div className="empty">This page has no content yet.</div>
+            <Empty message="This page has no content yet." />
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </Modal>
   );
@@ -139,97 +136,75 @@ export default function LandingPagesPage() {
         title="Landing Pages"
         subtitle="Build marketing pages with the block editor, published at /p/{slug}."
         action={
-          <button className="btn-primary" onClick={() => setCreating(true)}>
+          <Button type="button" onClick={() => setCreating(true)}>
             + New page
-          </button>
+          </Button>
         }
       />
       {loading ? (
         <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
         <Empty
-          icon="🖥"
+          icon={<Monitor />}
           message="No landing pages yet"
           hint="Create a page to open the block builder."
           action={
-            <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Button type="button" onClick={() => setCreating(true)}>
               + New page
-            </button>
+            </Button>
           }
         />
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Slug</th>
-                <th>Status</th>
-                <th>Views</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="py-0"><CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow><TableHead>Title</TableHead><TableHead>Slug</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Views</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+            <TableBody>
               {data.map((p) => (
-                <tr key={p.id}>
-                  <td style={{ fontWeight: 600 }}>{p.title}</td>
-                  <td>
+                <TableRow key={p.id}>
+                  <TableCell className="max-w-[24rem] whitespace-normal"><div className="truncate font-semibold" title={p.title}>{p.title}</div></TableCell>
+                  <TableCell>
                     <code>/p/{p.slug}</code>
-                  </td>
-                  <td>
-                    <span className={`badge ${p.status === "published" ? "green" : ""}`}>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={p.status === "published" ? "success" : "secondary"}>
                       {p.status}
-                    </span>
-                  </td>
-                  <td>{p.view_count}</td>
-                  <td>
-                    <div className="row" style={{ gap: 6 }}>
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{p.view_count}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1.5">
                       {p.status === "published" && (
-                        <a
-                          className="btn-sm"
-                          style={{ flex: "0 0 auto" }}
-                          href={`/p/${p.slug}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        <Button size="sm" variant="outline" render={<a href={`/p/${p.slug}`} target="_blank" rel="noreferrer" />}>
                           View
-                        </a>
+                        </Button>
                       )}
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                      <Button type="button" size="sm" variant="outline"
                         onClick={() => setPreviewing(p)}
                       >
                         Preview
-                      </button>
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline"
                         onClick={() => setLeadsFor(p)}
                       >
                         Leads
-                      </button>
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline"
                         onClick={() => navigate(`/landing-pages/${p.id}/edit`)}
                       >
                         Edit
-                      </button>
-                      <button
-                        className="btn-sm btn-danger"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" size="sm" variant="destructive"
                         onClick={() => setDeleting(p)}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </CardContent></Card>
       )}
 
       {creating && (
@@ -238,7 +213,7 @@ export default function LandingPagesPage() {
           label="Page title"
           placeholder="e.g. Summer Promo"
           submitLabel="Create & open editor"
-          onSubmit={create}
+          onConfirm={create}
           onClose={() => setCreating(false)}
         />
       )}
@@ -247,7 +222,7 @@ export default function LandingPagesPage() {
         <PreviewModal page={previewing} onClose={() => setPreviewing(null)} />
       )}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete landing page"
           message={`Delete "${deleting.title}"? This can't be undone.`}
           confirmLabel="Delete"

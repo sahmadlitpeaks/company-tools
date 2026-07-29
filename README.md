@@ -1,101 +1,183 @@
-# AG Holding — Internal Company Platform
+# AG Holding Internal Company Platform
 
-An internal, SSO-protected platform for AG Holding employees. Authentication is
-handled by **Azure Entra ID (Azure AD)**; user profiles are synced into the
-platform's own PostgreSQL database on first login.
+A local-first internal operations platform for AG Holding employees. It combines
+people operations, daily work, company services, documents, approvals, and
+administration in one permission-aware application.
 
-## Features
+## What is included
 
-| # | Module | Description |
-|---|--------|-------------|
-| 1 | **Directory** | Pull every user's profile from Entra ID and store it locally (`/api/users`). |
-| 2 | **Digital Cards** | Per-employee digital business cards with a public share page + QR. Scans are tracked and visitors can optionally submit a **lead**. |
-| 3 | **Marketing Assets** | Folder tree + file uploads to organise all marketing material. |
-| 4 | **Brand Center** | Central store for brand guidelines, logos, fonts, colours and downloadable assets. |
-| 5 | **QR & Brochures** | Generate QR codes for products/links and host downloadable brochures. |
-| 6 | **Landing Pages** | Lightweight builder for marketing landing pages with a public URL. |
-| 7 | **Email Signatures** | Generate branded HTML email signatures from a template + user data. |
-| 8 | **URL Shortener** | Branded short links with click analytics for campaigns. |
-| 9 | **Secure Transfers** | Send a file via an encrypted, single-use link that self-destructs after download (optional password + expiry). |
-| 10 | **Asset Tracker** | Track physical/IT assets (tag, category, location), assign & check-out/check-in to employees, record purchase/warranty info, straight-line depreciation and a maintenance log. |
-| 11 | **Routine Checks** | Recurring daily/weekly rounds for IT, Facilities and any other team: the system issues each day's checklist, staff record OK/Issue (with photos where required), issues open service-desk tickets automatically, and a manager verifies and signs off. Compliance reporting shows completion, lateness and repeat-offender checkpoints. |
+The platform retains its original tools—employee directory, digital cards,
+marketing assets, brand center, brochures, landing pages, email signatures,
+short links, secure transfers, CRM, service desk, asset tracking, HR, payroll,
+training, recruiting, documents, notifications, audit history, and reporting—
+and now also includes:
 
-Digital cards can also be downloaded as a **vCard (.vcf)**, **QR PNG**, **card image (PNG)** or **print-ready PDF**.
+- Simple time tracking with two primary actions (clock and break), a live
+  `HH:MM:SS` timer that retains exact seconds after clock-out, a daily
+  work/break timeline, weekly timesheets, corrections,
+  schedules, approvals, reminders, and audit history. Employees can clear
+  today's entries and breaks themselves; doing so safely reopens a submitted
+  current week without changing earlier days.
+- QR-based TOTP setup in the existing account security settings.
+- Role-aware, reorderable dashboard widgets with hide, restore, and reset
+  controls.
+- Permission-aware global search across people, work, files, tickets, knowledge,
+  feedback, products, and lost-and-found reports.
+- Lightweight projects linked to the existing task, assignment, recurrence,
+  comment, and subtask workflows.
+- Internal café ordering, meeting-room and desk booking, visitor invitations,
+  purchase requests, and the aggregated company calendar.
+- Admin backup creation, daily scheduling, archive import, authenticated
+  download, checksums, and retention history.
+- Employee ideas/issues with comments, votes, attachments, a displayed username,
+  and an anonymous-submission option.
+- A published-Knowledge-Base-only AI assistant with citations and a disabled
+  state when no provider is configured.
+- Lost-and-found reporting, claiming, notification, attachment, and resolution
+  workflows.
+- Recurring daily and weekly routine checks for IT, Facilities, and other teams.
+  The system issues each checklist, supports OK/Issue results and required photos,
+  opens service-desk tickets for issues, provides manager verification and sign-off,
+  and reports completion, lateness, and repeat-offender checkpoints.
 
-**Multi-brand:** the platform is brand-aware. Define each company brand (AG Holding,
-Agiomix, Timepiece, …) in **Admin → Brands** with its logo, colours and contact
-details; a brand switcher in the header sets the active brand, which themes email
-signatures (and progressively the other modules). Content tables carry a
-`brand_id` so items can be scoped and filtered per brand.
+The excluded “Last things” section from the feature brief is not implemented.
+
+## Design system
+
+The React UI uses the shadcn `base-mira` design system generated from preset
+`b1GfRzGVM`, backed by Base UI, Tailwind CSS v4, Lucide icons, and DM Sans.
+Buttons, inputs, textareas, selects, checkboxes, labels, forms, cards, badges,
+tables, dialogs, alerts, loading/empty states, notifications, the application
+sidebar, and account menus render through shadcn primitives. A compatibility
+adapter preserves the existing event handlers and payloads on older screens;
+new screens should import components directly from `frontend/src/components/ui`.
+
+The primary color is `#F78D2B`. Primary text uses `#2A1405`, which has a
+calculated 7.33:1 contrast ratio against the primary color and exceeds the WCAG
+2.2 AA requirement for normal text. The shell uses the semantic tokens in
+`frontend/src/styles.css`; the former dark-blue navigation and dashboard banner
+have been removed. Light, neutral dark, density, font, and optional personal
+accent settings continue to work.
+
+To reapply the same preset from `frontend/`:
+
+```bash
+pnpm dlx shadcn@latest apply --preset b1GfRzGVM --yes
+```
+
+Only add generated shadcn components that are used by the application; unused
+generated files are intentionally omitted so React Doctor remains warning-free.
 
 ## Tech stack
 
-- **Backend:** FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, Authlib (OIDC).
-- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, MSAL (Azure auth), TanStack Query, React Router.
-- **Auth:** Azure Entra ID OIDC → backend issues a short-lived app JWT session.
+- Backend: FastAPI, SQLAlchemy 2 async, Alembic, PostgreSQL 16, Pydantic.
+- Frontend: React 19, TypeScript 7, Vite 8, Tailwind CSS 4, shadcn/Base UI.
+- Authentication: local password or Azure Entra ID OIDC, with an HttpOnly
+  application session and optional TOTP MFA.
+- Storage: PostgreSQL plus persistent media and backup Docker volumes.
+- Testing: Pytest, Playwright, axe-core, React Doctor, TypeScript, and Vite.
 
-## Quick start (local dev)
+## Run locally
+
+### Day-to-day development (recommended — Vite HMR)
+
+The production Docker frontend is a **static nginx build**. Editing `frontend/src`
+does **not** hot-reload there; you must rebuild the image. For normal UI work,
+run Vite on the host instead:
 
 ```bash
-# 1. Start Postgres
-docker compose up -d db
+# API + database (rebuild only when backend deps/Dockerfile change)
+docker compose up -d db backend
 
-# 2. Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # fill in Azure + DB values
-alembic upgrade head
-uvicorn app.main:app --reload
-
-# 3. Frontend
-cd ../frontend
-cp .env.example .env        # fill in VITE_AZURE_* values
+# Frontend with instant HMR
+cd frontend
 npm install
 npm run dev
 ```
 
-Backend runs on http://localhost:8000 (docs at `/docs`), frontend on
-http://localhost:5173.
+Open **[http://localhost:5173](http://localhost:5173)**. Vite proxies `/api`,
+`/media`, `/s`, and related paths to the backend on port `8000`. Save a file →
+the browser updates automatically. No frontend Docker rebuild.
 
-## Or run everything with Docker (one command, one URL)
+Optional full-stack dev compose (Vite + uvicorn `--reload` in containers):
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
-Then open **http://localhost:8080** — that's it. nginx serves the built SPA and
-reverse-proxies the API, so the whole app lives on a single origin (no CORS, no
-`.env` editing). Data persists in the `pgdata` and `media` volumes.
+Then open [http://localhost:5173](http://localhost:5173).
 
-Deploying to a server? Just point a browser at `http://<your-server-ip>:8080`
-(or map port 80). Public links (QR codes, short links, card pages) and SSO
-redirects **auto-derive from the host you reach the app on**, so no extra config
-is needed. To pin a fixed domain or force https behind TLS, set
-`PUBLIC_BASE_URL` / `FRONTEND_BASE_URL` (see `.env.example`).
+### Production-style Docker (static SPA)
 
-On a fresh database a **default administrator** is created automatically so you
-can sign in without Azure:
+```bash
+docker compose up -d --build
+```
 
-- **Email:** `admin@agholding.net`
-- **Password:** `admin`
+Open [http://localhost:8080](http://localhost:8080). The frontend nginx service
+serves a **built** SPA and reverse-proxies the API on the same origin. Alembic
+migrations run automatically when the backend starts. Use this for a release-like
+smoke test; use Vite for iterative UI work.
 
-You'll be prompted to change this password on first login. Override the seed via
-`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` (see `.env.example`). There is no
-public sign-up: after the first admin exists, new users are either **added by an
-admin** (Employee Directory → *Add user*) or provisioned via **Azure SSO**
-(landing as *pending* until an admin approves them).
+On a fresh database, bootstrap credentials come from
+`DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`. Defaults are documented in
+`backend/.env.example`; override them in a local `.env` and do not commit real
+credentials.
 
-To customise the port, secrets, Azure SSO or SMTP, copy `.env.example` to `.env`
-and edit it before running compose.
+Useful local checks:
 
-## Azure app registration
+```bash
+cd frontend
+npm install
+npm run typecheck
+npm run build
+npm audit
+npm outdated
+npx react-doctor@latest . --verbose
 
-1. Entra ID → App registrations → New registration.
-2. Redirect URIs (SPA): `http://localhost:5173` and your prod origin.
-3. Expose Microsoft Graph delegated `User.Read`, and (for the Directory sync)
-   application permission `User.Read.All` with admin consent.
-4. Copy **Tenant ID**, **Client ID**, and a **Client secret** into the `.env`
-   files (see `.env.example`).
+cd ../
+docker compose run --rm -T backend sh -c \
+  "pip install -q -r requirements-dev.txt && python -m pytest -q"
 
-See `docs/ARCHITECTURE.md` for the full module/endpoint breakdown.
+cd frontend
+E2E_EMAIL=your-admin-email \
+E2E_PASSWORD=your-local-password \
+npm run test:e2e
+```
+
+Playwright credentials are read from environment variables; passwords are not
+hardcoded in the test suite.
+
+## Backup behavior
+
+Admins can create, import, list, and download backups from Settings. Created
+archives combine `database.dump` and `media.tar.gz` in a ZIP, store a SHA-256
+checksum, run daily at 02:00 Asia/Dubai by default, and retain 30 days. The
+schedule, retention, and maximum import size can be overridden with:
+
+- `BACKUP_HOUR_DUBAI`
+- `BACKUP_RETENTION_DAYS`
+- `BACKUP_IMPORT_MAX_BYTES`
+- `BACKUP_ROOT`
+
+Import validates and registers a previously downloaded platform ZIP in the
+protected backup list. It deliberately does **not** overwrite or restore the
+running database. Follow [docs/backup-recovery.md](docs/backup-recovery.md) for
+the CLI recovery procedure.
+
+## AI help configuration
+
+AI Help is disabled until these server-only variables are present:
+
+- `AI_BASE_URL`
+- `AI_API_KEY`
+- `AI_MODEL`
+
+The key is never sent to the browser. Retrieval is limited to published
+Knowledge Base articles; chats remain ephemeral and unsupported answers are
+refused.
+
+## Additional documentation
+
+- [Architecture and API map](docs/ARCHITECTURE.md)
+- [Backup recovery](docs/backup-recovery.md)
+- [HR roadmap](docs/HR_ROADMAP.md)

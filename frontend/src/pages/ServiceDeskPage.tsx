@@ -9,27 +9,33 @@ import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import Attachments from "../components/Attachments";
 import SavedViews from "../components/SavedViews";
 import { hm } from "./WorkLogPage";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 const CATEGORIES = ["it", "facilities", "hr", "finance", "other"];
 const STATUSES = ["open", "in_progress", "resolved", "closed"];
 const PRIORITIES = ["low", "normal", "high", "urgent"];
 const OPEN_STATUSES = new Set(["open", "in_progress"]);
-const STATUS_BADGE: Record<string, string> = {
-  open: "blue",
-  in_progress: "amber",
-  resolved: "green",
-  closed: "",
+const STATUS_BADGE: Record<string, "info" | "warning" | "success" | "secondary"> = {
+  open: "info", in_progress: "warning", resolved: "success", closed: "secondary",
 };
-const PRIO_BADGE: Record<string, string> = { urgent: "red", high: "amber", normal: "", low: "blue" };
+const PRIO_BADGE: Record<string, "destructive" | "warning" | "secondary" | "info"> = { urgent: "destructive", high: "warning", normal: "secondary", low: "info" };
 
 /** SLA state for the resolution target (open tickets only). */
-function slaState(t: Ticket): { label: string; cls: string } | null {
+function slaState(t: Ticket): { label: string; variant: "destructive" | "warning" | "success" } | null {
   if (!OPEN_STATUSES.has(t.status) || !t.sla_resolution_due) return null;
   const due = new Date(t.sla_resolution_due).getTime();
   const now = Date.now();
-  if (now > due) return { label: "Overdue", cls: "red" };
-  if ((due - now) / 3600000 < 4) return { label: "Due soon", cls: "amber" };
-  return { label: "On track", cls: "green" };
+  if (now > due) return { label: "Overdue", variant: "destructive" };
+  if ((due - now) / 3600000 < 4) return { label: "Due soon", variant: "warning" };
+  return { label: "On track", variant: "success" };
 }
 
 function durationBetween(a?: string | null, b?: string | null): string {
@@ -42,7 +48,7 @@ export default function ServiceDeskPage() {
   const { user } = useAuth();
   const isAgent = user?.is_admin || user?.role === "manager";
   const [scope, setScope] = useState<"all" | "mine" | "assigned" | "unassigned">("all");
-  const [status, setStatus] = useState("");
+  const [status, setRecordStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [overdue, setOverdue] = useState(false);
   const [sort, setSort] = useState("recent");
@@ -63,6 +69,8 @@ export default function ServiceDeskPage() {
     if (params.get("new")) {
       setAdding(true);
       setParams({}, { replace: true });
+    } else if (params.get("open")) {
+      setOpenId(params.get("open"));
     }
   }, [params, setParams]);
 
@@ -76,7 +84,7 @@ export default function ServiceDeskPage() {
   function applyView(p: string) {
     const u = new URLSearchParams(p);
     setScope((u.get("scope") as typeof scope) || "all");
-    setStatus(u.get("status") || "");
+    setRecordStatus(u.get("status") || "");
     setPriority(u.get("priority") || "");
     setOverdue(u.get("overdue") === "true");
     setSort(u.get("sort") || "recent");
@@ -88,119 +96,123 @@ export default function ServiceDeskPage() {
         title="Service Desk"
         subtitle="Raise and track IT, facilities and HR requests."
         action={
-          <button className="btn-primary inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
-            <Plus size={15} /> New ticket
-          </button>
+          <Button type="button" onClick={() => setAdding(true)}>
+            <Plus data-icon="inline-start" /> New ticket
+          </Button>
         }
       />
 
-      <div className="card mb-4">
+      <Card className="mb-4"><CardContent className="flex flex-col gap-4">
         <SavedViews surface="tickets" currentParams={qs} onApply={applyView} />
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Show</label>
-            <select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
-              <option value="all">All tickets</option>
-              <option value="mine">Raised by me</option>
-              <option value="assigned">Assigned to me</option>
-              <option value="unassigned">Unassigned</option>
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{s.replace("_", " ")}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Priority</label>
-            <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-              <option value="">All</option>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Sort</label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="recent">Newest</option>
-              <option value="priority">Priority</option>
-              <option value="due">SLA due</option>
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0, flex: "0 0 auto" }}>
-            <label>&nbsp;</label>
-            <button className={`btn ${overdue ? "btn-primary" : ""}`} onClick={() => setOverdue((o) => !o)}>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <Field><FieldLabel htmlFor="tickets-scope">Show</FieldLabel>
+            <Select
+              items={[{ value: "all", label: "All tickets" }, { value: "mine", label: "Raised by me" }, { value: "assigned", label: "Assigned to me" }, { value: "unassigned", label: "Unassigned" }]}
+              value={scope}
+              onValueChange={(value) => value !== null && setScope(value as typeof scope)}
+            >
+              <SelectTrigger id="tickets-scope" aria-label="Show" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="all">All tickets</SelectItem><SelectItem value="mine">Raised by me</SelectItem>
+                <SelectItem value="assigned">Assigned to me</SelectItem><SelectItem value="unassigned">Unassigned</SelectItem>
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel htmlFor="tickets-status">Status</FieldLabel>
+            <Select
+              items={[{ value: null, label: "All" }, ...STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))]}
+              value={status || null}
+              onValueChange={(value) => setRecordStatus(value ?? "")}
+            >
+              <SelectTrigger id="tickets-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value={null}>All</SelectItem>
+                {STATUSES.map((s) => <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel htmlFor="tickets-priority">Priority</FieldLabel>
+            <Select
+              items={[{ value: null, label: "All" }, ...PRIORITIES.map((p) => ({ value: p, label: p }))]}
+              value={priority || null}
+              onValueChange={(value) => setPriority(value ?? "")}
+            >
+              <SelectTrigger id="tickets-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value={null}>All</SelectItem>
+                {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel htmlFor="tickets-sort">Sort</FieldLabel>
+            <Select
+              items={[{ value: "recent", label: "Newest" }, { value: "priority", label: "Priority" }, { value: "due", label: "SLA due" }]}
+              value={sort}
+              onValueChange={(value) => setSort(value ?? "")}
+            >
+              <SelectTrigger id="tickets-sort" aria-label="Sort" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="recent">Newest</SelectItem><SelectItem value="priority">Priority</SelectItem><SelectItem value="due">SLA due</SelectItem>
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel>Deadline</FieldLabel>
+            <Button type="button" variant={overdue ? "default" : "outline"} onClick={() => setOverdue((o) => !o)}>
               Overdue only
-            </button>
-          </div>
-        </div>
-      </div>
+            </Button>
+          </Field>
+        </FieldGroup>
+      </CardContent></Card>
 
-      <div className="card">
+      <Card className="py-0"><CardContent className="p-0">
         {tickets.loading ? (
           <Loading />
         ) : (tickets.data?.length ?? 0) === 0 ? (
           <Empty message="No tickets here." />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Subject</th>
-                <th>Category</th>
-                <th>Priority</th>
-                <th>SLA</th>
-                <th>Requester</th>
-                <th>Assignee</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader><TableRow>
+                <TableHead className="text-right">#</TableHead><TableHead>Subject</TableHead><TableHead>Category</TableHead><TableHead>Priority</TableHead>
+                <TableHead>SLA</TableHead><TableHead>Requester</TableHead><TableHead>Assignee</TableHead><TableHead>Status</TableHead><TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
               {tickets.data!.map((t) => {
                 const sla = slaState(t);
                 return (
-                  <tr key={t.id} className="cursor-pointer" onClick={() => setOpenId(t.id)}>
-                    <td className="text-ink-muted [font-variant-numeric:tabular-nums]">#{t.number}</td>
-                    <td>
-                      <span className="font-semibold">{t.subject}</span>
+                  <TableRow key={t.id}>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">#{t.number}</TableCell>
+                    <TableCell className="max-w-[24rem] whitespace-normal">
+                      <Button type="button" variant="link" className="h-auto max-w-full justify-start p-0 text-left font-semibold text-foreground" onClick={() => setOpenId(t.id)}><span className="truncate">{t.subject}</span></Button>
                       {t.comment_count > 0 && (
-                        <span className="muted ml-2 inline-flex items-center gap-1 text-xs">
+                        <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <MessageSquare size={11} /> {t.comment_count}
                         </span>
                       )}
-                    </td>
-                    <td><span className="badge">{t.category}</span></td>
-                    <td>
-                      <span className={`badge ${PRIO_BADGE[t.priority] ?? ""}`}>{t.priority}</span>
-                    </td>
-                    <td>{sla ? <span className={`badge ${sla.cls}`}>{sla.label}</span> : <span className="muted">—</span>}</td>
-                    <td>{t.requester_name ?? "—"}</td>
-                    <td>
+                    </TableCell>
+                    <TableCell><Badge variant="secondary">{t.category}</Badge></TableCell>
+                    <TableCell><Badge variant={PRIO_BADGE[t.priority] ?? "secondary"}>{t.priority}</Badge></TableCell>
+                    <TableCell>{sla ? <Badge variant={sla.variant}>{sla.label}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>{t.requester_name ?? "—"}</TableCell>
+                    <TableCell>
                       {t.assignee_name ?? (
                         isAgent ? (
-                          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={(e) => assignToMe(e, t)}>
+                          <Button type="button" variant="outline" size="sm" onClick={(e) => assignToMe(e, t)}>
                             Assign to me
-                          </button>
+                          </Button>
                         ) : (
                           "—"
                         )
                       )}
-                    </td>
-                    <td><span className={`badge ${STATUS_BADGE[t.status] ?? ""}`}>{t.status.replace("_", " ")}</span></td>
-                    <td className="text-right font-medium text-brand-600">Open ›</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell><Badge variant={STATUS_BADGE[t.status] ?? "secondary"}>{t.status.replace("_", " ")}</Badge></TableCell>
+                    <TableCell className="text-right font-medium">Open ›</TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </CardContent></Card>
 
       {adding && (
         <TicketModal
@@ -221,62 +233,60 @@ export default function ServiceDeskPage() {
 function TicketModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { notify } = useToast();
   const [form, setForm] = useState({ subject: "", description: "", category: "it", priority: "normal" });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/tickets", { method: "POST", body: form });
       notify("Ticket raised.");
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="New ticket" onClose={onClose}>
       <form onSubmit={submit}>
-        <div className="field">
-          <label>Subject *</label>
-          <input required value={form.subject} onChange={(e) => set("subject", e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Describe the issue</label>
-          <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Category</label>
-            <select value={form.category} onChange={(e) => set("category", e.target.value)}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Priority</label>
-            <select value={form.priority} onChange={(e) => set("priority", e.target.value)}>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <p className="muted text-xs">
+        <FieldGroup>
+        <Field><FieldLabel htmlFor="ticket-subject">Subject *</FieldLabel><Input id="ticket-subject" required value={form.subject} onChange={(e) => set("subject", e.target.value)} /></Field>
+        <Field><FieldLabel htmlFor="ticket-description">Describe the issue</FieldLabel><Textarea id="ticket-description" rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field><FieldLabel htmlFor="ticket-category">Category</FieldLabel>
+            <Select items={CATEGORIES.map((c) => ({ value: c, label: c }))} value={form.category} onValueChange={(value) => set("category", value ?? "")}>
+              <SelectTrigger id="ticket-category" aria-label="Category" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          <Field><FieldLabel htmlFor="ticket-priority">Priority</FieldLabel>
+            <Select items={PRIORITIES.map((p) => ({ value: p, label: p }))} value={form.priority} onValueChange={(value) => set("priority", value ?? "")}>
+              <SelectTrigger id="ticket-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
+        <p className="text-xs text-muted-foreground">
           SLA targets are set automatically from the priority (urgent → 4h, high → 24h, normal → 72h, low → 120h).
         </p>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Submitting…" : "Raise ticket"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting…" : "Raise ticket"}
+          </Button>
         </div>
+        </FieldGroup>
       </form>
     </Modal>
   );
@@ -343,88 +353,89 @@ function TicketDetailModal({
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`badge ${STATUS_BADGE[t.status] ?? ""}`}>{t.status.replace("_", " ")}</span>
-            <span className="badge">{t.category}</span>
-            <span className={`badge ${PRIO_BADGE[t.priority] ?? ""}`}>{t.priority}</span>
-            {sla && <span className={`badge ${sla.cls}`}>{sla.label}</span>}
-            <span className="muted text-xs">Raised by {t.requester_name ?? "—"}</span>
+            <Badge variant={STATUS_BADGE[t.status] ?? "secondary"}>{t.status.replace("_", " ")}</Badge>
+            <Badge variant="secondary">{t.category}</Badge>
+            <Badge variant={PRIO_BADGE[t.priority] ?? "secondary"}>{t.priority}</Badge>
+            {sla && <Badge variant={sla.variant}>{sla.label}</Badge>}
+            <span className="text-xs text-muted-foreground">Raised by {t.requester_name ?? "—"}</span>
           </div>
 
           {/* SLA / timing summary */}
-          <div className="card mb-3 grid grid-cols-3 gap-2 text-center" style={{ padding: 10, background: "var(--surface-2)" }}>
+          <Card size="sm" className="mb-3 bg-muted/40"><CardContent className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <div className="muted text-[11px]">Resolution due</div>
+              <div className="text-[11px] text-muted-foreground">Resolution due</div>
               <div className="text-sm font-semibold">
                 {t.sla_resolution_due ? new Date(t.sla_resolution_due).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) : "—"}
               </div>
             </div>
             <div>
-              <div className="muted text-[11px]">First response</div>
+              <div className="text-[11px] text-muted-foreground">First response</div>
               <div className="text-sm font-semibold">{durationBetween(t.created_at, t.first_responded_at)}</div>
             </div>
             <div>
-              <div className="muted text-[11px]">Time to resolve</div>
+              <div className="text-[11px] text-muted-foreground">Time to resolve</div>
               <div className="text-sm font-semibold">{durationBetween(t.created_at, t.resolved_at)}</div>
             </div>
-          </div>
+          </CardContent></Card>
 
           {t.description && (
-            <div className="card mb-3" style={{ padding: 12, background: "var(--surface-2)" }}>
-              {t.description}
-            </div>
+            <Card size="sm" className="mb-3 bg-muted/40"><CardContent>{t.description}</CardContent></Card>
           )}
 
           {canTriage && (
             <>
-              <div className="row mb-3">
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Status</label>
-                  <select value={t.status} onChange={(e) => changeStatus(e.target.value)}>
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>{s.replace("_", " ")}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Priority</label>
-                  <select value={t.priority} onChange={(e) => patch({ priority: e.target.value })}>
-                    {PRIORITIES.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Assignee</label>
-                  <select value={t.assignee_id ?? ""} onChange={(e) => patch({ assignee_id: e.target.value || null })}>
-                    <option value="">Unassigned</option>
-                    {(users.data ?? []).map((u) => (
-                      <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="field">
-                <label>Resolution note {!resolved && <span className="muted text-xs">(required to resolve)</span>}</label>
-                <textarea
+              <FieldGroup className="mb-3 grid gap-3 sm:grid-cols-3">
+                <Field><FieldLabel htmlFor="ticket-detail-status">Status</FieldLabel>
+                  <Select items={STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))} value={t.status} onValueChange={(value) => value !== null && changeStatus(value)}>
+                    <SelectTrigger id="ticket-detail-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {STATUSES.map((s) => <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>)}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+                <Field><FieldLabel htmlFor="ticket-detail-priority">Priority</FieldLabel>
+                  <Select items={PRIORITIES.map((p) => ({ value: p, label: p }))} value={t.priority} onValueChange={(value) => value !== null && patch({ priority: value })}>
+                    <SelectTrigger id="ticket-detail-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+                <Field><FieldLabel htmlFor="ticket-detail-assignee">Assignee</FieldLabel>
+                  <Select
+                    items={[{ value: null, label: "Unassigned" }, ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]}
+                    value={t.assignee_id ?? null}
+                    onValueChange={(value) => patch({ assignee_id: value ?? null })}
+                  >
+                    <SelectTrigger id="ticket-detail-assignee" aria-label="Assignee" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      <SelectItem value={null}>Unassigned</SelectItem>
+                      {(users.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+              </FieldGroup>
+              <Field><FieldLabel htmlFor="ticket-resolution">Resolution note {!resolved && <span className="text-xs text-muted-foreground">(required to resolve)</span>}</FieldLabel>
+                <Textarea id="ticket-resolution"
                   rows={2}
                   placeholder="What was done to resolve this?"
                   value={resolutionNote}
                   onChange={(e) => setResolutionNote(e.target.value)}
                 />
-              </div>
+              </Field>
             </>
           )}
 
           {resolved && t.resolution_note && (
-            <div className="card mb-3" style={{ padding: 12, background: "color-mix(in srgb, var(--ok) 10%, var(--surface))" }}>
-              <div className="muted mb-1 text-[11px] font-semibold uppercase tracking-wide">Resolution</div>
+            <Card size="sm" className="mb-3 bg-muted/40"><CardContent>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Resolution</div>
               <div className="text-sm">{t.resolution_note}</div>
               {canTriage && (
-                <button className="btn-sm mt-2 inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => changeStatus("open")}>
-                  <RotateCcw size={13} /> Reopen
-                </button>
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => changeStatus("open")}>
+                  <RotateCcw data-icon="inline-start" /> Reopen
+                </Button>
               )}
-            </div>
+            </CardContent></Card>
           )}
 
           <div className="mb-3">
@@ -434,56 +445,49 @@ function TicketDetailModal({
           <TicketEffort ticketId={id} initial={t.effort_minutes} onLogged={detail.reload} />
 
           <h4 className="mb-2">Conversation</h4>
-          <div className="mb-3 flex flex-col gap-2" style={{ maxHeight: 220, overflow: "auto" }}>
-            {t.comments.length === 0 && <p className="muted text-sm">No replies yet.</p>}
+          <div className="mb-3 flex max-h-56 flex-col gap-2 overflow-auto">
+            {t.comments.length === 0 && <p className="text-sm text-muted-foreground">No replies yet.</p>}
             {t.comments.map((c) => (
-              <div
+              <Card
                 key={c.id}
-                className="card"
-                style={{
-                  padding: 10,
-                  background: c.is_internal
-                    ? "color-mix(in srgb, var(--warn) 12%, var(--surface))"
-                    : "var(--surface-2)",
-                }}
+                size="sm"
+                className={c.is_internal ? "bg-primary/10" : "bg-muted/40"}
               >
-                <div className="spread">
+                <CardHeader className="grid grid-cols-[1fr_auto] items-center">
                   <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
                     {c.author_name ?? "—"}
                     {c.is_internal && (
-                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-700">
-                        <Lock size={10} /> internal
+                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-warning-foreground">
+                        <Lock /> internal
                       </span>
                     )}
                   </span>
-                  <span className="muted text-xs">{new Date(c.created_at).toLocaleString()}</span>
-                </div>
-                <div className="text-sm">{c.body}</div>
-              </div>
+                  <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
+                </CardHeader>
+                <CardContent className="text-sm">{c.body}</CardContent>
+              </Card>
             ))}
           </div>
-          <div className="row" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0, flex: 4 }}>
-              <input
+          <div className="flex items-end gap-2">
+            <Field>
+              <Input aria-label={internal ? "Write an internal note" : "Write a reply"}
                 placeholder={internal ? "Write an internal note…" : "Write a reply…"}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && send()}
               />
-            </div>
-            <button
-              className={`inline-flex items-center gap-1.5 ${internal ? "btn" : "btn-primary"}`}
-              style={{ flex: "0 0 auto" }}
+            </Field>
+            <Button type="button" variant={internal ? "outline" : "default"}
               onClick={send}
             >
-              <Send size={14} /> {internal ? "Add note" : "Send"}
-            </button>
+              <Send data-icon="inline-start" /> {internal ? "Add note" : "Send"}
+            </Button>
           </div>
           {canTriage && (
-            <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-xs text-ink-muted">
-              <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} style={{ width: 14 }} />
-              Internal note (visible to agents only)
-            </label>
+            <Field orientation="horizontal" className="mt-2">
+              <Checkbox id="ticket-internal" checked={internal} onCheckedChange={(checked) => setInternal(checked === true)} />
+              <FieldLabel htmlFor="ticket-internal">Internal note (visible to agents only)</FieldLabel>
+            </Field>
           )}
 
           {/* Activity timeline */}
@@ -495,8 +499,8 @@ function TicketDetailModal({
               <div className="flex flex-col gap-1.5">
                 {activity.data!.map((a) => (
                   <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-ink">{a.summary}</span>
-                    <span className="muted flex-none whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</span>
+                    <span>{a.summary}</span>
+                    <span className="flex-none whitespace-nowrap text-muted-foreground">{new Date(a.created_at).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -545,11 +549,11 @@ function TicketEffort({
 
   return (
     <div className="mb-3">
-      <div className="spread mb-2">
-        <h4 className="m-0 inline-flex items-center gap-1.5">
-          <Clock size={15} /> Effort
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="inline-flex items-center gap-1.5">
+          <Clock /> Effort
         </h4>
-        <span className="badge blue">{hm(total)}</span>
+        <Badge variant="info">{hm(total)}</Badge>
       </div>
       {(logs.data?.length ?? 0) > 0 && (
         <div className="mb-2 flex flex-col gap-1">
@@ -557,24 +561,24 @@ function TicketEffort({
             <div key={l.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="truncate">
                 <span className="font-medium">{l.user_name}</span>
-                <span className="muted"> · {l.description}</span>
+                <span className="text-muted-foreground"> · {l.description}</span>
               </span>
-              <span className="muted flex-none whitespace-nowrap">{hm(l.minutes)}</span>
+              <span className="flex-none whitespace-nowrap text-muted-foreground">{hm(l.minutes)}</span>
             </div>
           ))}
         </div>
       )}
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="field" style={{ marginBottom: 0, flex: 4 }}>
-          <input placeholder="What did you do?" value={note} onChange={(e) => setNote(e.target.value)} />
-        </div>
-        <div className="field" style={{ marginBottom: 0, width: 90 }}>
-          <input type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} title="Minutes" />
-        </div>
-        <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={log}>
-          <Clock size={14} /> Log
-        </button>
-      </div>
+      <FieldGroup className="grid gap-2 sm:grid-cols-[1fr_6rem_auto] sm:items-end">
+        <Field><FieldLabel htmlFor="effort-note" className="sr-only">What did you do?</FieldLabel>
+          <Input id="effort-note" placeholder="What did you do?" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <Field><FieldLabel htmlFor="effort-minutes" className="sr-only">Minutes</FieldLabel>
+          <Input id="effort-minutes" type="number" min="0" value={minutes} onChange={(e) => setMinutes(e.target.value)} title="Minutes" />
+        </Field>
+        <Button type="button" variant="outline" onClick={log}>
+          <Clock data-icon="inline-start" /> Log
+        </Button>
+      </FieldGroup>
     </div>
   );
 }
