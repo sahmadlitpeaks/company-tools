@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw } from "lucide-react";
 import { Modal } from "./ui";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
 
 /** Longest edge of a captured photo. A 4-8 MB phone shot becomes ~200 KB. */
 const MAX_EDGE = 1600;
@@ -53,6 +56,7 @@ export default function CameraCapture({
             audio: false,
           });
         } catch {
+          if (cancelled) return;
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         }
         if (cancelled) {
@@ -64,8 +68,9 @@ export default function CameraCapture({
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => undefined);
         }
-        setReady(true);
+        if (!cancelled) setReady(true);
       } catch (err) {
+        if (cancelled) return;
         const name = err instanceof DOMException ? err.name : "";
         setError(
           name === "NotAllowedError"
@@ -85,6 +90,9 @@ export default function CameraCapture({
   // Revoke the preview URL when it is replaced or the modal goes away.
   useEffect(() => () => { if (shot) URL.revokeObjectURL(shot.url); }, [shot]);
 
+  const captureRequestRef = useRef(0);
+  useEffect(() => () => { captureRequestRef.current += 1; }, []);
+
   function takeShot() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
@@ -94,10 +102,11 @@ export default function CameraCapture({
     canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const requestId = ++captureRequestRef.current;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!blob || requestId !== captureRequestRef.current) return;
         const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         const file = new File([blob], `photo-${stamp}.jpg`, { type: "image/jpeg" });
         setShot({ url: URL.createObjectURL(blob), file });
@@ -123,13 +132,14 @@ export default function CameraCapture({
   return (
     <Modal title={title} onClose={onClose} maxWidth={620}>
       {error ? (
-        <p className="text-sm">{error}</p>
+        <Alert variant="destructive">
+          <Camera data-slot="alert-icon" aria-hidden="true" />
+          <AlertTitle>Camera unavailable</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : (
         <>
-          <div
-            className="relative mb-3 overflow-hidden rounded-xl"
-            style={{ background: "#000", aspectRatio: "4 / 3" }}
-          >
+          <div className="relative aspect-[4/3] overflow-hidden bg-black">
             {/* Kept mounted so the stream has somewhere to attach. */}
             <video
               ref={videoRef}
@@ -139,19 +149,22 @@ export default function CameraCapture({
               className="h-full w-full object-cover"
               style={{ display: shot ? "none" : "block" }}
             />
-            {shot && <img src={shot.url} alt="Captured photo" className="h-full w-full object-cover" />}
+            {shot && <img src={shot.url} alt="Camera capture preview" className="h-full w-full object-cover" />}
             {!ready && !shot && (
-              <span className="muted absolute inset-0 grid place-items-center text-sm">
+              <span
+                className="absolute inset-0 grid place-items-center text-sm text-white/70"
+                role="status"
+              >
                 Starting camera…
               </span>
             )}
           </div>
-          <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <div className="flex flex-wrap justify-end gap-2">
             {shot ? (
               <>
-                <button
-                  className="btn inline-flex items-center gap-1.5"
-                  style={{ flex: "0 0 auto" }}
+                <Button
+                  type="button"
+                  variant="outline"
                   disabled={busy}
                   onClick={() => {
                     setShot(null);
@@ -159,26 +172,27 @@ export default function CameraCapture({
                     setAttempt((n) => n + 1); // reopens the stream
                   }}
                 >
-                  <RefreshCw size={15} /> Retake
-                </button>
-                <button
-                  className="btn-primary"
-                  style={{ flex: "0 0 auto" }}
+                  <RefreshCw data-icon="inline-start" aria-hidden="true" />
+                  Retake
+                </Button>
+                <Button
+                  type="button"
                   disabled={busy}
                   onClick={keep}
                 >
+                  {busy && <Spinner data-icon="inline-start" />}
                   {busy ? "Uploading…" : "Use this photo"}
-                </button>
+                </Button>
               </>
             ) : (
-              <button
-                className="btn-primary inline-flex items-center gap-1.5"
-                style={{ flex: "0 0 auto" }}
+              <Button
+                type="button"
                 disabled={!ready}
                 onClick={takeShot}
               >
-                <Camera size={15} /> Capture
-              </button>
+                <Camera data-icon="inline-start" aria-hidden="true" />
+                Capture
+              </Button>
             )}
           </div>
         </>

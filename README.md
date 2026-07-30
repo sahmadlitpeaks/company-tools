@@ -44,29 +44,26 @@ The excluded “Last things” section from the feature brief is not implemented
 
 ## Design system
 
-The React UI uses the shadcn `base-mira` design system generated from preset
-`b1GfRzGVM`, backed by Base UI, Tailwind CSS v4, Lucide icons, and DM Sans.
+The React UI uses the shadcn `base-lyra` design system, backed by Base UI,
+Tailwind CSS v4, Lucide icons, and DM Sans.
 Buttons, inputs, textareas, selects, checkboxes, labels, forms, cards, badges,
 tables, dialogs, alerts, loading/empty states, notifications, the application
 sidebar, and account menus render through shadcn primitives. A compatibility
 adapter preserves the existing event handlers and payloads on older screens;
 new screens should import components directly from `frontend/src/components/ui`.
 
-The primary color is `#F78D2B`. Primary text uses `#2A1405`, which has a
-calculated 7.33:1 contrast ratio against the primary color and exceeds the WCAG
-2.2 AA requirement for normal text. The shell uses the semantic tokens in
-`frontend/src/styles.css`; the former dark-blue navigation and dashboard banner
-have been removed. Light, neutral dark, density, font, and optional personal
-accent settings continue to work.
-
-To reapply the same preset from `frontend/`:
-
-```bash
-pnpm dlx shadcn@latest apply --preset b1GfRzGVM --yes
-```
+The default primary is yellow (`#FACC15`) with zinc foreground (`#18181B`), and
+the active company may supply its own accent. The shell uses semantic tokens in
+`frontend/src/styles.css`, supports light and neutral dark modes, and keeps
+normal rectangular surfaces square. Do not reapply an old preset: the installed
+component source contains project-specific accessibility and layout changes.
 
 Only add generated shadcn components that are used by the application; unused
-generated files are intentionally omitted so React Doctor remains warning-free.
+generated files are intentionally omitted. Read
+[`docs/FRONTEND_COMPONENTS.md`](docs/FRONTEND_COMPONENTS.md) before frontend
+work. Coding agents must also follow [`AGENTS.md`](AGENTS.md) and the tracked
+`company-tools-shadcn` and `company-tools-react-doctor` skills under
+`.agents/skills/`.
 
 ## Tech stack
 
@@ -91,7 +88,7 @@ docker compose up -d db backend
 
 # Frontend with instant HMR
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -127,12 +124,12 @@ Useful local checks:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run typecheck
 npm run build
+npm run doctor
 npm audit
 npm outdated
-npx react-doctor@latest . --verbose
 
 cd ../
 docker compose run --rm -T backend sh -c \
@@ -178,6 +175,8 @@ refused.
 
 ## Additional documentation
 
+- [Coding-agent instructions](AGENTS.md)
 - [Architecture and API map](docs/ARCHITECTURE.md)
+- [Frontend components and AI usage](docs/FRONTEND_COMPONENTS.md)
 - [Backup recovery](docs/backup-recovery.md)
 - [HR roadmap](docs/HR_ROADMAP.md)

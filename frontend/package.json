@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "doctor": "npx -y react-doctor@0.9.2 . --verbose",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test:e2e": "playwright test"

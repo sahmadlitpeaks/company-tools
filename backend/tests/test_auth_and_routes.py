@@ -167,7 +167,7 @@ async def test_new_user_gets_emailed_temp_password(client, auth):
 
 
 async def test_admin_reset_password_reissues_and_rearms(client, auth):
-    from tests.helpers import MEMBER_PW, make_member
+    from helpers import MEMBER_PW, make_member
 
     _, uid = await make_member(client, auth, email="resettee@agholding.net")
     r = await client.post(f"/api/users/{uid}/reset-password", headers=auth)

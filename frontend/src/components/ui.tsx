@@ -54,9 +54,6 @@ import { Spinner } from "./ui/spinner";
 import { Toaster } from "./ui/sonner";
 import { cn } from "../lib/utils";
 
-// Preserve the legacy wrapper surface while using the maintained shadcn implementation.
-export { Skeleton };
-
 /* ---------- Toast ---------- */
 interface ToastState {
   notify: (msg: string, kind?: "info" | "error") => void;

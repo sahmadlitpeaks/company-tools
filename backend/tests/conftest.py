@@ -44,7 +44,7 @@ async def client():
 
 @pytest_asyncio.fixture
 async def auth(client):
-    from tests.helpers import clear_forced_password_change
+    from helpers import clear_forced_password_change
 
     r = await client.post(
         "/api/auth/login",
