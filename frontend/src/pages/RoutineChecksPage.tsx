@@ -47,6 +47,16 @@ const ITEM_BADGE: Record<RunItemStatus, string> = {
   na: "",
   done: "green",
 };
+/** Left-edge stripe colour marking a checkpoint as dealt with. */
+const ITEM_STRIPE: Record<RunItemStatus, string> = {
+  pending: "transparent",
+  ok: "#16a34a",
+  issue: "#dc2626",
+  na: "#94a3b8",
+  done: "#16a34a",
+};
+/** Answers that let the checker move on. An issue needs its note written first. */
+const ADVANCING: RunItemStatus[] = ["ok", "na", "done"];
 
 function fmtDate(d?: string | null) {
   return d ? new Date(d).toLocaleDateString() : "—";
@@ -299,6 +309,20 @@ function RunModal({
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [busy, setBusy] = useState(false);
+  // The checkpoint to scroll to once it has rendered (set by auto-advance).
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  // Runs after the section has been expanded, so the row exists in the DOM.
+  // "nearest" keeps the view still when the next checkpoint is already on
+  // screen and scrolls the minimum when it isn't — tapping down a long round
+  // shouldn't shift the list under your thumb on every answer.
+  useEffect(() => {
+    if (!focusId) return;
+    document
+      .getElementById(`chk-${focusId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setFocusId(null);
+  }, [focusId]);
 
   const run = detail.data;
   const locked = !!run && ["submitted", "done"].includes(run.status);
@@ -316,14 +340,44 @@ function RunModal({
     return groups;
   }, [run]);
 
+  /** Reveal a checkpoint: open its section, expand it and scroll it into view. */
+  function focusItem(next: RunItem) {
+    const sectionName = next.section || "Checks";
+    setCollapsed((c) => (c[sectionName] ? { ...c, [sectionName]: false } : c));
+    setExpandedItem(next.id);
+    setFocusId(next.id);
+  }
+
   async function respond(item: RunItem, body: Record<string, unknown>) {
+    // Snapshot before the reload; only `item` changes, so "what's still
+    // unanswered" can be worked out from it without waiting for the round-trip.
+    const items = run?.items ?? [];
     try {
       await api(`/api/checklist-runs/items/${item.id}`, { method: "PATCH", body });
       await detail.reload();
       onChanged();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
+      return;
     }
+
+    const status = body.status as RunItemStatus | undefined;
+    if (!status || !ADVANCING.includes(status)) return;
+
+    // A checkpoint owing photo evidence keeps the checker where they are.
+    if (item.photo_required && status !== "na" && item.photo_count === 0) {
+      setExpandedItem(item.id);
+      setFocusId(item.id);
+      notify("This checkpoint needs a photo before you move on.", "info");
+      return;
+    }
+
+    const idx = items.findIndex((i) => i.id === item.id);
+    const stillPending = (i: RunItem) => i.status === "pending" && i.id !== item.id;
+    // Next one below, else wrap back to anything skipped earlier.
+    const next = items.slice(idx + 1).find(stillPending) ?? items.find(stillPending);
+    if (next) focusItem(next);
+    else notify("All checkpoints answered — ready to submit.");
   }
 
   async function submit() {
@@ -382,6 +436,7 @@ function RunModal({
   const missingPhotos = run.items.filter(
     (i) => i.photo_required && i.status !== "na" && i.photo_count === 0,
   ).length;
+  const allAnswered = run.items.length > 0 && answered === run.items.length;
   const took = duration(run.started_at, run.submitted_at);
 
   return (
@@ -435,10 +490,33 @@ function RunModal({
         <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--surface-2)" }}>
           <div
             className="h-full rounded-full transition-all"
-            style={{ width: `${pct}%`, background: "var(--primary, #6366f1)" }}
+            style={{
+              width: `${pct}%`,
+              background: allAnswered ? "#16a34a" : "var(--primary, #6366f1)",
+            }}
           />
         </div>
       </div>
+
+      {allAnswered && !locked && (
+        <div
+          className="card mb-3 inline-flex w-full items-center gap-2"
+          style={{ background: "rgba(22,163,74,0.10)", borderColor: "#16a34a" }}
+        >
+          <CheckCircle2 size={18} style={{ color: "#16a34a", flex: "0 0 auto" }} />
+          <div className="text-sm">
+            <span className="font-semibold">All {run.items.length} checkpoints answered.</span>{" "}
+            {missingPhotos > 0 ? (
+              <span>
+                {missingPhotos} still need{missingPhotos === 1 ? "s" : ""} a photo before you can
+                submit.
+              </span>
+            ) : (
+              <span className="muted">This round is complete and ready to submit.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {run.review_note && (
         <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
@@ -458,20 +536,33 @@ function RunModal({
         {sections.map((section) => {
           const done = section.items.filter((i) => i.status !== "pending").length;
           const isCollapsed = collapsed[section.name];
+          const sectionDone = done === section.items.length;
           return (
             <div key={section.name} className="card !p-0 overflow-hidden">
               <button
                 className="spread w-full px-3 py-2 text-left"
-                style={{ background: "var(--surface-2)" }}
+                style={{
+                  background: sectionDone ? "rgba(22,163,74,0.10)" : "var(--surface-2)",
+                  borderLeft: `4px solid ${sectionDone ? "#16a34a" : "transparent"}`,
+                }}
                 onClick={() => setCollapsed((c) => ({ ...c, [section.name]: !c[section.name] }))}
               >
                 <span className="inline-flex items-center gap-1.5 font-semibold">
                   {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                   {section.name}
                 </span>
-                <span className="muted text-xs">
-                  {done}/{section.items.length}
-                </span>
+                {sectionDone ? (
+                  <span
+                    className="inline-flex flex-none items-center gap-1 text-xs font-semibold"
+                    style={{ color: "#16a34a" }}
+                  >
+                    <CheckCircle2 size={13} /> Complete
+                  </span>
+                ) : (
+                  <span className="muted text-xs">
+                    {done}/{section.items.length}
+                  </span>
+                )}
               </button>
               {!isCollapsed && (
                 <div className="flex flex-col">
@@ -580,11 +671,31 @@ function ItemRow({
     { key: "na", label: "N/A", icon: <MinusCircle size={14} /> },
   ];
 
+  // Crossed off the list, the way the paper form was ticked through.
+  const struck = item.status === "ok" || item.status === "na" || item.status === "done";
+
   return (
-    <div className="border-t px-3 py-2" style={{ borderColor: "var(--border)" }}>
+    <div
+      id={`chk-${item.id}`}
+      className="border-t px-3 py-2 transition-colors"
+      style={{
+        borderColor: "var(--border)",
+        borderLeft: `4px solid ${ITEM_STRIPE[item.status]}`,
+        background: expanded ? "var(--surface-2)" : undefined,
+      }}
+    >
       <div className="spread gap-2" style={{ alignItems: "flex-start" }}>
         <button className="text-left" onClick={onToggleExpand} style={{ flex: "1 1 auto" }}>
-          <div className="font-medium">{item.title}</div>
+          <div
+            className="font-medium"
+            style={
+              struck
+                ? { textDecoration: "line-through", textDecorationColor: ITEM_STRIPE[item.status], opacity: 0.65 }
+                : undefined
+            }
+          >
+            {item.title}
+          </div>
           <div className="muted flex flex-wrap items-center gap-1.5 text-xs">
             {item.asset_name && <span>{item.asset_name}</span>}
             {item.photo_required && (
@@ -660,10 +771,11 @@ function ItemRow({
             entityType="task_item"
             entityId={item.id}
             compact
+            camera
             accept="image/*"
             capture="environment"
             heading="Photos"
-            label="+ Take / add photo"
+            label="+ From file"
             onChanged={onPhotoChanged}
           />
           {item.status === "issue" && !item.ticket_number && (

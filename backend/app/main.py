@@ -124,9 +124,14 @@ async def _seed_default_admin() -> None:  # pragma: no cover - exercised via tes
     )
 
     async with AsyncSessionLocal() as db:
+        # A fresh production install starts bare: just the admin, who then builds
+        # departments, leave types and everyone else. The sample departments and
+        # leave types are dev/test convenience only, so they're seeded outside
+        # production (the demo-data seeder is gated the same way).
         await ensure_default_admin(db)
-        await ensure_default_departments(db)
-        await ensure_default_leave_types(db)
+        if settings.ENVIRONMENT != "production":
+            await ensure_default_departments(db)
+            await ensure_default_leave_types(db)
 
 
 @app.get("/health", tags=["meta"])

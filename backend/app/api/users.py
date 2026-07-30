@@ -21,10 +21,12 @@ from app.schemas.user import (
     ManagedBrandsUpdate,
     SetPasswordIn,
     UserCreate,
+    UserCreated,
     UserOut,
     UserUpdate,
 )
 from app.services.activity import record
+from app.services.credentials import issue_temp_password
 from app.services.app_settings import get_azure_config, get_bamboo_config
 from app.services.integrations import provision_azure_user, push_bamboo_employee
 from app.services.users import sync_all_users_from_graph
@@ -71,7 +73,7 @@ async def list_users(
     return result.scalars().all()
 
 
-@router.post("", response_model=UserOut, status_code=201)
+@router.post("", response_model=UserCreated, status_code=201)
 async def create_user(
     payload: UserCreate,
     db: AsyncSession = Depends(get_db),
@@ -122,12 +124,21 @@ async def create_user(
         is_admin=payload.role == "admin",
         status=payload.status,
     )
+    temp: str | None = None
+    emailed = False
     if payload.password:
+        # An admin-chosen password still has to be changed on first sign-in.
         err = password_policy_error(payload.password)
         if err:
             raise HTTPException(status_code=422, detail=err)
         user.password_hash = hash_password(payload.password)
         user.must_change_password = True
+    elif payload.send_invite:
+        # No password given: mint one and email it, so the account is usable.
+        # Without this the row would have a null hash and silently refuse every
+        # password login while looking perfectly healthy in the directory.
+        temp, emailed = issue_temp_password(user)
+
     db.add(user)
     record(
         db,
@@ -138,7 +149,12 @@ async def create_user(
     )
     await db.commit()
     await db.refresh(user)
-    return user
+
+    out = UserCreated.model_validate(user)
+    out.credentials_emailed = emailed
+    # Hand the password back only when the email didn't get through.
+    out.temp_password = None if emailed else temp
+    return out
 
 
 # ---- CSV import / export (employee migration, e.g. from BambooHR) ----------
@@ -316,6 +332,39 @@ async def set_password(
     )
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/{user_id}/reset-password")
+async def reset_password(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Issue a fresh temporary password and email it to the user.
+
+    The reply carries the password only when the email couldn't be sent, so an
+    admin can still read it out rather than being stuck with an account nobody
+    can sign into.
+    """
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user.email or user.personal_email):
+        raise HTTPException(
+            status_code=422, detail="This person has no email address to send to"
+        )
+    temp, emailed = issue_temp_password(user, reset=True)
+    record(
+        db, user=admin, action="updated", entity_type="user", entity_id=user.id,
+        summary=f"Issued a temporary password for {user.display_name or user.email}",
+    )
+    await db.commit()
+    return {
+        "ok": True,
+        "credentials_emailed": emailed,
+        "sent_to": (user.email or user.personal_email) if emailed else None,
+        "temp_password": None if emailed else temp,
+    }
 
 
 @router.post("/{user_id}/sync-azure")

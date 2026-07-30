@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +10,17 @@ from app.models.user import User
 
 bearer = HTTPBearer(auto_error=False)
 
+# Reachable while an account still owes a password change: the endpoints the
+# change itself needs, plus the ones the SPA calls to render that screen.
+_PASSWORD_CHANGE_EXEMPT = {
+    "/api/auth/change-password",
+    "/api/auth/me",
+    "/api/auth/config",
+}
+
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -44,6 +53,14 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account is awaiting administrator approval.",
+        )
+    # A temporary password travels by email, so the change can't be enforced in
+    # the browser alone — refuse the rest of the API until it has been done.
+    if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_EXEMPT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must change your password before continuing.",
+            headers={"X-Password-Change-Required": "1"},
         )
     return user
 

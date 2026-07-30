@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
+import secrets
 
 from jose import JWTError, jwt
 
@@ -31,6 +32,23 @@ def password_policy_error(password: str) -> str | None:
     if not any(c.isdigit() for c in pw):
         return "Password must contain a number"
     return None
+
+
+def generate_temp_password(length: int = 14) -> str:
+    """A random password that always satisfies :func:`password_policy_error`.
+
+    Excludes characters that get misread when a password is retyped from an
+    email (0/O, 1/l/I) — these are transcribed by hand more often than not.
+    """
+    letters = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+    digits = "23456789"
+    alphabet = letters + digits
+    size = max(PASSWORD_MIN_LENGTH, length)
+    # Guarantee one of each class, then fill and shuffle.
+    chars = [secrets.choice(letters), secrets.choice(digits)]
+    chars += [secrets.choice(alphabet) for _ in range(size - 2)]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 
 def hash_password(password: str) -> str:

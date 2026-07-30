@@ -52,25 +52,39 @@ export function Modal({
   maxWidth?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Read the latest onClose without making it an effect dependency: callers
+  // pass an inline arrow, so a new identity on every parent render would
+  // otherwise re-run the effects below and drag focus (and the scroll
+  // position) back to the top of a long dialog mid-interaction.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const node = ref.current;
-    const focusable = () =>
-      node
+  const focusable = useCallback(
+    () =>
+      ref.current
         ? Array.from(
-            node.querySelectorAll<HTMLElement>(
+            ref.current.querySelectorAll<HTMLElement>(
               'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
             ),
           )
-        : [];
-    // Focus the first field (skip the close button) for a natural start.
-    const items = focusable();
-    (items[1] ?? items[0])?.focus();
+        : [],
+    [],
+  );
 
+  // Focus the first field (skip the close button) for a natural start — once,
+  // on open only.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const items = focusable();
+    (items[1] ?? items[0])?.focus({ preventScroll: true });
+    return () => previouslyFocused?.focus?.({ preventScroll: true });
+  }, [focusable]);
+
+  // Escape to close, Tab to cycle within the dialog.
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        closeRef.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -87,11 +101,8 @@ export function Modal({
       }
     }
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previouslyFocused?.focus?.();
-    };
-  }, [onClose]);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [focusable]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

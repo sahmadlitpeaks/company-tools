@@ -252,6 +252,9 @@ export default function App() {
             path="/api-tokens"
             element={<Protected adminOnly><ApiTokensPage /></Protected>}
           />
+          {/* Signing in leaves the browser on /login, which only exists in the
+              unauthenticated tree — send it to the dashboard rather than 404. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       )}
