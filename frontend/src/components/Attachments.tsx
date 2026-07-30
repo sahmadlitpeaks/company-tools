@@ -1,9 +1,10 @@
-import { useRef } from "react";
-import { Download, Paperclip, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Camera, Download, Paperclip, X } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Attachment } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { bytes, useToast } from "./ui";
+import CameraCapture, { canUseLiveCamera } from "./CameraCapture";
 
 /** Reusable file attachments list + uploader for any office-ops entity. */
 export default function Attachments({
@@ -12,6 +13,7 @@ export default function Attachments({
   compact,
   accept,
   capture,
+  camera,
   label = "+ Attach file",
   heading = "Attachments",
   onChanged,
@@ -23,6 +25,8 @@ export default function Attachments({
   accept?: string;
   /** On a phone, open the camera straight away instead of the file browser. */
   capture?: "environment" | "user";
+  /** Offer a live in-app viewfinder ("Take photo") alongside the file picker. */
+  camera?: boolean;
   label?: string;
   heading?: string;
   onChanged?: () => void;
@@ -32,24 +36,32 @@ export default function Attachments({
     `/api/attachments/by/${entityType}/${entityId}`,
   );
   const fileRef = useRef<HTMLInputElement>(null);
+  const [shooting, setShooting] = useState(false);
+
+  async function send(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    await api(`/api/attachments/by/${entityType}/${entityId}`, { method: "POST", form: fd });
+    notify("Photo attached.");
+    reload();
+    onChanged?.();
+  }
 
   async function upload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
     try {
-      await api(`/api/attachments/by/${entityType}/${entityId}`, {
-        method: "POST",
-        form: fd,
-      });
-      notify("File attached.");
-      reload();
-      onChanged?.();
+      await send(file);
     } catch (err) {
       notify(err instanceof Error ? err.message : "Upload failed", "error");
     }
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  /** Live viewfinder where the browser allows it; the camera app otherwise. */
+  function takePhoto() {
+    if (canUseLiveCamera()) setShooting(true);
+    else fileRef.current?.click();
   }
 
   async function remove(id: string) {
@@ -64,9 +76,20 @@ export default function Attachments({
         <h4 className="m-0 inline-flex items-center gap-1.5">
           <Paperclip size={14} /> {heading} {data?.length ? `(${data.length})` : ""}
         </h4>
-        <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => fileRef.current?.click()}>
-          {label}
-        </button>
+        <span className="flex flex-none items-center gap-1.5">
+          {camera && (
+            <button
+              className="btn-sm btn-primary inline-flex items-center gap-1"
+              style={{ flex: "0 0 auto" }}
+              onClick={takePhoto}
+            >
+              <Camera size={13} /> Take photo
+            </button>
+          )}
+          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => fileRef.current?.click()}>
+            {label}
+          </button>
+        </span>
         <input
           ref={fileRef}
           type="file"
@@ -109,6 +132,19 @@ export default function Attachments({
             </div>
           ))}
         </div>
+      )}
+      {shooting && (
+        <CameraCapture
+          onClose={() => setShooting(false)}
+          onCapture={async (file) => {
+            try {
+              await send(file);
+            } catch (err) {
+              notify(err instanceof Error ? err.message : "Upload failed", "error");
+              throw err; // keep the viewfinder open so the shot isn't lost
+            }
+          }}
+        />
       )}
     </div>
   );

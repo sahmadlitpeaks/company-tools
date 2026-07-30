@@ -3,6 +3,27 @@
 MEMBER_PW = "Password123!"
 
 
+async def clear_forced_password_change(email: str) -> None:
+    """Mark ``email`` as having already done its first-login password change.
+
+    Any account handed a password by an admin owes a change, and the API refuses
+    everything except the change itself until it happens. Tests covering other
+    endpoints aren't exercising that gate, so lift it directly rather than
+    burning a PBKDF2 round-trip per fixture. The password is left untouched.
+    """
+    from sqlalchemy import func, select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import User
+
+    async with AsyncSessionLocal() as db:
+        user = (
+            await db.execute(select(User).where(func.lower(User.email) == email.lower()))
+        ).scalar_one()
+        user.must_change_password = False
+        await db.commit()
+
+
 async def make_member(
     client,
     auth,
@@ -39,6 +60,7 @@ async def make_member(
             },
         )
         uid = r.json()["id"]
+    await clear_forced_password_change(email)
     token = (
         await client.post("/api/auth/login", json={"email": email, "password": password})
     ).json()["access_token"]

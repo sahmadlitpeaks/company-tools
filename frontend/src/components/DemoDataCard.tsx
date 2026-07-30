@@ -33,7 +33,9 @@ export default function DemoDataCard({ variant = "banner" }: { variant?: "banner
     if (user?.is_admin) void load();
   }, [user]);
 
-  if (!user?.is_admin || !status) return null;
+  // Hidden outright where seeding is blocked (i.e. production) rather than
+  // shown as a disabled control — there is nothing an admin can do with it.
+  if (!user?.is_admin || !status || !status.allowed) return null;
 
   async function run(action: "seed" | "clear") {
     setBusy(true);

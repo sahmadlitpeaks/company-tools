@@ -281,6 +281,8 @@ export default function DirectoryPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
+  // Set when a reset couldn't be emailed, so the admin can read the password out.
+  const [resetShown, setResetShown] = useState<{ who: string; password: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const { data, loading, error, reload } = useFetch<User[]>(
     `/api/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
@@ -302,6 +304,25 @@ export default function DirectoryPage() {
     try {
       await api(`/api/users/${u.id}`, { method: "PATCH", body: { status: "active" } });
       notify(`${u.display_name ?? u.email} approved.`);
+      reload();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Failed", "error");
+    }
+  }
+
+  async function resetPassword(u: User) {
+    const who = u.display_name ?? u.email;
+    // Their existing password stops working the moment this runs.
+    if (!window.confirm(`Issue a new temporary password for ${who}? Their current password will stop working.`))
+      return;
+    try {
+      const r = await api<{
+        credentials_emailed: boolean;
+        sent_to: string | null;
+        temp_password: string | null;
+      }>(`/api/users/${u.id}/reset-password`, { method: "POST" });
+      if (r.credentials_emailed) notify(`New password emailed to ${r.sent_to}.`);
+      else setResetShown({ who: who ?? "", password: r.temp_password ?? "" });
       reload();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
@@ -480,6 +501,16 @@ export default function DirectoryPage() {
                           <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => approve(u)}>Approve</button>
                         )}
                         <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditingAccess(u)}>Access</button>
+                        {(u.email || u.personal_email) && (
+                          <button
+                            className="btn-sm"
+                            style={{ flex: "0 0 auto" }}
+                            title="Email them a new temporary password"
+                            onClick={() => resetPassword(u)}
+                          >
+                            Reset password
+                          </button>
+                        )}
                         {u.role === "manager" && (
                           <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setManaging(u)}>Companies</button>
                         )}
@@ -583,6 +614,41 @@ export default function DirectoryPage() {
           }}
         />
       )}
+
+      {resetShown && (
+        <Modal title="New temporary password" onClose={() => setResetShown(null)}>
+          <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
+            <p className="text-sm">
+              The password for <strong>{resetShown.who}</strong> was reset, but the email
+              could not be sent. Pass it on now — it can't be shown again.
+            </p>
+          </div>
+          <div className="field">
+            <label>Temporary password</label>
+            <input readOnly value={resetShown.password} style={{ fontFamily: "monospace" }} />
+          </div>
+          <p className="muted text-xs">They must change it at their next sign-in.</p>
+          <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+            <button
+              className="btn"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => {
+                void navigator.clipboard?.writeText(resetShown.password);
+                notify("Password copied.");
+              }}
+            >
+              Copy
+            </button>
+            <button
+              className="btn-primary"
+              style={{ flex: "0 0 auto" }}
+              onClick={() => setResetShown(null)}
+            >
+              Done
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -596,6 +662,9 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     password: "",
   });
   const [busy, setBusy] = useState(false);
+  // Shown when the invite email couldn't be delivered and the admin has to
+  // pass the password on themselves.
+  const [handover, setHandover] = useState<{ email: string; password: string } | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
@@ -605,23 +674,75 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       return;
     }
     setBusy(true);
+    const email = form.email.trim().toLowerCase();
     try {
-      await api("/api/users", {
+      const created = await api<{
+        temp_password?: string | null;
+        credentials_emailed?: boolean;
+      }>("/api/users", {
         method: "POST",
         body: {
           display_name: form.display_name.trim(),
-          email: form.email.trim().toLowerCase() || null,
+          email: email || null,
           role: form.role,
           status: "active",
           password: form.password || null,
         },
       });
-      notify("User added.");
-      onSaved();
+      if (created.credentials_emailed) {
+        notify(`User added — sign-in details emailed to ${email}.`);
+        onSaved();
+      } else if (created.temp_password) {
+        // Account exists and works; only the email failed. Keep the modal open
+        // so the password isn't lost — it is not recoverable afterwards.
+        setHandover({ email, password: created.temp_password });
+        setBusy(false);
+      } else {
+        notify("User added.");
+        onSaved();
+      }
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
       setBusy(false);
     }
+  }
+
+  if (handover) {
+    return (
+      <Modal title="User added — send these details" onClose={onSaved}>
+        <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
+          <p className="text-sm">
+            The account is ready, but the invite email could not be sent (SMTP may not be
+            configured). Pass these on now — the password can't be shown again, though you
+            can always issue a new one from the person's profile.
+          </p>
+        </div>
+        <div className="field">
+          <label>Email</label>
+          <input readOnly value={handover.email} />
+        </div>
+        <div className="field">
+          <label>Temporary password</label>
+          <input readOnly value={handover.password} style={{ fontFamily: "monospace" }} />
+        </div>
+        <p className="muted text-xs">They'll be required to change it at first sign-in.</p>
+        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button
+            className="btn"
+            style={{ flex: "0 0 auto" }}
+            onClick={() => {
+              void navigator.clipboard?.writeText(handover.password);
+              notify("Password copied.");
+            }}
+          >
+            Copy password
+          </button>
+          <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={onSaved}>
+            Done
+          </button>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -657,13 +778,14 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <label>Initial password</label>
           <input
             type="text"
-            placeholder="Set a temporary password (optional)"
+            placeholder="Leave blank to generate one and email it"
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
           />
           <p className="muted mt-1 text-xs">
-            If set, the user signs in with this and is prompted to change it on first login.
-            Leave blank for SSO-only users.
+            Leave this blank and a temporary password is generated and emailed to the
+            person automatically. Set one only if you'd rather hand it over yourself.
+            Either way they must change it the first time they sign in.
           </p>
         </div>
         <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>

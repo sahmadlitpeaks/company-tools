@@ -97,8 +97,21 @@ class UserCreate(BaseModel):
     role: str = "member"
     status: str = "active"
     # Optional initial password so the new user can sign in without SSO. They'll
-    # be prompted to change it on first login.
+    # be prompted to change it on first login. Left empty, the platform mints a
+    # temporary one and emails it (see ``send_invite``).
     password: str | None = None
+    # Email the credentials to the new joiner. Off for accounts that will only
+    # ever sign in through Azure SSO.
+    send_invite: bool = True
+
+
+class UserCreated(UserOut):
+    """A created user, plus the credentials the admin may still need to relay."""
+
+    # Only populated when the invite email could not be delivered, so the admin
+    # can pass the password on themselves. Never echoed back on a successful send.
+    temp_password: str | None = None
+    credentials_emailed: bool = False
 
 
 class SetPasswordIn(BaseModel):

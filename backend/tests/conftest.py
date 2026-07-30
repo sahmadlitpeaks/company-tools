@@ -41,9 +41,16 @@ async def client():
 
 @pytest_asyncio.fixture
 async def auth(client):
+    from tests.helpers import clear_forced_password_change
+
     r = await client.post(
         "/api/auth/login",
         json={"email": "admin@agholding.net", "password": "admin"},
     )
     token = r.json()["access_token"]
+    # The bootstrap admin must change its password before the API will serve it
+    # anything else. Lift that here so every other test isn't testing the gate;
+    # the password stays "admin" (the policy would reject it as a *new* one, and
+    # test_change_password_flow still needs it as the current one).
+    await clear_forced_password_change("admin@agholding.net")
     return {"Authorization": f"Bearer {token}"}
