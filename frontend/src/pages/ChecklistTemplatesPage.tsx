@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
+  AlertCircle,
   Camera,
   ClipboardList,
-  GripVertical,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -17,7 +18,66 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { ConfirmModal, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import {
+  ConfirmDialog,
+  Empty,
+  ErrorState,
+  Loading,
+  Modal,
+  PageHead,
+  useToast,
+} from "../components/ui";
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "../components/ui/alert";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../components/ui/field";
+import { Input } from "../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { Separator } from "../components/ui/separator";
+import { Spinner } from "../components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableSurface,
+} from "../components/ui/table";
+import { Textarea } from "../components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { numericInput } from "../utils/numbers";
 
 const TEAMS = ["it", "facilities", "hr", "finance", "other"];
 const SCHEDULES = ["daily", "weekdays", "weekly", "monthly"];
@@ -38,7 +98,20 @@ const WEEKDAYS = [
   { n: 7, label: "Sun" },
 ];
 
-type DraftItem = Omit<ChecklistTemplateItem, "id" | "template_id">;
+type DraftItem = Omit<ChecklistTemplateItem, "id" | "template_id"> & {
+  draftId: string;
+};
+
+let nextDraftItemId = 0;
+
+function createDraftItemId(): string {
+  nextDraftItemId += 1;
+  return `new-${nextDraftItemId}`;
+}
+
+function itemControlId(item: DraftItem, control: string): string {
+  return `checklist-template-item-${item.draftId}-${control}`;
+}
 
 function scheduleLabel(t: ChecklistTemplate): string {
   if (t.schedule === "weekly") {
@@ -50,6 +123,94 @@ function scheduleLabel(t: ChecklistTemplate): string {
   }
   if (t.schedule === "monthly") return `Monthly · day ${t.day_of_month ?? 1}`;
   return t.schedule === "weekdays" ? "Weekdays" : "Daily";
+}
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function ownerDetails(t: ChecklistTemplate): { name: string; kind: string } {
+  if (t.assignee_name) return { name: t.assignee_name, kind: "Person" };
+  if (t.assignee_department_name) {
+    return { name: t.assignee_department_name, kind: "Department rota" };
+  }
+  return { name: "Unassigned", kind: "No owner" };
+}
+
+function reviewerDetails(t: ChecklistTemplate): { name: string; required: boolean } {
+  if (!t.requires_verification) return { name: "Not required", required: false };
+  return { name: t.reviewer_name ?? "Any manager", required: true };
+}
+
+function TemplateMobileCard({
+  template,
+  onEdit,
+  onDelete,
+}: {
+  template: ChecklistTemplate;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const owner = ownerDetails(template);
+  const reviewer = reviewerDetails(template);
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle className="pr-2">{template.name}</CardTitle>
+        <CardDescription>
+          {titleCase(template.team)} · {template.item_count} {template.item_count === 1 ? "check" : "checks"}
+        </CardDescription>
+        <CardAction>
+          <Badge variant={template.active ? "success" : "secondary"}>
+            {template.active ? "Active" : "Inactive"}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs font-medium text-muted-foreground">Schedule</dt>
+            <dd className="text-sm">
+              {scheduleLabel(template)}
+              {template.due_time ? ` · ${template.due_time}` : ""}
+            </dd>
+          </div>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs font-medium text-muted-foreground">Next run</dt>
+            <dd className="text-sm">{template.active ? template.next_run_date ?? "Not scheduled" : "Paused"}</dd>
+          </div>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs font-medium text-muted-foreground">Owner</dt>
+            <dd className="truncate text-sm" title={owner.name}>{owner.name}</dd>
+            <dd className="text-xs text-muted-foreground">{owner.kind}</dd>
+          </div>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs font-medium text-muted-foreground">Verification</dt>
+            <dd className="truncate text-sm" title={reviewer.name}>{reviewer.name}</dd>
+            <dd className="text-xs text-muted-foreground">
+              {reviewer.required ? "Sign-off required" : "No sign-off"}
+            </dd>
+          </div>
+        </dl>
+      </CardContent>
+      <CardFooter className="justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onEdit}>
+          <Pencil data-icon="inline-start" /> Edit
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          size="icon-sm"
+          aria-label={`Delete ${template.name}`}
+          title="Delete checklist"
+          onClick={onDelete}
+        >
+          <Trash2 data-icon="inline-start" />
+        </Button>
+      </CardFooter>
+    </Card>
+  );
 }
 
 export default function ChecklistTemplatesPage() {
@@ -74,8 +235,9 @@ export default function ChecklistTemplatesPage() {
       templates.reload();
     } catch (e) {
       notify(e instanceof Error ? e.message : "Failed", "error");
+    } finally {
+      setSeeding(false);
     }
-    setSeeding(false);
   }
 
   async function remove(t: ChecklistTemplate) {
@@ -93,95 +255,142 @@ export default function ChecklistTemplatesPage() {
         title="Checklists"
         subtitle="Define the rounds each team performs, how often, and who signs them off."
         action={
-          <button
-            className="btn-primary inline-flex items-center gap-1.5"
-            style={{ flex: "0 0 auto" }}
-            onClick={() => setCreating(true)}
-          >
-            <Plus size={15} /> New checklist
-          </button>
+          <Button type="button" onClick={() => setCreating(true)}>
+            <Plus data-icon="inline-start" /> New checklist
+          </Button>
         }
       />
 
-      <div className="card">
-        {templates.loading ? (
-          <Loading />
-        ) : list.length === 0 ? (
-          <Empty
-            icon={<ClipboardList />}
-            message="No checklists yet"
-            hint="Start from the sample rounds for IT, Facilities and the lab, then edit them to match your buildings."
-            action={
-              <button
-                className="btn-primary inline-flex items-center gap-1.5"
-                onClick={seed}
-                disabled={seeding}
-              >
-                <Sparkles size={15} /> {seeding ? "Adding…" : "Add starter checklists"}
-              </button>
-            }
-          />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Checklist</th>
-                <th>Team</th>
-                <th>Schedule</th>
-                <th>Checks</th>
-                <th>Assigned to</th>
-                <th>Verified by</th>
-                <th>Next run</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((t) => (
-                <tr key={t.id} className="cursor-pointer" onClick={() => setEditingId(t.id)}>
-                  <td>
-                    <div className="font-medium">{t.name}</div>
-                    {!t.active && <span className="badge">inactive</span>}
-                  </td>
-                  <td>{t.team}</td>
-                  <td>
-                    {scheduleLabel(t)}
-                    {t.due_time && <span className="muted text-xs"> · due {t.due_time}</span>}
-                  </td>
-                  <td>{t.item_count}</td>
-                  <td>
-                    {t.assignee_name ??
-                      (t.assignee_department_name ? (
-                        <span title="Rota — anyone in this department can claim the round">
-                          {t.assignee_department_name} (rota)
-                        </span>
-                      ) : (
-                        <span className="muted">Unassigned</span>
-                      ))}
-                  </td>
-                  <td>
-                    {t.requires_verification ? (
-                      t.reviewer_name ?? <span className="muted">Any manager</span>
-                    ) : (
-                      <span className="muted">Not required</span>
-                    )}
-                  </td>
-                  <td>{t.next_run_date ?? "—"}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="btn-sm btn-danger"
-                      style={{ flex: "0 0 auto" }}
-                      onClick={() => setDeleting(t)}
-                      title="Delete"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Template library</CardTitle>
+          <CardDescription>
+            Reusable rounds with ownership, timing, evidence, and sign-off rules.
+          </CardDescription>
+          {!templates.loading && !templates.error && list.length > 0 ? (
+            <CardAction>
+              <Badge variant="outline">{list.length} {list.length === 1 ? "template" : "templates"}</Badge>
+            </CardAction>
+          ) : null}
+        </CardHeader>
+        <CardContent>
+          {templates.loading ? (
+            <Loading />
+          ) : templates.error ? (
+            <ErrorState message={templates.error} onRetry={templates.reload} />
+          ) : list.length === 0 ? (
+            <Empty
+              icon={<ClipboardList />}
+              message="No checklists yet"
+              hint="Start from the sample rounds for IT, Facilities and the lab, then edit them to match your buildings."
+              action={
+                <Button type="button" onClick={seed} disabled={seeding}>
+                  {seeding ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <Sparkles data-icon="inline-start" />
+                  )}
+                  {seeding ? "Adding…" : "Add starter checklists"}
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 lg:hidden">
+                {list.map((template) => (
+                  <TemplateMobileCard
+                    key={template.id}
+                    template={template}
+                    onEdit={() => setEditingId(template.id)}
+                    onDelete={() => setDeleting(template)}
+                  />
+                ))}
+              </div>
+              <TableSurface className="hidden lg:block">
+                <Table className="min-w-4xl">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Checklist</TableHead>
+                      <TableHead>Schedule</TableHead>
+                      <TableHead>Ownership</TableHead>
+                      <TableHead>Verification</TableHead>
+                      <TableHead>Next run</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {list.map((template) => {
+                      const owner = ownerDetails(template);
+                      const reviewer = reviewerDetails(template);
+                      return (
+                        <TableRow key={template.id}>
+                          <TableCell className="min-w-56 whitespace-normal">
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">{template.name}</p>
+                                <Badge variant={template.active ? "success" : "secondary"}>
+                                  {template.active ? "Active" : "Inactive"}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="outline" className="capitalize">{template.team}</Badge>
+                                <p className="text-xs text-muted-foreground">
+                                  {template.item_count} {template.item_count === 1 ? "check" : "checks"}
+                                </p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="min-w-40 whitespace-normal">
+                            <p>{scheduleLabel(template)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {template.due_time ? `Due ${template.due_time}` : "No due time"}
+                            </p>
+                          </TableCell>
+                          <TableCell className="min-w-48 whitespace-normal">
+                            <p className="font-medium">{owner.name}</p>
+                            <p className="text-xs text-muted-foreground">{owner.kind}</p>
+                          </TableCell>
+                          <TableCell className="min-w-44 whitespace-normal">
+                            <p className="font-medium">{reviewer.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {reviewer.required ? "Sign-off required" : "No sign-off"}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            {template.active ? template.next_run_date ?? "Not scheduled" : "Paused"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingId(template.id)}
+                              >
+                                <Pencil data-icon="inline-start" /> Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon-sm"
+                                aria-label={`Delete ${template.name}`}
+                                title="Delete checklist"
+                                onClick={() => setDeleting(template)}
+                              >
+                                <Trash2 data-icon="inline-start" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableSurface>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {(creating || editingId) && (
         <TemplateEditor
@@ -198,7 +407,7 @@ export default function ChecklistTemplatesPage() {
         />
       )}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete checklist"
           message={`Delete "${deleting.name}"? Rounds already generated from it are removed too.`}
           confirmLabel="Delete"
@@ -211,6 +420,122 @@ export default function ChecklistTemplatesPage() {
   );
 }
 
+type TemplateForm = {
+  name: string;
+  description: string;
+  team: string;
+  schedule: ChecklistTemplate["schedule"];
+  days_of_week: number[];
+  day_of_month: number;
+  due_time: string;
+  grace_minutes: number;
+  active: boolean;
+  requires_verification: boolean;
+  assignee_id: string;
+  assignee_department_id: string;
+  reviewer_id: string;
+};
+
+type FetchResource<T> = {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+};
+
+type SelectOption = { value: string | null; label: string };
+
+function initialForm(template: ChecklistTemplate | null): TemplateForm {
+  return {
+    name: template?.name ?? "",
+    description: template?.description ?? "",
+    team: template?.team ?? "it",
+    schedule: template?.schedule ?? "daily",
+    days_of_week: template?.days_of_week ?? [],
+    day_of_month: template?.day_of_month ?? 1,
+    due_time: template?.due_time ?? "09:00",
+    grace_minutes: template?.grace_minutes ?? 60,
+    active: template?.active ?? true,
+    requires_verification: template?.requires_verification ?? true,
+    assignee_id: template?.assignee_id ?? "",
+    assignee_department_id: template?.assignee_department_id ?? "",
+    reviewer_id: template?.reviewer_id ?? "",
+  };
+}
+
+function initialItems(template: ChecklistTemplate | null): DraftItem[] {
+  return (template?.items ?? []).map(({ id: draftId, template_id: _templateId, ...item }) => ({
+    ...item,
+    draftId,
+  }));
+}
+
+function userOptions(
+  data: User[] | null,
+  currentId: string,
+  emptyLabel: string,
+): SelectOption[] {
+  const options: SelectOption[] = [
+    { value: null, label: emptyLabel },
+    ...(data ?? []).map((user) => ({
+      value: user.id,
+      label: user.display_name || user.email || "Unnamed person",
+    })),
+  ];
+  if (currentId && !data?.some((user) => user.id === currentId)) {
+    options.push({ value: currentId, label: "Current person (details unavailable)" });
+  }
+  return options;
+}
+
+function departmentOptions(data: Department[] | null, currentId: string): SelectOption[] {
+  const options: SelectOption[] = [
+    { value: null, label: "None" },
+    ...(data ?? []).map((department) => ({ value: department.id, label: department.name })),
+  ];
+  if (currentId && !data?.some((department) => department.id === currentId)) {
+    options.push({ value: currentId, label: "Current department (details unavailable)" });
+  }
+  return options;
+}
+
+function assetOptions(data: TrackedAsset[] | null, currentId: string | null): SelectOption[] {
+  const options: SelectOption[] = [
+    { value: null, label: "No linked asset" },
+    ...(data ?? []).map((asset) => ({
+      value: asset.id,
+      label: `${asset.name} (${asset.asset_tag})`,
+    })),
+  ];
+  if (currentId && !data?.some((asset) => asset.id === currentId)) {
+    options.push({ value: currentId, label: "Current asset (details unavailable)" });
+  }
+  return options;
+}
+
+function FetchErrorAlert({
+  title,
+  error,
+  onRetry,
+}: {
+  title: string;
+  error: string;
+  onRetry: () => Promise<void>;
+}) {
+  return (
+    <Alert variant="destructive">
+      <AlertCircle aria-hidden="true" />
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{error}</AlertDescription>
+      <AlertAction>
+        <Button type="button" variant="outline" size="xs" onClick={onRetry}>
+          Retry
+        </Button>
+      </AlertAction>
+    </Alert>
+  );
+}
+
 function TemplateEditor({
   id,
   onClose,
@@ -220,65 +545,94 @@ function TemplateEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { notify } = useToast();
   const existing = useFetch<ChecklistTemplate>(id ? `/api/checklist-templates/${id}` : null);
   const users = useFetch<User[]>("/api/users");
   const departments = useFetch<Department[]>("/api/departments");
   const assets = useFetch<TrackedAsset[]>("/api/asset-tracker");
-  const [busy, setBusy] = useState(false);
+  const title = id ? "Edit checklist" : "New checklist";
 
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    team: "it",
-    schedule: "daily",
-    days_of_week: [] as number[],
-    day_of_month: 1,
-    due_time: "09:00",
-    grace_minutes: 60,
-    active: true,
-    requires_verification: true,
-    assignee_id: "",
-    assignee_department_id: "",
-    reviewer_id: "",
-  });
-  const [items, setItems] = useState<DraftItem[]>([]);
-
-  useEffect(() => {
-    const t = existing.data;
-    if (!t) return;
-    setForm({
-      name: t.name,
-      description: t.description ?? "",
-      team: t.team,
-      schedule: t.schedule,
-      days_of_week: t.days_of_week ?? [],
-      day_of_month: t.day_of_month ?? 1,
-      due_time: t.due_time ?? "",
-      grace_minutes: t.grace_minutes,
-      active: t.active,
-      requires_verification: t.requires_verification,
-      assignee_id: t.assignee_id ?? "",
-      assignee_department_id: t.assignee_department_id ?? "",
-      reviewer_id: t.reviewer_id ?? "",
-    });
-    setItems(
-      t.items.map(({ id: _id, template_id: _t, ...rest }) => rest as DraftItem),
+  if (id && existing.loading) {
+    return (
+      <Modal title={title} description="Loading template details." onClose={onClose} maxWidth={1080}>
+        <Loading />
+      </Modal>
     );
-  }, [existing.data]);
+  }
 
-  const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+  if (id && existing.error) {
+    return (
+      <Modal title={title} description="Template details are unavailable." onClose={onClose} maxWidth={1080}>
+        <ErrorState message={existing.error} onRetry={existing.reload} />
+      </Modal>
+    );
+  }
 
-  // Existing headings, offered as suggestions so a section isn't retyped 7 times.
+  if (id && !existing.data) {
+    return (
+      <Modal title={title} description="Template details are unavailable." onClose={onClose} maxWidth={1080}>
+        <ErrorState message="Checklist details could not be loaded." onRetry={existing.reload} />
+      </Modal>
+    );
+  }
+
+  return (
+    <TemplateEditorForm
+      key={id ?? "new"}
+      id={id}
+      template={existing.data}
+      users={users}
+      departments={departments}
+      assets={assets}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function TemplateEditorForm({
+  id,
+  template,
+  users,
+  departments,
+  assets,
+  onClose,
+  onSaved,
+}: {
+  id: string | null;
+  template: ChecklistTemplate | null;
+  users: FetchResource<User[]>;
+  departments: FetchResource<Department[]>;
+  assets: FetchResource<TrackedAsset[]>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { notify } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [form, setForm] = useState<TemplateForm>(() => initialForm(template));
+  const [items, setItems] = useState<DraftItem[]>(() => initialItems(template));
+  const weeklyDaysMissing = form.schedule === "weekly" && form.days_of_week.length === 0;
+  const usersUnavailable = users.loading || Boolean(users.error && !users.data);
+  const departmentsUnavailable = departments.loading || Boolean(departments.error && !departments.data);
+  const assetsUnavailable = assets.loading || Boolean(assets.error && !assets.data);
+  const personItems = userOptions(users.data, form.assignee_id, "Nobody (use a department rota)");
+  const reviewerItems = userOptions(users.data, form.reviewer_id, "The assignee's manager");
+  const departmentItems = departmentOptions(departments.data, form.assignee_department_id);
+
   const sections = useMemo(
-    () => Array.from(new Set(items.map((i) => i.section).filter(Boolean))) as string[],
+    () => Array.from(new Set(items.map((item) => item.section).filter(Boolean))) as string[],
     [items],
   );
+
+  function set<K extends keyof TemplateForm>(key: K, value: TemplateForm[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
 
   function addItem() {
     setItems((list) => [
       ...list,
       {
+        draftId: createDraftItemId(),
         section: list[list.length - 1]?.section ?? "",
         title: "",
         sort: list.length,
@@ -290,19 +644,37 @@ function TemplateEditor({
       },
     ]);
   }
-  function patchItem(idx: number, patch: Partial<DraftItem>) {
-    setItems((list) => list.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  }
-  function removeItem(idx: number) {
-    setItems((list) => list.filter((_, i) => i !== idx).map((it, i) => ({ ...it, sort: i })));
+
+  function patchItem(index: number, patch: Partial<Omit<DraftItem, "draftId">>) {
+    setItems((list) => list.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, ...patch } : item
+    )));
   }
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!items.length || items.some((i) => !i.title.trim())) {
-      notify("Every check needs a title.", "error");
+  function removeItem(index: number) {
+    setItems((list) => list
+      .filter((_, itemIndex) => itemIndex !== index)
+      .map((item, itemIndex) => ({ ...item, sort: itemIndex })));
+  }
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setSaveError(null);
+    if (weeklyDaysMissing) {
+      const message = "Choose at least one day for a weekly checklist.";
+      setSaveError(message);
+      notify(message, "error");
       return;
     }
+    if (!items.length || items.some((item) => !item.title.trim())) {
+      const message = items.length
+        ? "Every check needs a title."
+        : "Add at least one check before saving.";
+      setSaveError(message);
+      notify(message, "error");
+      return;
+    }
+
     setBusy(true);
     const body = {
       ...form,
@@ -313,325 +685,579 @@ function TemplateEditor({
       reviewer_id: form.reviewer_id || null,
       days_of_week: form.schedule === "weekly" ? form.days_of_week : null,
       day_of_month: form.schedule === "monthly" ? form.day_of_month : null,
-      items: items.map((it, i) => ({ ...it, sort: i, section: it.section || null })),
+      items: items.map((item, sort) => ({
+        section: item.section || null,
+        title: item.title,
+        sort,
+        response_type: item.response_type,
+        photo_required: item.photo_required,
+        asset_id: item.asset_id,
+        auto_ticket_on_issue: item.auto_ticket_on_issue,
+        ticket_priority: item.ticket_priority,
+      })),
     };
+
     try {
       if (id) await api(`/api/checklist-templates/${id}`, { method: "PATCH", body });
       else await api("/api/checklist-templates", { method: "POST", body });
       notify(id ? "Checklist updated." : "Checklist created.");
       onSaved();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed", "error");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Checklist could not be saved.";
+      setSaveError(message);
+      notify(message, "error");
+    } finally {
       setBusy(false);
     }
   }
 
-  if (id && existing.loading) {
-    return (
-      <Modal title="Checklist" onClose={onClose} maxWidth={980}>
-        <Loading />
-      </Modal>
-    );
-  }
-
   return (
-    <Modal title={id ? "Edit checklist" : "New checklist"} onClose={onClose} maxWidth={980}>
-      <form onSubmit={save}>
-        <div className="row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Name *</label>
-            <input
-              required
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="Morning IT Checks"
-            />
-          </div>
-          <div className="field">
-            <label>Team</label>
-            <select value={form.team} onChange={(e) => set("team", e.target.value)}>
-              {TEAMS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <p className="muted text-xs">Sets the category of tickets raised from issues.</p>
-          </div>
-        </div>
-
-        <div className="field">
-          <label>Description</label>
-          <textarea
-            rows={2}
-            value={form.description}
-            onChange={(e) => set("description", e.target.value)}
-          />
-        </div>
-
-        <div className="row">
-          <div className="field">
-            <label>Schedule</label>
-            <select value={form.schedule} onChange={(e) => set("schedule", e.target.value)}>
-              {SCHEDULES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          {form.schedule === "weekly" && (
-            <div className="field" style={{ flex: 2 }}>
-              <label>Days</label>
-              <div className="flex flex-wrap gap-1">
-                {WEEKDAYS.map((w) => (
-                  <button
-                    key={w.n}
-                    type="button"
-                    className={`btn-sm ${form.days_of_week.includes(w.n) ? "btn-primary" : ""}`}
-                    style={{ flex: "0 0 auto" }}
-                    onClick={() =>
-                      set(
-                        "days_of_week",
-                        form.days_of_week.includes(w.n)
-                          ? form.days_of_week.filter((d) => d !== w.n)
-                          : [...form.days_of_week, w.n].sort(),
-                      )
-                    }
-                  >
-                    {w.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {form.schedule === "monthly" && (
-            <div className="field">
-              <label>Day of month</label>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={form.day_of_month}
-                onChange={(e) => set("day_of_month", Number(e.target.value))}
-              />
-            </div>
-          )}
-          <div className="field">
-            <label>Due by</label>
-            <input
-              type="time"
-              value={form.due_time}
-              onChange={(e) => set("due_time", e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>Grace (minutes)</label>
-            <input
-              type="number"
-              min={0}
-              value={form.grace_minutes}
-              onChange={(e) => set("grace_minutes", Number(e.target.value))}
-            />
-          </div>
-        </div>
-
-        <div className="row">
-          <div className="field">
-            <label>Assign to a person</label>
-            <select value={form.assignee_id} onChange={(e) => set("assignee_id", e.target.value)}>
-              <option value="">— nobody (use a rota) —</option>
-              {(users.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name || u.email}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>…or a department (rota)</label>
-            <select
-              value={form.assignee_department_id}
-              onChange={(e) => set("assignee_department_id", e.target.value)}
-            >
-              <option value="">— none —</option>
-              {(departments.data ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-            <p className="muted text-xs">Anyone in the department can claim the round.</p>
-          </div>
-          <div className="field">
-            <label>Verified by</label>
-            <select value={form.reviewer_id} onChange={(e) => set("reviewer_id", e.target.value)}>
-              <option value="">— the assignee's manager —</option>
-              {(users.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name || u.email}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="row" style={{ gap: 16 }}>
-          <label className="inline-flex items-center gap-1.5 text-sm">
-            <input
-              type="checkbox"
-              checked={form.requires_verification}
-              onChange={(e) => set("requires_verification", e.target.checked)}
-            />
-            Requires manager verification
-          </label>
-          <label className="inline-flex items-center gap-1.5 text-sm">
-            <input
-              type="checkbox"
-              checked={form.active}
-              onChange={(e) => set("active", e.target.checked)}
-            />
-            Active (generates rounds)
-          </label>
-        </div>
-
-        <hr className="my-3" style={{ borderColor: "var(--border)" }} />
-
-        <div className="spread mb-2">
-          <h4 className="m-0">Checks ({items.length})</h4>
-          <button className="btn-sm" type="button" style={{ flex: "0 0 auto" }} onClick={addItem}>
-            <Plus size={13} className="inline" /> Add check
-          </button>
-        </div>
-        {sections.length > 0 && (
-          <datalist id="section-suggestions">
-            {sections.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
-        )}
-
-        {items.length === 0 && (
-          <p className="muted text-sm">
-            Add one row per checkpoint. Use the section to group them, e.g.
-            “HQ Building / Dr T's Office”.
-          </p>
-        )}
-
-        <div className="flex flex-col gap-2">
-          {items.map((it, idx) => (
-            <div
-              key={idx}
-              className="rounded-lg p-2"
-              style={{ background: "var(--surface-2)" }}
-            >
-              <div className="row" style={{ gap: 8, alignItems: "flex-end" }}>
-                <span className="muted flex-none pb-2">
-                  <GripVertical size={14} />
-                </span>
-                <div className="field" style={{ marginBottom: 0, flex: 1.2 }}>
-                  <label>Section</label>
-                  <input
-                    list="section-suggestions"
-                    value={it.section ?? ""}
-                    placeholder="HQ Building / Dr T's Office"
-                    onChange={(e) => patchItem(idx, { section: e.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ marginBottom: 0, flex: 1.4 }}>
-                  <label>Check *</label>
-                  <input
-                    required
-                    value={it.title}
-                    placeholder="TV"
-                    onChange={(e) => patchItem(idx, { title: e.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Answer</label>
-                  <select
-                    value={it.response_type}
-                    onChange={(e) =>
-                      patchItem(idx, { response_type: e.target.value as ResponseType })
-                    }
-                  >
-                    {RESPONSE_TYPES.map((r) => (
-                      <option key={r.key} value={r.key}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Asset</label>
-                  <select
-                    value={it.asset_id ?? ""}
-                    onChange={(e) => patchItem(idx, { asset_id: e.target.value || null })}
-                  >
-                    <option value="">— none —</option>
-                    {(assets.data ?? []).map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({a.asset_tag})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  className="btn-sm btn-danger flex-none"
-                  style={{ flex: "0 0 auto", marginBottom: 2 }}
-                  onClick={() => removeItem(idx)}
-                  title="Remove"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              <div className="row mt-1.5" style={{ gap: 16, alignItems: "center" }}>
-                <label className="inline-flex items-center gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={it.photo_required}
-                    onChange={(e) => patchItem(idx, { photo_required: e.target.checked })}
-                  />
-                  <Camera size={12} /> Photo required
-                </label>
-                <label className="inline-flex items-center gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={it.auto_ticket_on_issue}
-                    onChange={(e) => patchItem(idx, { auto_ticket_on_issue: e.target.checked })}
-                  />
-                  Raise a ticket on Issue
-                </label>
-                {it.auto_ticket_on_issue && (
-                  <label className="inline-flex items-center gap-1.5 text-xs">
-                    Priority
-                    <select
-                      value={it.ticket_priority}
-                      style={{ width: 110 }}
-                      onChange={(e) => patchItem(idx, { ticket_priority: e.target.value })}
-                    >
-                      {PRIORITIES.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="row mt-4" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+    <Modal
+      title={id ? "Edit checklist" : "New checklist"}
+      description="Set the cadence, ownership, sign-off, and evidence required for every round."
+      onClose={onClose}
+      maxWidth={1080}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
+          </Button>
+          <Button type="submit" form="checklist-template-editor-form" disabled={busy}>
+            {busy ? <Spinner data-icon="inline-start" /> : null}
             {busy ? "Saving…" : id ? "Save checklist" : "Create checklist"}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="checklist-template-editor-form"
+        className="flex flex-col gap-5"
+        onSubmit={save}
+        aria-busy={busy || undefined}
+      >
+        {saveError ? (
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Checklist not saved</AlertTitle>
+            <AlertDescription>{saveError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {users.error ? (
+          <FetchErrorAlert title="People could not be loaded" error={users.error} onRetry={users.reload} />
+        ) : null}
+        {departments.error ? (
+          <FetchErrorAlert
+            title="Departments could not be loaded"
+            error={departments.error}
+            onRetry={departments.reload}
+          />
+        ) : null}
+        {assets.error ? (
+          <FetchErrorAlert title="Assets could not be loaded" error={assets.error} onRetry={assets.reload} />
+        ) : null}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Template details</CardTitle>
+            <CardDescription>Name the round and route any generated tickets to the right team.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup className="grid gap-4 md:grid-cols-3">
+              <Field className="md:col-span-2">
+                <FieldLabel htmlFor="checklist-template-name">Name *</FieldLabel>
+                <Input
+                  id="checklist-template-name"
+                  required
+                  value={form.name}
+                  onChange={(event) => set("name", event.target.value)}
+                  placeholder="Morning IT Checks"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="checklist-template-team">Team</FieldLabel>
+                <Select
+                  items={TEAMS.map((team) => ({ value: team, label: titleCase(team) }))}
+                  value={form.team}
+                  onValueChange={(value) => set("team", value ?? "it")}
+                >
+                  <SelectTrigger id="checklist-template-team" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {TEAMS.map((team) => (
+                        <SelectItem key={team} value={team}>{titleCase(team)}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>Used as the category for tickets raised from issues.</FieldDescription>
+              </Field>
+              <Field className="md:col-span-3">
+                <FieldLabel htmlFor="checklist-template-description">Description</FieldLabel>
+                <Textarea
+                  id="checklist-template-description"
+                  rows={3}
+                  value={form.description}
+                  onChange={(event) => set("description", event.target.value)}
+                  placeholder="What this round covers and any context the assignee needs."
+                />
+              </Field>
+            </FieldGroup>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Schedule</CardTitle>
+            <CardDescription>Choose when rounds are generated and how long assignees have after the due time.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field>
+                <FieldLabel htmlFor="checklist-template-schedule">Frequency</FieldLabel>
+                <Select
+                  items={SCHEDULES.map((schedule) => ({
+                    value: schedule,
+                    label: titleCase(schedule),
+                  }))}
+                  value={form.schedule}
+                  onValueChange={(value) => set(
+                    "schedule",
+                    (value ?? "daily") as ChecklistTemplate["schedule"],
+                  )}
+                >
+                  <SelectTrigger id="checklist-template-schedule" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {SCHEDULES.map((schedule) => (
+                        <SelectItem key={schedule} value={schedule}>{titleCase(schedule)}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {form.schedule === "monthly" ? (
+                <Field>
+                  <FieldLabel htmlFor="checklist-template-day-of-month">Day of month</FieldLabel>
+                  <Input
+                    id="checklist-template-day-of-month"
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={form.day_of_month}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      day_of_month: numericInput(event.target.value, current.day_of_month),
+                    }))}
+                  />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="checklist-template-due-time">Due by</FieldLabel>
+                <Input
+                  id="checklist-template-due-time"
+                  type="time"
+                  value={form.due_time}
+                  onChange={(event) => set("due_time", event.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="checklist-template-grace-minutes">Grace period (minutes)</FieldLabel>
+                <Input
+                  id="checklist-template-grace-minutes"
+                  type="number"
+                  min={0}
+                  value={form.grace_minutes}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    grace_minutes: numericInput(event.target.value, current.grace_minutes),
+                  }))}
+                />
+              </Field>
+              {form.schedule === "weekly" ? (
+                <FieldSet
+                  className="sm:col-span-2 lg:col-span-4"
+                  data-invalid={weeklyDaysMissing || undefined}
+                >
+                  <FieldLegend variant="label">Run on</FieldLegend>
+                  <ToggleGroup
+                    multiple
+                    variant="outline"
+                    size="sm"
+                    className="flex w-full flex-wrap justify-start"
+                    value={form.days_of_week.map(String)}
+                    onValueChange={(values) => set(
+                      "days_of_week",
+                      values.map(Number).sort((a, b) => a - b),
+                    )}
+                    aria-invalid={weeklyDaysMissing || undefined}
+                    aria-label="Weekly run days"
+                  >
+                    {WEEKDAYS.map((weekday) => (
+                      <ToggleGroupItem key={weekday.n} value={String(weekday.n)}>
+                        {weekday.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  {weeklyDaysMissing ? (
+                    <FieldError>Choose at least one weekday.</FieldError>
+                  ) : (
+                    <FieldDescription>Use arrow keys to move between days and Space to toggle.</FieldDescription>
+                  )}
+                </FieldSet>
+              ) : null}
+            </FieldGroup>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Ownership and verification</CardTitle>
+            <CardDescription>Assign a named owner or let a department rota claim each generated round.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
+            <FieldGroup className="grid gap-4 lg:grid-cols-3">
+              <Field data-disabled={usersUnavailable || undefined}>
+                <FieldLabel htmlFor="checklist-template-assignee">Assign to a person</FieldLabel>
+                <Select
+                  items={personItems}
+                  value={form.assignee_id || null}
+                  disabled={usersUnavailable}
+                  onValueChange={(value) => set("assignee_id", value ?? "")}
+                >
+                  <SelectTrigger id="checklist-template-assignee" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {personItems.map((option) => (
+                        <SelectItem key={option.value ?? "no-person"} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {users.loading ? "Loading people…" : "A named person takes direct ownership."}
+                </FieldDescription>
+              </Field>
+              <Field data-disabled={departmentsUnavailable || undefined}>
+                <FieldLabel htmlFor="checklist-template-assignee-department">
+                  Or assign a department rota
+                </FieldLabel>
+                <Select
+                  items={departmentItems}
+                  value={form.assignee_department_id || null}
+                  disabled={departmentsUnavailable}
+                  onValueChange={(value) => set("assignee_department_id", value ?? "")}
+                >
+                  <SelectTrigger id="checklist-template-assignee-department" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {departmentItems.map((option) => (
+                        <SelectItem key={option.value ?? "no-department"} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {departments.loading
+                    ? "Loading departments…"
+                    : "Anyone in the department can claim the round."}
+                </FieldDescription>
+              </Field>
+              <Field data-disabled={!form.requires_verification || usersUnavailable || undefined}>
+                <FieldLabel htmlFor="checklist-template-reviewer">Verified by</FieldLabel>
+                <Select
+                  items={reviewerItems}
+                  value={form.reviewer_id || null}
+                  disabled={!form.requires_verification || usersUnavailable}
+                  onValueChange={(value) => set("reviewer_id", value ?? "")}
+                >
+                  <SelectTrigger id="checklist-template-reviewer" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {reviewerItems.map((option) => (
+                        <SelectItem key={option.value ?? "default-reviewer"} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {form.requires_verification
+                    ? "Defaults to the assignee's manager."
+                    : "Enable verification to choose a reviewer."}
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+
+            <Separator />
+
+            <FieldSet>
+              <FieldLegend variant="label">Generation and sign-off</FieldLegend>
+              <FieldGroup className="grid gap-3 md:grid-cols-2">
+                <Field orientation="horizontal" className="items-start border p-3">
+                  <Checkbox
+                    id="checklist-template-requires-verification"
+                    checked={form.requires_verification}
+                    onCheckedChange={(checked) => set("requires_verification", checked)}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="checklist-template-requires-verification">
+                      Require manager verification
+                    </FieldLabel>
+                    <FieldDescription>
+                      A reviewer must sign off the completed round.
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+                <Field orientation="horizontal" className="items-start border p-3">
+                  <Checkbox
+                    id="checklist-template-active"
+                    checked={form.active}
+                    onCheckedChange={(checked) => set("active", checked)}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="checklist-template-active">Active</FieldLabel>
+                    <FieldDescription>
+                      Generate new rounds on this template's schedule.
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+          </CardContent>
+        </Card>
+
+        <Separator />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Checklist items</CardTitle>
+            <CardDescription>
+              Group checks into sections, set the expected response, and automate evidence or follow-up.
+            </CardDescription>
+            <CardAction className="flex items-center gap-2">
+              <Badge variant="outline">{items.length} {items.length === 1 ? "check" : "checks"}</Badge>
+              <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                <Plus data-icon="inline-start" /> Add check
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            {sections.length > 0 ? (
+              <datalist id="section-suggestions">
+                {sections.map((section) => <option key={section} value={section} />)}
+              </datalist>
+            ) : null}
+
+            {items.length === 0 ? (
+              <Empty
+                icon={<ClipboardList />}
+                message="No checks in this template"
+                hint="Add one checkpoint for every response the assignee must record. Sections can group checks by area or system."
+                action={
+                  <Button type="button" variant="outline" onClick={addItem}>
+                    <Plus data-icon="inline-start" /> Add first check
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {items.map((item, index) => {
+                  const linkedAssetItems = assetOptions(assets.data, item.asset_id ?? null);
+                  return (
+                    <Card key={item.draftId} size="sm">
+                      <CardHeader>
+                        <CardTitle className="flex min-w-0 items-center gap-2">
+                          <Badge variant="secondary">{index + 1}</Badge>
+                          <p className="truncate">{item.title.trim() || "Untitled check"}</p>
+                        </CardTitle>
+                        <CardDescription className="truncate">
+                          {item.section?.trim() || "No section"}
+                        </CardDescription>
+                        <CardAction>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon-sm"
+                            aria-label={`Remove check ${index + 1}`}
+                            title="Remove check"
+                            onClick={() => removeItem(index)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                          </Button>
+                        </CardAction>
+                      </CardHeader>
+                      <CardContent>
+                        <FieldGroup className="grid gap-4 md:grid-cols-2">
+                          <Field>
+                            <FieldLabel htmlFor={itemControlId(item, "section")}>Section</FieldLabel>
+                            <Input
+                              id={itemControlId(item, "section")}
+                              list="section-suggestions"
+                              value={item.section ?? ""}
+                              placeholder="HQ Building / Dr T's Office"
+                              onChange={(event) => patchItem(index, { section: event.target.value })}
+                            />
+                            <FieldDescription>Reuse a section name to group related checks.</FieldDescription>
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={itemControlId(item, "title")}>Check *</FieldLabel>
+                            <Input
+                              id={itemControlId(item, "title")}
+                              required
+                              value={item.title}
+                              placeholder="Confirm the meeting-room TV is working"
+                              onChange={(event) => patchItem(index, { title: event.target.value })}
+                            />
+                          </Field>
+                          <Field>
+                            <FieldLabel htmlFor={itemControlId(item, "response-type")}>Response type</FieldLabel>
+                            <Select
+                              items={RESPONSE_TYPES.map((response) => ({
+                                value: response.key,
+                                label: response.label,
+                              }))}
+                              value={item.response_type}
+                              onValueChange={(value) => patchItem(index, {
+                                response_type: value as ResponseType,
+                              })}
+                            >
+                              <SelectTrigger id={itemControlId(item, "response-type")} className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {RESPONSE_TYPES.map((response) => (
+                                    <SelectItem key={response.key} value={response.key}>
+                                      {response.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <Field data-disabled={assetsUnavailable || undefined}>
+                            <FieldLabel htmlFor={itemControlId(item, "asset")}>Linked asset</FieldLabel>
+                            <Select
+                              items={linkedAssetItems}
+                              value={item.asset_id ?? null}
+                              disabled={assetsUnavailable}
+                              onValueChange={(value) => patchItem(index, { asset_id: value })}
+                            >
+                              <SelectTrigger id={itemControlId(item, "asset")} className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {linkedAssetItems.map((option) => (
+                                    <SelectItem key={option.value ?? "no-asset"} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <FieldDescription>
+                              {assets.loading
+                                ? "Loading assets…"
+                                : "Attach this response to a tracked asset."}
+                            </FieldDescription>
+                          </Field>
+                        </FieldGroup>
+                      </CardContent>
+                      <CardFooter className="items-start">
+                        <FieldSet className="w-full">
+                          <FieldLegend variant="label">Evidence and issue handling</FieldLegend>
+                          <FieldGroup className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                            <Field orientation="horizontal" className="items-start">
+                              <Checkbox
+                                id={itemControlId(item, "photo-required")}
+                                checked={item.photo_required}
+                                onCheckedChange={(checked) => patchItem(index, {
+                                  photo_required: checked,
+                                })}
+                              />
+                              <FieldContent>
+                                <FieldLabel htmlFor={itemControlId(item, "photo-required")}>
+                                  <Camera className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                                  Photo required
+                                </FieldLabel>
+                                <FieldDescription>Require visual evidence for this response.</FieldDescription>
+                              </FieldContent>
+                            </Field>
+                            <Field orientation="horizontal" className="items-start">
+                              <Checkbox
+                                id={itemControlId(item, "auto-ticket")}
+                                checked={item.auto_ticket_on_issue}
+                                onCheckedChange={(checked) => patchItem(index, {
+                                  auto_ticket_on_issue: checked,
+                                })}
+                              />
+                              <FieldContent>
+                                <FieldLabel htmlFor={itemControlId(item, "auto-ticket")}>
+                                  Raise ticket on Issue
+                                </FieldLabel>
+                                <FieldDescription>Create a service ticket automatically.</FieldDescription>
+                              </FieldContent>
+                            </Field>
+                            {item.auto_ticket_on_issue ? (
+                              <Field>
+                                <FieldLabel htmlFor={itemControlId(item, "ticket-priority")}>
+                                  Ticket priority
+                                </FieldLabel>
+                                <Select
+                                  items={PRIORITIES.map((priority) => ({
+                                    value: priority,
+                                    label: titleCase(priority),
+                                  }))}
+                                  value={item.ticket_priority}
+                                  onValueChange={(value) => patchItem(index, {
+                                    ticket_priority: value ?? "normal",
+                                  })}
+                                >
+                                  <SelectTrigger
+                                    id={itemControlId(item, "ticket-priority")}
+                                    className="w-full"
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectGroup>
+                                      {PRIORITIES.map((priority) => (
+                                        <SelectItem key={priority} value={priority}>
+                                          {titleCase(priority)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ) : null}
+                          </FieldGroup>
+                        </FieldSet>
+                      </CardFooter>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </form>
     </Modal>
   );

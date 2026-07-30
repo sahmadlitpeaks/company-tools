@@ -23,45 +23,6 @@ export default defineConfig(({ mode }) => {
         "@": fileURLToPath(new URL("./src", import.meta.url)),
       },
     },
-    build: {
-      rolldownOptions: {
-        output: {
-          codeSplitting: {
-            groups: [
-              {
-                name: "react-vendor",
-                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/,
-                priority: 30,
-              },
-              {
-                name: "base-ui-vendor",
-                test: /node_modules[\\/]@base-ui[\\/]react[\\/]/,
-                priority: 25,
-              },
-              {
-                name: "pdf-vendor",
-                test: /node_modules[\\/](pdfjs-dist|react-pageflip)[\\/]/,
-                maxSize: 450_000,
-                priority: 20,
-              },
-              {
-                name: "vendor",
-                test: /node_modules[\\/]/,
-                maxSize: 450_000,
-                minSize: 25_000,
-                priority: 10,
-              },
-              {
-                name: "app",
-                test: /src[\\/]/,
-                maxSize: 450_000,
-                minSize: 25_000,
-              },
-            ],
-          },
-        },
-      },
-    },
     server: {
       port: 5173,
       host: true,

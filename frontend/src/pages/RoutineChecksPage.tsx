@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
+  CalendarDays,
   Camera,
   CheckCircle2,
   ChevronDown,
@@ -12,8 +13,58 @@ import {
   RefreshCw,
   ShieldCheck,
   Ticket as TicketIcon,
+  UserRoundCheck,
+  Users,
   XCircle,
 } from "lucide-react";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { api } from "../api/client";
 import type {
   ChecklistRun,
@@ -25,274 +76,524 @@ import type {
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, MetricStrip, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 import Attachments from "../components/Attachments";
 
-const STATUS_BADGE: Record<string, string> = {
-  todo: "",
-  in_progress: "amber",
-  submitted: "blue",
-  done: "green",
+type RunView = "mine" | "team" | "compliance";
+type BadgeVariant = "default" | "secondary" | "destructive" | "success" | "warning" | "info" | "outline";
+
+const RUN_STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
+  todo: { label: "Not started", variant: "outline" },
+  in_progress: { label: "In progress", variant: "warning" },
+  submitted: { label: "Awaiting verification", variant: "info" },
+  done: { label: "Verified", variant: "success" },
 };
-const STATUS_LABEL: Record<string, string> = {
-  todo: "Not started",
-  in_progress: "In progress",
-  submitted: "Awaiting verification",
-  done: "Verified",
-};
-const ITEM_BADGE: Record<RunItemStatus, string> = {
-  pending: "",
-  ok: "green",
-  issue: "red",
-  na: "",
-  done: "green",
-};
-/** Left-edge stripe colour marking a checkpoint as dealt with. */
+/** Left-edge stripe marking a checkpoint as dealt with. */
 const ITEM_STRIPE: Record<RunItemStatus, string> = {
-  pending: "transparent",
-  ok: "#16a34a",
-  issue: "#dc2626",
-  na: "#94a3b8",
-  done: "#16a34a",
+  pending: "border-l-transparent",
+  ok: "border-l-success",
+  issue: "border-l-destructive",
+  na: "border-l-muted-foreground",
+  done: "border-l-success",
 };
 /** Answers that let the checker move on. An issue needs its note written first. */
 const ADVANCING: RunItemStatus[] = ["ok", "na", "done"];
 
-function fmtDate(d?: string | null) {
-  return d ? new Date(d).toLocaleDateString() : "—";
+const ITEM_STATUS: Record<RunItemStatus, { label: string; variant: BadgeVariant }> = {
+  pending: { label: "Pending", variant: "outline" },
+  ok: { label: "OK", variant: "success" },
+  issue: { label: "Issue", variant: "destructive" },
+  na: { label: "N/A", variant: "secondary" },
+  done: { label: "Done", variant: "success" },
+};
+
+const RESPONSE_CHOICES: {
+  key: Extract<RunItemStatus, "ok" | "issue" | "na">;
+  label: string;
+  icon: ComponentType;
+}[] = [
+  { key: "ok", label: "OK", icon: CheckCircle2 },
+  { key: "issue", label: "Issue", icon: XCircle },
+  { key: "na", label: "N/A", icon: MinusCircle },
+];
+
+const EMPTY_RUNS: ChecklistRun[] = [];
+const EMPTY_TEMPLATES: ChecklistTemplate[] = [];
+
+function fmtDate(value?: string | null) {
+  if (!value) return "—";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  return date.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
 }
-function fmtTime(d?: string | null) {
-  return d ? new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+
+function fmtTime(value?: string | null) {
+  return value
+    ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "—";
 }
-/** How long the round took — replaces the "in / out" times written on paper. */
-function duration(a?: string | null, b?: string | null) {
-  if (!a || !b) return null;
-  const mins = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000));
+
+function duration(start?: string | null, end?: string | null) {
+  if (!start || !end) return null;
+  const mins = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
   return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function titleCase(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  const meta = RUN_STATUS[status] ?? { label: titleCase(status), variant: "outline" as const };
+  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+function ItemStatusBadge({ status }: { status: RunItemStatus }) {
+  const meta = ITEM_STATUS[status];
+  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+function MetricGrid({
+  items,
+}: {
+  items: { label: string; value: string | number; description?: string }[];
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <Card key={item.label} size="sm">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold tabular-nums">{item.value}</CardTitle>
+            <CardDescription>{item.label}</CardDescription>
+          </CardHeader>
+          {item.description ? (
+            <CardContent className="text-xs text-muted-foreground">{item.description}</CardContent>
+          ) : null}
+        </Card>
+      ))}
+    </div>
+  );
 }
 
 export default function RoutineChecksPage() {
   const { user } = useAuth();
-  const isManager = user?.is_admin || user?.role === "manager";
+  const isManager = Boolean(user?.is_admin || user?.role === "manager");
   const { notify } = useToast();
-  const [tab, setTab] = useState<"runs" | "compliance">("runs");
-  const [scope, setScope] = useState<"mine" | "all">(isManager ? "all" : "mine");
+  const [view, setView] = useState<RunView>(isManager ? "team" : "mine");
   const [templateId, setTemplateId] = useState("");
+  const [team, setTeam] = useState("");
   const [status, setStatus] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [params, setParams] = useSearchParams();
 
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (scope === "mine") p.set("mine", "true");
-    if (templateId) p.set("template_id", templateId);
-    if (status) p.set("status", status);
-    return p.toString();
-  }, [scope, templateId, status]);
+  const query = useMemo(() => {
+    const next = new URLSearchParams();
+    if (view === "mine") next.set("mine", "true");
+    if (templateId) next.set("template_id", templateId);
+    if (team) next.set("team", team);
+    if (status) next.set("status", status);
+    if (fromDate) next.set("from", fromDate);
+    if (toDate) next.set("to", toDate);
+    return next.toString();
+  }, [fromDate, status, team, templateId, toDate, view]);
 
-  const runs = useFetch<ChecklistRun[]>(`/api/checklist-runs${qs ? `?${qs}` : ""}`);
+  const runsPath = view === "compliance" ? null : `/api/checklist-runs${query ? `?${query}` : ""}`;
+  const runs = useFetch<ChecklistRun[]>(runsPath);
   const templates = useFetch<ChecklistTemplate[]>("/api/checklist-templates?active=true");
+  const runParam = params.get("run");
 
   useEffect(() => {
-    const run = params.get("run");
-    if (run) {
-      setOpenId(run);
-      setParams({}, { replace: true });
-    }
-  }, [params, setParams]);
+    if (!runParam) return;
+    setOpenId(runParam);
+    setParams({}, { replace: true });
+  }, [runParam, setParams]);
 
-  const list = runs.data ?? [];
+  const list = runs.data ?? EMPTY_RUNS;
+  const templateList = templates.data ?? EMPTY_TEMPLATES;
+  const teams = useMemo(
+    () => [...new Set(templateList.map((template) => template.team).filter(Boolean))].sort(),
+    [templateList],
+  );
   const metrics = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return [
       {
-        value: list.filter((r) => ["todo", "in_progress"].includes(r.status)).length,
+        value: list.filter((run) => run.status === "todo" || run.status === "in_progress").length,
         label: "Open rounds",
       },
       {
-        value: list.filter((r) => r.status === "submitted").length,
+        value: list.filter((run) => run.status === "submitted").length,
         label: "Awaiting verification",
       },
       {
-        value: list.filter((r) => r.run_date === today).reduce((n, r) => n + r.issues, 0),
+        value: list
+          .filter((run) => run.run_date === today)
+          .reduce((total, run) => total + run.issues, 0),
         label: "Issues today",
       },
-      { value: list.filter((r) => r.is_late).length, label: "Late" },
+      { value: list.filter((run) => run.is_late).length, label: "Late" },
     ];
   }, [list]);
 
   async function generateNow() {
+    setIsGenerating(true);
     try {
-      const res = await api<{ created: number }>("/api/checklist-templates/generate-due", {
+      const result = await api<{ created: number }>("/api/checklist-templates/generate-due", {
         method: "POST",
         body: {},
       });
       notify(
-        res.created
-          ? `${res.created} round(s) generated.`
-          : "Nothing due — today's rounds already exist.",
+        result.created
+          ? `${result.created} round(s) generated.`
+          : "Nothing due. Today's rounds already exist.",
       );
-      runs.reload();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
+      await runs.reload();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Failed to generate due rounds.", "error");
+    } finally {
+      setIsGenerating(false);
     }
   }
+
+  function clearFilters() {
+    setTemplateId("");
+    setTeam("");
+    setStatus("");
+    setFromDate("");
+    setToDate("");
+  }
+
+  const hasFilters = Boolean(templateId || team || status || fromDate || toDate);
 
   return (
     <div>
       <PageHead
         title="Routine Checks"
-        subtitle="Daily rounds your team performs, with photo evidence and manager sign-off."
+        subtitle="Daily field rounds with accountable responses, photo evidence, and manager sign-off."
         action={
-          isManager ? (
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
-              onClick={generateNow}
-              title="Generate any rounds due today (the scheduler does this hourly)"
-            >
-              <RefreshCw size={15} /> Generate due
-            </button>
-          ) : undefined
+          <>
+            {view !== "compliance" ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={runs.loading}
+                onClick={() => void runs.reload()}
+              >
+                {runs.loading ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+                Refresh
+              </Button>
+            ) : null}
+            {isManager ? (
+              <Button
+                type="button"
+                disabled={isGenerating}
+                title="Generate any rounds due today. The scheduler also checks hourly."
+                onClick={() => void generateNow()}
+              >
+                {isGenerating ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+                {isGenerating ? "Generating…" : "Generate due"}
+              </Button>
+            ) : null}
+          </>
         }
       />
 
-      <div className="row mb-4" style={{ gap: 8 }}>
-        <button
-          className={`btn ${tab === "runs" ? "btn-primary" : ""}`}
-          style={{ flex: "0 0 auto" }}
-          onClick={() => setTab("runs")}
-        >
-          Rounds
-        </button>
-        {isManager && (
-          <button
-            className={`btn ${tab === "compliance" ? "btn-primary" : ""}`}
-            style={{ flex: "0 0 auto" }}
-            onClick={() => setTab("compliance")}
-          >
-            Compliance
-          </button>
-        )}
-      </div>
+      <Tabs
+        value={view}
+        onValueChange={(value) => {
+          if (value === "mine" || value === "team" || value === "compliance") setView(value);
+        }}
+      >
+        <TabsList variant="line" className="mb-4 w-full justify-start overflow-x-auto">
+          <TabsTrigger value="mine">
+            <UserRoundCheck data-icon="inline-start" /> My rounds
+          </TabsTrigger>
+          {isManager ? (
+            <TabsTrigger value="team">
+              <Users data-icon="inline-start" /> Team rounds
+            </TabsTrigger>
+          ) : null}
+          {isManager ? (
+            <TabsTrigger value="compliance">
+              <ShieldCheck data-icon="inline-start" /> Compliance
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
 
-      {tab === "compliance" && isManager ? (
-        <Compliance />
-      ) : (
-        <>
-          <div className="mb-4">
-            <MetricStrip items={metrics} />
-          </div>
+        {view === "compliance" && isManager ? (
+          <TabsContent value="compliance">
+            <Compliance teams={teams} />
+          </TabsContent>
+        ) : (
+          <TabsContent value={view}>
+            <div className="flex flex-col gap-4">
+              <MetricGrid items={metrics} />
 
-          <div className="card mb-4">
-            <div className="row" style={{ alignItems: "flex-end" }}>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Show</label>
-                <select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
-                  <option value="mine">Mine &amp; my team</option>
-                  {isManager && <option value="all">All rounds</option>}
-                </select>
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Checklist</label>
-                <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                  <option value="">All</option>
-                  {(templates.data ?? []).map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                  <option value="">All</option>
-                  {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Filter rounds</CardTitle>
+                  <CardDescription>Narrow the field list by schedule, team, checklist, or state.</CardDescription>
+                  {hasFilters ? (
+                    <CardAction>
+                      <Button type="button" size="sm" variant="ghost" onClick={clearFilters}>
+                        Clear
+                      </Button>
+                    </CardAction>
+                  ) : null}
+                </CardHeader>
+                <CardContent>
+                  <FieldGroup className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <Field>
+                      <FieldLabel htmlFor="routine-filter-from">From date</FieldLabel>
+                      <Input
+                        id="routine-filter-from"
+                        type="date"
+                        value={fromDate}
+                        max={toDate || undefined}
+                        onChange={(event) => setFromDate(event.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="routine-filter-to">To date</FieldLabel>
+                      <Input
+                        id="routine-filter-to"
+                        type="date"
+                        value={toDate}
+                        min={fromDate || undefined}
+                        onChange={(event) => setToDate(event.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="routine-filter-team">Team</FieldLabel>
+                      <Select
+                        items={[
+                          { value: null, label: "All teams" },
+                          ...teams.map((value) => ({ value, label: titleCase(value) })),
+                        ]}
+                        value={team || null}
+                        onValueChange={(value) => setTeam(value ?? "")}
+                      >
+                        <SelectTrigger id="routine-filter-team" className="w-full">
+                          <SelectValue placeholder="All teams" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={null}>All teams</SelectItem>
+                            {teams.map((value) => (
+                              <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="routine-filter-template">Checklist</FieldLabel>
+                      <Select
+                        items={[
+                          { value: null, label: "All checklists" },
+                          ...templateList.map((template) => ({ value: template.id, label: template.name })),
+                        ]}
+                        value={templateId || null}
+                        onValueChange={(value) => setTemplateId(value ?? "")}
+                      >
+                        <SelectTrigger id="routine-filter-template" className="w-full">
+                          <SelectValue placeholder="All checklists" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={null}>All checklists</SelectItem>
+                            {templateList.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="routine-filter-status">Status</FieldLabel>
+                      <Select
+                        items={[
+                          { value: null, label: "All statuses" },
+                          ...Object.entries(RUN_STATUS).map(([value, meta]) => ({ value, label: meta.label })),
+                        ]}
+                        value={status || null}
+                        onValueChange={(value) => setStatus(value ?? "")}
+                      >
+                        <SelectTrigger id="routine-filter-status" className="w-full">
+                          <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={null}>All statuses</SelectItem>
+                            {Object.entries(RUN_STATUS).map(([value, meta]) => (
+                              <SelectItem key={value} value={value}>{meta.label}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </FieldGroup>
+                </CardContent>
+              </Card>
+
+              {templates.error ? (
+                <Alert variant="destructive">
+                  <AlertTriangle aria-hidden="true" />
+                  <AlertTitle>Checklist filters could not be loaded</AlertTitle>
+                  <AlertDescription>{templates.error}</AlertDescription>
+                  <AlertAction>
+                    <Button type="button" size="sm" variant="outline" onClick={() => void templates.reload()}>
+                      Retry
+                    </Button>
+                  </AlertAction>
+                </Alert>
+              ) : null}
+
+              <Card className="py-0">
+                <CardHeader className="border-b py-4">
+                  <CardTitle>{view === "mine" ? "My rounds" : "Team rounds"}</CardTitle>
+                  <CardDescription>
+                    {list.length} {list.length === 1 ? "round" : "rounds"} in the current view
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {runs.error ? (
+                    <ErrorState message={runs.error} onRetry={() => void runs.reload()} />
+                  ) : runs.loading ? (
+                    <div className="p-4"><Loading /></div>
+                  ) : list.length === 0 ? (
+                    <Empty
+                      icon={<ClipboardCheck />}
+                      message={hasFilters ? "No rounds match these filters" : "No rounds yet"}
+                      hint={
+                        hasFilters
+                          ? "Clear or adjust the filters to widen the result set."
+                          : isManager
+                            ? "Create a checklist under Checklists, then generate today's rounds."
+                            : "Nothing is assigned or available to claim right now."
+                      }
+                      action={
+                        hasFilters ? (
+                          <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <RunList runs={list} onOpen={setOpenId} />
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </div>
+          </TabsContent>
+        )}
+      </Tabs>
 
-          <div className="card">
-            {runs.loading ? (
-              <Loading />
-            ) : list.length === 0 ? (
-              <Empty
-                icon={<ClipboardCheck />}
-                message="No rounds yet"
-                hint={
-                  isManager
-                    ? "Create a checklist under Checklists, then generate today's rounds."
-                    : "Nothing is assigned to you right now."
-                }
-              />
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Checklist</th>
-                    <th>Date</th>
-                    <th>Assignee</th>
-                    <th>Progress</th>
-                    <th>Issues</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((r) => (
-                    <tr key={r.id} className="cursor-pointer" onClick={() => setOpenId(r.id)}>
-                      <td>
-                        <div className="font-medium">{r.template_name ?? r.title}</div>
-                        {r.team && <div className="muted text-xs">{r.team}</div>}
-                      </td>
-                      <td>
-                        {fmtDate(r.run_date)}
-                        {r.is_late && (
-                          <span className="badge red ml-1.5" title="Not submitted by the deadline">
-                            late
-                          </span>
-                        )}
-                      </td>
-                      <td>{r.assignee_name ?? <span className="muted">Unclaimed</span>}</td>
-                      <td className="whitespace-nowrap">
-                        {r.items_answered}/{r.items_total}
-                      </td>
-                      <td>
-                        {r.issues > 0 ? (
-                          <span className="badge red">{r.issues}</span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`badge ${STATUS_BADGE[r.status] ?? ""}`}>
-                          {STATUS_LABEL[r.status] ?? r.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
-
-      {openId && (
-        <RunModal id={openId} onClose={() => setOpenId(null)} onChanged={runs.reload} />
-      )}
+      {openId ? (
+        <RunModal
+          id={openId}
+          onClose={() => setOpenId(null)}
+          onChanged={() => { void runs.reload(); }}
+        />
+      ) : null}
     </div>
   );
 }
 
-// --------------------------------------------------------------------------
-// Run detail — the screen someone actually walks the building with
-// --------------------------------------------------------------------------
+function RunList({ runs, onOpen }: { runs: ChecklistRun[]; onOpen: (id: string) => void }) {
+  return (
+    <>
+      <div className="grid gap-3 p-3 md:hidden">
+        {runs.map((run) => {
+          const pct = run.items_total ? Math.round((run.items_answered / run.items_total) * 100) : 0;
+          return (
+            <Card key={run.id} size="sm">
+              <CardHeader>
+                <CardTitle>{run.template_name ?? run.title}</CardTitle>
+                <CardDescription className="flex flex-wrap items-center gap-2">
+                  {run.team ? <span>{titleCase(run.team)}</span> : null}
+                  <span>{fmtDate(run.run_date)}</span>
+                </CardDescription>
+                <CardAction><RunStatusBadge status={run.status} /></CardAction>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {run.is_late ? <Badge variant="destructive">Late</Badge> : null}
+                  <Badge variant="outline">Due {fmtDate(run.due_date ?? run.run_date)}</Badge>
+                  {run.issues > 0 ? <Badge variant="destructive">{run.issues} issue(s)</Badge> : null}
+                  {!run.assignee_name ? <Badge variant="warning">Unclaimed</Badge> : null}
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">{run.assignee_name ?? "Available to claim"}</span>
+                  <span className="font-medium tabular-nums">{run.items_answered}/{run.items_total}</span>
+                </div>
+                <Progress value={pct} aria-label={`${pct}% complete`} />
+              </CardContent>
+              <CardFooter className="justify-end">
+                <Button type="button" className="min-h-11 w-full" onClick={() => onOpen(run.id)}>
+                  Open round <ChevronRight data-icon="inline-end" />
+                </Button>
+              </CardFooter>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Checklist</TableHead>
+              <TableHead>Due</TableHead>
+              <TableHead>Assignee</TableHead>
+              <TableHead>Progress</TableHead>
+              <TableHead>Issues</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead><span className="sr-only">Open</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {runs.map((run) => (
+              <TableRow key={run.id}>
+                <TableCell className="max-w-72 whitespace-normal">
+                  <div className="font-medium">{run.template_name ?? run.title}</div>
+                  {run.team ? <div className="text-xs text-muted-foreground">{titleCase(run.team)}</div> : null}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>{fmtDate(run.due_date ?? run.run_date)}</span>
+                    {run.is_late ? <Badge variant="destructive">Late</Badge> : null}
+                  </div>
+                </TableCell>
+                <TableCell>{run.assignee_name ?? <Badge variant="warning">Unclaimed</Badge>}</TableCell>
+                <TableCell>
+                  <span className="tabular-nums">{run.items_answered}/{run.items_total}</span>
+                </TableCell>
+                <TableCell>
+                  {run.issues > 0 ? <Badge variant="destructive">{run.issues}</Badge> : "—"}
+                </TableCell>
+                <TableCell><RunStatusBadge status={run.status} /></TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Open ${run.template_name ?? run.title}`}
+                    onClick={() => onOpen(run.id)}
+                  >
+                    Open <ChevronRight data-icon="inline-end" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
+  );
+}
+
 function RunModal({
   id,
   onClose,
@@ -308,7 +609,7 @@ function RunModal({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"claim" | "submit" | "verify" | "reject" | null>(null);
   // The checkpoint to scroll to once it has rendered (set by auto-advance).
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -325,25 +626,31 @@ function RunModal({
   }, [focusId]);
 
   const run = detail.data;
-  const locked = !!run && ["submitted", "done"].includes(run.status);
-  const isReviewer = !!run && (user?.is_admin || run.reviewer_id === user?.id);
-  const canVerify = !!run && run.status === "submitted" && isReviewer;
+  const locked = Boolean(run && (run.status === "submitted" || run.status === "done"));
+  const isReviewer = Boolean(run && (user?.is_admin || run.reviewer_id === user?.id));
+  const canVerify = Boolean(run && run.status === "submitted" && isReviewer);
 
   const sections = useMemo(() => {
-    const groups: { name: string; items: RunItem[] }[] = [];
+    const groups: { key: string; name: string; items: RunItem[] }[] = [];
     for (const item of run?.items ?? []) {
       const name = item.section || "Checks";
-      const last = groups[groups.length - 1];
-      if (last && last.name === name) last.items.push(item);
-      else groups.push({ name, items: [item] });
+      const previous = groups[groups.length - 1];
+      if (previous?.name === name) previous.items.push(item);
+      else groups.push({ key: `${name}:${item.id}`, name, items: [item] });
     }
     return groups;
-  }, [run]);
+  }, [run?.items]);
 
   /** Reveal a checkpoint: open its section, expand it and scroll it into view. */
   function focusItem(next: RunItem) {
-    const sectionName = next.section || "Checks";
-    setCollapsed((c) => (c[sectionName] ? { ...c, [sectionName]: false } : c));
+    const sectionKey = sections.find((section) =>
+      section.items.some((item) => item.id === next.id),
+    )?.key;
+    if (sectionKey) {
+      setCollapsed((current) =>
+        current[sectionKey] ? { ...current, [sectionKey]: false } : current,
+      );
+    }
     setExpandedItem(next.id);
     setFocusId(next.id);
   }
@@ -356,8 +663,8 @@ function RunModal({
       await api(`/api/checklist-runs/items/${item.id}`, { method: "PATCH", body });
       await detail.reload();
       onChanged();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The response could not be saved.", "error");
       return;
     }
 
@@ -381,262 +688,283 @@ function RunModal({
   }
 
   async function submit() {
-    setBusy(true);
+    setBusyAction("submit");
     try {
       await api(`/api/checklist-runs/${id}/submit`, { method: "POST" });
       notify("Round submitted for verification.");
       await detail.reload();
       onChanged();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The round could not be submitted.", "error");
+    } finally {
+      setBusyAction(null);
     }
-    setBusy(false);
   }
 
   async function claim() {
+    setBusyAction("claim");
     try {
       await api(`/api/checklist-runs/${id}/claim`, { method: "POST" });
+      notify("Round claimed.");
       await detail.reload();
       onChanged();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The round could not be claimed.", "error");
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function verify(decision: "verify" | "reject") {
     if (decision === "reject" && !reviewNote.trim()) {
-      notify("Say what needs redoing before sending it back.", "error");
+      notify("Explain what needs redoing before sending the round back.", "error");
       return;
     }
-    setBusy(true);
+    setBusyAction(decision);
     try {
       await api(`/api/checklist-runs/${id}/verify`, {
         method: "POST",
         body: { decision, note: reviewNote || null },
       });
-      notify(decision === "verify" ? "Round verified." : "Sent back to the checker.");
+      notify(decision === "verify" ? "Round verified and signed off." : "Round reopened and sent back.");
       await detail.reload();
       onChanged();
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Failed", "error");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "The review decision could not be saved.", "error");
+    } finally {
+      setBusyAction(null);
     }
-    setBusy(false);
   }
 
   if (!run) {
     return (
-      <Modal title="Round" onClose={onClose} maxWidth={860}>
-        <Loading />
+      <Modal title="Round" description="Loading field round details" onClose={onClose} maxWidth={920}>
+        {detail.error ? <ErrorState message={detail.error} onRetry={() => void detail.reload()} /> : <Loading />}
       </Modal>
     );
   }
 
-  const answered = run.items.filter((i) => i.status !== "pending").length;
-  const pct = run.items.length ? Math.round((answered / run.items.length) * 100) : 0;
+  const answered = run.items.filter((item) => item.status !== "pending").length;
+  const progress = run.items.length ? Math.round((answered / run.items.length) * 100) : 0;
   const missingPhotos = run.items.filter(
-    (i) => i.photo_required && i.status !== "na" && i.photo_count === 0,
+    (item) => item.photo_required && item.status !== "na" && item.photo_count === 0,
   ).length;
   const allAnswered = run.items.length > 0 && answered === run.items.length;
   const took = duration(run.started_at, run.submitted_at);
 
   return (
-    <Modal title={run.template_name ?? run.title} onClose={onClose} maxWidth={860}>
-      {/* Summary */}
-      <div className="row mb-3" style={{ gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div className="muted text-xs">Date</div>
-          <div className="font-medium">{fmtDate(run.run_date)}</div>
-        </div>
-        <div>
-          <div className="muted text-xs">Checked by</div>
-          <div className="font-medium">{run.assignee_name ?? "Unclaimed"}</div>
-        </div>
-        <div>
-          <div className="muted text-xs">Verified by</div>
-          <div className="font-medium">
-            {run.verified_by_name ?? run.reviewer_name ?? "—"}
-            {run.verified_at && <span className="muted text-xs"> · {fmtTime(run.verified_at)}</span>}
-          </div>
-        </div>
-        <div>
-          <div className="muted text-xs">Status</div>
-          <span className={`badge ${STATUS_BADGE[run.status] ?? ""}`}>
-            {STATUS_LABEL[run.status] ?? run.status}
-          </span>
-        </div>
-        {took && (
-          <div>
-            <div className="muted text-xs">Took</div>
-            <div className="font-medium inline-flex items-center gap-1">
-              <Clock size={13} /> {took}
+    <Modal
+      title={run.template_name ?? run.title}
+      description={run.description ?? "Complete each checkpoint, add evidence, then submit the round."}
+      onClose={onClose}
+      maxWidth={920}
+    >
+      {detail.error ? (
+        <Alert variant="destructive">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>Latest round data could not be loaded</AlertTitle>
+          <AlertDescription>{detail.error}</AlertDescription>
+          <AlertAction>
+            <Button type="button" size="sm" variant="outline" onClick={() => void detail.reload()}>Retry</Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
+
+      <Card
+        size="sm"
+        className={allAnswered ? "[&_[data-slot=progress-indicator]]:bg-success" : undefined}
+      >
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            <RunStatusBadge status={run.status} />
+            {run.is_late ? <Badge variant="destructive">Late</Badge> : null}
+          </CardTitle>
+          <CardDescription>
+            Due {fmtDate(run.due_date ?? run.run_date)}
+            {detail.loading ? " · Refreshing…" : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
+            <div>
+              <dt className="text-muted-foreground">Round date</dt>
+              <dd className="mt-0.5 font-medium">{fmtDate(run.run_date)}</dd>
             </div>
+            <div>
+              <dt className="text-muted-foreground">Checked by</dt>
+              <dd className="mt-0.5 font-medium">{run.assignee_name ?? "Unclaimed"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Reviewer</dt>
+              <dd className="mt-0.5 font-medium">{run.verified_by_name ?? run.reviewer_name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Elapsed</dt>
+              <dd className="mt-0.5 flex items-center gap-1 font-medium">
+                <Clock aria-hidden="true" /> {took ?? "—"}
+              </dd>
+            </div>
+          </dl>
+          <Separator />
+          <Progress value={progress}>
+            <ProgressLabel>{answered}/{run.items.length} checks completed</ProgressLabel>
+            <ProgressValue />
+          </Progress>
+          <div className="flex flex-wrap gap-2">
+            {run.issues > 0 ? <Badge variant="destructive">{run.issues} issue(s)</Badge> : null}
+            {missingPhotos > 0 ? <Badge variant="warning">{missingPhotos} photo(s) needed</Badge> : null}
+            {run.verified_at ? <Badge variant="success">Signed off {fmtDate(run.verified_at)} at {fmtTime(run.verified_at)}</Badge> : null}
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Progress */}
-      <div className="mb-3">
-        <div className="spread mb-1 text-sm">
-          <span className="font-medium">
-            {answered}/{run.items.length} checked
-          </span>
-          <span className="muted">
-            {run.issues > 0 && <span className="badge red mr-1.5">{run.issues} issue(s)</span>}
-            {missingPhotos > 0 && (
-              <span className="badge amber">{missingPhotos} photo(s) needed</span>
-            )}
-          </span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--surface-2)" }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${pct}%`,
-              background: allAnswered ? "#16a34a" : "var(--primary, #6366f1)",
-            }}
-          />
-        </div>
-      </div>
+      {allAnswered && !locked ? (
+        <Alert className="border-success/40 bg-success/10">
+          <CheckCircle2 aria-hidden="true" />
+          <AlertTitle>All {run.items.length} checkpoints answered</AlertTitle>
+          <AlertDescription>
+            {missingPhotos > 0
+              ? `${missingPhotos} still need${missingPhotos === 1 ? "s" : ""} a photo before you can submit.`
+              : "This round is complete and ready to submit."}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
-      {allAnswered && !locked && (
-        <div
-          className="card mb-3 inline-flex w-full items-center gap-2"
-          style={{ background: "rgba(22,163,74,0.10)", borderColor: "#16a34a" }}
-        >
-          <CheckCircle2 size={18} style={{ color: "#16a34a", flex: "0 0 auto" }} />
-          <div className="text-sm">
-            <span className="font-semibold">All {run.items.length} checkpoints answered.</span>{" "}
-            {missingPhotos > 0 ? (
-              <span>
-                {missingPhotos} still need{missingPhotos === 1 ? "s" : ""} a photo before you can
-                submit.
-              </span>
-            ) : (
-              <span className="muted">This round is complete and ready to submit.</span>
-            )}
-          </div>
-        </div>
-      )}
+      {run.review_note ? (
+        <Alert>
+          <ShieldCheck aria-hidden="true" />
+          <AlertTitle>Reviewer note</AlertTitle>
+          <AlertDescription>{run.review_note}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      {run.review_note && (
-        <div className="card mb-3" style={{ background: "var(--surface-2)" }}>
-          <div className="muted text-xs">Reviewer note</div>
-          <div className="text-sm">{run.review_note}</div>
-        </div>
-      )}
+      {!run.assignee_id ? (
+        <Alert>
+          <UserRoundCheck aria-hidden="true" />
+          <AlertTitle>This round is unclaimed</AlertTitle>
+          <AlertDescription>Claim it before starting so the team knows who is carrying out the checks.</AlertDescription>
+          <AlertAction>
+            <Button type="button" disabled={busyAction !== null} onClick={() => void claim()}>
+              {busyAction === "claim" ? <Spinner data-icon="inline-start" /> : null}
+              {busyAction === "claim" ? "Claiming…" : "Claim round"}
+            </Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
 
-      {!run.assignee_id && (
-        <button className="btn-primary mb-3" style={{ flex: "0 0 auto" }} onClick={claim}>
-          Claim this round
-        </button>
-      )}
-
-      {/* Sections */}
       <div className="flex flex-col gap-3">
         {sections.map((section) => {
-          const done = section.items.filter((i) => i.status !== "pending").length;
-          const isCollapsed = collapsed[section.name];
-          const sectionDone = done === section.items.length;
+          const complete = section.items.filter((item) => item.status !== "pending").length;
+          const isCollapsed = Boolean(collapsed[section.key]);
           return (
-            <div key={section.name} className="card !p-0 overflow-hidden">
-              <button
-                className="spread w-full px-3 py-2 text-left"
-                style={{
-                  background: sectionDone ? "rgba(22,163,74,0.10)" : "var(--surface-2)",
-                  borderLeft: `4px solid ${sectionDone ? "#16a34a" : "transparent"}`,
-                }}
-                onClick={() => setCollapsed((c) => ({ ...c, [section.name]: !c[section.name] }))}
-              >
-                <span className="inline-flex items-center gap-1.5 font-semibold">
-                  {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-                  {section.name}
-                </span>
-                {sectionDone ? (
-                  <span
-                    className="inline-flex flex-none items-center gap-1 text-xs font-semibold"
-                    style={{ color: "#16a34a" }}
+            <Collapsible
+              key={section.key}
+              open={!isCollapsed}
+              onOpenChange={(open) => setCollapsed((current) => ({ ...current, [section.key]: !open }))}
+            >
+              <Card className="gap-0 py-0">
+                <CardHeader className="border-b p-0">
+                  <CollapsibleTrigger
+                    type="button"
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto w-full justify-between px-4 py-3 text-left"
+                      />
+                    }
                   >
-                    <CheckCircle2 size={13} /> Complete
-                  </span>
-                ) : (
-                  <span className="muted text-xs">
-                    {done}/{section.items.length}
-                  </span>
-                )}
-              </button>
-              {!isCollapsed && (
-                <div className="flex flex-col">
-                  {section.items.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      locked={locked}
-                      expanded={expandedItem === item.id}
-                      onToggleExpand={() =>
-                        setExpandedItem((cur) => (cur === item.id ? null : item.id))
-                      }
-                      onRespond={(body) => respond(item, body)}
-                      onPhotoChanged={() => {
-                        void detail.reload();
-                        onChanged();
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {isCollapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      <span className="truncate font-semibold">{section.name}</span>
+                    </span>
+                    <Badge variant={complete === section.items.length ? "success" : "outline"}>
+                      {complete}/{section.items.length}
+                    </Badge>
+                  </CollapsibleTrigger>
+                </CardHeader>
+                <CollapsibleContent>
+                  <CardContent className="p-0">
+                    {section.items.map((item) => (
+                      <ItemRow
+                        key={item.id}
+                        item={item}
+                        locked={locked}
+                        expanded={expandedItem === item.id}
+                        onToggleExpand={() => setExpandedItem((current) => current === item.id ? null : item.id)}
+                        onRespond={(body) => respond(item, body)}
+                        onPhotoChanged={() => {
+                          void detail.reload();
+                          onChanged();
+                        }}
+                      />
+                    ))}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           );
         })}
       </div>
 
-      {/* Actions */}
-      <div className="row mt-4" style={{ justifyContent: "flex-end", gap: 8 }}>
-        {!locked && (
-          <button
-            className="btn-primary inline-flex items-center gap-1.5"
-            style={{ flex: "0 0 auto" }}
-            disabled={busy}
-            onClick={submit}
+      {!locked ? (
+        <div className="sticky bottom-0 -mx-4 flex justify-end border-t bg-background px-4 py-3">
+          <Button
+            type="button"
+            className="min-h-11 w-full sm:w-auto"
+            disabled={busyAction !== null}
+            onClick={() => void submit()}
           >
-            <CheckCircle2 size={15} /> {busy ? "Submitting…" : "Submit for verification"}
-          </button>
-        )}
-      </div>
-
-      {canVerify && (
-        <div className="card mt-3">
-          <h4 className="m-0 mb-2 inline-flex items-center gap-1.5">
-            <ShieldCheck size={15} /> Verification
-          </h4>
-          <div className="field">
-            <label>Note (required to send back)</label>
-            <textarea
-              rows={2}
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              placeholder="e.g. the server-room photo is missing"
-            />
-          </div>
-          <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
-              disabled={busy}
-              onClick={() => verify("reject")}
-            >
-              Send back
-            </button>
-            <button
-              className="btn-primary"
-              style={{ flex: "0 0 auto" }}
-              disabled={busy}
-              onClick={() => verify("verify")}
-            >
-              Verify &amp; sign off
-            </button>
-          </div>
+            {busyAction === "submit" ? <Spinner data-icon="inline-start" /> : <CheckCircle2 data-icon="inline-start" />}
+            {busyAction === "submit" ? "Submitting…" : "Submit for verification"}
+          </Button>
         </div>
-      )}
+      ) : null}
+
+      {canVerify ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck aria-hidden="true" /> Verification
+            </CardTitle>
+            <CardDescription>Review the completed checks, issue evidence, and required photos before signing off.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Field>
+              <FieldLabel htmlFor="routine-review-note">Review note</FieldLabel>
+              <Textarea
+                id="routine-review-note"
+                rows={3}
+                value={reviewNote}
+                placeholder="For example: the server-room photo needs to be retaken."
+                onChange={(event) => setReviewNote(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Required when reopening and sending the round back.</p>
+            </Field>
+          </CardContent>
+          <CardFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 w-full sm:w-auto"
+              disabled={busyAction !== null}
+              onClick={() => void verify("reject")}
+            >
+              {busyAction === "reject" ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+              {busyAction === "reject" ? "Sending back…" : "Reopen & send back"}
+            </Button>
+            <Button
+              type="button"
+              className="min-h-11 w-full sm:w-auto"
+              disabled={busyAction !== null}
+              onClick={() => void verify("verify")}
+            >
+              {busyAction === "verify" ? <Spinner data-icon="inline-start" /> : <ShieldCheck data-icon="inline-start" />}
+              {busyAction === "verify" ? "Signing off…" : "Verify & sign off"}
+            </Button>
+          </CardFooter>
+        </Card>
+      ) : null}
     </Modal>
   );
 }
@@ -653,120 +981,195 @@ function ItemRow({
   locked: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
-  onRespond: (body: Record<string, unknown>) => void;
+  onRespond: (body: Record<string, unknown>) => Promise<void>;
   onPhotoChanged: () => void;
 }) {
   const [note, setNote] = useState(item.note ?? "");
   const [value, setValue] = useState(item.value ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => setNote(item.note ?? ""), [item.note]);
   useEffect(() => setValue(item.value ?? ""), [item.value]);
 
   const needsPhoto = item.photo_required && item.status !== "na" && item.photo_count === 0;
-  // An issue always wants its detail visible; so does anything still owing a photo.
   const showDetail = expanded || item.status === "issue" || needsPhoto;
+  const responseDisabled = locked || isSaving;
 
-  const choices: { key: RunItemStatus; label: string; icon: JSX.Element }[] = [
-    { key: "ok", label: "OK", icon: <CheckCircle2 size={14} /> },
-    { key: "issue", label: "Issue", icon: <XCircle size={14} /> },
-    { key: "na", label: "N/A", icon: <MinusCircle size={14} /> },
-  ];
+  async function save(body: Record<string, unknown>) {
+    setIsSaving(true);
+    try {
+      await onRespond(body);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function saveReading() {
+    if (value !== (item.value ?? "")) void save({ value });
+  }
+
+  function saveNote() {
+    if (note !== (item.note ?? "")) void save({ note });
+  }
 
   // Crossed off the list, the way the paper form was ticked through.
   const struck = item.status === "ok" || item.status === "na" || item.status === "done";
 
   return (
-    <div
+    <article
       id={`chk-${item.id}`}
-      className="border-t px-3 py-2 transition-colors"
-      style={{
-        borderColor: "var(--border)",
-        borderLeft: `4px solid ${ITEM_STRIPE[item.status]}`,
-        background: expanded ? "var(--surface-2)" : undefined,
-      }}
+      className={cn(
+        "flex flex-col gap-3 border-b border-l-4 p-3 last:border-b-0 sm:p-4",
+        ITEM_STRIPE[item.status],
+        expanded && "bg-muted/40",
+      )}
+      aria-labelledby={`routine-item-${item.id}`}
     >
-      <div className="spread gap-2" style={{ alignItems: "flex-start" }}>
-        <button className="text-left" onClick={onToggleExpand} style={{ flex: "1 1 auto" }}>
-          <div
-            className="font-medium"
-            style={
-              struck
-                ? { textDecoration: "line-through", textDecorationColor: ITEM_STRIPE[item.status], opacity: 0.65 }
-                : undefined
-            }
-          >
-            {item.title}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h4
+                id={`routine-item-${item.id}`}
+                className={cn(
+                  "m-0 text-sm font-medium",
+                  struck && "text-muted-foreground line-through",
+                )}
+              >
+                {item.title}
+              </h4>
+              {item.asset_name ? <p className="mt-0.5 text-xs text-muted-foreground">{item.asset_name}</p> : null}
+            </div>
+            <ItemStatusBadge status={item.status} />
           </div>
-          <div className="muted flex flex-wrap items-center gap-1.5 text-xs">
-            {item.asset_name && <span>{item.asset_name}</span>}
-            {item.photo_required && (
-              <span className={`badge ${needsPhoto ? "amber" : ""}`}>
-                <Camera size={11} className="inline" /> photo{needsPhoto ? " required" : ` ×${item.photo_count}`}
-              </span>
-            )}
-            {item.ticket_number && (
-              <span className="badge blue inline-flex items-center gap-1">
-                <TicketIcon size={11} /> #{item.ticket_number}
-              </span>
-            )}
-            {item.responded_by_name && item.status !== "pending" && (
-              <span>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {item.photo_required ? (
+              <Badge variant={item.status === "na" ? "secondary" : needsPhoto ? "warning" : "success"}>
+                <Camera data-icon="inline-start" />
+                {item.status === "na"
+                  ? "Photo waived"
+                  : needsPhoto
+                    ? "Photo required"
+                    : `${item.photo_count} photo${item.photo_count === 1 ? "" : "s"}`}
+              </Badge>
+            ) : null}
+            {item.ticket_number ? (
+              <Badge variant="info">
+                <TicketIcon data-icon="inline-start" /> Ticket #{item.ticket_number}
+              </Badge>
+            ) : null}
+            {item.responded_by_name && item.status !== "pending" ? (
+              <span className="text-xs text-muted-foreground">
                 {item.responded_by_name} · {fmtTime(item.responded_at)}
               </span>
-            )}
+            ) : null}
+            {isSaving ? <span className="flex items-center gap-1 text-xs text-muted-foreground"><Spinner /> Saving…</span> : null}
           </div>
-        </button>
+        </div>
 
-        <div className="flex flex-none flex-wrap gap-1">
-          {item.response_type === "ok_issue" &&
-            choices.map((c) => (
-              <button
-                key={c.key}
-                disabled={locked}
-                className={`btn-sm inline-flex items-center gap-1 ${
-                  item.status === c.key ? `btn-primary ${ITEM_BADGE[c.key]}` : ""
-                }`}
-                style={{ flex: "0 0 auto" }}
-                onClick={() => onRespond({ status: c.key })}
+        <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-72 lg:items-end">
+          {item.response_type === "ok_issue" ? (
+            <FieldSet className="w-full">
+              <FieldLegend className="sr-only">Response for {item.title}</FieldLegend>
+              <ToggleGroup
+                aria-label={`Response for ${item.title}`}
+                value={item.status === "ok" || item.status === "issue" || item.status === "na" ? [item.status] : []}
+                disabled={responseDisabled}
+                variant="outline"
+                spacing={0}
+                className="grid w-full grid-cols-3 lg:flex"
+                onValueChange={(next) => {
+                  const selected = next[0] as Extract<RunItemStatus, "ok" | "issue" | "na"> | undefined;
+                  if (selected) void save({ status: selected });
+                }}
               >
-                {c.icon} {c.label}
-              </button>
-            ))}
-          {item.response_type === "done" && (
-            <button
-              disabled={locked}
-              className={`btn-sm inline-flex items-center gap-1 ${
-                item.status === "done" ? "btn-primary" : ""
-              }`}
-              style={{ flex: "0 0 auto" }}
-              onClick={() => onRespond({ status: item.status === "done" ? "pending" : "done" })}
-            >
-              <CheckCircle2 size={14} /> Done
-            </button>
-          )}
-          {(item.response_type === "text" || item.response_type === "number") && (
-            <input
-              disabled={locked}
-              type={item.response_type === "number" ? "number" : "text"}
-              value={value}
-              placeholder="Reading"
-              style={{ maxWidth: 160 }}
-              onChange={(e) => setValue(e.target.value)}
-              onBlur={() => value !== (item.value ?? "") && onRespond({ value })}
-            />
-          )}
+                {RESPONSE_CHOICES.map((choice) => {
+                  const Icon = choice.icon;
+                  return (
+                    <ToggleGroupItem
+                      key={choice.key}
+                      value={choice.key}
+                      aria-label={`${choice.label}: ${item.title}`}
+                      className="min-h-11 min-w-0 lg:min-h-9 lg:min-w-20"
+                    >
+                      <Icon data-icon="inline-start" /> {choice.label}
+                    </ToggleGroupItem>
+                  );
+                })}
+              </ToggleGroup>
+            </FieldSet>
+          ) : null}
+
+          {item.response_type === "done" ? (
+            <FieldSet className="w-full">
+              <FieldLegend className="sr-only">Completion for {item.title}</FieldLegend>
+              <ToggleGroup
+                aria-label={`Completion for ${item.title}`}
+                value={item.status === "done" ? ["done"] : []}
+                disabled={responseDisabled}
+                variant="outline"
+                className="w-full"
+                onValueChange={(next) => void save({ status: next.includes("done") ? "done" : "pending" })}
+              >
+                <ToggleGroupItem value="done" className="min-h-11 w-full lg:min-h-9 lg:w-auto lg:min-w-28">
+                  <CheckCircle2 data-icon="inline-start" /> Done
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </FieldSet>
+          ) : null}
+
+          {item.response_type === "text" || item.response_type === "number" ? (
+            <Field className="w-full lg:max-w-72">
+              <FieldLabel htmlFor={`routine-reading-${item.id}`}>
+                {item.response_type === "number" ? "Numeric reading" : "Reading"}
+              </FieldLabel>
+              <Input
+                id={`routine-reading-${item.id}`}
+                disabled={responseDisabled}
+                type={item.response_type === "number" ? "number" : "text"}
+                value={value}
+                placeholder="Enter the observed value"
+                onChange={(event) => setValue(event.target.value)}
+                onBlur={saveReading}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+              />
+            </Field>
+          ) : null}
+
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="min-h-9 w-full justify-between lg:w-auto"
+            aria-expanded={showDetail}
+            aria-controls={`routine-item-detail-${item.id}`}
+            onClick={onToggleExpand}
+          >
+            {showDetail ? "Hide notes & photos" : "Notes & photos"}
+            {showDetail ? <ChevronDown data-icon="inline-end" /> : <ChevronRight data-icon="inline-end" />}
+          </Button>
         </div>
       </div>
 
-      {showDetail && (
-        <div className="mt-2 flex flex-col gap-2">
-          <textarea
-            rows={2}
-            disabled={locked}
-            value={note}
-            placeholder={item.status === "issue" ? "What's wrong?" : "Note (optional)"}
-            onChange={(e) => setNote(e.target.value)}
-            onBlur={() => note !== (item.note ?? "") && onRespond({ note })}
-          />
+      {showDetail ? (
+        <div id={`routine-item-detail-${item.id}`} className="flex flex-col gap-3 bg-muted/40 p-3">
+          <Field>
+            <FieldLabel htmlFor={`routine-note-${item.id}`}>
+              {item.status === "issue" ? "Issue details" : "Item note"}
+            </FieldLabel>
+            <Textarea
+              id={`routine-note-${item.id}`}
+              rows={3}
+              disabled={responseDisabled}
+              value={note}
+              placeholder={item.status === "issue" ? "Describe what is wrong and what you observed." : "Add optional context for this checkpoint."}
+              onChange={(event) => setNote(event.target.value)}
+              onBlur={saveNote}
+            />
+          </Field>
+          <Separator />
           <Attachments
             entityType="task_item"
             entityId={item.id}
@@ -774,132 +1177,271 @@ function ItemRow({
             camera
             accept="image/*"
             capture="environment"
-            heading="Photos"
+            heading={item.photo_required ? "Photo evidence" : "Photos"}
             label="+ From file"
             onChanged={onPhotoChanged}
           />
-          {item.status === "issue" && !item.ticket_number && (
-            <p className="muted inline-flex items-center gap-1 text-xs">
-              <AlertTriangle size={12} /> No ticket was raised for this item.
-            </p>
-          )}
+          {item.status === "issue" && !item.ticket_number ? (
+            <Alert variant="destructive">
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>No ticket was raised</AlertTitle>
+              <AlertDescription>This checkpoint is recorded as an issue but has no linked issue ticket.</AlertDescription>
+            </Alert>
+          ) : null}
         </div>
-      )}
-    </div>
+      ) : null}
+    </article>
   );
 }
 
-// --------------------------------------------------------------------------
-// Compliance (managers)
-// --------------------------------------------------------------------------
-function Compliance() {
+function Compliance({ teams }: { teams: string[] }) {
   const [days, setDays] = useState(30);
-  const to = new Date();
-  const from = new Date(Date.now() - (days - 1) * 86400000);
-  const qs = `from=${from.toISOString().slice(0, 10)}&to=${to.toISOString().slice(0, 10)}`;
-  const summary = useFetch<ComplianceSummary>(`/api/checklist-runs/summary?${qs}`);
-  const s = summary.data;
+  const [team, setTeam] = useState("");
+  const query = useMemo(() => {
+    const to = new Date();
+    const from = new Date(Date.now() - (days - 1) * 86400000);
+    const params = new URLSearchParams({
+      from: from.toISOString().slice(0, 10),
+      to: to.toISOString().slice(0, 10),
+    });
+    if (team) params.set("team", team);
+    return params.toString();
+  }, [days, team]);
+  const summary = useFetch<ComplianceSummary>(`/api/checklist-runs/summary?${query}`);
+  const data = summary.data;
 
-  if (summary.loading) return <Loading />;
-  if (!s) return <Empty icon={<ClipboardCheck />} message="No data yet" />;
+  if (summary.error && !data) return <ErrorState message={summary.error} onRetry={() => void summary.reload()} />;
+  if (summary.loading && !data) return <Loading />;
+  if (!data) return <ErrorState message="Compliance data was not returned." onRetry={() => void summary.reload()} />;
 
   return (
-    <div>
-      <div className="card mb-4">
-        <div className="field" style={{ marginBottom: 0, maxWidth: 220 }}>
-          <label>Period</label>
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
-        </div>
-      </div>
+    <div className="flex flex-col gap-4">
+      {summary.error ? (
+        <Alert variant="destructive">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>Compliance data could not be refreshed</AlertTitle>
+          <AlertDescription>{summary.error}</AlertDescription>
+          <AlertAction>
+            <Button type="button" size="sm" variant="outline" onClick={() => void summary.reload()}>Retry</Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
 
-      <div className="mb-4">
-        <MetricStrip
-          items={[
-            { value: s.runs, label: "Rounds" },
-            { value: `${s.completion_rate}%`, label: "Verified on record" },
-            { value: s.late, label: "Late or missed" },
-            { value: s.issues, label: "Issues found" },
-          ]}
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Reporting period</CardTitle>
+          <CardDescription>Verified completion, lateness, and recurring failures across routine checks.</CardDescription>
+          <CardAction>
+            <Button type="button" size="sm" variant="outline" disabled={summary.loading} onClick={() => void summary.reload()}>
+              {summary.loading ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
+              Refresh
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="routine-compliance-period">Period</FieldLabel>
+              <Select
+                items={[
+                  { value: "7", label: "Last 7 days" },
+                  { value: "30", label: "Last 30 days" },
+                  { value: "90", label: "Last 90 days" },
+                ]}
+                value={String(days)}
+                onValueChange={(value) => setDays(Number(value ?? 30))}
+              >
+                <SelectTrigger id="routine-compliance-period" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="routine-compliance-team">Team</FieldLabel>
+              <Select
+                items={[
+                  { value: null, label: "All teams" },
+                  ...teams.map((value) => ({ value, label: titleCase(value) })),
+                ]}
+                value={team || null}
+                onValueChange={(value) => setTeam(value ?? "")}
+              >
+                <SelectTrigger id="routine-compliance-team" className="w-full"><SelectValue placeholder="All teams" /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={null}>All teams</SelectItem>
+                    {teams.map((value) => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FieldGroup>
+        </CardContent>
+      </Card>
 
-      <div className="card mb-4">
-        <h4 className="m-0 mb-2">By checklist</h4>
-        {s.by_template.length === 0 ? (
-          <p className="muted text-sm">No rounds in this period.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Checklist</th>
-                <th>Team</th>
-                <th>Rounds</th>
-                <th>Verified</th>
-                <th>Awaiting</th>
-                <th>Open</th>
-                <th>Late</th>
-                <th>Issues</th>
-                <th>Completion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.by_template.map((t) => (
-                <tr key={t.template_id}>
-                  <td className="font-medium">{t.template_name}</td>
-                  <td>{t.team}</td>
-                  <td>{t.runs}</td>
-                  <td>{t.verified}</td>
-                  <td>{t.submitted}</td>
-                  <td>{t.open}</td>
-                  <td>{t.late > 0 ? <span className="badge red">{t.late}</span> : "—"}</td>
-                  <td>{t.issues}</td>
-                  <td>{t.completion_rate}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <MetricGrid
+        items={[
+          { value: data.runs, label: "Rounds" },
+          { value: `${data.completion_rate}%`, label: "Verified on record" },
+          { value: data.late, label: "Late or missed" },
+          { value: data.issues, label: "Issues found" },
+        ]}
+      />
 
-      <div className="card">
-        <h4 className="m-0 mb-1">Repeat offenders</h4>
-        <p className="muted mb-2 text-xs">
-          Checkpoints failing most often — three days of “needs black ink” is a supply problem, not
-          three printer problems.
-        </p>
-        {s.hotspots.length === 0 ? (
-          <p className="muted text-sm">No issues recorded in this period.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Checkpoint</th>
-                <th>Where</th>
-                <th>Asset</th>
-                <th>Times</th>
-                <th>Last seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.hotspots.map((h, i) => (
-                <tr key={i}>
-                  <td className="font-medium">{h.title}</td>
-                  <td>{h.section ?? "—"}</td>
-                  <td>{h.asset_name ?? "—"}</td>
-                  <td>
-                    <span className="badge red">{h.issue_count}</span>
-                  </td>
-                  <td>{fmtDate(h.last_seen)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Card className="py-0">
+        <CardHeader className="border-b py-4">
+          <CardTitle>By checklist</CardTitle>
+          <CardDescription>{fmtDate(data.from_date)} to {fmtDate(data.to_date)}</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.by_template.length === 0 ? (
+            <Empty icon={<CalendarDays />} message="No rounds in this period" hint="Try a longer period or a different team." />
+          ) : (
+            <>
+              <div className="grid gap-3 p-3 md:hidden">
+                {data.by_template.map((row) => (
+                  <Card key={row.template_id} size="sm">
+                    <CardHeader>
+                      <CardTitle>{row.template_name}</CardTitle>
+                      <CardDescription>{titleCase(row.team)} · {row.runs} rounds</CardDescription>
+                      <CardAction>
+                        <Badge variant={row.completion_rate === 100 ? "success" : "outline"}>
+                          {row.completion_rate}%
+                        </Badge>
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3">
+                      <Progress value={row.completion_rate} aria-label={`${row.completion_rate}% complete`} />
+                      <dl className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <dt className="text-muted-foreground">Verified</dt>
+                          <dd className="mt-0.5 font-medium tabular-nums">{row.verified}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Awaiting</dt>
+                          <dd className="mt-0.5 font-medium tabular-nums">{row.submitted}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Open</dt>
+                          <dd className="mt-0.5 font-medium tabular-nums">{row.open}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Issues / late</dt>
+                          <dd className="mt-0.5 flex flex-wrap gap-1.5">
+                            <Badge variant={row.issues > 0 ? "destructive" : "outline"}>{row.issues} issues</Badge>
+                            <Badge variant={row.late > 0 ? "warning" : "outline"}>{row.late} late</Badge>
+                          </dd>
+                        </div>
+                      </dl>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Checklist</TableHead>
+                      <TableHead>Team</TableHead>
+                      <TableHead>Rounds</TableHead>
+                      <TableHead>Verified</TableHead>
+                      <TableHead>Awaiting</TableHead>
+                      <TableHead>Open</TableHead>
+                      <TableHead>Late</TableHead>
+                      <TableHead>Issues</TableHead>
+                      <TableHead className="min-w-40">Completion</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.by_template.map((row) => (
+                      <TableRow key={row.template_id}>
+                        <TableCell className="font-medium">{row.template_name}</TableCell>
+                        <TableCell>{titleCase(row.team)}</TableCell>
+                        <TableCell className="tabular-nums">{row.runs}</TableCell>
+                        <TableCell className="tabular-nums">{row.verified}</TableCell>
+                        <TableCell className="tabular-nums">{row.submitted}</TableCell>
+                        <TableCell className="tabular-nums">{row.open}</TableCell>
+                        <TableCell>{row.late > 0 ? <Badge variant="destructive">{row.late}</Badge> : "—"}</TableCell>
+                        <TableCell className="tabular-nums">{row.issues}</TableCell>
+                        <TableCell>
+                          <Progress value={row.completion_rate} aria-label={`${row.completion_rate}% complete`}>
+                            <ProgressValue />
+                          </Progress>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="py-0">
+        <CardHeader className="border-b py-4">
+          <CardTitle>Repeat offenders</CardTitle>
+          <CardDescription>
+            Checkpoints failing most often reveal recurring operational problems, not isolated misses.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {data.hotspots.length === 0 ? (
+            <Empty icon={<CheckCircle2 />} message="No repeat issues" hint="No checkpoint issues were recorded in this period." />
+          ) : (
+            <>
+              <div className="grid gap-3 p-3 md:hidden">
+                {data.hotspots.map((hotspot) => (
+                  <Card
+                    key={`${hotspot.title}:${hotspot.section ?? ""}:${hotspot.asset_id ?? "no-asset"}`}
+                    size="sm"
+                  >
+                    <CardHeader>
+                      <CardTitle>{hotspot.title}</CardTitle>
+                      <CardDescription>
+                        {[hotspot.section, hotspot.asset_name].filter(Boolean).join(" · ") || "No location or asset"}
+                      </CardDescription>
+                      <CardAction><Badge variant="destructive">{hotspot.issue_count} times</Badge></CardAction>
+                    </CardHeader>
+                    <CardContent className="text-xs text-muted-foreground">
+                      Last seen {fmtDate(hotspot.last_seen)}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Checkpoint</TableHead>
+                      <TableHead>Where</TableHead>
+                      <TableHead>Asset</TableHead>
+                      <TableHead>Times</TableHead>
+                      <TableHead>Last seen</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.hotspots.map((hotspot) => (
+                      <TableRow key={`${hotspot.title}:${hotspot.section ?? ""}:${hotspot.asset_id ?? "no-asset"}`}>
+                        <TableCell className="font-medium">{hotspot.title}</TableCell>
+                        <TableCell>{hotspot.section ?? "—"}</TableCell>
+                        <TableCell>{hotspot.asset_name ?? "—"}</TableCell>
+                        <TableCell><Badge variant="destructive">{hotspot.issue_count}</Badge></TableCell>
+                        <TableCell>{fmtDate(hotspot.last_seen)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
