@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   ChevronDown,
@@ -13,7 +13,8 @@ import BrandSwitcher from "../brand/BrandSwitcher";
 import NotificationBell from "./NotificationBell";
 import CommandPalette, { ROUTINE_NAV_ITEMS } from "./CommandPalette";
 import { ChangePasswordModal } from "./ChangePassword";
-import { ConfirmDialog } from "./ui";
+import { ConfirmDialog, Loading } from "./ui";
+import ErrorBoundary from "./ErrorBoundary";
 import { useTheme } from "../theme/ThemeContext";
 import { AppSidebar } from "./app-sidebar";
 import { currentNavSection, currentNavTitle, NAV_GROUPS } from "./navigation";
@@ -86,6 +87,8 @@ export default function Layout() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  const previousPathname = useRef(location.pathname);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -107,6 +110,12 @@ export default function Layout() {
     document.title = `${title} — ${APP_NAME}`;
   }, [title]);
 
+  useEffect(() => {
+    if (previousPathname.current === location.pathname) return;
+    previousPathname.current = location.pathname;
+    mainRef.current?.focus({ preventScroll: true });
+  }, [location.pathname]);
+
   const name = user?.display_name ?? user?.email;
   const role = user?.is_admin ? "Administrator" : user?.job_title ?? "Employee";
 
@@ -114,6 +123,12 @@ export default function Layout() {
     <BrandProvider>
       <SidebarProvider>
         <SidebarRouteCloser pathname={location.pathname} />
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Skip to main content
+        </a>
         <AppSidebar isAdmin={!!user?.is_admin} can={can} />
 
         <SidebarInset>
@@ -220,8 +235,19 @@ export default function Layout() {
               </DropdownMenu>
             </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
-            <Outlet />
+          <main
+            ref={mainRef}
+            id="main-content"
+            tabIndex={-1}
+            aria-labelledby="route-title"
+            className="min-w-0 flex-1 overflow-auto p-4 outline-none sm:p-6"
+          >
+            <span id="route-title" className="sr-only">{title}</span>
+            <ErrorBoundary key={location.pathname} variant="route">
+              <Suspense fallback={<Loading />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </main>
         </SidebarInset>
 

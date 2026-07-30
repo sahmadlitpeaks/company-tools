@@ -197,9 +197,6 @@ export function ConfirmDialog({
   );
 }
 
-/** @deprecated Prefer ConfirmDialog — kept for call-site compatibility. */
-export const ConfirmModal = ConfirmDialog;
-
 /* ---------- Single-input prompt (replaces window.prompt) ---------- */
 export function PromptModal({
   title,

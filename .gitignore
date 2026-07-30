@@ -26,3 +26,19 @@ dist/
 test-results/
 playwright-report/
 .playwright/
+
+# Local agent and browser-tool artifacts
+/.agents/
+/.claude/skills/
+/.grok/
+/.playwright-cli/
+/output/
+/opencode.json
+/skills-lock.json
+/package.json
+/package-lock.json
+/frontend/.agents/
+/frontend/.claude/
+/frontend/.grok/
+/frontend/opencode.json
+/frontend/skills-lock.json

@@ -1,104 +1,122 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import Protected from "./auth/Protected";
-import Layout from "./components/Layout";
 import { Loading } from "./components/ui";
-import { ForcePasswordChange } from "./components/ChangePassword";
-import LoginPage from "./pages/LoginPage";
-import AuthCallback from "./pages/AuthCallback";
-import DashboardPage from "./pages/DashboardPage";
-import DirectoryPage from "./pages/DirectoryPage";
-import CardsPage from "./pages/CardsPage";
-import AssetsPage from "./pages/AssetsPage";
-import BrandingPage from "./pages/BrandingPage";
-import ProductsPage from "./pages/ProductsPage";
-import SharedPage from "./pages/SharedPage";
-import TasksPage from "./pages/TasksPage";
-import RoutineChecksPage from "./pages/RoutineChecksPage";
-import ChecklistTemplatesPage from "./pages/ChecklistTemplatesPage";
-import ApprovalsPage from "./pages/ApprovalsPage";
-import ServiceDeskPage from "./pages/ServiceDeskPage";
-import KnowledgePage from "./pages/KnowledgePage";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import LeavePage from "./pages/LeavePage";
-import AuditPage from "./pages/AuditPage";
-import PeopleOpsPage from "./pages/PeopleOpsPage";
-import WorkLogPage from "./pages/WorkLogPage";
-import MyDocsPage from "./pages/MyDocsPage";
-import HubPage from "./pages/HubPage";
-import AssetTrackerPage from "./pages/AssetTrackerPage";
-import PhoneLinesPage from "./pages/PhoneLinesPage";
-import SubscriptionsPage from "./pages/SubscriptionsPage";
-import ProfilePage from "./pages/ProfilePage";
-import OrgChartPage from "./pages/OrgChartPage";
-import PerformancePage from "./pages/PerformancePage";
-import HrDashboardPage from "./pages/HrDashboardPage";
-import CustomFieldsAdminPage from "./pages/CustomFieldsAdminPage";
-import AutomationsPage from "./pages/AutomationsPage";
-import TimePage from "./pages/TimePage";
-import InboxPage from "./pages/InboxPage";
-import ReportsPage from "./pages/ReportsPage";
-import RecruitingPage from "./pages/RecruitingPage";
-import PayrollPage from "./pages/PayrollPage";
-import BenefitsPage from "./pages/BenefitsPage";
-import EngagementPage from "./pages/EngagementPage";
-import ExpensesPage from "./pages/ExpensesPage";
-import TrainingPage from "./pages/TrainingPage";
-import SecurityPage from "./pages/SecurityPage";
-import WebhooksPage from "./pages/WebhooksPage";
-import ApprovalWorkflowsPage from "./pages/ApprovalWorkflowsPage";
-import ApiTokensPage from "./pages/ApiTokensPage";
-import DepartmentsPage from "./pages/DepartmentsPage";
-import CompaniesPage from "./pages/CompaniesPage";
-import SettingsPage from "./pages/SettingsPage";
-import NotFoundPage from "./pages/NotFoundPage";
-import CrmPage from "./pages/CrmPage";
-import CampaignsPage from "./pages/CampaignsPage";
-import QRCodesPage from "./pages/QRCodesPage";
-import LandingPagesPage from "./pages/LandingPagesPage";
-import LandingBuilderPage from "./pages/LandingBuilderPage";
-import SignaturesPage from "./pages/SignaturesPage";
-import ShortenerPage from "./pages/ShortenerPage";
-import TransfersPage from "./pages/TransfersPage";
-import CafePage from "./pages/CafePage";
-import BookingsPage from "./pages/BookingsPage";
-import PublicCardPage from "./pages/public/PublicCardPage";
-import PublicLandingPage from "./pages/public/PublicLandingPage";
-import PublicTransferPage from "./pages/public/PublicTransferPage";
-import PublicDocPage from "./pages/public/PublicDocPage";
-import VisitorsPage from "./pages/VisitorsPage";
-import PublicVisitorPage from "./pages/public/PublicVisitorPage";
-import PurchasesPage from "./pages/PurchasesPage";
-import CalendarPage from "./pages/CalendarPage";
-import IdeasPage from "./pages/IdeasPage";
-import AiHelpPage from "./pages/AiHelpPage";
-import LostFoundPage from "./pages/LostFoundPage";
+
+const Layout = lazy(() => import("./components/Layout"));
+const ForcePasswordChange = lazy(() => import("./components/ForcePasswordChangeRoute"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const DirectoryPage = lazy(() => import("./pages/DirectoryPage"));
+const CardsPage = lazy(() => import("./pages/CardsPage"));
+const AssetsPage = lazy(() => import("./pages/AssetsPage"));
+const BrandingPage = lazy(() => import("./pages/BrandingPage"));
+const ProductsPage = lazy(() => import("./pages/ProductsPage"));
+const SharedPage = lazy(() => import("./pages/SharedPage"));
+const TasksPage = lazy(() => import("./pages/TasksPage"));
+const RoutineChecksPage = lazy(() => import("./pages/RoutineChecksPage"));
+const ChecklistTemplatesPage = lazy(() => import("./pages/ChecklistTemplatesPage"));
+const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage"));
+const ServiceDeskPage = lazy(() => import("./pages/ServiceDeskPage"));
+const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
+const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
+const LeavePage = lazy(() => import("./pages/LeavePage"));
+const AuditPage = lazy(() => import("./pages/AuditPage"));
+const PeopleOpsPage = lazy(() => import("./pages/PeopleOpsPage"));
+const WorkLogPage = lazy(() => import("./pages/WorkLogPage"));
+const MyDocsPage = lazy(() => import("./pages/MyDocsPage"));
+const HubPage = lazy(() => import("./pages/HubPage"));
+const AssetTrackerPage = lazy(() => import("./pages/AssetTrackerPage"));
+const PhoneLinesPage = lazy(() => import("./pages/PhoneLinesPage"));
+const SubscriptionsPage = lazy(() => import("./pages/SubscriptionsPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const OrgChartPage = lazy(() => import("./pages/OrgChartPage"));
+const PerformancePage = lazy(() => import("./pages/PerformancePage"));
+const HrDashboardPage = lazy(() => import("./pages/HrDashboardPage"));
+const CustomFieldsAdminPage = lazy(() => import("./pages/CustomFieldsAdminPage"));
+const AutomationsPage = lazy(() => import("./pages/AutomationsPage"));
+const TimePage = lazy(() => import("./pages/TimePage"));
+const InboxPage = lazy(() => import("./pages/InboxPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const RecruitingPage = lazy(() => import("./pages/RecruitingPage"));
+const PayrollPage = lazy(() => import("./pages/PayrollPage"));
+const BenefitsPage = lazy(() => import("./pages/BenefitsPage"));
+const EngagementPage = lazy(() => import("./pages/EngagementPage"));
+const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
+const TrainingPage = lazy(() => import("./pages/TrainingPage"));
+const SecurityPage = lazy(() => import("./pages/SecurityPage"));
+const WebhooksPage = lazy(() => import("./pages/WebhooksPage"));
+const ApprovalWorkflowsPage = lazy(() => import("./pages/ApprovalWorkflowsPage"));
+const ApiTokensPage = lazy(() => import("./pages/ApiTokensPage"));
+const DepartmentsPage = lazy(() => import("./pages/DepartmentsPage"));
+const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const CrmPage = lazy(() => import("./pages/CrmPage"));
+const CampaignsPage = lazy(() => import("./pages/CampaignsPage"));
+const QRCodesPage = lazy(() => import("./pages/QRCodesPage"));
+const LandingPagesPage = lazy(() => import("./pages/LandingPagesPage"));
+const LandingBuilderPage = lazy(() => import("./pages/LandingBuilderPage"));
+const SignaturesPage = lazy(() => import("./pages/SignaturesPage"));
+const ShortenerPage = lazy(() => import("./pages/ShortenerPage"));
+const TransfersPage = lazy(() => import("./pages/TransfersPage"));
+const CafePage = lazy(() => import("./pages/CafePage"));
+const BookingsPage = lazy(() => import("./pages/BookingsPage"));
+const PublicCardPage = lazy(() => import("./pages/public/PublicCardPage"));
+const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
+const PublicTransferPage = lazy(() => import("./pages/public/PublicTransferPage"));
+const PublicDocPage = lazy(() => import("./pages/public/PublicDocPage"));
+const VisitorsPage = lazy(() => import("./pages/VisitorsPage"));
+const PublicVisitorPage = lazy(() => import("./pages/public/PublicVisitorPage"));
+const PurchasesPage = lazy(() => import("./pages/PurchasesPage"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const IdeasPage = lazy(() => import("./pages/IdeasPage"));
+const AiHelpPage = lazy(() => import("./pages/AiHelpPage"));
+const LostFoundPage = lazy(() => import("./pages/LostFoundPage"));
+
+function StandaloneRoute({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <main className="grid min-h-svh place-items-center p-6">
+          <div className="w-full max-w-md">
+            <Loading />
+          </div>
+        </main>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 export default function App() {
   const { user, loading } = useAuth();
 
   return (
     <Routes>
-      <Route path="/visit/:token" element={<PublicVisitorPage />} />
+      <Route path="/visit/:token" element={<StandaloneRoute><PublicVisitorPage /></StandaloneRoute>} />
       {/* Public, unauthenticated routes */}
-      <Route path="/c/:slug" element={<PublicCardPage />} />
-      <Route path="/p/:slug" element={<PublicLandingPage />} />
-      <Route path="/t/:token" element={<PublicTransferPage />} />
-      <Route path="/b/:id" element={<PublicDocPage base="brochures" />} />
-      <Route path="/a/:id" element={<PublicDocPage base="assets" />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/c/:slug" element={<StandaloneRoute><PublicCardPage /></StandaloneRoute>} />
+      <Route path="/p/:slug" element={<StandaloneRoute><PublicLandingPage /></StandaloneRoute>} />
+      <Route path="/t/:token" element={<StandaloneRoute><PublicTransferPage /></StandaloneRoute>} />
+      <Route path="/b/:id" element={<StandaloneRoute><PublicDocPage base="brochures" /></StandaloneRoute>} />
+      <Route path="/a/:id" element={<StandaloneRoute><PublicDocPage base="assets" /></StandaloneRoute>} />
+      <Route path="/auth/callback" element={<StandaloneRoute><AuthCallback /></StandaloneRoute>} />
 
       {loading ? (
         <Route path="*" element={<Loading />} />
       ) : !user ? (
         <>
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/login" element={<StandaloneRoute><LoginPage /></StandaloneRoute>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </>
       ) : user.must_change_password ? (
-        <Route path="*" element={<ForcePasswordChange />} />
+        <Route path="*" element={<StandaloneRoute><ForcePasswordChange /></StandaloneRoute>} />
       ) : (
-        <Route element={<Layout />}>
+        <Route element={<StandaloneRoute><Layout /></StandaloneRoute>}>
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/" element={<DashboardPage />} />
           <Route

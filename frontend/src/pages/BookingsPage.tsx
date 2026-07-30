@@ -8,7 +8,7 @@ import { CalendarPlus, DoorOpen, Plus } from "lucide-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useFetch } from "../hooks/useApi";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -60,6 +60,8 @@ export default function BookingsPage() {
   const [space, setSpace] = useState<Space | null>(null);
   const [adding, setAdding] = useState(false);
   const manager = user?.is_admin || user?.role === "manager";
+  const spaceItems = spaces.data ?? [];
+  const bookingItems = bookings.data ?? [];
 
   async function cancel(id: string) {
     try {
@@ -85,9 +87,11 @@ export default function BookingsPage() {
 
       {spaces.loading ? (
         <Loading />
+      ) : spaces.error ? (
+        <ErrorState message={spaces.error} onRetry={spaces.reload} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(spaces.data ?? []).map((item) => (
+          {spaceItems.map((item) => (
             <Card key={item.id}>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
@@ -114,7 +118,11 @@ export default function BookingsPage() {
       )}
 
       <h2 className="mt-6">My Bookings</h2>
-      {(bookings.data ?? []).length === 0 ? (
+      {bookings.loading ? (
+        <Loading />
+      ) : bookings.error ? (
+        <ErrorState message={bookings.error} onRetry={bookings.reload} />
+      ) : bookingItems.length === 0 ? (
         <Empty icon={<CalendarPlus />} message="No bookings yet" />
       ) : (
         <Card className="py-0">
@@ -124,7 +132,7 @@ export default function BookingsPage() {
               <TableRow><TableHead>Space</TableHead><TableHead>Purpose</TableHead><TableHead>Time</TableHead><TableHead className="text-right"><span className="sr-only">Actions</span></TableHead></TableRow>
             </TableHeader>
             <TableBody>
-              {(bookings.data ?? []).map((booking) => (
+              {bookingItems.map((booking) => (
                 <TableRow key={booking.id}>
                   <TableCell><strong>{booking.space_name}</strong></TableCell>
                   <TableCell className="max-w-[28rem] whitespace-normal"><span className="line-clamp-2">{booking.purpose}</span></TableCell>

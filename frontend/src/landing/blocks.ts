@@ -117,7 +117,7 @@ export function createBlock(type: BlockType): Block {
         buttonText: "Get started",
         buttonUrl: "#",
         bg: "#f78d2b",
-        color: "#ffffff",
+        color: "#000000",
         align: "center",
       };
     case "heading":

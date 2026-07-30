@@ -10,7 +10,7 @@ import { Banknote, Download, Plus, Trash2 } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Payslip, PayrollRun } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 function money(v: string | number | null | undefined, ccy?: string) {
   if (v == null) return "—";
@@ -25,6 +25,7 @@ export default function PayrollPage() {
   const [creating, setCreating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleting, setDeleting] = useState<PayrollRun | null>(null);
+  const runItems = runs.data ?? [];
 
   async function createRun(e: React.FormEvent) {
     e.preventDefault();
@@ -72,13 +73,15 @@ export default function PayrollPage() {
       )}
       {runs.loading ? (
         <Loading />
-      ) : (runs.data?.length ?? 0) === 0 ? (
+      ) : runs.error ? (
+        <ErrorState message={runs.error} onRetry={runs.reload} />
+      ) : runItems.length === 0 ? (
         <Card><CardContent><Empty icon={<Banknote />} message="No payroll runs yet" hint="Create a run for a month to generate payslips." /></CardContent></Card>
       ) : (
         <Card className="py-0"><CardContent className="p-0"><Table>
             <TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Payslips</TableHead><TableHead className="text-right">Total net</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
             <TableBody>
-              {runs.data!.map((r) => (
+              {runItems.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell><Button type="button" variant="link" className="h-auto p-0 font-semibold text-foreground" onClick={() => setOpen(r)}>{r.period}</Button></TableCell>
                   <TableCell><Badge variant={r.status === "finalized" ? "success" : "warning"}>{r.status}</Badge></TableCell>
@@ -149,11 +152,15 @@ function RunDetail({ run, onBack }: { run: PayrollRun; onBack: () => void }) {
       />
       {slips.loading ? (
         <Loading />
+      ) : slips.error ? (
+        <ErrorState message={slips.error} onRetry={slips.reload} />
+      ) : !slips.data ? (
+        <ErrorState message="Payroll details are unavailable." onRetry={slips.reload} />
       ) : (
         <Card className="py-0"><CardContent className="p-0"><Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead className="text-right">Base</TableHead><TableHead className="text-right">Gross</TableHead><TableHead className="text-right">Deductions</TableHead><TableHead className="text-right">Net</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
             <TableBody>
-              {slips.data!.payslips.map((s) => (
+              {slips.data.payslips.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.employee_name}</TableCell>
                   <TableCell className="text-right tabular-nums">{money(s.base_salary, s.currency)}</TableCell>

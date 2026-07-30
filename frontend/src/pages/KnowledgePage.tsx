@@ -12,18 +12,21 @@ import { BookOpen, Eye, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import type { Article, ArticleSummary } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function KnowledgePage() {
   const { notify } = useToast();
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const [category, setCategory] = useState("");
-  const query = `?${category ? `category=${encodeURIComponent(category)}&` : ""}${q ? `q=${encodeURIComponent(q)}` : ""}`;
+  const query = `?${category ? `category=${encodeURIComponent(category)}&` : ""}${debouncedQ ? `q=${encodeURIComponent(debouncedQ)}` : ""}`;
   const articles = useFetch<ArticleSummary[]>(`/api/knowledge${query}`);
   const categories = useFetch<string[]>("/api/knowledge/categories");
   const [viewId, setViewId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Article | "new" | null>(null);
+  const articleItems = articles.data ?? [];
   const [params] = useSearchParams();
   useEffect(() => {
     const open = params.get("open");
@@ -56,15 +59,19 @@ export default function KnowledgePage() {
               </SelectGroup></SelectContent>
             </Select>
           </Field>
-        </FieldGroup></CardContent></Card>
+        </FieldGroup>
+        {categories.error && <ErrorState message={categories.error} onRetry={categories.reload} />}
+      </CardContent></Card>
 
       {articles.loading ? (
         <Loading />
-      ) : (articles.data?.length ?? 0) === 0 ? (
+      ) : articles.error ? (
+        <ErrorState message={articles.error} onRetry={articles.reload} />
+      ) : articleItems.length === 0 ? (
         <Empty icon={<BookOpen />} message="No articles yet" hint="Write your first policy or how-to." />
       ) : (
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
-          {articles.data!.map((a) => (
+          {articleItems.map((a) => (
             <Card key={a.id}>
               <CardHeader><div className="flex items-center justify-between gap-3">
                 <Button
@@ -134,7 +141,8 @@ function ArticleViewer({
   onDeleted: () => void;
 }) {
   const { user } = useAuth();
-  const { data } = useFetch<Article>(`/api/knowledge/${id}`);
+  const article = useFetch<Article>(`/api/knowledge/${id}`);
+  const { data } = article;
   const [confirming, setConfirming] = useState(false);
   const canEdit =
     !!data &&
@@ -147,8 +155,12 @@ function ArticleViewer({
 
   return (
     <Modal title={data?.title ?? "Article"} onClose={onClose} maxWidth={680}>
-      {!data ? (
+      {article.loading ? (
         <Loading />
+      ) : article.error ? (
+        <ErrorState message={article.error} onRetry={article.reload} />
+      ) : !data ? (
+        <ErrorState message="Article details are unavailable." onRetry={article.reload} />
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

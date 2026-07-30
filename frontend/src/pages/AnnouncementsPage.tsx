@@ -12,7 +12,7 @@ import { api } from "../api/client";
 import type { Announcement } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 export default function AnnouncementsPage() {
   const { user } = useAuth();
@@ -20,6 +20,7 @@ export default function AnnouncementsPage() {
   const feed = useFetch<Announcement[]>("/api/announcements");
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<Announcement | null>(null);
+  const announcements = feed.data ?? [];
   const canPost = user?.is_admin || user?.role === "manager";
   const [params, setParams] = useSearchParams();
   useEffect(() => {
@@ -56,11 +57,13 @@ export default function AnnouncementsPage() {
 
       {feed.loading ? (
         <Loading />
-      ) : (feed.data?.length ?? 0) === 0 ? (
+      ) : feed.error ? (
+        <ErrorState message={feed.error} onRetry={feed.reload} />
+      ) : announcements.length === 0 ? (
         <Empty icon={<Megaphone />} message="No announcements yet" />
       ) : (
         <div className="flex flex-col gap-3">
-          {feed.data!.map((a) => (
+          {announcements.map((a) => (
             <Card
               key={a.id}
               className={a.is_read ? undefined : "border-l-3 border-l-primary"}
@@ -75,6 +78,11 @@ export default function AnnouncementsPage() {
                   {!a.is_published && <Badge variant="secondary">Draft</Badge>}
                 </CardTitle>
                 <div className="flex shrink-0 items-center gap-2">
+                  {!a.is_read && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => markRead(a)}>
+                      Mark as read
+                    </Button>
+                  )}
                   {canPost && (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Eye /> {a.read_count}

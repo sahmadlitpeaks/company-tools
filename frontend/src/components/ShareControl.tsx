@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -219,9 +219,14 @@ function ShareModal({
               >
                 Copy link
               </Button>
-              <Button size="sm" variant="outline" render={<a href={shareUrl} target="_blank" rel="noreferrer" />}>
+              <a
+                href={shareUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
                 Open
-              </Button>
+              </a>
             </div>
           </div>
         </div>

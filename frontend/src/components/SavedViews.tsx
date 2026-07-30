@@ -45,21 +45,29 @@ export default function SavedViews({
         <Bookmark /> Views
       </span>
       {(views.data ?? []).map((v) => (
-        <Button
-          type="button"
-          key={v.id}
-          variant="secondary"
-          size="xs"
-          className="group cursor-pointer"
-          onClick={() => onApply(v.params)}
-          title={v.params || "no filters"}
-        >
-          {v.name}
-          <X
-            className="opacity-40 transition-opacity hover:text-destructive hover:opacity-100"
-            onClick={(e) => { e.stopPropagation(); setDeleting(v); }}
-          />
-        </Button>
+        <span key={v.id} className="inline-flex">
+          <Button
+            type="button"
+            variant="secondary"
+            size="xs"
+            className="cursor-pointer pr-1"
+            onClick={() => onApply(v.params)}
+            title={v.params || "no filters"}
+          >
+            {v.name}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon-xs"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={() => setDeleting(v)}
+            title={`Delete ${v.name}`}
+            aria-label={`Delete saved view ${v.name}`}
+          >
+            <X />
+          </Button>
+        </span>
       ))}
       {(views.data?.length ?? 0) === 0 && <span className="text-xs text-muted-foreground">none yet</span>}
       {saving ? (

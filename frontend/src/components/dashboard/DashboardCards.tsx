@@ -27,13 +27,6 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { api } from "@/api/client";
 import type {
   AnalyticsOverview,
@@ -63,14 +56,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
@@ -327,7 +312,7 @@ export function TimeStatusCard({ summary }: { summary: DashboardResource<TimeSum
             </Button>
           </div>
           <div>
-            <Progress value={progress} />
+            <Progress value={progress} aria-label="Daily work goal" />
             <div className="mt-2 flex items-center text-xs">
               <span>Daily goal: {duration(expected)}</span>
               <span className="ml-auto text-muted-foreground tabular-nums">{Math.round(progress)}%</span>
@@ -624,9 +609,9 @@ export function PeopleTodayCard({ home }: { home: DashboardResource<HomeFeed> })
             {out.length === 0 ? (
               <p className="m-0 border border-dashed border-border p-4 text-sm text-muted-foreground">Everyone is in today.</p>
             ) : (
-              out.slice(0, 6).map((person, index) => (
+              out.slice(0, 6).map((person) => (
                 <PersonRow
-                  key={person.user_id ?? `${person.name}-${index}`}
+                  key={person.user_id ?? `${person.name}-${person.leave_type}-${person.until ?? "today"}`}
                   id={person.user_id}
                   name={person.name}
                   avatarUrl={person.avatar_url}
@@ -742,7 +727,7 @@ export function LeaveBalanceCard({ balance }: { balance: DashboardResource<Leave
             <p className="m-0 mt-1 text-sm text-muted-foreground">days remaining</p>
           </div>
           <div>
-            <Progress value={usedPercent} />
+            <Progress value={usedPercent} aria-label="Annual leave used" />
             <div className="mt-2 flex items-center text-xs">
               <span>{data.used_days} used of {data.entitlement_days}</span>
               <span className="ml-auto text-muted-foreground tabular-nums">{Math.round(usedPercent)}%</span>
@@ -759,7 +744,7 @@ export function LeaveBalanceCard({ balance }: { balance: DashboardResource<Leave
   );
 }
 
-export function CompactLinkCard({
+function CompactLinkCard({
   title,
   value,
   description,
@@ -802,10 +787,97 @@ export function CompactLinkCard({
   );
 }
 
-const engagementConfig = {
-  clicks: { label: "Link clicks", color: "var(--chart-1)" },
-  scans: { label: "Card scans", color: "var(--chart-3)" },
-} satisfies ChartConfig;
+function trendPoints(values: number[], max: number) {
+  const width = 700;
+  const height = 220;
+  return values
+    .map((value, index) => {
+      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+      const y = height - (value / max) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+}
+
+function EngagementTrendChart({
+  data,
+}: {
+  data: Array<{ date: string; clicks: number; scans: number }>;
+}) {
+  const max = Math.max(1, ...data.flatMap((point) => [point.clicks, point.scans]));
+  const firstDate = formatDate(data[0].date, { month: "short", day: "numeric" });
+  const lastDate = formatDate(data[data.length - 1].date, { month: "short", day: "numeric" });
+
+  return (
+    <div>
+      <svg
+        role="img"
+        aria-labelledby="engagement-chart-title engagement-chart-description"
+        viewBox="-42 -16 760 260"
+        className="h-64 w-full overflow-visible"
+      >
+        <title id="engagement-chart-title">Engagement trend</title>
+        <desc id="engagement-chart-description">
+          Link clicks and digital card scans from {firstDate} to {lastDate}. Peak daily activity was {max}.
+        </desc>
+        {[0, 0.5, 1].map((ratio) => {
+          const y = 220 - ratio * 220;
+          return (
+            <g key={ratio}>
+              <line x1="0" x2="700" y1={y} y2={y} className="stroke-border" strokeDasharray="4 4" />
+              <text x="-10" y={y + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">
+                {Math.round(max * ratio)}
+              </text>
+            </g>
+          );
+        })}
+        <polyline
+          points={trendPoints(data.map((point) => point.clicks), max)}
+          fill="none"
+          stroke="var(--chart-1)"
+          strokeWidth="3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          points={trendPoints(data.map((point) => point.scans), max)}
+          fill="none"
+          stroke="var(--chart-3)"
+          strokeWidth="3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <text x="0" y="244" className="fill-muted-foreground text-[11px]">{firstDate}</text>
+        <text x="700" y="244" textAnchor="end" className="fill-muted-foreground text-[11px]">{lastDate}</text>
+      </svg>
+      <div className="flex justify-center gap-5 text-xs text-muted-foreground" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 bg-[var(--chart-1)]" /> Link clicks
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 bg-[var(--chart-3)]" /> Card scans
+        </span>
+      </div>
+      <table className="sr-only">
+        <caption>Daily engagement values</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Link clicks</th>
+            <th scope="col">Card scans</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((point) => (
+            <tr key={point.date}>
+              <th scope="row">{formatDate(point.date, { weekday: "short", month: "short", day: "numeric" })}</th>
+              <td>{point.clicks}</td>
+              <td>{point.scans}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function EngagementChartCard({ overview }: { overview: DashboardResource<AnalyticsOverview> }) {
   const chartData = useMemo(() => {
@@ -836,31 +908,7 @@ export function EngagementChartCard({ overview }: { overview: DashboardResource<
         <CardContent className="text-muted-foreground">No engagement data in this period.</CardContent>
       ) : (
         <CardContent>
-          <ChartContainer config={engagementConfig} className="h-64 w-full aspect-auto">
-            <LineChart data={chartData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }} accessibilityLayer>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="date"
-                axisLine={false}
-                tickLine={false}
-                minTickGap={24}
-                tickFormatter={(value: string) => formatDate(value, { month: "short", day: "numeric" })}
-              />
-              <YAxis allowDecimals={false} axisLine={false} tickLine={false} width={28} />
-              <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    indicator="line"
-                    labelFormatter={(value) => formatDate(String(value), { weekday: "short", month: "short", day: "numeric" })}
-                  />
-                }
-              />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Line dataKey="clicks" type="monotone" stroke="var(--color-clicks)" strokeWidth={2} dot={false} />
-              <Line dataKey="scans" type="monotone" stroke="var(--color-scans)" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ChartContainer>
+          <EngagementTrendChart data={chartData} />
         </CardContent>
       )}
     </Card>

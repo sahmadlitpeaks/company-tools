@@ -11,7 +11,7 @@ import { useFetch } from "../hooks/useApi";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -402,30 +402,36 @@ function CandidateModal({ candId, onClose, onChanged }: { candId: string; onClos
 
       {/* Rating */}
       <div className="mb-3 flex items-center gap-1">
-        <span className="mr-1 text-xs text-muted-foreground">Rating</span>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Button
-            key={n}
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
-            onClick={() => act(() => api(`/api/recruiting/candidates/${c.id}`, { method: "PATCH", body: { rating: n } }))}
-          >
-            <Star className={n <= (c.rating ?? 0) ? "fill-primary text-primary" : "text-muted-foreground/40"} />
-          </Button>
-        ))}
+        <div role="group" aria-label="Candidate rating" className="flex items-center gap-1">
+          <span className="mr-1 text-xs text-muted-foreground">Rating</span>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Button
+              key={n}
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
+              aria-pressed={(c.rating ?? 0) === n}
+              onClick={() => act(() => api(`/api/recruiting/candidates/${c.id}`, { method: "PATCH", body: { rating: n } }))}
+            >
+              <Star className={n <= (c.rating ?? 0) ? "fill-primary text-primary" : "text-muted-foreground/40"} />
+            </Button>
+          ))}
+        </div>
         <span className="ml-auto flex gap-1">
-          <Button render={<label />} variant="outline" size="sm" className="cursor-pointer">
+          <Input id={`recruit-resume-${c.id}`} type="file" className="peer sr-only" onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const fd = new FormData();
+            fd.append("file", file);
+            act(() => api(`/api/recruiting/candidates/${c.id}/resume`, { method: "POST", form: fd }), "Résumé uploaded.");
+          }} />
+          <FieldLabel
+            htmlFor={`recruit-resume-${c.id}`}
+            className={`${buttonVariants({ variant: "outline", size: "sm" })} cursor-pointer peer-focus-visible:border-ring peer-focus-visible:ring-1 peer-focus-visible:ring-ring/50`}
+          >
             <FileUp data-icon="inline-start" /> {c.resume_path ? "Replace résumé" : "Résumé"}
-            <Input type="file" hidden onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const fd = new FormData();
-              fd.append("file", file);
-              act(() => api(`/api/recruiting/candidates/${c.id}/resume`, { method: "POST", form: fd }), "Résumé uploaded.");
-            }} />
-          </Button>
+          </FieldLabel>
           {c.resume_path && (
             <Button variant="outline" size="sm" onClick={() => downloadFile(`/api/recruiting/candidates/${c.id}/resume`, `${c.name}-resume`).catch(() => notify("Download failed", "error"))}>
               View résumé
@@ -629,18 +635,21 @@ function InterviewRow({ iv, onSave }: { iv: import("../api/types").InterviewItem
         <Card size="sm" className="mt-1">
         <CardContent>
           <div className="mb-1 flex items-center gap-1">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Button
-                key={n}
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
-                onClick={() => setRating(n)}
-              >
-                <Star className={n <= rating ? "fill-primary text-primary" : "text-muted-foreground/40"} />
-              </Button>
-            ))}
+            <div role="group" aria-label="Interview rating" className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Button
+                  key={n}
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Rate ${n} star${n === 1 ? "" : "s"}`}
+                  aria-pressed={rating === n}
+                  onClick={() => setRating(n)}
+                >
+                  <Star className={n <= rating ? "fill-primary text-primary" : "text-muted-foreground/40"} />
+                </Button>
+              ))}
+            </div>
             <Select
               items={[{ value: null, label: "Recommendation…" }, ...["yes", "maybe", "no"].map((r) => ({ value: r, label: r }))]}
               value={rec || null}

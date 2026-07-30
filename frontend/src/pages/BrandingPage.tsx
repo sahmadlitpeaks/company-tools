@@ -48,14 +48,37 @@ interface PaletteColor {
   hex: string;
 }
 
+interface EditablePaletteColor extends PaletteColor {
+  readonly id: string;
+}
+
+let nextPaletteColorId = 0;
+
 function parsePalette(raw?: string | null): PaletteColor[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v)
+      ? v.map((color: PaletteColor) => ({ name: color.name, hex: color.hex }))
+      : [];
   } catch {
     return [];
   }
+}
+
+function createEditablePalette(raw?: string | null): EditablePaletteColor[] {
+  return parsePalette(raw).map((color) => ({
+    ...color,
+    id: `palette-color-${nextPaletteColorId++}`,
+  }));
+}
+
+function createPaletteColor(): EditablePaletteColor {
+  return {
+    id: `palette-color-${nextPaletteColorId++}`,
+    name: "Colour",
+    hex: "#888888",
+  };
 }
 
 const CATEGORIES = ["logo", "guideline", "font", "document", "other"];
@@ -138,7 +161,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
   const logoRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState(brand);
-  const [palette, setPalette] = useState<PaletteColor[]>(() => parsePalette(brand.palette));
+  const [palette, setPalette] = useState<EditablePaletteColor[]>(() => createEditablePalette(brand.palette));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [docName, setDocName] = useState("");
   const [docCategory, setDocCategory] = useState("guideline");
@@ -147,7 +170,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
 
   useEffect(() => {
     setForm(brand);
-    setPalette(parsePalette(brand.palette));
+    setPalette(createEditablePalette(brand.palette));
   }, [brand]);
 
   const set = (k: keyof Brand, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -163,7 +186,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
           secondary_color: form.secondary_color,
           accent_color: form.accent_color,
           font_family: form.font_family || null,
-          palette: JSON.stringify(palette),
+          palette: JSON.stringify(palette.map(({ name, hex }) => ({ name, hex }))),
           website: form.website || null,
           contact_email: form.contact_email || null,
           phone: form.phone || null,
@@ -258,7 +281,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
           <ColorField label="secondary" value={form.secondary_color ?? "#71717a"} disabled={!canManage} onChange={(v) => set("secondary_color", v)} />
           <ColorField label="accent" value={form.accent_color} disabled={!canManage} onChange={(v) => set("accent_color", v)} />
           {palette.map((c, i) => (
-            <div key={`${c.name}-${c.hex}`} className="flex flex-col items-center gap-1">
+            <div key={c.id} className="flex flex-col items-center gap-1">
               <Input aria-label={`${c.name} color`}
                 type="color"
                 value={c.hex}
@@ -289,7 +312,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
           {canManage && (
             <Button type="button" variant="outline"
               className="h-12 w-16 border-2 border-dashed text-lg text-muted-foreground"
-              onClick={() => setPalette((p) => [...p, { name: "Colour", hex: "#888888" }])}
+              onClick={() => setPalette((p) => [...p, createPaletteColor()])}
               title="Add palette colour"
             >
               +

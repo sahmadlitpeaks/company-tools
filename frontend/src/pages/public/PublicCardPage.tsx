@@ -1,9 +1,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { readableForeground } from "@/lib/color";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CircleCheck, Download, Globe2, Mail, MessageCircle, Phone } from "lucide-react";
@@ -88,7 +89,8 @@ export default function PublicCardPage() {
     );
   if (!card) return <div className="grid min-h-dvh place-items-center bg-muted p-5 text-foreground">Loading…</div>;
 
-  const accent = card.accent_color || "var(--primary)";
+  const accent = card.accent_color || "#f78d2b";
+  const accentForeground = readableForeground(accent);
 
   return (
     <main className="grid min-h-dvh place-items-center bg-muted p-5">
@@ -98,36 +100,64 @@ export default function PublicCardPage() {
           <CardHeader className="-mt-11">
             <Avatar className="size-22 bg-background ring-4 ring-background">
               {card.photo_url && <AvatarImage src={card.photo_url} alt={card.full_name} />}
-              <AvatarFallback className="text-3xl font-bold" style={{ color: accent }}>
+              <AvatarFallback className="text-3xl font-bold" style={{ background: accent, color: accentForeground }}>
                 {card.full_name.charAt(0)}
               </AvatarFallback>
             </Avatar>
             <div className="mt-3">
               <CardTitle className="text-xl">{card.full_name}</CardTitle>
               <div className="text-muted-foreground">{card.title}</div>
-              <div className="font-semibold" style={{ color: accent }}>{card.company}</div>
+              {card.company && (
+                <div
+                  className="mt-1 inline-flex px-1.5 py-0.5 text-sm font-semibold"
+                  style={{ background: accent, color: accentForeground }}
+                >
+                  {card.company}
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {card.bio && <p className="text-muted-foreground">{card.bio}</p>}
 
             <div className="flex flex-col gap-2">
-              {card.phone && <Button variant="outline" render={<a href={`tel:${card.phone}`} />}><Phone data-icon="inline-start" /> {card.phone}</Button>}
-              {card.whatsapp && (
-                <Button variant="outline" render={<a href={`https://wa.me/${card.whatsapp.replace(/\D/g, "")}`} />}>
-                  <MessageCircle data-icon="inline-start" /> WhatsApp
-                </Button>
+              {card.phone && (
+                <a href={`tel:${card.phone}`} className={buttonVariants({ variant: "outline" })}>
+                  <Phone data-icon="inline-start" /> {card.phone}
+                </a>
               )}
-              {card.email && <Button variant="outline" render={<a href={`mailto:${card.email}`} />}><Mail data-icon="inline-start" /> {card.email}</Button>}
+              {card.whatsapp && (
+                <a
+                  href={`https://wa.me/${card.whatsapp.replace(/\D/g, "")}`}
+                  className={buttonVariants({ variant: "outline" })}
+                >
+                  <MessageCircle data-icon="inline-start" /> WhatsApp
+                </a>
+              )}
+              {card.email && (
+                <a href={`mailto:${card.email}`} className={buttonVariants({ variant: "outline" })}>
+                  <Mail data-icon="inline-start" /> {card.email}
+                </a>
+              )}
               {card.website && (
-                <Button variant="outline" render={<a href={card.website} target="_blank" rel="noreferrer" />}>
+                <a
+                  href={card.website}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({ variant: "outline" })}
+                >
                   <Globe2 data-icon="inline-start" /> Website
-                </Button>
+                </a>
               )}
               {card.linkedin && (
-                <Button variant="outline" render={<a href={card.linkedin} target="_blank" rel="noreferrer" />}>
+                <a
+                  href={card.linkedin}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({ variant: "outline" })}
+                >
                   in LinkedIn
-                </Button>
+                </a>
               )}
               <Button type="button" onClick={saveContact}>
                 <Download data-icon="inline-start" /> Save contact

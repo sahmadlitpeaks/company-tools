@@ -102,3 +102,27 @@ test("sidebar categories and command search scale across viewports", async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test("authenticated shell exposes one main landmark and manages route focus", async ({ page }) => {
+  await page.goto("/security");
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+
+  const main = page.getByRole("main");
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveAccessibleName("Security & 2FA");
+
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeVisible();
+  await skipLink.press("Enter");
+  await expect(main).toBeFocused();
+
+  await page.evaluate(() => {
+    history.pushState({}, "", "/");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(main).toBeFocused();
+  await expect(main).toHaveAccessibleName("Dashboard");
+  await expect(page).toHaveTitle("Dashboard — AG Holding");
+});

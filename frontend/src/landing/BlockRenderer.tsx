@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Handshake, ShieldCheck, Sparkles, Zap, type LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { readableForeground } from "@/lib/color";
 import { api } from "../api/client";
 import type { Block, FormBlock, LeadField } from "./blocks";
 import { useLandingSlug } from "./LandingContext";
@@ -142,7 +143,7 @@ export function BlockView({ block }: { block: Block }) {
         <section
           style={{
             background: block.bg,
-            color: block.color,
+            color: readableForeground(block.bg, block.color),
             padding: "80px 24px",
             textAlign: block.align,
           }}
@@ -155,13 +156,12 @@ export function BlockView({ block }: { block: Block }) {
               {block.subheading}
             </p>
             {block.buttonText && (
-              <Button
-                variant="secondary"
-                size="lg"
-                render={<a href={block.buttonUrl || "#"} />}
+              <a
+                href={block.buttonUrl || "#"}
+                className={buttonVariants({ variant: "secondary", size: "lg" })}
               >
                 {block.buttonText}
-              </Button>
+              </a>
             )}
           </div>
         </section>,
@@ -271,13 +271,12 @@ export function BlockView({ block }: { block: Block }) {
         >
           <h2 style={{ fontSize: 28, margin: "0 0 8px" }}>{block.heading}</h2>
           <p style={{ opacity: 0.85, margin: "0 0 22px" }}>{block.subheading}</p>
-          <Button
-            variant="secondary"
-            size="lg"
-            render={<a href={block.buttonUrl || "#"} />}
+          <a
+            href={block.buttonUrl || "#"}
+            className={buttonVariants({ variant: "secondary", size: "lg" })}
           >
             {block.buttonText}
-          </Button>
+          </a>
         </section>,
       );
     case "form":

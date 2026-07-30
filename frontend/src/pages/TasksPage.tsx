@@ -580,7 +580,7 @@ function TaskDetailModal({
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
+                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   onClick={() => delItem(it)}
                   title="Remove"
                   aria-label={`Remove "${it.title}"`}

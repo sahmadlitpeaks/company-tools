@@ -21,6 +21,7 @@ import { Download, FileText, LayoutGrid, List, Mail, Upload, Users } from "lucid
 import { api, downloadFile } from "../api/client";
 import type { Department, ModuleCatalogue, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   ConfirmDialog,
   Empty,
@@ -281,6 +282,7 @@ export default function DirectoryPage() {
   const { user } = useAuth();
   const { notify } = useToast();
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const [syncing, setSyncing] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
@@ -290,7 +292,7 @@ export default function DirectoryPage() {
   const [resetShown, setResetShown] = useState<{ who: string; password: string } | null>(null);
   const [adding, setAdding] = useState(false);
   const { data, loading, error, reload } = useFetch<User[]>(
-    `/api/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+    `/api/users${debouncedQ ? `?q=${encodeURIComponent(debouncedQ)}` : ""}`,
   );
   const isAdmin = user?.is_admin;
   const pendingCount = data?.filter((u) => u.status === "pending").length ?? 0;

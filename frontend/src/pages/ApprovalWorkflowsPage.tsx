@@ -9,7 +9,7 @@ import { ArrowRight, Plus, Trash2, Workflow } from "lucide-react";
 import { api } from "../api/client";
 import type { ApprovalWorkflow, WorkflowStep } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const TYPES = ["leave", "expense", "purchase", "document", "access", "general"];
 const KINDS = ["manager", "hr", "admin"];
@@ -24,6 +24,7 @@ export default function ApprovalWorkflowsPage() {
   const workflows = useFetch<ApprovalWorkflow[]>("/api/approval-workflows");
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ApprovalWorkflow | null>(null);
+  const workflowItems = workflows.data ?? [];
 
   async function toggle(w: ApprovalWorkflow) {
     await api(`/api/approval-workflows/${w.id}`, { method: "PATCH", body: { active: !w.active } });
@@ -51,11 +52,13 @@ export default function ApprovalWorkflowsPage() {
       </p>
       {workflows.loading ? (
         <Loading />
-      ) : (workflows.data?.length ?? 0) === 0 ? (
+      ) : workflows.error ? (
+        <ErrorState message={workflows.error} onRetry={workflows.reload} />
+      ) : workflowItems.length === 0 ? (
         <Card><CardContent><Empty icon={<Workflow />} message="No workflows configured" hint="Requests use the classic single-approver flow until you add one." /></CardContent></Card>
       ) : (
         <div className="flex flex-col gap-3">
-          {workflows.data!.map((w) => (
+          {workflowItems.map((w) => (
             <Card key={w.id}>
               <CardHeader>
                 <CardTitle className="flex flex-wrap items-center gap-2">{w.name} <Badge className="capitalize">{w.type}</Badge> {!w.active && <Badge variant="secondary">paused</Badge>}</CardTitle>

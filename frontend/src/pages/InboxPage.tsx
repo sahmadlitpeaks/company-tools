@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field as FormField, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -12,8 +12,11 @@ import { Cable, Copy, Inbox, Plus, Trash2, UserPlus, Ticket as TicketIcon } from
 import { api, apiUrl } from "../api/client";
 import type { IntakeSource, Submission } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ConfirmDialog, Empty, Loading, Modal, PageHead, PromptModal, useToast } from "../components/ui";
+import { useAuth } from "../auth/AuthContext";
 import { numericInput } from "../utils/numbers";
+import { cn } from "@/lib/utils";
 
 const TYPES = ["lead", "complaint", "support", "inquiry", "feedback", "other"];
 const STATUSES = ["quarantined", "new", "in_progress", "resolved", "spam", "archived"];
@@ -28,15 +31,17 @@ const INBOX_STATUSES = new Set(["new", "in_progress", "resolved"]);
 const QUARANTINE_STATUSES = new Set(["quarantined", "spam"]);
 
 export default function InboxPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<"inbox" | "quarantine" | "sources">("inbox");
   const [type, setType] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     return p.toString();
-  }, [type, q]);
+  }, [type, debouncedQ]);
   const subs = useFetch<Submission[]>(`/api/intake/submissions${qs ? `?${qs}` : ""}`);
   const [open, setOpen] = useState<Submission | null>(null);
 
@@ -50,7 +55,7 @@ export default function InboxPage() {
     <div>
       <PageHead title="Web Inbox" subtitle="Website submissions are spam-screened in quarantine; real leads land in the inbox." />
 
-      <ToggleGroup value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline" spacing={0} className="mb-4"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem><ToggleGroupItem value="sources">Connected websites</ToggleGroupItem></ToggleGroup>
+      <ToggleGroup value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline" spacing={0} className="mb-4"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem>{user?.is_admin && <ToggleGroupItem value="sources">Connected websites</ToggleGroupItem>}</ToggleGroup>
 
       {tab === "sources" ? (
         <SourcesTab />
@@ -72,7 +77,7 @@ export default function InboxPage() {
           {subs.loading ? (
             <Loading />
           ) : rows.length === 0 ? (
-            <Empty icon={<Inbox />} message={tab === "quarantine" ? "Nothing in quarantine" : "No submissions yet"} hint={tab === "inbox" ? "Connect a website under 'Connected websites' and point its form here." : undefined} />
+            <Empty icon={<Inbox />} message={tab === "quarantine" ? "Nothing in quarantine" : "No submissions yet"} hint={tab === "inbox" && user?.is_admin ? "Connect a website under 'Connected websites' and point its form here." : undefined} />
           ) : (
            <Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>From</TableHead><TableHead>Subject</TableHead><TableHead>Source</TableHead>{tab === "quarantine" && <TableHead className="text-right">Spam</TableHead>}<TableHead>Status</TableHead><TableHead>Received</TableHead></TableRow></TableHeader><TableBody>
                 {rows.map((s) => (
@@ -179,7 +184,16 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
         <Field label="Company" value={s.company} />
       </div>
       {s.message && <div className="mt-2"><div className="text-xs text-muted-foreground">Message</div><p className="whitespace-pre-wrap text-sm">{s.message}</p></div>}
-      {s.page_url && <Button variant="link" render={<a href={s.page_url} target="_blank" rel="noreferrer" />}>Source page ↗</Button>}
+      {s.page_url && (
+        <a
+          href={s.page_url}
+          target="_blank"
+          rel="noreferrer"
+          className={cn(buttonVariants({ variant: "link" }), "h-auto px-0")}
+        >
+          Source page ↗
+        </a>
+      )}
       {s.payload && Object.keys(s.payload).length > 0 && (
         <div className="mt-2">
           <div className="text-xs text-muted-foreground">Other fields</div>

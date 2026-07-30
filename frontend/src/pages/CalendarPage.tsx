@@ -17,7 +17,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   compareAsc,
   eachDayOfInterval,
-  endOfDay,
   endOfMonth,
   format,
   isAfter,
@@ -37,7 +36,7 @@ import {
   Plus,
   RefreshCw,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { DayButtonProps } from "react-day-picker";
 import { api } from "../api/client";
@@ -82,10 +81,6 @@ function eventStart(event: CalEvent) {
 
 function eventEnd(event: CalEvent) {
   return parseISO(event.end ?? event.start);
-}
-
-function eventOccursOn(event: CalEvent, date: Date) {
-  return !isAfter(eventStart(event), endOfDay(date)) && !isBefore(eventEnd(event), startOfDay(date));
 }
 
 function kindLabel(kind: string) {
@@ -135,17 +130,49 @@ export default function CalendarPage() {
     `/api/calendar?start=${apiDate(monthStart)}&end=${apiDate(monthEnd)}`,
   );
   const canCreate = Boolean(user?.is_admin || user?.role === "manager");
-  const sortedEvents = [...(events.data ?? [])].sort((a, b) => compareAsc(eventStart(a), eventStart(b)));
-  const selectedEvents = sortedEvents.filter((event) => eventOccursOn(event, selectedDate));
-  const datesWithEvents = eachDayOfInterval({ start: monthStart, end: monthEnd }).filter((date) =>
-    sortedEvents.some((event) => eventOccursOn(event, date)),
-  );
-  const eventCountByDate = new Map(
-    datesWithEvents.map((date) => [
-      apiDate(date),
-      sortedEvents.filter((event) => eventOccursOn(event, date)).length,
-    ]),
-  );
+  const { sortedEvents, eventsByDate, datesWithEvents, eventCountByDate, eventEndByEvent } = useMemo(() => {
+    const indexMonthStart = startOfMonth(visibleMonth);
+    const indexMonthEnd = endOfMonth(visibleMonth);
+    const parsedEvents = (events.data ?? []).map((event) => ({
+      event,
+      start: eventStart(event),
+      end: eventEnd(event),
+    }));
+    parsedEvents.sort((a, b) => compareAsc(a.start, b.start));
+
+    const byDate = new Map<string, CalEvent[]>();
+    const dateByKey = new Map<string, Date>();
+    const endByEvent = new Map<CalEvent, Date>();
+    for (const parsed of parsedEvents) {
+      endByEvent.set(parsed.event, parsed.end);
+      const firstDay = isBefore(parsed.start, indexMonthStart)
+        ? indexMonthStart
+        : startOfDay(parsed.start);
+      const lastDay = isAfter(parsed.end, indexMonthEnd)
+        ? indexMonthEnd
+        : startOfDay(parsed.end);
+      if (isAfter(firstDay, lastDay)) continue;
+
+      for (const date of eachDayOfInterval({ start: firstDay, end: lastDay })) {
+        const key = apiDate(date);
+        const dayEvents = byDate.get(key);
+        if (dayEvents) dayEvents.push(parsed.event);
+        else {
+          byDate.set(key, [parsed.event]);
+          dateByKey.set(key, date);
+        }
+      }
+    }
+
+    return {
+      sortedEvents: parsedEvents.map(({ event }) => event),
+      eventsByDate: byDate,
+      datesWithEvents: [...dateByKey.values()].sort(compareAsc),
+      eventCountByDate: new Map([...byDate].map(([key, dayEvents]) => [key, dayEvents.length])),
+      eventEndByEvent: endByEvent,
+    };
+  }, [events.data, visibleMonth]);
+  const selectedEvents = eventsByDate.get(apiDate(selectedDate)) ?? [];
   const today = startOfDay(new Date());
   const upcomingStart = isSameMonth(today, visibleMonth)
     ? today
@@ -153,7 +180,7 @@ export default function CalendarPage() {
       ? monthStart
       : null;
   const upcomingEvents = upcomingStart
-    ? sortedEvents.filter((event) => !isBefore(eventEnd(event), upcomingStart))
+    ? sortedEvents.filter((event) => !isBefore(eventEndByEvent.get(event)!, upcomingStart))
     : [];
 
   function changeMonth(month: Date) {

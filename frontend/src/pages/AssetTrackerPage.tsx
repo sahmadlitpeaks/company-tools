@@ -29,6 +29,7 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   ConfirmDialog,
   Empty,
@@ -867,6 +868,7 @@ export default function AssetTrackerPage() {
   const [condition, setCondition] = useState("");
   // Seed the search from ?q= so scanning an asset's QR label deep-links here.
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
+  const debouncedQ = useDebouncedValue(q);
   const [showReports, setShowReports] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -876,10 +878,10 @@ export default function AssetTrackerPage() {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
     if (condition) p.set("condition", condition);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     const s = p.toString();
     return s ? `?${s}` : "";
-  }, [status, condition, q]);
+  }, [status, condition, debouncedQ]);
 
   const assets = useFetch<TrackedAsset[]>(`/api/asset-tracker${query}`);
   const summary = useFetch<AssetSummary>("/api/asset-tracker/summary");

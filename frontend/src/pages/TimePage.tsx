@@ -76,7 +76,7 @@ function useLiveTimeTotals(summary: TimeSummary | null | undefined) {
 
   return useMemo(() => {
     if (!summary) {
-      return { workSec: 0, breakSec: 0, remainingSec: 0, displaySec: 0 };
+      return { workSec: 0, breakSec: 0, remainingSec: 0, mainSec: 0, now };
     }
 
     let workSec = summary.today_completed_work_seconds ?? 0;
@@ -105,7 +105,7 @@ function useLiveTimeTotals(summary: TimeSummary | null | undefined) {
       ? Math.max(0, Math.floor((now - parseUtc(summary.active_break.started_at)) / 1000))
       : workSec;
 
-    return { workSec, breakSec, remainingSec, mainSec };
+    return { workSec, breakSec, remainingSec, mainSec, now };
   }, [summary, now]);
 }
 
@@ -272,7 +272,7 @@ export default function TimePage() {
 
             {/* Day timeline bar — green = work, yellow = break */}
             {s && (
-              <DayTimelineBar summary={s} className="w-full max-w-2xl px-1" />
+              <DayTimelineBar summary={s} now={totals.now} className="w-full max-w-2xl px-1" />
             )}
 
             {/* Three totals under the bar */}
@@ -388,6 +388,7 @@ function formatTimeOfDay(ms: number): string {
 }
 
 type BarPiece = {
+  id: string;
   kind: "work" | "break";
   seconds: number;
   startMs: number;
@@ -400,19 +401,14 @@ type BarPiece = {
  */
 function DayTimelineBar({
   summary,
+  now,
   className,
 }: {
   summary: TimeSummary;
+  now: number;
   className?: string;
 }) {
-  const [now, setNow] = useState(() => Date.now());
   const running = !!(summary.open_entry || summary.active_break);
-
-  useEffect(() => {
-    // Always tick every second while mounted so the bar visibly grows.
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const dailyExpectedMin = Math.max(60, summary.daily_expected_minutes ?? 480);
   const dailyExpectedSec = dailyExpectedMin * 60;
@@ -436,7 +432,7 @@ function DayTimelineBar({
     }
 
     const piecesOut: BarPiece[] = [];
-    const eventRows: { kind: "start" | "break"; label: string; detail: string; t: number }[] =
+    const eventRows: { id: string; kind: "start" | "break"; label: string; detail: string; t: number }[] =
       [];
     let firstIn: number | null = null;
 
@@ -448,6 +444,7 @@ function DayTimelineBar({
       if (firstIn === null || entryStart < firstIn) firstIn = entryStart;
 
       eventRows.push({
+        id: `entry-${entry.id}`,
         kind: "start",
         label: "START",
         detail: formatTimeOfDay(entryStart),
@@ -457,6 +454,7 @@ function DayTimelineBar({
       const entryBreaks = breaks
         .filter((b) => String(b.entry_id) === String(entry.id))
         .map((b) => ({
+          id: b.id,
           start: parseTimeMs(b.started_at),
           end: b.ended_at ? parseTimeMs(b.ended_at) : now,
           open: !b.ended_at,
@@ -467,6 +465,7 @@ function DayTimelineBar({
       for (const br of entryBreaks) {
         if (br.start > cursor) {
           piecesOut.push({
+            id: `entry-${entry.id}-before-break-${br.id}`,
             kind: "work",
             seconds: Math.max(0, (br.start - cursor) / 1000),
             startMs: cursor,
@@ -475,12 +474,14 @@ function DayTimelineBar({
         }
         const brEnd = Math.max(br.start, br.end);
         piecesOut.push({
+          id: `break-${br.id}`,
           kind: "break",
           seconds: Math.max(0, (brEnd - br.start) / 1000),
           startMs: br.start,
           endMs: brEnd,
         });
         eventRows.push({
+          id: `break-${br.id}`,
           kind: "break",
           label: "BREAK",
           detail: br.open
@@ -492,6 +493,7 @@ function DayTimelineBar({
       }
       if (entryEnd > cursor) {
         piecesOut.push({
+          id: `entry-${entry.id}-tail`,
           kind: "work",
           seconds: Math.max(0, (entryEnd - cursor) / 1000),
           startMs: cursor,
@@ -505,6 +507,7 @@ function DayTimelineBar({
       const start = parseTimeMs(summary.open_entry.clock_in);
       firstIn = start;
       eventRows.push({
+        id: `entry-${summary.open_entry.id}`,
         kind: "start",
         label: "START",
         detail: formatTimeOfDay(start),
@@ -513,18 +516,21 @@ function DayTimelineBar({
       if (summary.active_break?.started_at) {
         const brStart = parseTimeMs(summary.active_break.started_at);
         piecesOut.push({
+          id: `entry-${summary.open_entry.id}-before-break-${summary.active_break.id}`,
           kind: "work",
           seconds: Math.max(0, (brStart - start) / 1000),
           startMs: start,
           endMs: brStart,
         });
         piecesOut.push({
+          id: `break-${summary.active_break.id}`,
           kind: "break",
           seconds: Math.max(0, (now - brStart) / 1000),
           startMs: brStart,
           endMs: now,
         });
         eventRows.push({
+          id: `break-${summary.active_break.id}`,
           kind: "break",
           label: "BREAK",
           detail: `${formatTimeOfDay(brStart)} – now`,
@@ -532,6 +538,7 @@ function DayTimelineBar({
         });
       } else {
         piecesOut.push({
+          id: `entry-${summary.open_entry.id}-tail`,
           kind: "work",
           seconds: Math.max(0, (now - start) / 1000),
           startMs: start,
@@ -549,7 +556,7 @@ function DayTimelineBar({
 
     return {
       pieces: piecesOut.filter((p) => p.seconds > 0.05),
-      events: eventRows.map(({ kind, label, detail }) => ({ kind, label, detail })),
+      events: eventRows.map(({ id, kind, label, detail }) => ({ id, kind, label, detail })),
       firstClockInMs: firstIn,
       late: isLate,
     };
@@ -585,12 +592,12 @@ function DayTimelineBar({
           role="img"
           aria-label="Day progress: green is work, yellow is break"
         >
-          {pieces.map((p, i) => {
+          {pieces.map((p) => {
             const pct = Math.min(100, (p.seconds / scale) * 100);
             if (pct <= 0) return null;
             return (
               <div
-                key={`${p.kind}-${p.startMs}-${i}`}
+                key={p.id}
                 className={[
                   "h-full shrink-0 transition-[width] duration-1000 ease-linear",
                   p.kind === "work" ? "bg-success" : "bg-primary",
@@ -629,8 +636,8 @@ function DayTimelineBar({
 
       {events.length > 0 && (
         <div className="mx-auto mt-4 flex w-full max-w-md flex-col gap-2">
-          {events.map((ev, i) => (
-            <div key={`${ev.kind}-${i}`} className="flex items-center gap-3 text-sm">
+          {events.map((ev) => (
+            <div key={ev.id} className="flex items-center gap-3 text-sm">
               <span
                 className={[
                   "inline-flex size-7 shrink-0 items-center justify-center",

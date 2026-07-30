@@ -16,7 +16,7 @@ interface AuthState {
   login: () => void;
   passwordLogin: (email: string, password: string, code?: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refresh: () => Promise<void>;
   /** Whether the current user may access a permission module. */
   can: (module: string) => boolean;
@@ -71,8 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
-  const logout = useCallback(() => {
-    void api("/api/auth/logout", { method: "POST" });
+  const logout = useCallback(async () => {
+    await api("/api/auth/logout", { method: "POST" });
     setUser(null);
   }, []);
 

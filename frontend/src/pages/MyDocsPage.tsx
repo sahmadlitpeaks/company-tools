@@ -23,6 +23,7 @@ import {
 import { api, downloadFile } from "../api/client";
 import type { WorkspaceItem } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, PageHead, bytes, useToast } from "../components/ui";
 
@@ -32,8 +33,9 @@ export default function MyDocsPage() {
   const { user } = useAuth();
   const { notify } = useToast();
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const [kind, setKind] = useState("");
-  const query = `?${kind ? `kind=${kind}&` : ""}${q ? `q=${encodeURIComponent(q)}` : ""}`;
+  const query = `?${kind ? `kind=${kind}&` : ""}${debouncedQ ? `q=${encodeURIComponent(debouncedQ)}` : ""}`;
   const items = useFetch<WorkspaceItem[]>(`/api/workspace${query}`);
   const [adding, setAdding] = useState<"note" | "link" | null>(null);
   const [viewing, setViewing] = useState<WorkspaceItem | null>(null);

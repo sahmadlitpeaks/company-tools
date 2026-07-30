@@ -17,10 +17,11 @@ type Options = {
   /** Send a FormData body (file uploads) instead of JSON. */
   form?: FormData;
   auth?: boolean;
+  signal?: AbortSignal;
 };
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
-  const { method = "GET", body, form, auth = true } = opts;
+  const { method = "GET", body, form, auth = true, signal } = opts;
   void auth;
   const headers: Record<string, string> = {};
   let payload: BodyInit | undefined;
@@ -36,6 +37,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     headers,
     body: payload,
     credentials: "include",
+    signal,
   });
 
   if (!res.ok) {

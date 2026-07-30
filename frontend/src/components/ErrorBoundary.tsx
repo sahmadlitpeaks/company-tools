@@ -12,15 +12,18 @@ import {
 
 interface Props {
   children: ReactNode;
-  /** Optional reset path label for recovery. */
+  /** Optional callback after recovery resets the failed subtree. */
   onReset?: () => void;
+  variant?: "app" | "route";
 }
 
 interface State {
   error: Error | null;
 }
 
-/** App-level recovery UI when a route or subtree throws. */
+const CHUNK_ERROR = /chunk|dynamically imported module|importing a module script/i;
+
+/** Recovery UI when the app or an isolated route subtree throws. */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
@@ -33,6 +36,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private reset = () => {
+    if (this.state.error && CHUNK_ERROR.test(this.state.error.message)) {
+      window.location.reload();
+      return;
+    }
     this.setState({ error: null });
     this.props.onReset?.();
   };
@@ -40,7 +47,13 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="grid min-h-screen place-items-center p-6">
+        <div
+          className={
+            this.props.variant === "route"
+              ? "grid min-h-[60vh] place-items-center p-6"
+              : "grid min-h-screen place-items-center p-6"
+          }
+        >
           <Empty className="max-w-md border">
             <EmptyHeader>
               <EmptyMedia variant="icon">

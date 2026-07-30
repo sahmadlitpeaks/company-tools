@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiUrl } from "../../api/client";
 import { useFetch } from "../../hooks/useApi";
@@ -40,7 +40,12 @@ export default function PublicVisitorPage() {
         </CardContent>
         {invitation.data.maps_url && (
           <CardFooter className="justify-center">
-            <Button render={<a href={invitation.data.maps_url} />}>Open in Google Maps</Button>
+            <a
+              href={invitation.data.maps_url}
+              className={buttonVariants()}
+            >
+              Open in Google Maps
+            </a>
           </CardFooter>
         )}
       </Card>

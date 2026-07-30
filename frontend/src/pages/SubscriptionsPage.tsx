@@ -20,10 +20,11 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -32,6 +33,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 
 const STATUSES = ["active", "trial", "paused", "cancelled", "expired"];
 const CYCLES = ["monthly", "quarterly", "annual", "weekly", "one_time"];
@@ -60,13 +62,14 @@ export default function SubscriptionsPage() {
   const [tab, setTab] = useState<"list" | "report">("list");
   const [status, setRecordStatus] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const importRef = useRef<HTMLInputElement>(null);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     return p.toString();
-  }, [status, q]);
+  }, [status, debouncedQ]);
   const subs = useFetch<Subscription[]>(`/api/subscriptions${qs ? `?${qs}` : ""}`);
   const summary = useFetch<SubscriptionSummary>("/api/subscriptions/summary");
   const renewals = useFetch<Subscription[]>("/api/subscriptions/renewals?days=30");
@@ -635,9 +638,14 @@ function SubscriptionDetail({
             {data.department_name && <DetailField label="Department" value={data.department_name} />}
           </div>
           {data.url && (
-            <Button render={<a href={data.url} target="_blank" rel="noreferrer" />} variant="link" className="mt-2 px-0">
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants({ variant: "link" }), "mt-2 px-0")}
+            >
               Open login ↗
-            </Button>
+            </a>
           )}
           {data.notes && <p className="mt-2 text-sm text-muted-foreground">{data.notes}</p>}
 

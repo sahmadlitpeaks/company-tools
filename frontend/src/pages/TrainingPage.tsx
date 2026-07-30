@@ -6,7 +6,7 @@ import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 
 const A_BADGE: Record<string, "warning" | "info" | "success" | "secondary"> = { assigned: "warning", in_progress: "info", completed: "success", waived: "secondary" };
 
@@ -202,7 +203,16 @@ function Courses() {
                 <div className="min-w-0">
                   <div className="font-semibold">{c.title}{c.category && <Badge variant="secondary" className="ml-1">{c.category}</Badge>}</div>
                   {c.description && <p className="mt-1 text-sm text-muted-foreground">{c.description}</p>}
-                  {c.url && <Button render={<a href={c.url} target="_blank" rel="noreferrer" />} variant="link" className="px-0">Open content <ExternalLink data-icon="inline-end" /></Button>}
+                  {c.url && (
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={cn(buttonVariants({ variant: "link" }), "px-0")}
+                    >
+                      Open content <ExternalLink data-icon="inline-end" />
+                    </a>
+                  )}
                   <div className="mt-1 text-xs text-muted-foreground">{c.assigned_count} assigned</div>
                 </div>
                 <div className="flex gap-2">

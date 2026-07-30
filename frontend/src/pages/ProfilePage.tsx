@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { VariantProps } from "class-variance-authority";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   Banknote,
@@ -95,21 +95,15 @@ const TABS: { key: string; label: string; description: string; icon: LucideIcon;
 export default function ProfilePage() {
   const { id } = useParams();
   const { user: viewer } = useAuth();
-  const viewerId = viewer?.id;
   const path = id ? `/api/profiles/${id}` : "/api/profiles/me";
+
+  return <ProfileContent key={path} path={path} viewerId={viewer?.id} />;
+}
+
+function ProfileContent({ path, viewerId }: { path: string; viewerId?: string }) {
   const { data: p, loading, error, reload } = useFetch<Profile>(path);
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState("personal");
-
-  useEffect(() => {
-    setTab("personal");
-  }, [path]);
-
-  useEffect(() => {
-    if (p && !p.can_see_sensitive && TABS.find((item) => item.key === tab)?.sensitive) {
-      setTab("personal");
-    }
-  }, [p, tab]);
 
   if (loading) return <Loading />;
   if (error || !p) {
@@ -143,6 +137,7 @@ export default function ProfilePage() {
 
   const tabs = TABS.filter((t) => !t.sensitive || p.can_see_sensitive);
   const activeTab = tabs.find((item) => item.key === tab) ?? tabs[0];
+  const activeTabKey = activeTab.key;
   const canEditGoals = p.can_manage || p.id === viewerId;
 
   return (
@@ -201,10 +196,10 @@ export default function ProfilePage() {
                 type="button"
                 variant="ghost"
                 onClick={() => setTab(item.key)}
-                className={tab === item.key
+                className={activeTabKey === item.key
                   ? "h-9 w-full justify-start bg-foreground px-3 text-background hover:bg-foreground hover:text-background"
                   : "h-9 w-full justify-start px-3 text-foreground/75 hover:text-foreground"}
-                aria-current={tab === item.key ? "page" : undefined}
+                aria-current={activeTabKey === item.key ? "page" : undefined}
               >
                 <item.icon data-icon="inline-start" strokeWidth={1.5} />
                 <span className="truncate">{item.label}</span>
@@ -219,7 +214,7 @@ export default function ProfilePage() {
             <p className="mt-1 text-sm text-muted-foreground">{activeTab.description}</p>
           </div>
           <div className="flex flex-col gap-4">
-        {tab === "personal" && (
+        {activeTabKey === "personal" && (
           <>
             <div className="grid gap-4 md:grid-cols-2">
               <InfoCard icon={<UserRound size={16} />} title="Contact">
@@ -244,7 +239,7 @@ export default function ProfilePage() {
           </>
         )}
 
-        {tab === "job" && (
+        {activeTabKey === "job" && (
           <>
             <div className="grid gap-4 md:grid-cols-2">
               <InfoCard icon={<Briefcase size={16} />} title="Employment">
@@ -282,21 +277,21 @@ export default function ProfilePage() {
           </>
         )}
 
-        {tab === "comp" && p.can_see_sensitive && (
+        {activeTabKey === "comp" && p.can_see_sensitive && (
           <CompensationSection userId={p.id} canManage={p.can_manage} />
         )}
 
-        {tab === "history" && p.can_see_sensitive && <FieldHistorySection userId={p.id} />}
+        {activeTabKey === "history" && p.can_see_sensitive && <FieldHistorySection userId={p.id} />}
 
-        {tab === "documents" && p.can_see_sensitive && (
+        {activeTabKey === "documents" && p.can_see_sensitive && (
           <DocumentsSection userId={p.id} canManage={p.can_manage} isSelf={p.id === viewerId} />
         )}
 
-        {tab === "performance" && (
+        {activeTabKey === "performance" && (
           <GoalsSection userId={p.id} canEdit={canEditGoals} />
         )}
 
-        {tab === "assets" && (
+        {activeTabKey === "assets" && (
           <>
             <Section icon={<Wallet size={16} />} title="Subscriptions" count={p.subscriptions.length}>
               {p.subscriptions.length === 0 ? <Muted>No subscriptions.</Muted> : p.subscriptions.map((s) => (

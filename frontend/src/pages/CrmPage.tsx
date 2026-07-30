@@ -13,6 +13,7 @@ import type { CrmLead, CrmSummary, User } from "../api/types";
 import { useBrand } from "../brand/BrandContext";
 import { ConfirmDialog, Empty, ErrorState, ListSkeleton, MetricStrip, Modal, PageHead, useToast } from "../components/ui";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 
 const STATUSES = ["new", "contacted", "qualified", "won", "lost"];
 
@@ -56,7 +57,8 @@ export default function CrmPage() {
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
   const [q, setQ] = useState("");
-  const query = useMemo(() => { const params = new URLSearchParams(); if (status) params.set("status", status); if (source) params.set("source", source); if (q) params.set("q", q); const value = params.toString(); return value ? `?${value}` : ""; }, [status, source, q]);
+  const debouncedQ = useDebouncedValue(q);
+  const query = useMemo(() => { const params = new URLSearchParams(); if (status) params.set("status", status); if (source) params.set("source", source); if (debouncedQ) params.set("q", debouncedQ); const value = params.toString(); return value ? `?${value}` : ""; }, [status, source, debouncedQ]);
   const leads = useFetch<CrmLead[]>(`/api/crm/leads${query}`);
   const summary = useFetch<CrmSummary>("/api/crm/summary");
   const directory = useFetch<User[]>("/api/users");

@@ -13,7 +13,7 @@ import { FileText, HeartPulse, Plus, Trash2, Users } from "lucide-react";
 import { api } from "../api/client";
 import type { BenefitEnrollment, BenefitPlan, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const CATEGORIES = [
   "health", "dental", "vision", "life", "disability", "retirement", "wellness", "other",
@@ -32,6 +32,7 @@ export default function BenefitsPage() {
   const [tab, setTab] = useState<"plans" | "enrollments">("plans");
   const [editPlan, setEditPlan] = useState<BenefitPlan | "new" | null>(null);
   const [deletePlanTarget, setDeletePlanTarget] = useState<BenefitPlan | null>(null);
+  const planItems = plans.data ?? [];
 
   async function delPlan(p: BenefitPlan) {
     try {
@@ -59,11 +60,13 @@ export default function BenefitsPage() {
       {tab === "plans" ? (
         plans.loading ? (
           <Loading />
-        ) : (plans.data?.length ?? 0) === 0 ? (
+        ) : plans.error ? (
+          <ErrorState message={plans.error} onRetry={plans.reload} />
+        ) : planItems.length === 0 ? (
           <Card><CardContent><Empty icon={<HeartPulse />} message="No benefit plans yet" hint="Add a plan employees can enroll in." /></CardContent></Card>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {plans.data!.map((p) => (
+            {planItems.map((p) => (
               <Card key={p.id}>
                 <CardHeader><CardTitle>{p.name} {!p.active && <Badge variant="secondary">inactive</Badge>}</CardTitle><div className="text-sm capitalize text-muted-foreground">{p.category}{p.carrier ? ` · ${p.carrier}` : ""}</div><CardAction className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setEditPlan(p)}>Edit</Button><Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeletePlanTarget(p)}><Trash2 /></Button></CardAction></CardHeader>
                 {p.description && <CardContent className="text-sm text-muted-foreground">{p.description}</CardContent>}
@@ -76,8 +79,12 @@ export default function BenefitsPage() {
             ))}
           </div>
         )
+      ) : plans.loading ? (
+        <Loading />
+      ) : plans.error ? (
+        <ErrorState message={plans.error} onRetry={plans.reload} />
       ) : (
-        <EnrollmentsTab plans={plans.data ?? []} />
+        <EnrollmentsTab plans={planItems} />
       )}
 
       {editPlan && (
@@ -165,6 +172,7 @@ function EnrollmentsTab({ plans }: { plans: BenefitPlan[] }) {
   const enrollments = useFetch<BenefitEnrollment[]>("/api/benefits/enrollments");
   const [adding, setAdding] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BenefitEnrollment | null>(null);
+  const enrollmentItems = enrollments.data ?? [];
 
   async function update(e: BenefitEnrollment, status: string) {
     try {
@@ -188,13 +196,15 @@ function EnrollmentsTab({ plans }: { plans: BenefitPlan[] }) {
       <CardHeader className="py-(--card-spacing)"><CardTitle>Enrollments</CardTitle><CardAction><Button type="button" size="sm" onClick={() => setAdding(true)}><Plus data-icon="inline-start" /> Enroll employee</Button></CardAction></CardHeader>
       {enrollments.loading ? (
         <CardContent><Loading /></CardContent>
-      ) : (enrollments.data?.length ?? 0) === 0 ? (
+      ) : enrollments.error ? (
+        <CardContent><ErrorState message={enrollments.error} onRetry={enrollments.reload} /></CardContent>
+      ) : enrollmentItems.length === 0 ? (
         <CardContent><Empty icon={<FileText />} message="No enrollments yet" hint="Enroll an employee into a plan." /></CardContent>
       ) : (
         <CardContent className="p-0"><Table>
           <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Plan</TableHead><TableHead>Coverage</TableHead><TableHead className="text-right">Cost/mo</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
           <TableBody>
-            {enrollments.data!.map((e) => (
+            {enrollmentItems.map((e) => (
               <TableRow key={e.id}>
                 <TableCell className="font-medium">{e.employee_name}</TableCell>
                 <TableCell>{e.plan_name} <span className="capitalize text-muted-foreground">· {e.category}</span></TableCell>
@@ -229,6 +239,7 @@ function EnrollModal({ plans, onClose, onSaved }: { plans: BenefitPlan[]; onClos
   const [userId, setUserId] = useState("");
   const [coverage, setCoverage] = useState("employee");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const peopleItems = people.data ?? [];
 
   async function save() {
     if (!planId || !userId) { notify("Pick a plan and employee", "error"); return; }
@@ -247,15 +258,21 @@ function EnrollModal({ plans, onClose, onSaved }: { plans: BenefitPlan[]; onClos
 
   return (
     <Modal title="Enroll employee" onClose={onClose} maxWidth={480}>
+      {people.loading ? <Loading /> : people.error ? (
+        <ErrorState message={people.error} onRetry={people.reload} />
+      ) : (
+      <>
       <FieldGroup>
       <Field><FieldLabel htmlFor="rd-benefitspage-241-plan">Plan</FieldLabel><Select items={plans.filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))} value={planId || null} onValueChange={(value) => setPlanId(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-241-plan"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{plans.filter((p) => p.active).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-      <Field><FieldLabel htmlFor="rd-benefitspage-247-employee">Employee</FieldLabel><Select items={[{ value: null, label: "Select…" }, ...(people.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={userId || null} onValueChange={(value) => setUserId(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-247-employee"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select…</SelectItem>{(people.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+      <Field><FieldLabel htmlFor="rd-benefitspage-247-employee">Employee</FieldLabel><Select items={[{ value: null, label: "Select…" }, ...peopleItems.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={userId || null} onValueChange={(value) => setUserId(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-247-employee"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select…</SelectItem>{peopleItems.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
       <Field><FieldLabel htmlFor="rd-benefitspage-254-coverage-level">Coverage level</FieldLabel><Select items={COVERAGE.map((c) => ({ value: c, label: c.replace(/_/g, " ") }))} value={coverage} onValueChange={(value) => setCoverage(value ?? "")}><SelectTrigger className="w-full" id="rd-benefitspage-254-coverage-level"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{COVERAGE.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
       </FieldGroup>
       <div className="mt-5 flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
         <Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Saving…" : "Enroll"}</Button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }

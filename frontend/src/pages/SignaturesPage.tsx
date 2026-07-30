@@ -86,7 +86,9 @@ export default function SignaturesPage() {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   // "design:<id>" for built-ins, "custom:<id>" for DB templates.
   const [selected, setSelected] = useState<string>("design:classic");
-  const [customHtml, setCustomHtml] = useState<string | null>(null);
+  const [customResult, setCustomResult] = useState<{ requestKey: string; html: string } | null>(null);
+  const [customRenderError, setCustomRenderError] = useState<{ requestKey: string; message: string } | null>(null);
+  const [isRenderingCustom, setIsRenderingCustom] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Profile data → signature fields, with the user's overrides applied.
@@ -113,30 +115,73 @@ export default function SignaturesPage() {
   const builtin = selected.startsWith("design:")
     ? SIGNATURE_DESIGNS.find((d) => d.id === selected.slice(7))
     : null;
+  const customRequestKey = `${selected}:${JSON.stringify(overrides)}`;
 
   useEffect(() => {
     if (builtin) {
-      setCustomHtml(null);
+      setCustomRenderError(null);
+      setIsRenderingCustom(false);
       return;
     }
     const id = selected.slice(7);
+    const controller = new AbortController();
+    let active = true;
+    setCustomRenderError(null);
+    setIsRenderingCustom(true);
     const handle = window.setTimeout(() => {
       void api<EmailSignature>("/api/signatures/render", {
         method: "POST",
         body: { template_id: id, data: overrides },
-      }).then((s) => setCustomHtml(s.rendered_html ?? ""));
+        signal: controller.signal,
+      })
+        .then((signature) => {
+          if (active) {
+            setCustomResult({
+              requestKey: customRequestKey,
+              html: signature.rendered_html ?? "",
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          if (active) {
+            setCustomRenderError({
+              requestKey: customRequestKey,
+              message: err instanceof Error ? err.message : "Couldn't render this signature.",
+            });
+          }
+        })
+        .finally(() => {
+          if (active) setIsRenderingCustom(false);
+        });
     }, 250);
-    return () => window.clearTimeout(handle);
-  }, [selected, overrides, builtin]);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(handle);
+    };
+  }, [selected, overrides, builtin, customRequestKey]);
 
-  const rendered = builtin ? builtin.render(data) : customHtml ?? "";
+  const rendered = builtin
+    ? builtin.render(data)
+    : customResult?.requestKey === customRequestKey
+      ? customResult.html
+      : "";
+  const sanitizedHtml = useMemo(() => DOMPurify.sanitize(rendered), [rendered]);
+  const renderError = !builtin && customRenderError?.requestKey === customRequestKey
+    ? customRenderError.message
+    : null;
 
-  function copyHtml() {
-    void navigator.clipboard.writeText(rendered);
-    notify("Signature HTML copied — paste it into Outlook/Gmail signature settings.");
+  async function copyHtml() {
+    try {
+      if (!navigator.clipboard) throw new Error("Clipboard access is unavailable in this browser.");
+      await navigator.clipboard.writeText(sanitizedHtml);
+      notify("Signature HTML copied — paste it into Outlook/Gmail signature settings.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Couldn't copy the signature.", "error");
+    }
   }
   function downloadHtml() {
-    const blob = new Blob([`<!doctype html><meta charset="utf-8">${rendered}`], {
+    const blob = new Blob([sanitizedHtml], {
       type: "text/html",
     });
     const url = URL.createObjectURL(blob);
@@ -163,13 +208,14 @@ export default function SignaturesPage() {
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2">
+          <CardHeader><CardTitle id="signature-design-heading" className="flex items-center gap-2">
             <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
               1
             </span>
             Choose a design
           </CardTitle></CardHeader>
           <CardContent>
+          <div role="group" aria-labelledby="signature-design-heading">
           <div className="grid grid-cols-2 gap-2.5">
             {SIGNATURE_DESIGNS.map((d) => {
               const id = `design:${d.id}`;
@@ -179,6 +225,7 @@ export default function SignaturesPage() {
                   key={d.id}
                   variant={active ? "default" : "outline"}
                   onClick={() => setSelected(id)}
+                  aria-pressed={active}
                   className="h-auto flex-col items-start p-3 text-left"
                 >
                   <div className="font-semibold">{d.name}</div>
@@ -196,11 +243,13 @@ export default function SignaturesPage() {
               <div className="flex flex-col gap-2">
                 {templates.data.map((t) => {
                   const id = `custom:${t.id}`;
+                  const active = selected === id;
                   return (
                     <Button type="button"
                       key={t.id}
-                      variant={selected === id ? "default" : "outline"}
+                      variant={active ? "default" : "outline"}
                       onClick={() => setSelected(id)}
+                      aria-pressed={active}
                       className="h-auto w-full justify-between px-3 py-2.5 text-left"
                     >
                       <span className="font-semibold">{t.name}</span>
@@ -211,6 +260,7 @@ export default function SignaturesPage() {
               </div>
             </>
           )}
+          </div>
 
           <h3 className="mt-6 flex items-center gap-2">
             <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
@@ -242,19 +292,25 @@ export default function SignaturesPage() {
           <CardHeader className="grid grid-cols-[1fr_auto] items-center">
             <CardTitle>Live preview</CardTitle>
             <div className="flex flex-none gap-1.5">
-              <Button type="button" variant="outline" size="sm" onClick={downloadHtml}>
+              <Button type="button" variant="outline" size="sm" onClick={downloadHtml} disabled={!sanitizedHtml || isRenderingCustom}>
                 Download .html
               </Button>
-              <Button type="button" size="sm" onClick={copyHtml}>
+              <Button type="button" size="sm" onClick={copyHtml} disabled={!sanitizedHtml || isRenderingCustom}>
                 Copy signature
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-          {rendered ? (
+          {renderError ? (
+            <div role="alert" className="border border-destructive bg-card p-3 text-sm text-destructive">
+              Couldn't render this signature: {renderError}
+            </div>
+          ) : sanitizedHtml ? (
             <>
-              <div className="mb-2 text-xs text-muted-foreground">Exactly how it will appear in an email:</div>
-              <Card><CardContent><div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }} /></CardContent></Card>
+              <div className="mb-2 text-xs text-muted-foreground">
+                Preview of the sanitized HTML. Email clients may render it differently.
+              </div>
+              <Card><CardContent><div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} /></CardContent></Card>
               <div className="mt-3 bg-muted p-3 text-xs text-foreground">
                 <strong>To use it:</strong> click <em>Copy signature</em>, then in
                 Outlook go to <em>File → Options → Mail → Signatures</em> (or Gmail{" "}

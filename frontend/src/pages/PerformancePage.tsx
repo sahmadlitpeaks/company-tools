@@ -13,7 +13,14 @@ import { api } from "../api/client";
 import type { OneOnOne, Review, ReviewCycle, ReviewFeedback, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, MetricStrip, Modal, PageHead, useToast } from "../components/ui";
+import { Empty, ErrorState, Loading, MetricStrip, Modal, PageHead, useToast } from "../components/ui";
+
+type PeopleRequest = {
+  data: User[] | null;
+  loading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+};
 
 export default function PerformancePage() {
   const { user } = useAuth();
@@ -23,11 +30,17 @@ export default function PerformancePage() {
   const mine = useFetch<Review[]>("/api/performance/reviews?scope=mine");
   const feedbackQueue = useFetch<ReviewFeedback[]>("/api/performance/feedback/mine");
   const oneOnOnes = useFetch<OneOnOne[]>("/api/performance/one-on-ones");
+  const people = useFetch<User[]>("/api/users");
   const [newCycle, setNewCycle] = useState(false);
   const [editing, setEditing] = useState<Review | null>(null);
   const [fillFeedback, setFillFeedback] = useState<ReviewFeedback | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [giving, setGiving] = useState(false);
+  const reviewItems = toReview.data ?? [];
+  const myReviewItems = mine.data ?? [];
+  const feedbackItems = feedbackQueue.data ?? [];
+  const cycleItems = cycles.data ?? [];
+  const oneOnOneItems = oneOnOnes.data ?? [];
 
   return (
     <div>
@@ -48,20 +61,22 @@ export default function PerformancePage() {
       <div className="mb-4">
         <MetricStrip
           items={[
-            { value: toReview.data?.filter((r) => r.status !== "submitted").length ?? 0, label: "Reviews to write" },
-            { value: feedbackQueue.data?.length ?? 0, label: "Feedback requested" },
-            { value: oneOnOnes.data?.filter((o) => o.status === "scheduled").length ?? 0, label: "Upcoming 1:1s" },
+            { value: toReview.error ? "Unavailable" : reviewItems.filter((r) => r.status !== "submitted").length, label: "Reviews to write" },
+            { value: feedbackQueue.error ? "Unavailable" : feedbackItems.length, label: "Feedback requested" },
+            { value: oneOnOnes.error ? "Unavailable" : oneOnOneItems.filter((o) => o.status === "scheduled").length, label: "Upcoming 1:1s" },
             ...(isHr
-              ? [{ value: cycles.data?.filter((c) => c.status === "open").length ?? 0, label: "Open cycles" }]
+              ? [{ value: cycles.error ? "Unavailable" : cycleItems.filter((c) => c.status === "open").length, label: "Open cycles" }]
               : []),
           ]}
         />
       </div>
 
       {/* 360 feedback requested from me */}
-      {(feedbackQueue.data?.length ?? 0) > 0 && (
+      {feedbackQueue.error ? (
+        <Card className="mb-4"><CardContent><ErrorState message={feedbackQueue.error} onRetry={feedbackQueue.reload} /></CardContent></Card>
+      ) : feedbackItems.length > 0 && (
         <Card className="mb-4"><CardHeader><CardTitle className="inline-flex items-center gap-2"><UsersRound /> Feedback requested from you</CardTitle></CardHeader><CardContent><div className="divide-y divide-border">
-            {feedbackQueue.data!.map((f) => (
+            {feedbackItems.map((f) => (
               <div key={f.id} className="flex flex-col items-start justify-between gap-2 py-2 text-sm sm:flex-row sm:items-center">
                 <span className="min-w-0">
                   <span className="font-medium">{f.subject_name}</span>
@@ -77,11 +92,13 @@ export default function PerformancePage() {
         <Card><CardHeader><CardTitle className="inline-flex items-center gap-2"><ClipboardList /> Reviews to write</CardTitle></CardHeader><CardContent>
           {toReview.loading ? (
             <Loading />
-          ) : (toReview.data?.length ?? 0) === 0 ? (
+          ) : toReview.error ? (
+            <ErrorState message={toReview.error} onRetry={toReview.reload} />
+          ) : reviewItems.length === 0 ? (
             <p className="text-muted-foreground">Nothing assigned to you.</p>
           ) : (
             <div className="divide-y divide-border">
-              {toReview.data!.map((r) => (
+              {reviewItems.map((r) => (
                 <ReviewRow key={r.id} r={r} onClick={() => setEditing(r)} />
               ))}
             </div>
@@ -91,11 +108,13 @@ export default function PerformancePage() {
         <Card><CardHeader><CardTitle className="inline-flex items-center gap-2"><Star /> My reviews</CardTitle></CardHeader><CardContent>
           {mine.loading ? (
             <Loading />
-          ) : (mine.data?.length ?? 0) === 0 ? (
+          ) : mine.error ? (
+            <ErrorState message={mine.error} onRetry={mine.reload} />
+          ) : myReviewItems.length === 0 ? (
             <p className="text-muted-foreground">No reviews yet.</p>
           ) : (
             <div className="divide-y divide-border">
-              {mine.data!.map((r) => (
+              {myReviewItems.map((r) => (
                 <div key={r.id} className="py-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{r.cycle_name}</span>
@@ -113,11 +132,13 @@ export default function PerformancePage() {
         <Card className="mt-4"><CardHeader><CardTitle>Review cycles</CardTitle></CardHeader><CardContent>
           {cycles.loading ? (
             <Loading />
-          ) : (cycles.data?.length ?? 0) === 0 ? (
+          ) : cycles.error ? (
+            <ErrorState message={cycles.error} onRetry={cycles.reload} />
+          ) : cycleItems.length === 0 ? (
             <Empty message="No cycles yet." />
           ) : (
             <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
-              {cycles.data!.map((c) => (
+              {cycleItems.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 border border-border p-4">
                   <Ring done={c.submitted_count} total={c.review_count} />
                   <div className="min-w-0 flex-1">
@@ -128,7 +149,7 @@ export default function PerformancePage() {
                     <div className="text-xs text-muted-foreground">{c.period ?? "—"}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">{c.submitted_count}/{c.review_count} submitted</div>
                     <div className="mt-2">
-                      <CycleActions cycle={c} onChange={() => { cycles.reload(); toReview.reload(); }} />
+                      <CycleActions cycle={c} people={people} onChange={() => { cycles.reload(); toReview.reload(); }} />
                     </div>
                   </div>
                 </div>
@@ -142,11 +163,13 @@ export default function PerformancePage() {
       <Card className="mt-4"><CardHeader><CardTitle className="inline-flex items-center gap-2"><CalendarDays /> 1:1 meetings</CardTitle><CardAction><Button type="button" size="sm" onClick={() => setScheduling(true)}><Plus data-icon="inline-start" /> Schedule 1:1</Button></CardAction></CardHeader><CardContent>
         {oneOnOnes.loading ? (
           <Loading />
-        ) : (oneOnOnes.data?.length ?? 0) === 0 ? (
+        ) : oneOnOnes.error ? (
+          <ErrorState message={oneOnOnes.error} onRetry={oneOnOnes.reload} />
+        ) : oneOnOneItems.length === 0 ? (
           <Empty message="No 1:1s scheduled." />
         ) : (
           <div className="divide-y divide-border">
-            {oneOnOnes.data!.map((o) => (
+            {oneOnOneItems.map((o) => (
               <OneOnOneRow key={o.id} o={o} meId={user?.id} onChange={() => oneOnOnes.reload()} />
             ))}
           </div>
@@ -156,8 +179,8 @@ export default function PerformancePage() {
       {newCycle && <NewCycleModal onClose={() => setNewCycle(false)} onDone={() => { setNewCycle(false); cycles.reload(); }} />}
       {editing && <ReviewModal review={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); toReview.reload(); }} />}
       {fillFeedback && <FeedbackModal fb={fillFeedback} onClose={() => setFillFeedback(null)} onDone={() => { setFillFeedback(null); feedbackQueue.reload(); }} />}
-      {scheduling && <ScheduleOneOnOneModal onClose={() => setScheduling(false)} onDone={() => { setScheduling(false); oneOnOnes.reload(); }} />}
-      {giving && <GiveFeedbackModal onClose={() => setGiving(false)} onDone={() => { setGiving(false); }} />}
+      {scheduling && <ScheduleOneOnOneModal people={people} onClose={() => setScheduling(false)} onDone={() => { setScheduling(false); oneOnOnes.reload(); }} />}
+      {giving && <GiveFeedbackModal people={people} onClose={() => setGiving(false)} onDone={() => { setGiving(false); }} />}
     </div>
   );
 }
@@ -243,15 +266,15 @@ function FeedbackModal({ fb, onClose, onDone }: { fb: ReviewFeedback; onClose: (
   );
 }
 
-function ScheduleOneOnOneModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function ScheduleOneOnOneModal({ people, onClose, onDone }: { people: PeopleRequest; onClose: () => void; onDone: () => void }) {
   const { notify } = useToast();
-  const people = useFetch<User[]>("/api/users");
   const [employeeId, setEmployeeId] = useState("");
   const [when, setWhen] = useState("");
   const [agenda, setAgenda] = useState<{ id: string; text: string }[]>([
     { id: crypto.randomUUID(), text: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const peopleItems = people.data ?? [];
 
   async function save() {
     if (!employeeId || !when) { notify("Pick a person and a time", "error"); return; }
@@ -279,7 +302,11 @@ function ScheduleOneOnOneModal({ onClose, onDone }: { onClose: () => void; onDon
 
   return (
     <Modal title="Schedule 1:1" onClose={onClose} maxWidth={480}>
-      <FieldGroup><Field><FieldLabel htmlFor="one-on-one-person">With (your report)</FieldLabel><Select items={[{ value: null, label: "Select…" }, ...(people.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={employeeId || null} onValueChange={(value) => setEmployeeId(value ?? "")}><SelectTrigger id="one-on-one-person" aria-label="With (your report)" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select…</SelectItem>{(people.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="one-on-one-when">When</FieldLabel><Input id="one-on-one-when" aria-label="datetime-local" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></Field></FieldGroup>
+      {people.loading ? <Loading /> : people.error ? (
+        <ErrorState message={people.error} onRetry={people.reload} />
+      ) : (
+      <>
+      <FieldGroup><Field><FieldLabel htmlFor="one-on-one-person">With (your report)</FieldLabel><Select items={[{ value: null, label: "Select…" }, ...peopleItems.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={employeeId || null} onValueChange={(value) => setEmployeeId(value ?? "")}><SelectTrigger id="one-on-one-person" aria-label="With (your report)" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select…</SelectItem>{peopleItems.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="one-on-one-when">When</FieldLabel><Input id="one-on-one-when" aria-label="datetime-local" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></Field></FieldGroup>
       <FieldLabel className="mt-4">Agenda</FieldLabel>
       {agenda.map((item, i) => (
         <div key={item.id} className="mt-1 flex gap-1">
@@ -291,16 +318,18 @@ function ScheduleOneOnOneModal({ onClose, onDone }: { onClose: () => void; onDon
       <div className="mt-3 flex flex-col-reverse justify-end gap-2 sm:flex-row">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Scheduling…" : "Schedule"}</Button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }
 
-function GiveFeedbackModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function GiveFeedbackModal({ people, onClose, onDone }: { people: PeopleRequest; onClose: () => void; onDone: () => void }) {
   const { notify } = useToast();
-  const people = useFetch<User[]>("/api/users");
   const [toId, setToId] = useState("");
   const [body, setBody] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const peopleItems = people.data ?? [];
 
   async function save() {
     if (!toId || !body.trim()) { notify("Pick a colleague and write feedback", "error"); return; }
@@ -320,11 +349,17 @@ function GiveFeedbackModal({ onClose, onDone }: { onClose: () => void; onDone: (
 
   return (
     <Modal title="Give private feedback" onClose={onClose} maxWidth={460}>
+      {people.loading ? <Loading /> : people.error ? (
+        <ErrorState message={people.error} onRetry={people.reload} />
+      ) : (
+      <>
       <p className="text-sm text-muted-foreground">Visible only to the recipient, their manager and HR.</p>
-      <FieldGroup><Field><FieldLabel htmlFor="continuous-feedback-to">To</FieldLabel><Select items={[{ value: null, label: "Select a colleague…" }, ...(people.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={toId || null} onValueChange={(value) => setToId(value ?? "")}><SelectTrigger id="continuous-feedback-to" aria-label="To" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select a colleague…</SelectItem>{(people.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="continuous-feedback-body">Feedback</FieldLabel><Textarea id="continuous-feedback-body" value={body} onChange={(e) => setBody(e.target.value)} /></Field></FieldGroup>
+      <FieldGroup><Field><FieldLabel htmlFor="continuous-feedback-to">To</FieldLabel><Select items={[{ value: null, label: "Select a colleague…" }, ...peopleItems.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={toId || null} onValueChange={(value) => setToId(value ?? "")}><SelectTrigger id="continuous-feedback-to" aria-label="To" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select a colleague…</SelectItem>{peopleItems.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="continuous-feedback-body">Feedback</FieldLabel><Textarea id="continuous-feedback-body" value={body} onChange={(e) => setBody(e.target.value)} /></Field></FieldGroup>
       <div className="mt-2 flex flex-col-reverse justify-end gap-2 sm:flex-row">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button aria-label="Save" type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Sending…" : "Send"}</Button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }
@@ -392,11 +427,11 @@ function NewCycleModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
   );
 }
 
-function CycleActions({ cycle, onChange }: { cycle: ReviewCycle; onChange: () => void }) {
+function CycleActions({ cycle, people, onChange }: { cycle: ReviewCycle; people: PeopleRequest; onChange: () => void }) {
   const { notify } = useToast();
-  const users = useFetch<User[]>("/api/users");
   const [adding, setAdding] = useState(false);
   const [pick, setPick] = useState("");
+  const userItems = people.data ?? [];
 
   async function addReview() {
     if (!pick) return;
@@ -416,10 +451,12 @@ function CycleActions({ cycle, onChange }: { cycle: ReviewCycle; onChange: () =>
   }
 
   return (
-    <span className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       {adding ? (
-        <>
-          <Select items={[{ value: null, label: "Pick person…" }, ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={pick || null} onValueChange={(value) => setPick(value ?? "")}><SelectTrigger id={`review-person-${cycle.id}`} aria-label="Pick person" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Pick person…</SelectItem>{(users.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select>
+        people.loading ? <Loading /> : people.error ? (
+          <ErrorState message={people.error} onRetry={people.reload} />
+        ) : <>
+          <Select items={[{ value: null, label: "Pick person…" }, ...userItems.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={pick || null} onValueChange={(value) => setPick(value ?? "")}><SelectTrigger id={`review-person-${cycle.id}`} aria-label="Pick person" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Pick person…</SelectItem>{userItems.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}</SelectGroup></SelectContent></Select>
           <Button type="button" size="sm" onClick={addReview}>Add</Button><Button type="button" size="icon-sm" variant="outline" aria-label="Cancel adding review" onClick={() => setAdding(false)}>×</Button>
         </>
       ) : (
@@ -427,7 +464,7 @@ function CycleActions({ cycle, onChange }: { cycle: ReviewCycle; onChange: () =>
           <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)}>+ Review</Button><Button type="button" size="sm" variant="outline" onClick={toggleStatus}>{cycle.status === "open" ? "Close" : "Reopen"}</Button>
         </>
       )}
-    </span>
+    </div>
   );
 }
 

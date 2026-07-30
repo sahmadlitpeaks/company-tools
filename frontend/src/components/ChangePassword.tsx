@@ -209,10 +209,23 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 /** Full-screen gate shown when the account must change its password first. */
 export function ForcePasswordChange() {
   const { logout, user } = useAuth();
+  const { notify } = useToast();
   const formId = useId();
   const state = useChangePasswordSubmit();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const formState = { errors: state.errors };
   const errors = formState.errors;
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Couldn't sign out", "error");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -251,9 +264,19 @@ export function ForcePasswordChange() {
               {state.isPending && <Spinner data-icon="inline-start" />}
               {state.isPending ? "Saving…" : "Update password"}
             </Button>
-            <Button type="button" variant="outline" className="w-full" onClick={logout}>
-              <LogOut data-icon="inline-start" />
-              Sign out
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+            >
+              {isLoggingOut ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <LogOut data-icon="inline-start" />
+              )}
+              {isLoggingOut ? "Signing out…" : "Sign out"}
             </Button>
           </CardFooter>
       </Card>

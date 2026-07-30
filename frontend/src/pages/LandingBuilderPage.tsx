@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
@@ -152,7 +152,14 @@ export default function LandingBuilderPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {status === "published" && (
-            <Button size="sm" variant="outline" render={<a href={`/p/${page.slug}`} target="_blank" rel="noreferrer" />}>View live</Button>
+            <a
+              href={`/p/${page.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              View live
+            </a>
           )}
           <Button type="button" variant="outline" disabled={saving} onClick={() => save(false)}>
             Save draft

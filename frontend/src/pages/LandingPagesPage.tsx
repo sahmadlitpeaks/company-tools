@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSurface } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -174,9 +174,14 @@ export default function LandingPagesPage() {
                   <TableCell>
                     <div className="flex flex-wrap gap-1.5">
                       {p.status === "published" && (
-                        <Button size="sm" variant="outline" render={<a href={`/p/${p.slug}`} target="_blank" rel="noreferrer" />}>
+                        <a
+                          href={`/p/${p.slug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={buttonVariants({ variant: "outline", size: "sm" })}
+                        >
                           View
-                        </Button>
+                        </a>
                       )}
                       <Button type="button" size="sm" variant="outline"
                         onClick={() => setPreviewing(p)}

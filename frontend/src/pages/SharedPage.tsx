@@ -24,7 +24,7 @@ import {
   useToast,
 } from "../components/ui";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -159,14 +159,16 @@ export default function SharedPage() {
                       >
                         <Copy size={14} />
                       </Button>
-                      <Button render={<a href={d.public_url} target="_blank" rel="noreferrer" />}
-                        variant="outline"
-                        size="icon-sm"
+                      <a
+                        href={d.public_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={buttonVariants({ variant: "outline", size: "icon-sm" })}
                         title="Open public page"
                         aria-label="Open public page"
                       >
                         <ExternalLink size={14} />
-                      </Button>
+                      </a>
                       <Button type="button" variant="destructive" size="sm"
                         onClick={() => revoke(d)}
                       >

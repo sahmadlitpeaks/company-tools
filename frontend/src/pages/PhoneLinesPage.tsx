@@ -30,6 +30,7 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const STATUSES = ["available", "assigned", "suspended", "cancelled"];
@@ -43,12 +44,13 @@ const STATUS_BADGE: Record<string, "info" | "success" | "warning" | "destructive
 export default function PhoneLinesPage() {
   const [status, setRecordStatus] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     return p.toString();
-  }, [status, q]);
+  }, [status, debouncedQ]);
   const lines = useFetch<PhoneLine[]>(`/api/phone-lines${qs ? `?${qs}` : ""}`);
   const summary = useFetch<PhoneSummary>("/api/phone-lines/summary");
   const [adding, setAdding] = useState(false);

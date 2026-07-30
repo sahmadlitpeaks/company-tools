@@ -94,17 +94,25 @@ export default function CommandPalette({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  if (!open) return null;
+
+  return <OpenCommandPalette onOpenChange={onOpenChange} />;
+}
+
+function OpenCommandPalette({
+  onOpenChange,
+}: {
+  onOpenChange: (open: boolean) => void;
+}) {
   const navigate = useNavigate();
   const { user, can } = useAuth();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const isManager = user?.is_admin || user?.role === "manager";
   // Ignore the same click that opened the palette (Base UI outsidePress).
-  const openedAtRef = useRef(0);
-
-  useEffect(() => {
-    if (open) openedAtRef.current = Date.now();
-  }, [open]);
+  const [openedAt] = useState(() => Date.now());
+  const searchRequestIdRef = useRef(0);
+  const searchControllerRef = useRef<AbortController | null>(null);
 
   function handleOpenChange(
     next: boolean,
@@ -117,12 +125,25 @@ export default function CommandPalette({
     if (
       !next &&
       (reason === "outsidePress" || reason === "focusOut") &&
-      openedAtRef.current &&
-      Date.now() - openedAtRef.current < 400
+      Date.now() - openedAt < 400
     ) {
       return;
     }
+    if (!next) {
+      searchRequestIdRef.current += 1;
+      searchControllerRef.current?.abort();
+      searchControllerRef.current = null;
+      setHits([]);
+    }
     onOpenChange(next);
+  }
+
+  function handleQueryChange(nextQuery: string) {
+    searchRequestIdRef.current += 1;
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    setHits([]);
+    setQ(nextQuery);
   }
 
   const createCommands = useMemo(
@@ -177,29 +198,44 @@ export default function CommandPalette({
   }, [q, createCommands]);
 
   useEffect(() => {
-    if (!open) {
-      setQ("");
-      setHits([]);
-      return;
-    }
-  }, [open]);
+    const requestId = ++searchRequestIdRef.current;
+    const query = q.trim();
+    setHits([]);
 
-  useEffect(() => {
-    if (!open || q.trim().length < 1) {
-      setHits([]);
+    if (query.length < 1) {
       return;
     }
-    const t = setTimeout(() => {
-      api<SearchResults>(`/api/search?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => setHits(r.hits))
-        .catch(() => setHits([]));
+
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const t = setTimeout(async () => {
+      try {
+        const result = await api<SearchResults>(
+          `/api/search?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal },
+        );
+        if (requestId !== searchRequestIdRef.current || controller.signal.aborted) return;
+        setHits(result.hits);
+      } catch {
+        if (requestId !== searchRequestIdRef.current || controller.signal.aborted) return;
+        setHits([]);
+      }
     }, 200);
-    return () => clearTimeout(t);
-  }, [q, open]);
+
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+      if (searchControllerRef.current === controller) {
+        searchControllerRef.current = null;
+      }
+      if (requestId === searchRequestIdRef.current) {
+        searchRequestIdRef.current += 1;
+      }
+    };
+  }, [q]);
 
   function run(to: string) {
-    openedAtRef.current = 0;
-    onOpenChange(false);
+    handleOpenChange(false);
     navigate(to);
   }
 
@@ -213,12 +249,12 @@ export default function CommandPalette({
     filteredCreate.length > 0 || navCount > 0 || hits.length > 0;
 
   return (
-    <CommandDialog open={open} onOpenChange={handleOpenChange} className="sm:max-w-xl">
+    <CommandDialog open onOpenChange={handleOpenChange} className="sm:max-w-xl">
       <Command shouldFilter={false}>
         <CommandInput
           placeholder="Search people, tools, tasks, tickets and files…"
           value={q}
-          onValueChange={setQ}
+          onValueChange={handleQueryChange}
         />
         <CommandList className="max-h-80 p-1">
           {!hasAny && <CommandEmpty>No matches.</CommandEmpty>}
