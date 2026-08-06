@@ -115,6 +115,12 @@ serves a **built** SPA and reverse-proxies the API on the same origin. Alembic
 migrations run automatically when the backend starts. Use this for a release-like
 smoke test; use Vite for iterative UI work.
 
+A live deployment with `ENVIRONMENT=production` must be exposed to browsers over
+HTTPS, with TLS terminated by a reverse proxy or load balancer. Production marks
+both authentication cookies as `Secure`, so browsers will not send them over
+plain HTTP. Preserve the original HTTPS scheme in `X-Forwarded-Proto`, and use
+HTTPS for configured public, frontend, and OIDC redirect URLs.
+
 On a fresh database, bootstrap credentials come from
 `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`. Defaults are documented in
 `backend/.env.example`; override them in a local `.env` and do not commit real

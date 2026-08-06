@@ -681,10 +681,12 @@ export default function DirectoryPage() {
 
 function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { notify } = useToast();
+  const { data: departments } = useFetch<Department[]>("/api/departments");
   const [form, setForm] = useState({
     display_name: "",
     email: "",
     role: "member",
+    department_id: "",
     password: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -711,6 +713,7 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           display_name: form.display_name.trim(),
           email: email || null,
           role: form.role,
+          department_id: form.role === "admin" ? null : form.department_id || null,
           status: "active",
           password: form.password || null,
         },
@@ -786,6 +789,25 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             value={form.display_name}
             onChange={(e) => set("display_name", e.target.value)}
           />
+        </Field>
+        <Field data-disabled={form.role === "admin"}>
+          <FieldLabel htmlFor="directory-add-department">Access department</FieldLabel>
+          <Select
+            items={[{ value: null, label: "No department" }, ...(departments ?? []).map((department) => ({ value: department.id, label: department.name }))]}
+            value={form.department_id || null}
+            onValueChange={(value) => set("department_id", value ?? "")}
+            disabled={form.role === "admin"}
+          >
+            <SelectTrigger id="directory-add-department" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectGroup><SelectItem value={null}>No department</SelectItem>{(departments ?? []).map((department) => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}</SelectGroup></SelectContent>
+          </Select>
+          <FieldDescription>
+            {form.role === "admin"
+              ? "Admins already have access to every module."
+              : form.department_id
+                ? `${departments?.find((department) => department.id === form.department_id)?.name ?? "This department"} grants: ${departments?.find((department) => department.id === form.department_id)?.permissions.join(", ") || "dashboard only"}.`
+                : "Choose a department to apply its module access automatically."}
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="rd-directorypage-639-email">Email *</FieldLabel>

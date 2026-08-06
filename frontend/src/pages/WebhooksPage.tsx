@@ -18,6 +18,7 @@ export default function WebhooksPage() {
   const [creating, setCreating] = useState(false);
   const [deliveriesFor, setDeliveriesFor] = useState<Webhook | null>(null);
   const [deleting, setDeleting] = useState<Webhook | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   async function toggle(w: Webhook) {
     await api(`/api/webhooks/${w.id}`, { method: "PATCH", body: { active: !w.active } });
@@ -28,11 +29,14 @@ export default function WebhooksPage() {
     hooks.reload();
   }
   async function test(w: Webhook) {
+    setTestingId(w.id);
     try {
       const res = await api<{ success: boolean; status_code: number | null; error: string | null }>(`/api/webhooks/${w.id}/test`, { method: "POST" });
       notify(res.success ? `Delivered (HTTP ${res.status_code})` : `Failed: ${res.error ?? res.status_code}`, res.success ? "info" : "error");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setTestingId(null);
     }
   }
 
@@ -70,7 +74,7 @@ export default function WebhooksPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => test(w)}><Send data-icon="inline-start" /> Test</Button>
+                  <Button type="button" size="sm" disabled={testingId === w.id} onClick={() => test(w)}><Send data-icon="inline-start" /> {testingId === w.id ? "Testing…" : "Test"}</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setDeliveriesFor(w)}>Deliveries</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => toggle(w)}>{w.active ? "Pause" : "Resume"}</Button>
                   <Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeleting(w)}><Trash2 /></Button>

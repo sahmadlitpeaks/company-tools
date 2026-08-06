@@ -123,7 +123,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,
+    https_only=settings.ENVIRONMENT.lower() == "production",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

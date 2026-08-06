@@ -62,6 +62,7 @@ export interface DigitalCard {
   id: string;
   slug: string;
   owner_id: string;
+  company_id?: string | null;
   full_name: string;
   title?: string | null;
   company?: string | null;
@@ -243,6 +244,7 @@ export interface QRCode {
   back_color: string;
   scan_count: number;
   dynamic: boolean;
+  company_id?: string | null;
   product_id?: string | null;
   created_at: string;
 }
@@ -312,6 +314,7 @@ export interface TransferMeta {
   filename: string;
   size_bytes: number;
   requires_password: boolean;
+  one_time: boolean;
   sender_name?: string | null;
   message?: string | null;
   expires_at?: string | null;
@@ -556,6 +559,7 @@ export interface Company {
   secondary_color?: string | null;
   accent_color: string;
   font_family?: string | null;
+  base_font_size: number;
   palette?: string | null;
   website?: string | null;
   email_domain?: string | null;

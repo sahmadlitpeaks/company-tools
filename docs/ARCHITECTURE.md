@@ -25,7 +25,8 @@
 4. Backend exchanges the code, calls Microsoft Graph `/me`, **upserts** the
    user into PostgreSQL, and mints a short-lived signed application session.
 5. Backend sets the session in the HttpOnly, SameSite=Lax
-   `ag_platform_session` cookie and redirects to `FRONTEND_BASE_URL/auth/callback`.
+   `ag_platform_session` cookie (`Secure` in production) and redirects to
+   `FRONTEND_BASE_URL/auth/callback`.
 6. The SPA stores no credential in browser storage. Its same-origin `/api/*`
    requests use `credentials: "include"`; `get_current_user` validates the
    cookie and loads the `User` row. A Bearer credential remains supported for
@@ -34,6 +35,11 @@
 Local password login uses the same application session cookie. In development,
 Vite proxies `/api`, media, and redirect routes to FastAPI so the browser keeps
 one cookie origin. Production nginx provides the equivalent same-origin proxy.
+
+Authlib stores temporary OIDC authorization state in Starlette's signed,
+HttpOnly, SameSite=Lax `session` cookie. That cookie is also `Secure` in
+production. Production must therefore be browser-facing HTTPS, even when a
+proxy terminates TLS in front of FastAPI.
 
 Module-scoped feature routers are protected server-side by the catalogue in
 `backend/app/core/permissions.py`; other sensitive routes enforce role or

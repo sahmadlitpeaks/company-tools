@@ -1,13 +1,16 @@
-import { useState } from "react";
-import { QrCode } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Pencil, QrCode, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, downloadFile } from "../api/client";
 import type { QRCode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useBrand } from "../brand/BrandContext";
 import {
   AuthImage,
   ConfirmDialog,
@@ -17,6 +20,17 @@ import {
   PageHead,
   useToast,
 } from "../components/ui";
+
+function brandColors(brand: { primary_color: string; secondary_color?: string | null; accent_color: string; palette?: string | null }) {
+  let extra: string[] = [];
+  try {
+    const parsed = JSON.parse(brand.palette || "[]") as Array<{ hex?: string }>;
+    extra = Array.isArray(parsed) ? parsed.map((item) => item.hex || "").filter(Boolean) : [];
+  } catch {
+    extra = [];
+  }
+  return [...new Set([brand.primary_color, brand.secondary_color, brand.accent_color, ...extra].filter((color): color is string => /^#[0-9a-f]{6}$/i.test(color || "")))];
+}
 
 function EditModal({
   qr,
@@ -83,17 +97,41 @@ function EditModal({
 
 export default function QRCodesPage() {
   const { notify } = useToast();
+  const { brands, active } = useBrand();
   const { data, loading, reload } = useFetch<QRCode[]>("/api/qrcodes");
   const [editing, setEditing] = useState<QRCode | null>(null);
   const [deleting, setDeleting] = useState<QRCode | null>(null);
   const [form, setForm] = useState({
     label: "",
     target_url: "",
-    fill_color: "#000000",
+    company_id: active?.id ?? "",
+    fill_color: active?.primary_color ?? "#000000",
     back_color: "#ffffff",
+    dynamic: true,
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const selectedBrand = brands.find((brand) => brand.id === form.company_id) ?? active;
+  const colors = selectedBrand ? brandColors(selectedBrand) : ["#000000"];
+
+  useEffect(() => {
+    if (!form.company_id && active) {
+      setForm((current) => ({
+        ...current,
+        company_id: active.id,
+        fill_color: brandColors(active)[0] ?? active.primary_color,
+      }));
+    }
+  }, [active, form.company_id]);
+
+  function selectBrand(companyId: string) {
+    const brand = brands.find((item) => item.id === companyId);
+    setForm((current) => ({
+      ...current,
+      company_id: companyId,
+      fill_color: brand ? brandColors(brand)[0] ?? brand.primary_color : current.fill_color,
+    }));
+  }
 
   const previewPath =
     form.target_url.length > 3
@@ -126,7 +164,7 @@ export default function QRCodesPage() {
     <div>
       <PageHead
         title="QR Codes"
-        subtitle="Generate QR codes for products, links and print collateral."
+        subtitle="Create company-branded dynamic QR codes whose destination can change after printing."
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -151,24 +189,27 @@ export default function QRCodesPage() {
                 onChange={(e) => set("target_url", e.target.value)}
               />
             </Field>
-            <FieldGroup className="grid gap-3 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="qr-foreground">Foreground</FieldLabel>
-                <Input id="qr-foreground"
-                  type="color"
-                  value={form.fill_color}
-                  onChange={(e) => set("fill_color", e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="qr-background">Background</FieldLabel>
-                <Input id="qr-background"
-                  type="color"
-                  value={form.back_color}
-                  onChange={(e) => set("back_color", e.target.value)}
-                />
-              </Field>
-            </FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="qr-company">Company brand</FieldLabel>
+              <Select items={brands.map((brand) => ({ value: brand.id, label: brand.name }))} value={form.company_id || null} onValueChange={(value) => value && selectBrand(value)}>
+                <SelectTrigger id="qr-company" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{brands.map((brand) => <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Brand color</FieldLabel>
+              <ToggleGroup value={[form.fill_color]} onValueChange={(value) => value[0] && set("fill_color", value[0])} variant="outline" spacing={1} aria-label="QR brand color">
+                {colors.map((color) => (
+                  <ToggleGroupItem key={color} value={color} aria-label={`Use ${color}`} className="size-9 p-1">
+                    <span className="size-5 border border-black/10" style={{ background: color }} aria-hidden="true" />
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <p className="text-xs text-muted-foreground">Colors come from {selectedBrand?.name ?? "the selected company"} in Brand Center.</p>
+            </Field>
+            <div className="border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+              <strong className="text-foreground">Dynamic by default.</strong> The QR points to a permanent platform link. Edit the destination later and printed copies keep working.
+            </div>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Saving…" : "Save QR code"}
             </Button>
@@ -218,22 +259,22 @@ export default function QRCodesPage() {
               </div>
               </CardContent>
               <CardFooter className="justify-center gap-2">
-                <Button type="button" variant="outline" size="sm"
+                <Button type="button" size="sm"
                   onClick={() =>
                     downloadFile(`/api/qrcodes/${qr.id}/image.png`, `${qr.label}.png`)
                   }
                 >
-                  PNG
+                  <Download data-icon="inline-start" /> PNG
                 </Button>
                 <Button type="button" variant="outline" size="sm"
                   onClick={() => setEditing(qr)}
                 >
-                  Edit
+                  <Pencil data-icon="inline-start" /> Edit
                 </Button>
                 <Button type="button" variant="destructive" size="sm"
                   onClick={() => setDeleting(qr)}
                 >
-                  Delete
+                  <Trash2 data-icon="inline-start" /> Delete
                 </Button>
               </CardFooter>
             </Card>

@@ -37,6 +37,7 @@ class TransferMeta(BaseModel):
     filename: str
     size_bytes: int
     requires_password: bool
+    one_time: bool
     sender_name: str | None = None
     message: str | None = None
     expires_at: datetime | None = None

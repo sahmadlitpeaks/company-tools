@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { lazy, Suspense, useRef, useState } from "react";
 import {
   Archive,
-  BookOpen,
+  Eye,
   File,
   FileText,
   Folder as FolderIcon,
@@ -20,7 +20,7 @@ import {
   Trash2,
   type LucideIcon,
 } from "lucide-react";
-import { api, downloadFile } from "../api/client";
+import { api, apiUrl, downloadFile } from "../api/client";
 import ShareControl from "../components/ShareControl";
 import PdfThumb from "../components/PdfThumb";
 import VersionsModal from "../components/VersionsModal";
@@ -31,6 +31,7 @@ import {
   ConfirmDialog,
   Empty,
   ListSkeleton,
+  Modal,
   PageHead,
   PromptModal,
   bytes,
@@ -48,6 +49,39 @@ function isImage(name: string): boolean {
   return ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
 }
 
+function isVideo(name: string): boolean {
+  return ["mp4", "webm", "mov"].includes(name.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function isAudio(name: string): boolean {
+  return ["mp3", "wav", "m4a", "ogg"].includes(name.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function AssetPreviewModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+  const { notify } = useToast();
+  const path = `/api/assets/${asset.id}/preview`;
+  return (
+    <Modal title={`View — ${asset.name}`} maxWidth={960} onClose={onClose}>
+      <div className="grid min-h-80 place-items-center border bg-muted/30 p-3">
+        {isImage(asset.name) ? (
+          <AuthImage path={path} alt={asset.name} width={900} height={600} style={{ maxWidth: "100%", maxHeight: "65vh", objectFit: "contain" }} />
+        ) : isVideo(asset.name) ? (
+          <video controls className="max-h-[65vh] max-w-full" src={apiUrl(path)} />
+        ) : isAudio(asset.name) ? (
+          <audio controls className="w-full max-w-xl" src={apiUrl(path)} />
+        ) : (
+          <iframe title={`Preview of ${asset.name}`} src={apiUrl(path)} sandbox="" className="h-[65vh] w-full border-0 bg-background" />
+        )}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button type="button" onClick={() => downloadFile(`/api/assets/${asset.id}/download`, asset.name).catch(() => notify("Download failed", "error"))}>
+          Download
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function fileIcon(name: string): LucideIcon {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return Image;
@@ -62,7 +96,7 @@ export default function AssetsPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [crumbs, setCrumbs] = useState<Folder[]>([]);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [reading, setReading] = useState<Asset | null>(null);
+  const [viewing, setViewing] = useState<Asset | null>(null);
   const [versioning, setVersioning] = useState<Asset | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -308,14 +342,9 @@ export default function AssetsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
-                      {isPdf(a.name) && (
-                        <Button type="button" variant="outline" size="sm"
-                          onClick={() => setReading(a)}
-                          title="Read as flipbook"
-                        >
-                          <BookOpen data-icon="inline-start" /> Read
-                        </Button>
-                      )}
+                      <Button type="button" size="sm" onClick={() => setViewing(a)} title={`View ${a.name}`}>
+                        <Eye data-icon="inline-start" /> View
+                      </Button>
                       <Button type="button" variant="outline" size="sm"
                         onClick={() => setVersioning(a)}
                         title="Version history / upload new version"
@@ -338,7 +367,7 @@ export default function AssetsPage() {
         </CardContent>
       </Card>
 
-      {reading && (
+      {viewing && isPdf(viewing.name) && (
         <Suspense
           fallback={
             <div className="fixed inset-0 z-50 grid place-items-center bg-background/80" role="status" aria-live="polite">
@@ -347,11 +376,14 @@ export default function AssetsPage() {
           }
         >
           <FlipbookModal
-            url={`/api/assets/${reading.id}/download`}
-            name={reading.name}
-            onClose={() => setReading(null)}
+            url={`/api/assets/${viewing.id}/download`}
+            name={viewing.name}
+            onClose={() => setViewing(null)}
           />
         </Suspense>
+      )}
+      {viewing && !isPdf(viewing.name) && (
+        <AssetPreviewModal asset={viewing} onClose={() => setViewing(null)} />
       )}
 
       {versioning && (

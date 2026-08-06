@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -50,6 +54,44 @@ async def test_login_cookie_auth_and_logout(client):
     assert logout.status_code == 204
     assert "ag_platform_session=" in logout.headers["set-cookie"].lower()
     assert (await client.get("/api/auth/me")).status_code == 401
+
+
+async def test_production_auth_cookie_is_secure(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "admin@agholding.net", "password": "admin"},
+    )
+    assert login.status_code == 200
+    assert "; secure" in login.headers["set-cookie"].lower()
+
+    logout = await client.post("/api/auth/logout")
+    assert logout.status_code == 204
+    assert "; secure" in logout.headers["set-cookie"].lower()
+
+
+async def test_production_oidc_session_cookie_is_secure():
+    env = {**os.environ, "ENVIRONMENT": "production"}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from app.main import app; "
+                "middleware = next(item for item in app.user_middleware "
+                "if item.cls.__name__ == 'SessionMiddleware'); "
+                "print(middleware.kwargs['https_only'])"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+    assert result.stdout.strip() == "True"
 
 
 async def test_bad_credentials_rejected(client):

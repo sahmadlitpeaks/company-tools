@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AtSign,
   ExternalLink,
@@ -8,9 +9,10 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { resolveBrandTheme, useBrand } from "../brand/BrandContext";
+import { useBrand } from "../brand/BrandContext";
+import { readableForeground } from "@/lib/color";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -27,6 +29,22 @@ import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../com
 
 const NEW_COMPANY_COLOR = "#38bdf8";
 const HEX_COLOR = /^#[\da-f]{6}$/i;
+
+function configuredPalette(company: Company): string[] {
+  let extras: string[] = [];
+  try {
+    const parsed = JSON.parse(company.palette || "[]") as Array<{ hex?: string }>;
+    extras = Array.isArray(parsed) ? parsed.map((color) => color.hex || "").filter(Boolean) : [];
+  } catch {
+    extras = [];
+  }
+  return [...new Set([
+    company.primary_color,
+    company.secondary_color,
+    company.accent_color,
+    ...extras,
+  ].filter((color): color is string => Boolean(color)))];
+}
 
 function websiteHref(website: string): string {
   return /^https?:\/\//i.test(website) ? website : `https://${website}`;
@@ -47,15 +65,16 @@ function CompanyCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const theme = resolveBrandTheme(company);
+  const foreground = readableForeground(company.primary_color);
+  const palette = configuredPalette(company);
 
   return (
     <Card className="h-full gap-0 py-0 transition-shadow hover:shadow-md">
-      <div className="h-2 w-full" style={{ background: theme.accent }} aria-hidden="true" />
+      <div className="h-2 w-full" style={{ background: company.primary_color }} aria-hidden="true" />
       <CardHeader className="grid-cols-[auto_1fr] items-center gap-3 py-4">
         <div
           className="grid size-12 shrink-0 place-items-center overflow-hidden border border-black/10 text-sm font-bold shadow-sm"
-          style={{ background: theme.accent, color: theme.foreground }}
+          style={{ background: company.primary_color, color: foreground }}
         >
           {company.logo_url ? (
             <img
@@ -86,14 +105,14 @@ function CompanyCard({
 
         <div
           className="border p-3"
-          style={{ background: `color-mix(in srgb, ${theme.accent} 10%, transparent)` }}
+          style={{ background: `color-mix(in srgb, ${company.primary_color} 10%, transparent)` }}
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
               <Palette className="size-3.5" aria-hidden="true" /> Workspace palette
             </span>
-            <code className="max-w-[60%] truncate text-[10px] text-muted-foreground" title={theme.accent}>
-              {theme.accent}
+            <code className="max-w-[60%] truncate text-[10px] text-muted-foreground" title={company.primary_color}>
+              {company.primary_color}
             </code>
           </div>
           <div
@@ -101,7 +120,7 @@ function CompanyCard({
             role="img"
             aria-label={`${company.name} resolved color palette`}
           >
-            {theme.charts.map((color, index) => (
+            {palette.map((color, index) => (
               <span
                 key={`${color}-${index}`}
                 style={{ background: color }}
@@ -109,6 +128,9 @@ function CompanyCard({
                 aria-hidden="true"
               />
             ))}
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground">
+            {company.font_family || "DM Sans"} · {company.base_font_size || 16}px base
           </div>
         </div>
 
@@ -140,6 +162,9 @@ function CompanyCard({
       </CardContent>
 
       <CardFooter className="mt-auto justify-end gap-2 bg-muted/30 py-3">
+        <Link to={`/branding?company=${company.id}`} className={buttonVariants({ size: "sm" })}>
+          <Palette data-icon="inline-start" /> Brand center
+        </Link>
         <Button type="button" variant="outline" size="sm" onClick={onEdit}>
           <Pencil data-icon="inline-start" /> Edit
         </Button>
@@ -289,20 +314,8 @@ function CompanyModal({ company, onClose, onSaved }: { company: Company | null; 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
-  const previewCompany: Company = {
-    id: company?.id ?? "company-preview",
-    slug: company?.slug ?? form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    name: form.name.trim() || "New company",
-    logo_url: company?.logo_url,
-    primary_color: form.primary_color,
-    accent_color: form.accent_color,
-    is_active: company?.is_active ?? true,
-    is_default: company?.is_default ?? false,
-    created_at: company?.created_at ?? "",
-  };
-  const previewTheme = resolveBrandTheme(previewCompany);
-  const configuredAccent = form.primary_color.trim().toLowerCase();
-  const usesNormalizedWorkspaceAccent = previewTheme.accent.trim().toLowerCase() !== configuredAccent;
+  const previewAccent = form.primary_color;
+  const previewForeground = readableForeground(previewAccent);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -344,8 +357,8 @@ function CompanyModal({ company, onClose, onSaved }: { company: Company | null; 
             </div>
             <div
               className="grid size-10 shrink-0 place-items-center text-xs font-bold shadow-sm"
-              style={{ background: previewTheme.accent, color: previewTheme.foreground }}
-              aria-label={`Resolved workspace accent ${previewTheme.accent}`}
+              style={{ background: previewAccent, color: previewForeground }}
+              aria-label={`Workspace accent ${previewAccent}`}
             >
               {(form.name || "NC").slice(0, 2).toUpperCase()}
             </div>
@@ -353,11 +366,10 @@ function CompanyModal({ company, onClose, onSaved }: { company: Company | null; 
           <div className="grid gap-2 sm:grid-cols-3">
             <ColorPreview label="Configured primary" color={form.primary_color} />
             <ColorPreview label="Configured accent" color={form.accent_color} />
-            <ColorPreview label="Workspace accent" color={previewTheme.accent} />
+            <ColorPreview label="Workspace accent" color={previewAccent} />
           </div>
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Colors are saved as hex. Known companies use normalized, brighter workspace accents so this page and the company switchers stay consistent.
-            {usesNormalizedWorkspaceAccent ? " This company currently uses the normalized workspace accent shown above." : ""}
+            Identity colors are sourced from Brand Center so company cards, switchers, QR codes, and marketing tools stay consistent.
           </p>
         </div>
 
@@ -380,10 +392,16 @@ function CompanyModal({ company, onClose, onSaved }: { company: Company | null; 
               <Input id="rd-companiespage-email-domain" placeholder="company.com" value={form.email_domain} onChange={(event) => set("email_domain", event.target.value)} />
             </Field>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ColorInput id="rd-companiespage-primary-color" label="Primary color" value={form.primary_color} onChange={(value) => set("primary_color", value)} />
-            <ColorInput id="rd-companiespage-accent-color" label="Accent color" value={form.accent_color} onChange={(value) => set("accent_color", value)} />
-          </div>
+          {company ? (
+            <div className="border bg-muted/25 p-3 text-sm text-muted-foreground">
+              Company colors, palette, typography, and logo are managed in Brand Center so every module stays in sync.
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ColorInput id="rd-companiespage-primary-color" label="Primary color" value={form.primary_color} onChange={(value) => set("primary_color", value)} />
+              <ColorInput id="rd-companiespage-accent-color" label="Accent color" value={form.accent_color} onChange={(value) => set("accent_color", value)} />
+            </div>
+          )}
           <Field>
             <FieldLabel htmlFor="rd-companiespage-logo">Logo</FieldLabel>
             <Input id="rd-companiespage-logo" type="file" accept="image/*" onChange={(event) => setLogo(event.target.files?.[0] ?? null)} />

@@ -17,9 +17,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
   Building2,
+  Download,
   FileText,
   Folder,
   Image,
@@ -136,7 +138,7 @@ function VersionsModal({ doc, onClose }: { doc: BrandDocument; onClose: () => vo
                   {new Date(v.created_at).toLocaleString()}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button type="button" variant="outline" size="sm"
+                  <Button type="button" size="sm"
                     onClick={() =>
                       downloadFile(
                         `/api/companies/document-versions/${v.id}/download`,
@@ -173,7 +175,8 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
     setPalette(createEditablePalette(brand.palette));
   }, [brand]);
 
-  const set = (k: keyof Brand, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof Brand>(k: K, v: Brand[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
   async function saveIdentity() {
     setIsSubmitting(true);
@@ -186,6 +189,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
           secondary_color: form.secondary_color,
           accent_color: form.accent_color,
           font_family: form.font_family || null,
+          base_font_size: form.base_font_size,
           palette: JSON.stringify(palette.map(({ name, hex }) => ({ name, hex }))),
           website: form.website || null,
           contact_email: form.contact_email || null,
@@ -252,7 +256,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
         </CardHeader>
         <CardContent>
 
-        <div className="mb-5 flex items-center gap-4">
+        <div className="mb-5 grid gap-4 sm:grid-cols-[auto_1fr]">
           <div
             className="grid size-24 flex-none place-items-center overflow-hidden border"
             style={{ background: `${form.primary_color}14`, color: form.primary_color }}
@@ -263,15 +267,31 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
               <span className="text-2xl font-bold">{form.name.slice(0, 2).toUpperCase()}</span>
             )}
           </div>
-          {canManage && (
-            <div>
-              <Button type="button" variant="outline" size="sm" onClick={() => logoRef.current?.click()}>
-                Upload logo
-              </Button>
-              <Input aria-label="Upload logo" ref={logoRef} type="file" accept="image/*" hidden onChange={uploadLogo} />
-              <div className="mt-1 text-xs text-muted-foreground">PNG or SVG, transparent background.</div>
+          <div className="flex min-w-0 flex-col justify-center gap-2">
+            <div className="flex flex-wrap gap-2">
+              {canManage && (
+                <Button type="button" variant="outline" size="sm" onClick={() => logoRef.current?.click()}>
+                  Upload logo
+                </Button>
+              )}
+              {form.logo_url && (
+                <Button type="button" size="sm"
+                  onClick={() => {
+                    const extension = form.logo_url?.split("?")[0].split(".").pop() || "png";
+                    void downloadFile(`/api/companies/${brand.id}/logo/download`, `${brand.slug}-logo.${extension}`).catch(() => notify("Logo download failed", "error"));
+                  }}
+                >
+                  <Download data-icon="inline-start" /> Download logo
+                </Button>
+              )}
             </div>
-          )}
+            {canManage && (
+              <>
+              <Input aria-label="Upload logo" ref={logoRef} type="file" accept="image/*" hidden onChange={uploadLogo} />
+              <div className="text-xs text-muted-foreground">PNG or SVG with a transparent background works best.</div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Colors */}
@@ -327,6 +347,13 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
               <Input id="rd-brandingpage-275-font-family" aria-label="e.g. Montserrat, Arial" disabled={!canManage} value={form.font_family ?? ""} onChange={(e) => set("font_family", e.target.value)} placeholder="e.g. Montserrat, Arial" />
             </Field>
             <Field>
+              <FieldLabel htmlFor="brand-base-font-size">Base font size</FieldLabel>
+              <Input id="brand-base-font-size" type="number" min={12} max={24} disabled={!canManage}
+                value={form.base_font_size || 16}
+                onChange={(e) => set("base_font_size", Number(e.target.value))}
+              />
+            </Field>
+            <Field>
               <FieldLabel htmlFor="rd-brandingpage-279-website">Website</FieldLabel>
               <Input id="rd-brandingpage-279-website" disabled={!canManage} value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} />
             </Field>
@@ -344,6 +371,13 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
             <Input id="rd-brandingpage-292-tagline" disabled={!canManage} value={form.tagline ?? ""} onChange={(e) => set("tagline", e.target.value)} />
           </Field>
         </FieldGroup>
+        <div className="mt-5 border bg-muted/25 p-4" style={{ fontFamily: form.font_family || undefined, fontSize: `${form.base_font_size || 16}px` }}>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Typography preview</div>
+          <div className="mt-2 text-[1.5em] font-semibold leading-tight">{form.name}</div>
+          <p className="mt-1 max-w-2xl text-[1em] leading-relaxed text-muted-foreground">
+            {form.tagline || "Add a tagline to preview how this company sounds and looks across marketing materials."}
+          </p>
+        </div>
         </CardContent>
       </Card>
 
@@ -402,11 +436,16 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground tabular-nums">{d.latest_size != null ? bytes(d.latest_size) : "—"}</TableCell>
                   <TableCell className="text-right">
-                    <Button type="button" variant="outline" size="sm"
-                      onClick={() => setVersionsFor(d)}
-                    >
-                      History
-                    </Button>
+                    <div className="inline-flex gap-2">
+                      <Button type="button" size="sm"
+                        onClick={() => downloadFile(`/api/companies/documents/${d.id}/download`, d.name).catch(() => notify("Download failed", "error"))}
+                      >
+                        <Download data-icon="inline-start" /> Download
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setVersionsFor(d)}>
+                        History
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>;
               })}
@@ -424,6 +463,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
 }
 
 export default function BrandingPage() {
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { brands, loading, reload, setActive } = useBrand();
   const { notify } = useToast();
@@ -432,8 +472,13 @@ export default function BrandingPage() {
   const [deleting, setDeleting] = useState<Brand | null>(null);
 
   useEffect(() => {
-    if (!selectedId && brands.length > 0) setSelectedId(brands[0].id);
-  }, [brands, selectedId]);
+    const requested = searchParams.get("company");
+    if (requested && brands.some((brand) => brand.id === requested)) {
+      setSelectedId(requested);
+    } else if (!selectedId && brands.length > 0) {
+      setSelectedId(brands[0].id);
+    }
+  }, [brands, searchParams, selectedId]);
 
   const selected = brands.find((b) => b.id === selectedId) ?? null;
   const isAdmin = !!user?.is_admin;

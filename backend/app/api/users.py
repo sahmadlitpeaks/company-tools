@@ -101,6 +101,11 @@ async def create_user(
         raise HTTPException(status_code=422, detail="Invalid role")
     if payload.status not in STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
+    access_department = None
+    if payload.department_id is not None:
+        access_department = await db.get(Department, payload.department_id)
+        if access_department is None:
+            raise HTTPException(status_code=422, detail="Department not found")
     if official:
         clash = (
             await db.execute(select(User).where(User.email == official))
@@ -115,6 +120,7 @@ async def create_user(
         surname=payload.surname,
         job_title=payload.job_title,
         department=payload.department,
+        access_department=access_department,
         mobile_phone=payload.mobile_phone,
         business_phone=payload.business_phone,
         office_location=payload.office_location,

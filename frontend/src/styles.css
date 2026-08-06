@@ -13,6 +13,8 @@
   --brand-ring-dark: #facc15;
   --radius: 0px;
   --font-sans: "DM Sans Variable", sans-serif;
+  --brand-font-family: "DM Sans Variable", sans-serif;
+  --brand-base-font-size: 16px;
 
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
@@ -54,6 +56,13 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: var(--brand-ring-light);
+}
+
+/* Lucide defaults to 24px when it is not explicitly sized. Keep product icons
+   compact while still allowing purpose-specific 12px and 14px utilities. */
+svg.lucide {
+  max-width: 1rem;
+  max-height: 1rem;
 }
 
 .dark {

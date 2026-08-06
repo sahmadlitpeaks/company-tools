@@ -314,6 +314,8 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--primary-foreground", theme.foreground);
     root.style.setProperty("--sidebar-primary", theme.accent);
     root.style.setProperty("--sidebar-primary-foreground", theme.foreground);
+    root.style.setProperty("--brand-font-family", active.font_family || '"DM Sans Variable", sans-serif');
+    root.style.setProperty("--brand-base-font-size", `${active.base_font_size || 16}px`);
     theme.charts.forEach((color, index) => root.style.setProperty(`--chart-${index + 1}`, color));
   }, [active]);
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class CardBase(BaseModel):
+    company_id: uuid.UUID | None = None
     full_name: str
     title: str | None = None
     company: str | None = "AG Holding"
@@ -26,6 +27,7 @@ class CardCreate(CardBase):
 
 
 class CardUpdate(BaseModel):
+    company_id: uuid.UUID | None = None
     full_name: str | None = None
     title: str | None = None
     company: str | None = None

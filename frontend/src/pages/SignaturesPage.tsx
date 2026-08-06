@@ -14,6 +14,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Building2, Check } from "lucide-react";
 
 const FIELDS: { key: keyof SigData; label: string }[] = [
   { key: "full_name", label: "Full name" },
@@ -80,42 +81,60 @@ function TemplateForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
 export default function SignaturesPage() {
   const { user } = useAuth();
-  const { active } = useBrand();
+  const { active, brands } = useBrand();
   const { notify } = useToast();
   const templates = useFetch<SignatureTemplate[]>("/api/signatures/templates");
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   // "design:<id>" for built-ins, "custom:<id>" for DB templates.
-  const [selected, setSelected] = useState<string>("design:classic");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string>("design:company-profile");
   const [customResult, setCustomResult] = useState<{ requestKey: string; html: string } | null>(null);
   const [customRenderError, setCustomRenderError] = useState<{ requestKey: string; message: string } | null>(null);
   const [isRenderingCustom, setIsRenderingCustom] = useState(false);
   const [creating, setCreating] = useState(false);
+  const selectedBrand = brands.find((brand) => brand.id === selectedCompanyId) ?? active;
+
+  useEffect(() => {
+    if (!selectedCompanyId && active) setSelectedCompanyId(active.id);
+  }, [active, selectedCompanyId]);
 
   // Profile data → signature fields, with the user's overrides applied.
   const data: SigData = useMemo(() => {
+    let social: Record<string, string> = {};
+    try {
+      social = JSON.parse(selectedBrand?.social || "{}") as Record<string, string>;
+    } catch {
+      social = {};
+    }
+    const rawLogo = selectedBrand?.logo_url ?? "";
     const base = {
       full_name: user?.display_name ?? "",
       title: user?.job_title ?? "",
       department: user?.department ?? "",
       email: user?.email ?? "",
-      phone: user?.business_phone ?? user?.mobile_phone ?? active?.phone ?? "",
-      website: active?.website ?? "agholding.net",
-      company: active?.name ?? "AG Holding",
-      accent: active?.accent_color ?? "#f78d2b",
+      phone: user?.business_phone ?? user?.mobile_phone ?? selectedBrand?.phone ?? "",
+      website: selectedBrand?.website ?? "agholding.net",
+      company: selectedBrand?.name ?? "AG Holding",
+      accent: selectedBrand?.primary_color ?? "#f78d2b",
+      logo_url: rawLogo && !/^https?:\/\//i.test(rawLogo) ? `${window.location.origin}${rawLogo}` : rawLogo,
+      address: selectedBrand?.address ?? "",
+      linkedin: social.linkedin ?? "",
+      facebook: social.facebook ?? "",
+      instagram: social.instagram ?? "",
     };
     for (const f of FIELDS) {
       const v = overrides[f.key];
       if (v && v.trim()) (base as Record<string, string>)[f.key] = v.trim();
     }
     return base;
-  }, [user, overrides, active]);
+  }, [user, overrides, selectedBrand]);
 
   // Render the selected signature. Built-ins render instantly client-side;
   // custom DB templates render through the backend (debounced).
   const builtin = selected.startsWith("design:")
     ? SIGNATURE_DESIGNS.find((d) => d.id === selected.slice(7))
     : null;
-  const customRequestKey = `${selected}:${JSON.stringify(overrides)}`;
+  const customRequestKey = `${selected}:${JSON.stringify(data)}`;
 
   useEffect(() => {
     if (builtin) {
@@ -131,7 +150,7 @@ export default function SignaturesPage() {
     const handle = window.setTimeout(() => {
       void api<EmailSignature>("/api/signatures/render", {
         method: "POST",
-        body: { template_id: id, data: overrides },
+        body: { template_id: id, data },
         signal: controller.signal,
       })
         .then((signature) => {
@@ -159,7 +178,7 @@ export default function SignaturesPage() {
       controller.abort();
       window.clearTimeout(handle);
     };
-  }, [selected, overrides, builtin, customRequestKey]);
+  }, [selected, data, builtin, customRequestKey]);
 
   const rendered = builtin
     ? builtin.render(data)
@@ -174,8 +193,17 @@ export default function SignaturesPage() {
   async function copyHtml() {
     try {
       if (!navigator.clipboard) throw new Error("Clipboard access is unavailable in this browser.");
-      await navigator.clipboard.writeText(sanitizedHtml);
-      notify("Signature HTML copied — paste it into Outlook/Gmail signature settings.");
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([sanitizedHtml], { type: "text/html" }),
+            "text/plain": new Blob([data.full_name], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(sanitizedHtml);
+      }
+      notify("Signature copied — paste it directly into Outlook or Gmail.");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Couldn't copy the signature.", "error");
     }
@@ -196,7 +224,7 @@ export default function SignaturesPage() {
     <div>
       <PageHead
         title="Email Signatures"
-        subtitle="Pick a design, tweak the details, then paste it into Outlook or Gmail."
+        subtitle="Choose a company, confirm your details, then copy the official signature into Outlook or Gmail."
         action={
           user?.is_admin && (
             <Button type="button" variant="outline" onClick={() => setCreating(true)}>
@@ -206,11 +234,34 @@ export default function SignaturesPage() {
         }
       />
 
+      <Card className="mb-4">
+        <CardHeader><CardTitle id="signature-company-heading" className="flex items-center gap-2"><span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">1</span> Choose a company</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-labelledby="signature-company-heading">
+            {brands.map((brand) => {
+              const isSelected = brand.id === selectedBrand?.id;
+              return (
+                <Button key={brand.id} type="button" variant={isSelected ? "default" : "outline"}
+                  aria-pressed={isSelected}
+                  onClick={() => setSelectedCompanyId(brand.id)}
+                  className="h-24 justify-start gap-3 p-3 text-left">
+                  <span className="grid size-14 shrink-0 place-items-center overflow-hidden border bg-background/80">
+                    {brand.logo_url ? <img src={brand.logo_url} alt="" className="size-full object-contain p-2" /> : <Building2 />}
+                  </span>
+                  <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{brand.name}</span><span className={cn("mt-1 block truncate text-xs", isSelected ? "text-primary-foreground/75" : "text-muted-foreground")}>{brand.tagline || "Official company signature"}</span></span>
+                  {isSelected ? <Check aria-hidden="true" /> : null}
+                </Button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle id="signature-design-heading" className="flex items-center gap-2">
             <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
-              1
+              2
             </span>
             Choose a design
           </CardTitle></CardHeader>
@@ -264,7 +315,7 @@ export default function SignaturesPage() {
 
           <h3 className="mt-6 flex items-center gap-2">
             <span className="grid size-6 place-items-center bg-primary text-xs font-bold text-primary-foreground">
-              2
+              3
             </span>
             Your details
           </h3>

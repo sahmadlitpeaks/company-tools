@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Clock3, Flame, KeyRound, LockKeyhole, Mail, Paperclip, Upload } from "lucide-react";
+import { Clock3, Flame, KeyRound, LockKeyhole, Mail, Paperclip, ShieldCheck, Upload } from "lucide-react";
 
 function statusBadge(t: SecureTransfer) {
   if (t.is_consumed)
@@ -35,7 +35,7 @@ function ShareResult({ url, onClose }: { url: string; onClose: () => void }) {
   return (
     <Modal title="Secure link created" onClose={onClose}>
       <p className="text-muted-foreground">
-        Share this single-use link with the recipient. For security it's shown
+        Share this secure link with the recipient. For security it's shown
         <strong> only once</strong> — it can't be retrieved later.
       </p>
       <Field><Input aria-label="Url" readOnly value={url} onFocus={(e) => e.target.select()} /></Field>
@@ -57,7 +57,7 @@ export default function TransfersPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<SecureTransfer[]>("/api/transfers");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form, setForm] = useState({
     recipient_email: "",
     message: "",
@@ -71,7 +71,7 @@ export default function TransfersPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const file = fileRef.current?.files?.[0];
+    const file = selectedFile;
     if (!file) {
       notify("Choose a file to send.", "error");
       return;
@@ -92,7 +92,7 @@ export default function TransfersPage() {
       setShareUrl(res.share_url);
       notify(res.email_sent ? "Sent — recipient emailed." : "Secure link created.");
       setForm({ ...form, recipient_email: "", message: "", password: "" });
-      setFileName("");
+      setSelectedFile(null);
       if (fileRef.current) fileRef.current.value = "";
       reload();
     } catch (err) {
@@ -112,8 +112,15 @@ export default function TransfersPage() {
     <div>
       <PageHead
         title="Secure Transfers"
-        subtitle="Send a file via an encrypted, single-use link that self-destructs after download."
+        subtitle="A private alternative to public file-transfer tools, with encryption, expiry, passwords, and optional burn-after-read."
       />
+      {data?.length ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Card size="sm"><CardContent><div className="text-2xl font-semibold tabular-nums">{data.filter((transfer) => !transfer.is_consumed && (!transfer.expires_at || new Date(transfer.expires_at) > new Date())).length}</div><div className="text-xs text-muted-foreground">Active secure links</div></CardContent></Card>
+          <Card size="sm"><CardContent><div className="text-2xl font-semibold tabular-nums">{data.reduce((sum, transfer) => sum + transfer.download_count, 0)}</div><div className="text-xs text-muted-foreground">Completed downloads</div></CardContent></Card>
+          <Card size="sm"><CardContent><div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck /> Encrypted at rest</div><div className="mt-1 text-xs text-muted-foreground">Keys remain in recipient links</div></CardContent></Card>
+        </div>
+      ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Send a file securely</CardTitle></CardHeader>
@@ -126,21 +133,26 @@ export default function TransfersPage() {
                 type="button"
                 variant="outline"
                 onClick={() => fileRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setSelectedFile(event.dataTransfer.files?.[0] ?? null);
+                }}
                 className="h-auto w-full flex-col gap-1 border-dashed p-6 text-center"
               >
-                {fileName ? <Paperclip data-icon="inline-start" aria-hidden="true" /> : <Upload data-icon="inline-start" aria-hidden="true" />}
+                {selectedFile ? <Paperclip data-icon="inline-start" aria-hidden="true" /> : <Upload data-icon="inline-start" aria-hidden="true" />}
                 <span className="font-semibold">
-                  {fileName || "Click to choose a file"}
+                  {selectedFile?.name || "Drop a file here or click to browse"}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Encrypted on upload · up to 100&nbsp;MB
+                  {selectedFile ? `${bytes(selectedFile.size)} · ready to encrypt` : "Encrypted on upload · up to 100 MB"}
                 </span>
               </Button>
               <Input id="transfer-file"
                 ref={fileRef}
                 type="file"
                 hidden
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </Field>
             <Field>
@@ -164,7 +176,7 @@ export default function TransfersPage() {
               <Field>
                 <FieldLabel htmlFor="transfer-password">Password (optional)</FieldLabel>
                 <Input id="transfer-password"
-                  type="text"
+                  type="password"
                   placeholder="extra protection"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -205,7 +217,7 @@ export default function TransfersPage() {
                 <FieldLabel htmlFor="transfer-one-time">Delete file after first download (burn-after-read)</FieldLabel>
             </Field>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Encrypting…" : "Create secure link"}
+              <LockKeyhole data-icon="inline-start" /> {isSubmitting ? "Encrypting…" : "Encrypt and create link"}
             </Button>
             </FieldGroup>
           </form>

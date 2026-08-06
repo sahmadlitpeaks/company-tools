@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompanyBase(BaseModel):
@@ -13,6 +13,7 @@ class CompanyBase(BaseModel):
     secondary_color: str | None = None
     accent_color: str = "#0b5cab"
     font_family: str | None = None
+    base_font_size: int = Field(default=16, ge=12, le=24)
     palette: str | None = None
     website: str | None = None
     email_domain: str | None = None
@@ -36,6 +37,7 @@ class CompanyUpdate(BaseModel):
     secondary_color: str | None = None
     accent_color: str | None = None
     font_family: str | None = None
+    base_font_size: int | None = Field(default=None, ge=12, le=24)
     palette: str | None = None
     website: str | None = None
     email_domain: str | None = None

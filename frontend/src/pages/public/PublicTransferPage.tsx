@@ -100,8 +100,9 @@ export default function PublicTransferPage() {
     return card(
       <span className="flex items-center gap-2"><CircleCheck aria-hidden="true" /> Download started</span>,
       <p className="text-muted-foreground">
-        {meta.filename} is downloading. This link has now been consumed and the
-        file deleted from our servers.
+        {meta.filename} is downloading. {meta.one_time
+          ? "This link has now been consumed and the file deleted from our servers."
+          : "The secure link remains available until it expires or reaches its download limit."}
       </p>,
     );
 
@@ -153,7 +154,7 @@ export default function PublicTransferPage() {
           {isSubmitting ? "Decrypting…" : "Download file"}
         </Button>
         <FieldDescription className="text-center">
-          <Flame aria-hidden="true" /> This is a single-use link — the file is deleted after you download it.
+          {meta.one_time ? <><Flame aria-hidden="true" /> This is a single-use link — the file is deleted after you download it.</> : <><ShieldCheck aria-hidden="true" /> This download is encrypted and access is tracked.</>}
         </FieldDescription>
       </form>
     </>,

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,6 +27,7 @@ class Company(UUIDMixin, TimestampMixin, Base):
     secondary_color: Mapped[str | None] = mapped_column(String(9))
     accent_color: Mapped[str] = mapped_column(String(9), default="#0b5cab")
     font_family: Mapped[str | None] = mapped_column(String(255))
+    base_font_size: Mapped[int] = mapped_column(Integer, default=16)
     # Extra brand palette: JSON list of {"name","hex"}.
     palette: Mapped[str | None] = mapped_column(Text)
     website: Mapped[str | None] = mapped_column(String(512))

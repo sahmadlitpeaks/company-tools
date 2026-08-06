@@ -15,6 +15,11 @@ export interface SigData {
   website: string;
   company: string;
   accent: string;
+  logo_url: string;
+  address: string;
+  linkedin: string;
+  facebook: string;
+  instagram: string;
 }
 
 export interface SignatureDesign {
@@ -52,6 +57,44 @@ const FONT = "Arial, Helvetica, sans-serif";
 function brandAccent(accent: string): string {
   return accent || "#facc15";
 }
+
+function contactRow(label: string, value: string, url: string, accent: string): string {
+  if (!value) return "";
+  const content = url
+    ? `<a href="${esc(url)}" style="color:#6b7280;text-decoration:none">${esc(value)}</a>`
+    : esc(value);
+  return `<tr height="22"><td width="24" style="vertical-align:middle"><span style="display:inline-block;width:14px;color:${brandAccent(accent)};font-size:10px;font-weight:bold">${label}</span></td><td style="padding:0;color:#6b7280;font-size:12px">${content}</td></tr>`;
+}
+
+/* ---- Company profile: logo/social column and employee contact details ---- */
+const companyProfile: SignatureDesign = {
+  id: "company-profile",
+  name: "Company profile",
+  description: "Official logo, social links, and contact details",
+  render: (d) => `
+<table cellpadding="0" cellspacing="0" border="0" style="width:530px;max-width:100%;font-family:${FONT};color:#111111;font-size:13px;line-height:1.45">
+  <tr>
+    <td style="width:150px;padding-right:20px;vertical-align:top;text-align:center">
+      ${d.logo_url ? `<img src="${esc(d.logo_url)}" alt="${esc(d.company)}" width="140" style="display:block;max-width:140px;max-height:110px;object-fit:contain;margin:0 auto">` : `<div style="width:140px;height:72px;line-height:72px;background:#f3f4f6;color:${brandAccent(d.accent)};font-size:20px;font-weight:bold;text-align:center">${esc(initials(d.company))}</div>`}
+      ${(d.linkedin || d.facebook || d.instagram) ? `<div style="margin-top:12px;color:#6b7280;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em">Follow us</div><div style="margin-top:5px">${[
+        d.linkedin ? `<a href="${esc(d.linkedin)}" style="display:inline-block;margin:0 3px;color:${brandAccent(d.accent)};font-size:11px;font-weight:bold;text-decoration:none">in</a>` : "",
+        d.facebook ? `<a href="${esc(d.facebook)}" style="display:inline-block;margin:0 3px;color:${brandAccent(d.accent)};font-size:11px;font-weight:bold;text-decoration:none">f</a>` : "",
+        d.instagram ? `<a href="${esc(d.instagram)}" style="display:inline-block;margin:0 3px;color:${brandAccent(d.accent)};font-size:11px;font-weight:bold;text-decoration:none">ig</a>` : "",
+      ].filter(Boolean).join("")}</div>` : ""}
+    </td>
+    <td style="border-left:2px solid ${brandAccent(d.accent)};padding-left:20px;vertical-align:middle">
+      <div style="margin:0;color:${brandAccent(d.accent)};font-size:24px;font-weight:bold;line-height:1.2">${esc(d.full_name)}</div>
+      <div style="margin:4px 0 8px;color:#1f2937;font-size:14px;font-weight:bold">${esc(d.title)}${d.department ? `, ${esc(d.department)}` : ""}</div>
+      <table cellpadding="0" cellspacing="0" border="0" style="font-family:${FONT}">
+        ${contactRow("T", d.phone, d.phone ? `tel:${d.phone}` : "", d.accent)}
+        ${contactRow("E", d.email, d.email ? `mailto:${d.email}` : "", d.accent)}
+        ${contactRow("W", host(d.website), d.website ? href(d.website) : "", d.accent)}
+        ${contactRow("A", d.address, "", d.accent)}
+      </table>
+    </td>
+  </tr>
+</table>`.trim(),
+};
 
 function accentForeground(accent: string): string {
   const hex = accent.trim().replace(/^#/, "");
@@ -159,4 +202,4 @@ const banner: SignatureDesign = {
 </table>`.trim(),
 };
 
-export const SIGNATURE_DESIGNS: SignatureDesign[] = [classic, modern, minimal, banner];
+export const SIGNATURE_DESIGNS: SignatureDesign[] = [companyProfile, classic, modern, minimal, banner];
