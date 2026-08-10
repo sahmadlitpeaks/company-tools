@@ -25,7 +25,13 @@ _ROOM = [c for c in _FULL_ROOM if c != "Printer"]
 _ROOM_NO_POD = [c for c in _ROOM if not c.startswith("Yealink")]
 
 # Building-level sweeps that close out each building on the form.
-_SWEEPS = ["Check All Printers", "Check All Access Points", "Check All Cameras"]
+_SWEEPS = ["Check All Printers", "Check All Access Points"]
+
+# Rooms whose every checkpoint must be evidenced with a photo.
+_PHOTO_REQUIRED_SECTIONS = {
+    "HQ Building / Dr T's Office (Inside)",
+    "HQ Building / Dr T's Meeting Room",
+}
 
 # (section, [checkpoints]) in the order they appear on the paper form.
 _IT_SECTIONS: list[tuple[str, list[str]]] = [
@@ -86,8 +92,9 @@ def _it_items() -> list[dict]:
                     "section": section,
                     "title": title,
                     "response_type": "ok_issue",
-                    # Cameras are the one sweep worth evidencing with a photo.
-                    "photo_required": title == "Check All Cameras",
+                    # Dr T's office and meeting room require photo evidence on
+                    # every checkpoint.
+                    "photo_required": section in _PHOTO_REQUIRED_SECTIONS,
                     "auto_ticket_on_issue": True,
                     "ticket_priority": "normal",
                 }

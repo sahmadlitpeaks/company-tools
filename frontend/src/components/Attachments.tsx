@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRef, useState } from "react";
 import { Camera, Download, Paperclip, X } from "lucide-react";
-import { api, downloadFile } from "../api/client";
+import { api, apiUrl, downloadFile } from "../api/client";
 import type { Attachment } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { bytes, ConfirmDialog, useToast } from "./ui";
@@ -122,12 +122,30 @@ export default function Attachments({
         !compact && <p className="text-sm text-muted-foreground">No files attached.</p>
       ) : (
         <div className="flex flex-col gap-1">
-          {data.map((a) => (
+          {data.map((a) => {
+            const isImage = (a.content_type ?? "").startsWith("image/");
+            const href = apiUrl(`/api/attachments/${a.id}/download`);
+            return (
             <div
               key={a.id}
               className="flex items-center justify-between gap-2 bg-muted px-2 py-1.5"
             >
-              <span className="truncate text-sm font-medium">{a.name}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                {isImage ? (
+                  // Inline thumbnail so a checker/reviewer sees the evidence
+                  // without downloading. The session cookie authenticates the
+                  // <img> request automatically (same-origin). Click to open full.
+                  <a href={href} target="_blank" rel="noreferrer" className="flex-none">
+                    <img
+                      src={href}
+                      alt={a.name}
+                      loading="lazy"
+                      className="h-12 w-12 rounded object-cover ring-1 ring-border"
+                    />
+                  </a>
+                ) : null}
+                <span className="truncate text-sm font-medium">{a.name}</span>
+              </span>
               <span className="flex flex-none items-center gap-2">
                 <span className="text-xs text-muted-foreground">{bytes(a.size_bytes)}</span>
                 <Button type="button"
@@ -150,7 +168,8 @@ export default function Attachments({
                 </Button>
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {shooting && (
