@@ -84,10 +84,20 @@ MEMBER_DEFAULTS: list[str] = [
     "lost_found",
 ]
 
+# Sensitive people-domain modules a manager must NOT receive just for being a
+# manager: HR (salaries, payslips via ``is_hr``, HR documents/passports),
+# recruiting, and onboarding/offboarding. Grant these explicitly — e.g. to an
+# HR department or per person — rather than by role. Without this exclusion a
+# plain manager could read every employee's compensation and HR files, which
+# the compensation/payroll/hr_documents modules explicitly intend to forbid.
+MANAGER_EXCLUDED: set[str] = {"hr", "recruiting", "people_ops"}
+MANAGER_DEFAULTS: list[str] = [m for m in ALL_MODULES if m not in MANAGER_EXCLUDED]
+
 ROLE_DEFAULTS: dict[str, list[str]] = {
     "admin": ALL_MODULES,
-    # Managers run marketing/sales/ops — everything except system settings.
-    "manager": ALL_MODULES,
+    # Managers run marketing / sales / ops — everything except system settings
+    # and the sensitive HR/people domains (see MANAGER_EXCLUDED).
+    "manager": MANAGER_DEFAULTS,
     "member": MEMBER_DEFAULTS,
 }
 

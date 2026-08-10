@@ -20,7 +20,7 @@ from app.schemas.card import (
 from app.services.activity import record
 from app.services.card_render import build_vcard, render_card_pdf, render_card_png
 from app.services.qrcodes import generate_qr_png
-from app.services.storage import media_url, save_upload
+from app.services.storage import media_url, save_upload, validate_image_upload
 from app.services.utils import slugify
 
 router = APIRouter(prefix="/cards", tags=["digital-cards"])
@@ -147,6 +147,7 @@ async def upload_card_photo(
     user: User = Depends(get_current_user),
 ):
     card = await _owned_card(db, card_id, user)
+    validate_image_upload(file)
     rel_path, _ = await save_upload(file, subdir="cards")
     card.photo_url = media_url(rel_path)
     await db.commit()
