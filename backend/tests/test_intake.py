@@ -66,6 +66,48 @@ async def test_intake_management_requires_module(client, auth):
     assert (await client.get("/api/intake/sources", headers=hdr)).status_code == 403
 
 
+async def test_source_credentials_and_controls_require_admin(client, auth):
+    from helpers import make_member
+
+    source = (await client.post(
+        "/api/intake/sources", headers=auth, json={"name": "Admin-managed site"}
+    )).json()
+    member_auth, user_id = await make_member(
+        client, auth, "intake-crm@agholding.net"
+    )
+    await client.patch(
+        f"/api/users/{user_id}",
+        headers=auth,
+        json={"extra_permissions": ["crm"]},
+    )
+
+    # CRM access still permits inbox and quarantine work.
+    assert (await client.get("/api/intake/submissions", headers=member_auth)).status_code == 200
+
+    # Source credentials and security controls are reserved for administrators.
+    assert (await client.get("/api/intake/sources", headers=member_auth)).status_code == 403
+    assert (await client.post(
+        "/api/intake/sources", headers=member_auth, json={"name": "Forbidden site"}
+    )).status_code == 403
+    assert (await client.patch(
+        f"/api/intake/sources/{source['id']}",
+        headers=member_auth,
+        json={"rate_limit_per_min": 10},
+    )).status_code == 403
+    assert (await client.post(
+        f"/api/intake/sources/{source['id']}/rotate-key", headers=member_auth
+    )).status_code == 403
+    assert (await client.post(
+        f"/api/intake/sources/{source['id']}/signing-secret", headers=member_auth
+    )).status_code == 403
+    assert (await client.delete(
+        f"/api/intake/sources/{source['id']}/signing-secret", headers=member_auth
+    )).status_code == 403
+    assert (await client.delete(
+        f"/api/intake/sources/{source['id']}", headers=member_auth
+    )).status_code == 403
+
+
 async def test_spam_quarantine_release_and_autoconvert(client, auth):
     src = (await client.post("/api/intake/sources", headers=auth, json={
         "name": "Site B", "default_type": "lead",

@@ -1,30 +1,95 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 import { api } from "../api/client";
 
+interface FetchState<T> {
+  path: string | null;
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
 export function useFetch<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<FetchState<T>>({
+    path,
+    data: null,
+    loading: path !== null,
+    error: null,
+  });
+  const requestIdRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
 
   const reload = useCallback(async () => {
-    if (!path) {
-      setLoading(false);
+    const requestId = ++requestIdRef.current;
+    controllerRef.current?.abort();
+
+    if (path === null) {
+      controllerRef.current = null;
+      setState({ path, data: null, loading: false, error: null });
       return;
     }
-    setLoading(true);
-    setError(null);
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setState((current) => ({
+      path,
+      data: current.path === path ? current.data : null,
+      loading: true,
+      error: null,
+    }));
+
     try {
-      setData(await api<T>(path));
+      const data = await api<T>(path, { signal: controller.signal });
+      if (requestId !== requestIdRef.current || controller.signal.aborted) return;
+      setState({ path, data, loading: false, error: null });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      if (requestId !== requestIdRef.current || controller.signal.aborted) return;
+      setState((current) => ({
+        path,
+        data: current.path === path ? current.data : null,
+        loading: false,
+        error: e instanceof Error ? e.message : "Request failed",
+      }));
     } finally {
-      setLoading(false);
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   }, [path]);
 
   useEffect(() => {
     void reload();
+    return () => {
+      requestIdRef.current += 1;
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+    };
   }, [reload]);
 
-  return { data, loading, error, reload, setData };
+  const setData = useCallback((value: SetStateAction<T | null>) => {
+    setState((current) => {
+      const currentData = current.path === path ? current.data : null;
+      const data = typeof value === "function"
+        ? (value as (previous: T | null) => T | null)(currentData)
+        : value;
+      return {
+        path,
+        data,
+        loading: path !== null && (current.path !== path || current.loading),
+        error: current.path === path ? current.error : null,
+      };
+    });
+  }, [path]);
+
+  const isCurrentPath = state.path === path;
+  return {
+    data: isCurrentPath ? state.data : null,
+    loading: path !== null && (!isCurrentPath || state.loading),
+    error: isCurrentPath ? state.error : null,
+    reload,
+    setData,
+  };
 }

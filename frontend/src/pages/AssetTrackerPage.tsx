@@ -1,3 +1,20 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Paperclip, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, downloadFile } from "../api/client";
@@ -12,11 +29,13 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ErrorState,
   Loading,
+  MetricCard,
   Modal,
   PageHead,
   PromptModal,
@@ -27,19 +46,19 @@ import {
 const STATUSES = ["available", "assigned", "maintenance", "retired"];
 const CONDITIONS = ["new", "good", "fair", "poor", "damaged"];
 
-const CONDITION_BADGE: Record<string, string> = {
-  new: "green",
-  good: "green",
-  fair: "amber",
-  poor: "amber",
-  damaged: "red",
+type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+
+const CONDITION_BADGE: Record<string, BadgeVariant> = {
+  new: "success",
+  good: "success",
+  fair: "warning",
+  poor: "warning",
+  damaged: "destructive",
 };
 
 function ConditionBadge({ condition }: { condition?: string | null }) {
-  if (!condition) return <span className="muted">—</span>;
-  return (
-    <span className={`badge ${CONDITION_BADGE[condition] ?? ""}`}>{condition}</span>
-  );
+  if (!condition) return <span className="text-muted-foreground">—</span>;
+  return <Badge variant={CONDITION_BADGE[condition] ?? "secondary"}>{condition}</Badge>;
 }
 
 function isMaintenanceDue(a: TrackedAsset): boolean {
@@ -58,15 +77,15 @@ function money(v?: string | null): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cls =
+  const variant: BadgeVariant =
     status === "available"
-      ? "green"
+      ? "success"
       : status === "assigned"
-        ? "blue"
+        ? "info"
         : status === "maintenance"
-          ? "amber"
-          : "";
-  return <span className={`badge ${cls}`}>{status}</span>;
+          ? "warning"
+          : "secondary";
+  return <Badge variant={variant}>{status}</Badge>;
 }
 
 const EMPTY_FORM = {
@@ -118,12 +137,12 @@ function AssetFormModal({
         }
       : {}),
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     const body = {
       asset_tag: form.asset_tag,
       name: form.name,
@@ -155,37 +174,40 @@ function AssetFormModal({
       onClose();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={asset ? "Edit asset" : "Add asset"} onClose={onClose}>
-      <form onSubmit={submit}>
-        <div className="row">
-          <div className="field">
-            <label>Asset tag *</label>
-            <input
+      <form className="flex flex-col gap-5" onSubmit={submit}>
+        <FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-167-asset-tag">Asset tag *</FieldLabel>
+            <Input id="rd-assettrackerpage-167-asset-tag" aria-label="LAP-001"
               required
               placeholder="LAP-001"
               value={form.asset_tag}
               onChange={(e) => set("asset_tag", e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label>Name *</label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-176-name">Name *</FieldLabel>
+            <Input id="rd-assettrackerpage-176-name" aria-label="ThinkPad X1"
               required
               placeholder="ThinkPad X1"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
             />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Category</label>
-            <input
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-187-category">Category</FieldLabel>
+            <Input id="rd-assettrackerpage-187-category" aria-label="Laptop"
               list="asset-categories"
               placeholder="Laptop"
               value={form.category}
@@ -196,10 +218,10 @@ function AssetFormModal({
                 <option key={c.id} value={c.name} />
               ))}
             </datalist>
-          </div>
-          <div className="field">
-            <label>Location</label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-201-location">Location</FieldLabel>
+            <Input id="rd-assettrackerpage-201-location" aria-label="HQ — 3rd floor"
               list="asset-locations"
               placeholder="HQ — 3rd floor"
               value={form.location}
@@ -210,97 +232,105 @@ function AssetFormModal({
                 <option key={c.id} value={c.name} />
               ))}
             </datalist>
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Condition</label>
-            <select value={form.condition} onChange={(e) => set("condition", e.target.value)}>
-              <option value="">—</option>
-              {CONDITIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Maintenance every (days)</label>
-            <input
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-217-condition">Condition</FieldLabel>
+            <Select
+              items={[{ value: null, label: "—" }, ...CONDITIONS.map((c) => ({ value: c, label: c }))]}
+              value={form.condition || null}
+              onValueChange={(value) => set("condition", value ?? "")}
+            >
+              <SelectTrigger className="w-full" id="rd-assettrackerpage-217-condition"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>—</SelectItem>
+                  {CONDITIONS.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-228-maintenance-every-days">Maintenance every (days)</FieldLabel>
+            <Input id="rd-assettrackerpage-228-maintenance-every-days" aria-label="e.g. 90"
               type="number"
               placeholder="e.g. 90"
               value={form.maintenance_interval_days}
               onChange={(e) => set("maintenance_interval_days", e.target.value)}
             />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Serial number</label>
-            <input
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-239-serial-number">Serial number</FieldLabel>
+            <Input id="rd-assettrackerpage-239-serial-number"
               value={form.serial_number}
               onChange={(e) => set("serial_number", e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label>Vendor</label>
-            <input value={form.vendor} onChange={(e) => set("vendor", e.target.value)} />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Purchase date</label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-246-vendor">Vendor</FieldLabel>
+            <Input id="rd-assettrackerpage-246-vendor" value={form.vendor} onChange={(e) => set("vendor", e.target.value)} />
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-252-purchase-date">Purchase date</FieldLabel>
+            <Input id="rd-assettrackerpage-252-purchase-date"
               type="date"
               value={form.purchase_date}
               onChange={(e) => set("purchase_date", e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label>Purchase cost</label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-260-purchase-cost">Purchase cost</FieldLabel>
+            <Input id="rd-assettrackerpage-260-purchase-cost" aria-label="1500.00"
               type="number"
               step="0.01"
               placeholder="1500.00"
               value={form.purchase_cost}
               onChange={(e) => set("purchase_cost", e.target.value)}
             />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>Warranty expiry</label>
-            <input
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-272-warranty-expiry">Warranty expiry</FieldLabel>
+            <Input id="rd-assettrackerpage-272-warranty-expiry"
               type="date"
               value={form.warranty_expiry}
               onChange={(e) => set("warranty_expiry", e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label>Useful life (years)</label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-280-useful-life-years">Useful life (years)</FieldLabel>
+            <Input id="rd-assettrackerpage-280-useful-life-years" aria-label="3"
               type="number"
               placeholder="3"
               value={form.useful_life_years}
               onChange={(e) => set("useful_life_years", e.target.value)}
             />
-          </div>
-        </div>
-        <div className="field">
-          <label>Notes</label>
-          <textarea
+          </Field>
+        </FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="rd-assettrackerpage-290-notes">Notes</FieldLabel>
+          <Textarea id="rd-assettrackerpage-290-notes"
             rows={2}
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
           />
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+        </Field>
+        </FieldGroup>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : asset ? "Save changes" : "Add asset"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : asset ? "Save changes" : "Add asset"}
+          </Button>
         </div>
       </form>
     </Modal>
@@ -309,9 +339,9 @@ function AssetFormModal({
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
-      <span className="muted">{label}</span>
-      <span style={{ fontWeight: 600, textAlign: "right" }}>{value || "—"}</span>
+    <div className="flex justify-between gap-4 py-1.5">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-semibold">{value || "—"}</span>
     </div>
   );
 }
@@ -344,11 +374,11 @@ function AssetDetailModal({
   const [salvage, setSalvage] = useState("");
   const [disposalNotes, setDisposalNotes] = useState("");
   const [attKind, setAttKind] = useState("document");
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const attRef = useRef<HTMLInputElement>(null);
 
   async function act(path: string, body: unknown, msg: string) {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const updated = await api<TrackedAsset>(`/api/asset-tracker/${asset.id}/${path}`, {
         method: "POST",
@@ -362,7 +392,7 @@ function AssetDetailModal({
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -394,19 +424,17 @@ function AssetDetailModal({
 
   return (
     <Modal title={`${current.name} · ${current.asset_tag}`} onClose={onClose}>
-      <div className="spread" style={{ marginBottom: 12 }}>
-        <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={current.status} />
           {current.assigned_to_name && (
-            <span className="muted">
+            <span className="text-muted-foreground">
               Assigned to {current.assigned_to_name}
               {current.assigned_to_title && ` · ${current.assigned_to_title}`}
             </span>
           )}
         </div>
-        <button
-          className="btn-sm"
-          style={{ flex: "0 0 auto" }}
+        <Button type="button" variant="outline" size="sm"
           onClick={() =>
             downloadFile(
               `/api/asset-tracker/${current.id}/label.png`,
@@ -415,10 +443,11 @@ function AssetDetailModal({
           }
         >
           Download label
-        </button>
+        </Button>
       </div>
 
-      <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+      <Card className="mb-4">
+        <CardContent>
         <DetailRow label="Category" value={current.category} />
         <DetailRow label="Location" value={current.location} />
         <DetailRow
@@ -434,7 +463,7 @@ function AssetDetailModal({
           label="Next maintenance"
           value={
             current.next_maintenance_date ? (
-              <span className={isMaintenanceDue(current) ? "text-amber-600" : ""}>
+              <span className={isMaintenanceDue(current) ? "text-warning" : undefined}>
                 {current.next_maintenance_date}
               </span>
             ) : (
@@ -457,100 +486,105 @@ function AssetDetailModal({
             <DetailRow label="Disposal notes" value={current.disposal_notes} />
           </>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {/* ---- Condition ---- */}
-      <h4 style={{ margin: "0 0 8px" }}>Condition</h4>
-      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+      <h4 className="mb-2 font-semibold">Condition</h4>
+      <div className="flex flex-wrap gap-1.5">
         {CONDITIONS.map((c) => (
-          <button
+          <Button type="button"
             key={c}
-            className={`btn-sm ${current.condition === c ? "btn-primary" : ""}`}
-            style={{ flex: "0 0 auto" }}
-            disabled={busy}
+            variant={current.condition === c ? "default" : "outline"}
+            size="sm"
+            disabled={isSubmitting}
             onClick={() => act("condition", { condition: c }, `Condition set to ${c}.`)}
           >
             {c}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* ---- Assign / check-in ---- */}
-      <h4 style={{ margin: "0 0 8px" }}>Assignment</h4>
+      <h4 className="mt-5 mb-2 font-semibold">Assignment</h4>
       {current.status === "assigned" ? (
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Return note (optional)</label>
-            <input value={actionNote} onChange={(e) => setActionNote(e.target.value)} />
-          </div>
-          <button
-            className="btn"
-            style={{ flex: "0 0 auto" }}
-            disabled={busy}
+        <FieldGroup className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-483-return-note-optional">Return note (optional)</FieldLabel>
+            <Input id="rd-assettrackerpage-483-return-note-optional" value={actionNote} onChange={(e) => setActionNote(e.target.value)} />
+          </Field>
+          <Button type="button" variant="outline"
+            disabled={isSubmitting}
             onClick={() => act("checkin", { note: actionNote || null }, "Checked in.")}
           >
             Check in
-          </button>
-        </div>
+          </Button>
+        </FieldGroup>
       ) : (
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: 2 }}>
-            <label>Assign to</label>
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-              <option value="">Select employee…</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name ?? u.email}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            className="btn-primary"
-            style={{ flex: "0 0 auto" }}
-            disabled={busy || !assignee || current.status === "retired"}
+        <FieldGroup className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-498-assign-to">Assign to</FieldLabel>
+            <Select
+              items={[
+                { value: null, label: "Select employee…" },
+                ...users.map((u) => ({ value: u.id, label: u.display_name ?? u.email })),
+              ]}
+              value={assignee || null}
+              onValueChange={(value) => setAssignee(value ?? "")}
+            >
+              <SelectTrigger className="w-full" id="rd-assettrackerpage-498-assign-to"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>Select employee…</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Button type="button"
+            disabled={isSubmitting || !assignee || current.status === "retired"}
             onClick={() =>
               act("checkout", { user_id: assignee, note: actionNote || null }, "Checked out.")
             }
           >
             Check out
-          </button>
-        </div>
+          </Button>
+        </FieldGroup>
       )}
 
       {/* ---- Maintenance ---- */}
-      <h4 style={{ margin: "18px 0 8px" }}>Log maintenance</h4>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-          <label>What was done</label>
-          <input
+      <h4 className="mt-5 mb-2 font-semibold">Log maintenance</h4>
+      <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,3fr)_minmax(6rem,1fr)_minmax(7rem,1fr)_auto] sm:items-end">
+        <Field>
+          <FieldLabel htmlFor="rd-assettrackerpage-525-what-was-done">What was done</FieldLabel>
+          <Input id="rd-assettrackerpage-525-what-was-done" aria-label="Battery replacement"
             placeholder="Battery replacement"
             value={maintNote}
             onChange={(e) => setMaintNote(e.target.value)}
           />
-        </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label>Cost</label>
-          <input
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-assettrackerpage-533-cost">Cost</FieldLabel>
+          <Input id="rd-assettrackerpage-533-cost"
             type="number"
             step="0.01"
             value={maintCost}
             onChange={(e) => setMaintCost(e.target.value)}
           />
-        </div>
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label>Next in (days)</label>
-          <input
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-assettrackerpage-542-next-in-days">Next in (days)</FieldLabel>
+          <Input id="rd-assettrackerpage-542-next-in-days" aria-label="90"
             type="number"
             placeholder="90"
             value={maintNextDays}
             onChange={(e) => setMaintNextDays(e.target.value)}
           />
-        </div>
-        <button
-          className="btn"
-          style={{ flex: "0 0 auto" }}
-          disabled={busy || !maintNote}
+        </Field>
+        <Button type="button" variant="outline"
+          disabled={isSubmitting || !maintNote}
           onClick={() =>
             act(
               "maintenance",
@@ -565,39 +599,37 @@ function AssetDetailModal({
               setMaintNote("");
               setMaintCost("");
               setMaintNextDays("");
-            })
+            }).catch(() => {})
           }
         >
           Log
-        </button>
-      </div>
+        </Button>
+      </FieldGroup>
 
       {/* ---- Retire / dispose ---- */}
       {current.status !== "retired" && (
         <>
-          <h4 style={{ margin: "18px 0 8px" }}>Retire / dispose</h4>
-          <div className="row" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Salvage value</label>
-              <input
+          <h4 className="mt-5 mb-2 font-semibold">Retire / dispose</h4>
+          <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(7rem,1fr)_minmax(0,3fr)_auto] sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="rd-assettrackerpage-581-salvage-value">Salvage value</FieldLabel>
+              <Input id="rd-assettrackerpage-581-salvage-value"
                 type="number"
                 step="0.01"
                 value={salvage}
                 onChange={(e) => setSalvage(e.target.value)}
               />
-            </div>
-            <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-              <label>Disposal notes</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rd-assettrackerpage-590-disposal-notes">Disposal notes</FieldLabel>
+              <Input id="rd-assettrackerpage-590-disposal-notes" aria-label="Sold / recycled / written off"
                 placeholder="Sold / recycled / written off"
                 value={disposalNotes}
                 onChange={(e) => setDisposalNotes(e.target.value)}
               />
-            </div>
-            <button
-              className="btn btn-danger"
-              style={{ flex: "0 0 auto" }}
-              disabled={busy}
+            </Field>
+            <Button type="button" variant="destructive"
+              disabled={isSubmitting}
               onClick={() =>
                 act(
                   "retire",
@@ -610,54 +642,59 @@ function AssetDetailModal({
               }
             >
               Retire
-            </button>
-          </div>
+            </Button>
+          </FieldGroup>
         </>
       )}
 
       {/* ---- Attachments ---- */}
-      <div className="spread" style={{ margin: "18px 0 8px" }}>
-        <h4 style={{ margin: 0 }}>Attachments</h4>
-        <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-          <select
+      <div className="mt-5 mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h4 className="font-semibold">Attachments</h4>
+        <div className="flex flex-wrap gap-1.5">
+          <Select
+            items={[
+              { value: "document", label: "Document" },
+              { value: "photo", label: "Photo" },
+              { value: "receipt", label: "Receipt" },
+              { value: "warranty", label: "Warranty" },
+            ]}
             value={attKind}
-            onChange={(e) => setAttKind(e.target.value)}
-            className="!w-auto !py-1 text-sm"
+            onValueChange={(value) => setAttKind(value ?? "")}
           >
-            <option value="document">Document</option>
-            <option value="photo">Photo</option>
-            <option value="receipt">Receipt</option>
-            <option value="warranty">Warranty</option>
-          </select>
-          <button
-            className="btn-sm"
-            style={{ flex: "0 0 auto" }}
+            <SelectTrigger aria-label="Attachment kind" size="sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="document">Document</SelectItem>
+                <SelectItem value="photo">Photo</SelectItem>
+                <SelectItem value="receipt">Receipt</SelectItem>
+                <SelectItem value="warranty">Warranty</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Button type="button" variant="outline" size="sm"
             onClick={() => attRef.current?.click()}
           >
             + Upload
-          </button>
-          <input ref={attRef} type="file" hidden onChange={uploadAttachment} />
+          </Button>
+          <Input aria-label="Upload attachment" ref={attRef} type="file" hidden onChange={uploadAttachment} />
         </div>
       </div>
       {!attachments.data || attachments.data.length === 0 ? (
-        <p className="muted text-sm">No files attached.</p>
+        <p className="text-sm text-muted-foreground">No files attached.</p>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div className="flex flex-col gap-1">
           {attachments.data.map((att) => (
             <div
               key={att.id}
-              className="spread"
-              style={{ borderBottom: "1px solid var(--border)", padding: "6px 0" }}
+              className="flex flex-col gap-2 border-b py-1.5 sm:flex-row sm:items-center sm:justify-between"
             >
-              <span className="row" style={{ gap: 8 }}>
-                <span className="badge">{att.kind}</span>
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <Badge variant="secondary">{att.kind}</Badge>
                 <span className="font-medium">{att.name}</span>
-                <span className="muted text-xs">{bytes(att.size_bytes)}</span>
+                <span className="text-xs text-muted-foreground">{bytes(att.size_bytes)}</span>
               </span>
-              <span className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-                <button
-                  className="btn-sm"
-                  style={{ flex: "0 0 auto" }}
+              <span className="flex shrink-0 gap-1.5">
+                <Button type="button" variant="outline" size="sm"
                   onClick={() =>
                     downloadFile(
                       `/api/asset-tracker/attachments/${att.id}/download`,
@@ -666,14 +703,12 @@ function AssetDetailModal({
                   }
                 >
                   Download
-                </button>
-                <button
-                  className="btn-sm btn-danger"
-                  style={{ flex: "0 0 auto" }}
+                </Button>
+                <Button type="button" variant="destructive" size="icon-sm" aria-label={`Remove ${att.name}`}
                   onClick={() => removeAttachment(att.id)}
                 >
-                  ✕
-                </button>
+                  <X />
+                </Button>
               </span>
             </div>
           ))}
@@ -683,16 +718,15 @@ function AssetDetailModal({
       {/* ---- Assignment timeline ---- */}
       {assignments.data && assignments.data.length > 0 && (
         <>
-          <h4 style={{ margin: "18px 0 8px" }}>Assignment history</h4>
-          <div style={{ maxHeight: 160, overflow: "auto" }}>
-            {assignments.data.map((s, i) => (
+          <h4 className="mt-5 mb-2 font-semibold">Assignment history</h4>
+          <div className="max-h-40 overflow-auto">
+            {assignments.data.map((s) => (
               <div
-                key={i}
-                className="spread"
-                style={{ borderBottom: "1px solid var(--border)", padding: "6px 0" }}
+                key={`${s.user_name}-${s.checked_out_at}`}
+                className="flex flex-col gap-1 border-b py-1.5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="font-medium">{s.user_name ?? "Unknown"}</span>
-                <span className="muted text-xs">
+                <span className="text-xs text-muted-foreground">
                   {new Date(s.checked_out_at).toLocaleDateString()} →{" "}
                   {s.checked_in_at
                     ? new Date(s.checked_in_at).toLocaleDateString()
@@ -705,29 +739,29 @@ function AssetDetailModal({
       )}
 
       {/* ---- History ---- */}
-      <h4 style={{ margin: "18px 0 8px" }}>History</h4>
+      <h4 className="mt-5 mb-2 font-semibold">History</h4>
       {events.loading ? (
         <Loading />
       ) : !events.data || events.data.length === 0 ? (
         <Empty message="No events yet." />
       ) : (
-        <div style={{ maxHeight: 200, overflow: "auto" }}>
+        <div className="max-h-52 overflow-auto">
           {events.data.map((ev) => (
             <div
               key={ev.id}
-              style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}
+              className="border-b py-2"
             >
-              <div className="spread">
-                <span style={{ fontWeight: 600, textTransform: "capitalize" }}>
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <span className="font-semibold capitalize">
                   {ev.event_type}
                   {ev.user_name ? ` → ${ev.user_name}` : ""}
                   {ev.cost ? ` · ${money(ev.cost)}` : ""}
                 </span>
-                <span className="muted" style={{ fontSize: 12 }}>
+                <span className="text-xs text-muted-foreground">
                   {new Date(ev.created_at).toLocaleString()}
                 </span>
               </div>
-              {ev.note && <div className="muted" style={{ fontSize: 13 }}>{ev.note}</div>}
+              {ev.note && <div className="text-xs text-muted-foreground">{ev.note}</div>}
             </div>
           ))}
         </div>
@@ -744,77 +778,77 @@ function ReportsModal({ onClose }: { onClose: () => void }) {
         <Loading />
       ) : (
         <>
-          <div className="grid cols-3" style={{ marginBottom: 16 }}>
+          <div className="mb-4 grid gap-3 sm:grid-cols-3">
             <Stat value={data.totals.count} label="Assets" />
             <Stat value={money(data.totals.purchase_cost)} label="Purchase cost" />
             <Stat value={money(data.totals.book_value)} label="Book value" />
           </div>
           <h4>By category</h4>
-          <table style={{ marginBottom: 18 }}>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>Count</th>
-                <th>Purchase cost</th>
-                <th>Book value</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="mb-5">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Count</TableHead>
+                <TableHead className="text-right">Purchase cost</TableHead>
+                <TableHead className="text-right">Book value</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.by_category.map((r) => (
-                <tr key={r.category}>
-                  <td style={{ fontWeight: 600 }}>{r.category}</td>
-                  <td>{r.count}</td>
-                  <td>{money(r.purchase_cost)}</td>
-                  <td>{money(r.book_value)}</td>
-                </tr>
+                <TableRow key={r.category}>
+                  <TableCell className="font-semibold">{r.category}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.count}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(r.purchase_cost)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(r.book_value)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-          <div className="grid cols-2">
+            </TableBody>
+          </Table>
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <h4>By status</h4>
-              <table>
-                <tbody>
+              <Table>
+                <TableBody>
                   {Object.entries(data.by_status).map(([s, n]) => (
-                    <tr key={s}>
-                      <td>
+                    <TableRow key={s}>
+                      <TableCell>
                         <StatusBadge status={s} />
-                      </td>
-                      <td>{n}</td>
-                    </tr>
+                      </TableCell>
+                        <TableCell className="text-right tabular-nums">{n}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
             <div>
               <h4>By location</h4>
-              <table>
-                <tbody>
+              <Table>
+                <TableBody>
                   {data.by_location.map((r) => (
-                    <tr key={r.location}>
-                      <td>{r.location}</td>
-                      <td>{r.count}</td>
-                    </tr>
+                    <TableRow key={r.location}>
+                      <TableCell>{r.location}</TableCell>
+                        <TableCell className="text-right tabular-nums">{r.count}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </div>
           {data.by_condition && Object.keys(data.by_condition).length > 0 && (
             <div style={{ marginTop: 16 }}>
               <h4>By condition</h4>
-              <table>
-                <tbody>
+              <Table>
+                <TableBody>
                   {Object.entries(data.by_condition).map(([c, n]) => (
-                    <tr key={c}>
-                      <td>
+                    <TableRow key={c}>
+                      <TableCell>
                         <ConditionBadge condition={c === "Unknown" ? null : c} />
-                      </td>
-                      <td>{n}</td>
-                    </tr>
+                      </TableCell>
+                        <TableCell className="text-right tabular-nums">{n}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </>
@@ -824,23 +858,19 @@ function ReportsModal({ onClose }: { onClose: () => void }) {
 }
 
 function Stat({ value, label }: { value: React.ReactNode; label: string }) {
-  return (
-    <div className="card stat">
-      <div className="value">{value}</div>
-      <div className="label">{label}</div>
-    </div>
-  );
+  return <MetricCard value={value} label={label} />;
 }
 
 export default function AssetTrackerPage() {
   const { notify } = useToast();
   const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState("");
+  const [status, setRecordStatus] = useState("");
   const [condition, setCondition] = useState("");
   // Seed the search from ?q= so scanning an asset's QR label deep-links here.
-  const [q, setQ] = useState(searchParams.get("q") ?? "");
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
+  const debouncedQ = useDebouncedValue(q);
   const [showReports, setShowReports] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [settingLocation, setSettingLocation] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
@@ -848,10 +878,10 @@ export default function AssetTrackerPage() {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
     if (condition) p.set("condition", condition);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     const s = p.toString();
     return s ? `?${s}` : "";
-  }, [status, condition, q]);
+  }, [status, condition, debouncedQ]);
 
   const assets = useFetch<TrackedAsset[]>(`/api/asset-tracker${query}`);
   const summary = useFetch<AssetSummary>("/api/asset-tracker/summary");
@@ -922,13 +952,11 @@ export default function AssetTrackerPage() {
         title="Asset Tracker"
         subtitle="Track equipment, assignments, purchases, depreciation and maintenance."
         action={
-          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
-            <button className="btn" style={{ flex: "0 0 auto" }} onClick={() => setShowReports(true)}>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => setShowReports(true)}>
               Reports
-            </button>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/asset-tracker/template.csv", "assets-template.csv").catch(
                   () => notify("Download failed", "error"),
@@ -936,17 +964,13 @@ export default function AssetTrackerPage() {
               }
             >
               Template
-            </button>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() => importRef.current?.click()}
             >
               Import CSV
-            </button>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/asset-tracker/export.csv", "assets.csv").catch(() =>
                   notify("Export failed", "error"),
@@ -954,10 +978,8 @@ export default function AssetTrackerPage() {
               }
             >
               Export CSV
-            </button>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/asset-tracker/labels.pdf", "asset-labels.pdf").catch(
                   () => notify("Label sheet failed", "error"),
@@ -965,16 +987,16 @@ export default function AssetTrackerPage() {
               }
             >
               Print labels
-            </button>
-            <button className="btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
+            </Button>
+            <Button type="button" onClick={() => setAdding(true)}>
               + Add asset
-            </button>
-            <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+            </Button>
+            <Input aria-label="Import CSV" ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
           </div>
         }
       />
 
-      <div className="grid cols-4" style={{ marginBottom: 18 }}>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat value={summary.data?.total ?? "—"} label="Total assets" />
         <Stat value={summary.data?.by_status?.assigned ?? 0} label="Checked out" />
         <Stat value={summary.data?.by_status?.maintenance ?? 0} label="In maintenance" />
@@ -984,57 +1006,69 @@ export default function AssetTrackerPage() {
         />
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-            <label>Search</label>
-            <input
+      <Card className="mb-4">
+        <CardContent>
+        <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,3fr)_minmax(8rem,1fr)_minmax(8rem,1fr)]">
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-990-search">Search</FieldLabel>
+            <Input id="rd-assettrackerpage-990-search" aria-label="Name or asset tag…"
               placeholder="Name or asset tag…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Condition</label>
-            <select value={condition} onChange={(e) => setCondition(e.target.value)}>
-              <option value="">All</option>
-              {CONDITIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-998-status">Status</FieldLabel>
+            <Select
+              items={[{ value: null, label: "All" }, ...STATUSES.map((s) => ({ value: s, label: s }))]}
+              value={status || null}
+              onValueChange={(value) => setRecordStatus(value ?? "")}
+            >
+              <SelectTrigger className="w-full" id="rd-assettrackerpage-998-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>All</SelectItem>
+                  {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-assettrackerpage-1009-condition">Condition</FieldLabel>
+            <Select
+              items={[{ value: null, label: "All" }, ...CONDITIONS.map((c) => ({ value: c, label: c }))]}
+              value={condition || null}
+              onValueChange={(value) => setCondition(value ?? "")}
+            >
+              <SelectTrigger className="w-full" id="rd-assettrackerpage-1009-condition"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>All</SelectItem>
+                  {CONDITIONS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
+        </CardContent>
+      </Card>
 
       {selected.size > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2 border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm">
           <strong>{selected.size} selected</strong>
           <span className="flex-1" />
-          <button className="btn-sm" onClick={() => bulk("checkin")}>
+          <Button type="button" variant="outline" size="sm" onClick={() => bulk("checkin")}>
             Check in
-          </button>
-          <button className="btn-sm" onClick={() => setSettingLocation(true)}>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setSettingLocation(true)}>
             Set location
-          </button>
-          <button className="btn-sm" onClick={() => bulk("retire")}>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => bulk("retire")}>
             Retire
-          </button>
-          <button className="btn-sm btn-danger" onClick={() => setConfirmBulkDelete(true)}>
+          </Button>
+          <Button type="button" variant="destructive" size="sm" onClick={() => setConfirmBulkDelete(true)}>
             Delete
-          </button>
+          </Button>
         </div>
       )}
 
@@ -1045,95 +1079,90 @@ export default function AssetTrackerPage() {
       ) : !assets.data || assets.data.length === 0 ? (
         <Empty message="No assets yet. Add one to start tracking." />
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 32 }}></th>
-                <th>Tag</th>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Condition</th>
-                <th>Status</th>
-                <th>Assigned to</th>
-                <th>Book value</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="py-0">
+          <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8"></TableHead>
+                <TableHead>Tag</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Condition</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Assigned to</TableHead>
+                <TableHead className="text-right">Book value</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {assets.data.map((a) => (
-                <tr key={a.id} className={selected.has(a.id) ? "bg-brand-50" : ""}>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
+                <TableRow key={a.id} data-state={selected.has(a.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox aria-label={`Select ${a.name}`}
                       checked={selected.has(a.id)}
-                      onChange={() => toggle(a.id)}
+                      onCheckedChange={() => toggle(a.id)}
                     />
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <code>{a.asset_tag}</code>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>
-                    {a.name}
+                  </TableCell>
+                  <TableCell className="max-w-[24rem] whitespace-normal font-semibold">
+                    <span className="inline-block max-w-64 truncate align-middle" title={a.name}>{a.name}</span>
                     {a.attachment_count > 0 && (
-                      <span className="muted" title="Attachments"> 📎{a.attachment_count}</span>
+                      <span className="inline-flex items-center gap-1 text-muted-foreground" title="Attachments"><Paperclip aria-hidden="true" />{a.attachment_count}</span>
                     )}
                     {isMaintenanceDue(a) && (
-                      <span className="badge amber" style={{ marginLeft: 6 }} title={`Service due ${a.next_maintenance_date}`}>
+                      <Badge className="ml-1.5" variant="warning" title={`Service due ${a.next_maintenance_date}`}>
                         service due
-                      </span>
+                      </Badge>
                     )}
-                  </td>
-                  <td>{a.category ?? "—"}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{a.category ?? "—"}</TableCell>
+                  <TableCell>
                     <ConditionBadge condition={a.condition} />
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <StatusBadge status={a.status} />
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {a.assigned_to_name ? (
                       <div className="leading-tight">
                         <div>{a.assigned_to_name}</div>
                         {a.assigned_to_title && (
-                          <div className="muted text-xs">{a.assigned_to_title}</div>
+                          <div className="text-xs text-muted-foreground">{a.assigned_to_title}</div>
                         )}
                       </div>
                     ) : (
                       "—"
                     )}
-                  </td>
-                  <td>{money(a.current_book_value)}</td>
-                  <td>
-                    <div className="row" style={{ gap: 6 }}>
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{money(a.current_book_value)}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1.5">
+                      <Button type="button" variant="outline" size="sm"
                         onClick={() => setDetail(a)}
                       >
                         Manage
-                      </button>
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm"
                         onClick={() => setEditing(a)}
                       >
                         Edit
-                      </button>
-                      <button
-                        className="btn-sm btn-danger"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" variant="destructive" size="sm"
                         onClick={() => setDeleting(a)}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+          </CardContent>
+        </Card>
       )}
 
       {(adding || editing) && (
@@ -1156,7 +1185,7 @@ export default function AssetTrackerPage() {
       )}
       {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete asset"
           message={`Delete ${deleting.name} (${deleting.asset_tag})? Its history will be removed too.`}
           confirmLabel="Delete"
@@ -1166,7 +1195,7 @@ export default function AssetTrackerPage() {
         />
       )}
       {confirmBulkDelete && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete assets"
           message={`Delete ${selected.size} asset(s)? This can't be undone.`}
           confirmLabel="Delete"
@@ -1181,7 +1210,7 @@ export default function AssetTrackerPage() {
           label="New location"
           placeholder="e.g. HQ — 3rd floor"
           submitLabel="Apply"
-          onSubmit={async (v) => {
+          onConfirm={async (v) => {
             await bulk("set_location", v);
           }}
           onClose={() => setSettingLocation(false)}

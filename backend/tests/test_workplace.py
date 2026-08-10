@@ -29,6 +29,51 @@ async def test_task_lifecycle(client, auth):
     assert done.json()["status"] == "done" and done.json()["completed_at"]
 
 
+async def test_project_progress_and_task_filter(client, auth):
+    me = (await client.get("/api/auth/me", headers=auth)).json()
+    project = await client.post(
+        "/api/projects",
+        headers=auth,
+        json={
+            "name": "Office launch",
+            "status": "active",
+            "start_date": "2026-07-01",
+            "end_date": "2026-08-01",
+            "owner_id": me["id"],
+        },
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+    for title in ("Plan launch", "Open office"):
+        await client.post(
+            "/api/tasks",
+            headers=auth,
+            json={"title": title, "project_id": project_id, "assignee_id": me["id"]},
+        )
+    linked = (await client.get(f"/api/tasks?project_id={project_id}", headers=auth)).json()
+    assert len(linked) == 2 and all(task["project_id"] == project_id for task in linked)
+    await client.patch(
+        f"/api/tasks/{linked[0]['id']}", headers=auth, json={"status": "done"}
+    )
+    detail = (await client.get(f"/api/projects/{project_id}", headers=auth)).json()
+    assert detail["task_count"] == 2
+    assert detail["completed_tasks"] == 1
+    assert detail["progress"] == 50
+
+
+async def test_project_rejects_invalid_dates(client, auth):
+    response = await client.post(
+        "/api/projects",
+        headers=auth,
+        json={
+            "name": "Backwards",
+            "start_date": "2026-08-01",
+            "end_date": "2026-07-01",
+        },
+    )
+    assert response.status_code == 422
+
+
 async def test_task_subtasks_comments_and_recurrence(client, auth):
     me = (await client.get("/api/auth/me", headers=auth)).json()
     # A weekly recurring task with a due date.

@@ -1,10 +1,23 @@
-import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import {
+  Bell,
+  Building2,
+  Clock3,
+  DatabaseBackup,
+  Download,
+  ShieldCheck,
+  Sprout,
+  Upload,
+} from "lucide-react";
+import { api, downloadFile } from "../api/client";
 import { ListSkeleton, PageHead, useToast } from "../components/ui";
-import AppearanceControls from "../theme/AppearanceControls";
 import IntegrationsSettings from "../components/IntegrationsSettings";
 import DemoDataCard from "../components/DemoDataCard";
-import { DEFAULT_APPEARANCE, type Appearance } from "../theme/ThemeContext";
+import { Button } from "../components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 interface AzureStatus {
   tenant_id: string | null;
@@ -17,19 +30,17 @@ interface AzureStatus {
 
 export default function SettingsPage() {
   const { notify } = useToast();
-  const [status, setStatus] = useState<AzureStatus | null>(null);
+  const [status, setRecordStatus] = useState<AzureStatus | null>(null);
   const [form, setForm] = useState({
     tenant_id: "",
     client_id: "",
     client_secret: "",
     redirect_uri: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [domains, setDomains] = useState("");
   const [savingSec, setSavingSec] = useState(false);
-  const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
-  const [savingAppearance, setSavingAppearance] = useState(false);
   const [bamboo, setBamboo] = useState({ subdomain: "", api_key: "", key_set: false });
   const [savingBamboo, setSavingBamboo] = useState(false);
   const [sla, setSla] = useState({
@@ -48,7 +59,7 @@ export default function SettingsPage() {
 
   async function load() {
     const s = await api<AzureStatus>("/api/settings/azure");
-    setStatus(s);
+    setRecordStatus(s);
     setForm({
       tenant_id: s.tenant_id ?? "",
       client_id: s.client_id ?? "",
@@ -61,9 +72,6 @@ export default function SettingsPage() {
     void load().catch(() => notify("Failed to load settings", "error"));
     api<{ allowed_email_domains: string[] }>("/api/settings/security")
       .then((s) => setDomains(s.allowed_email_domains.join(", ")))
-      .catch(() => {});
-    api<Appearance>("/api/settings/appearance")
-      .then((a) => setAppearance({ ...DEFAULT_APPEARANCE, ...a }))
       .catch(() => {});
     api<{ subdomain: string | null; key_set: boolean }>("/api/settings/bamboo")
       .then((b) => setBamboo({ subdomain: b.subdomain ?? "", api_key: "", key_set: b.key_set }))
@@ -103,18 +111,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveAppearance() {
-    setSavingAppearance(true);
-    try {
-      await api("/api/settings/appearance", { method: "PUT", body: appearance });
-      notify("Default appearance saved. Users see it unless they personalize.");
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "Save failed", "error");
-    } finally {
-      setSavingAppearance(false);
-    }
-  }
-
   async function saveSecurity() {
     setSavingSec(true);
     try {
@@ -132,7 +128,7 @@ export default function SettingsPage() {
   }
 
   async function save() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/settings/azure", { method: "PUT", body: form });
       notify("Azure settings saved.");
@@ -140,7 +136,7 @@ export default function SettingsPage() {
     } catch (e) {
       notify(e instanceof Error ? e.message : "Save failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -170,235 +166,222 @@ export default function SettingsPage() {
         <ListSkeleton rows={5} />
       ) : (
         <div className="gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
-          <div className="card">
-            <div className="spread mb-3">
-              <h3 className="m-0 flex items-center gap-2">
-                <span className="text-xl">🔐</span> Azure Entra ID (SSO)
-              </h3>
-              <span className={`badge ${status.configured ? "green" : "amber"}`}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                 <Building2 aria-hidden="true" /> Azure Entra ID (SSO)
+              </CardTitle>
+              <CardAction><Badge variant={status.configured ? "success" : "warning"}>
                 {status.configured ? "Configured" : "Not configured"}
-              </span>
-            </div>
-            <p className="muted mt-0 text-sm">
+              </Badge></CardAction>
+              <CardDescription>
               Connect your Azure Entra ID app registration so staff can sign in with
               Microsoft. Values are stored securely (the secret is encrypted at rest).
-            </p>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+            <FieldGroup>
 
-            <div className="field">
-              <label>Directory (tenant) ID</label>
-              <input value={form.tenant_id} onChange={(e) => set("tenant_id", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Application (client) ID</label>
-              <input value={form.client_id} onChange={(e) => set("client_id", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>
+            <Field>
+              <FieldLabel htmlFor="settings-tenant-id">Directory (tenant) ID</FieldLabel>
+              <Input id="settings-tenant-id" value={form.tenant_id} onChange={(e) => set("tenant_id", e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-client-id">Application (client) ID</FieldLabel>
+              <Input id="settings-client-id" value={form.client_id} onChange={(e) => set("client_id", e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-client-secret">
                 Client secret{" "}
                 {status.secret_set && (
-                  <span className="text-xs font-normal text-emerald-600">• already set</span>
+                  <span className="text-xs font-normal text-success">• already set</span>
                 )}
-              </label>
-              <input
+              </FieldLabel>
+              <Input id="settings-client-secret"
                 type="password"
                 placeholder={status.secret_set ? "•••••••• (leave blank to keep)" : ""}
                 value={form.client_secret}
                 onChange={(e) => set("client_secret", e.target.value)}
               />
-            </div>
-            <div className="field">
-              <label>Redirect URI</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-redirect-uri">Redirect URI</FieldLabel>
+              <Input id="settings-redirect-uri"
                 value={form.redirect_uri}
                 onChange={(e) => set("redirect_uri", e.target.value)}
                 placeholder={callbackHint}
               />
-            </div>
+            </Field>
 
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn-primary flex-none" disabled={busy} onClick={save}>
-                {busy ? "Saving…" : "Save"}
-              </button>
-              <button
-                className="btn flex-none"
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" disabled={isSubmitting} onClick={save}>
+                {isSubmitting ? "Saving…" : "Save"}
+              </Button>
+              <Button type="button" variant="outline"
                 disabled={testing || !status.configured}
                 onClick={test}
               >
                 {testing ? "Testing…" : "Test connection"}
-              </button>
-              <span className="muted text-xs">
+              </Button>
+              <span className="text-xs text-muted-foreground">
                 Currently using:{" "}
                 <strong>{status.source === "database" ? "saved settings" : "environment"}</strong>
               </span>
             </div>
-          </div>
+            </FieldGroup>
+            </CardContent>
+          </Card>
 
-          <div className="card">
-            <div className="spread mb-3">
-              <h3 className="m-0 flex items-center gap-2">
-                <span className="text-xl">🛡️</span> Access control
-              </h3>
-            </div>
-            <p className="muted mt-0 text-sm">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                 <ShieldCheck aria-hidden="true" /> Access control
+              </CardTitle>
+              <CardDescription>
               Restrict who can sign in. New accounts always start as{" "}
               <strong>pending</strong> and need an admin to approve them in the
               Employee Directory.
-            </p>
-            <div className="field">
-              <label>Allowed email domains</label>
-              <input
+              </CardDescription>
+            </CardHeader>
+            <CardContent><FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="settings-domains">Allowed email domains</FieldLabel>
+              <Input id="settings-domains"
                 value={domains}
                 onChange={(e) => setDomains(e.target.value)}
                 placeholder="agholding.net, agiomix.com"
               />
-              <p className="muted mt-1 text-xs">
+              <FieldDescription>
                 Comma-separated. Leave blank to allow any domain (still subject to
                 approval).
-              </p>
-            </div>
-            <button
-              className="btn-primary flex-none"
+              </FieldDescription>
+            </Field>
+            <Button type="button"
               disabled={savingSec}
               onClick={saveSecurity}
             >
               {savingSec ? "Saving…" : "Save access control"}
-            </button>
-          </div>
+            </Button>
+            </FieldGroup></CardContent>
+          </Card>
 
-          <div className="card">
-            <div className="spread mb-3">
-              <h3 className="m-0 flex items-center gap-2">
-                <span className="text-xl">⏱️</span> Service-desk SLA hours
-              </h3>
-            </div>
-            <p className="muted mt-0 text-sm">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                 <Clock3 aria-hidden="true" /> Service-desk SLA hours
+              </CardTitle>
+              <CardDescription>
               SLA targets are measured in <strong>working hours</strong>: urgent 4h, high 24h,
               normal 72h, low 120h. Define the work week below so deadlines skip evenings,
               weekends and holidays.
-            </p>
-            <div className="row">
-              <div className="field">
-                <label>Work start (hour)</label>
-                <input
+              </CardDescription>
+            </CardHeader>
+            <CardContent><FieldGroup>
+            <FieldGroup className="grid gap-3 sm:grid-cols-3">
+              <Field>
+                <FieldLabel htmlFor="settings-work-start">Work start (hour)</FieldLabel>
+                <Input id="settings-work-start"
                   type="number"
                   min={0}
                   max={23}
                   value={sla.work_start}
                   onChange={(e) => setSla((s) => ({ ...s, work_start: Number(e.target.value) }))}
                 />
-              </div>
-              <div className="field">
-                <label>Work end (hour)</label>
-                <input
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="settings-work-end">Work end (hour)</FieldLabel>
+                <Input id="settings-work-end"
                   type="number"
                   min={1}
                   max={24}
                   value={sla.work_end}
                   onChange={(e) => setSla((s) => ({ ...s, work_end: Number(e.target.value) }))}
                 />
-              </div>
-              <div className="field">
-                <label>UTC offset (hours)</label>
-                <input
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="settings-tz-offset">UTC offset (hours)</FieldLabel>
+                <Input id="settings-tz-offset"
                   type="number"
                   min={-12}
                   max={14}
                   value={sla.tz_offset}
                   onChange={(e) => setSla((s) => ({ ...s, tz_offset: Number(e.target.value) }))}
                 />
-              </div>
-            </div>
-            <div className="field">
-              <label>Working days</label>
-              <input
+              </Field>
+            </FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="settings-working-days">Working days</FieldLabel>
+              <Input id="settings-working-days"
                 value={sla.workdays}
                 onChange={(e) => setSla((s) => ({ ...s, workdays: e.target.value }))}
                 placeholder="sun,mon,tue,wed,thu"
               />
-              <p className="muted mt-1 text-xs">Comma-separated day names (mon…sun).</p>
-            </div>
-            <div className="field">
-              <label>Public holidays</label>
-              <input
+              <FieldDescription>Comma-separated day names (mon…sun).</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-holidays">Public holidays</FieldLabel>
+              <Input id="settings-holidays"
                 value={sla.holidays}
                 onChange={(e) => setSla((s) => ({ ...s, holidays: e.target.value }))}
                 placeholder="2026-12-02, 2026-12-03"
               />
-              <p className="muted mt-1 text-xs">Comma-separated ISO dates; these are skipped too.</p>
-            </div>
-            <button className="btn-primary flex-none" disabled={savingSla} onClick={saveSla}>
+              <FieldDescription>Comma-separated ISO dates; these are skipped too.</FieldDescription>
+            </Field>
+            <Button type="button" disabled={savingSla} onClick={saveSla}>
               {savingSla ? "Saving…" : "Save SLA hours"}
-            </button>
-          </div>
+            </Button>
+            </FieldGroup></CardContent>
+          </Card>
 
-          <div className="card">
-            <div className="spread mb-3">
-              <h3 className="m-0 flex items-center gap-2">
-                <span className="text-xl">🎨</span> Default appearance
-              </h3>
-            </div>
-            <p className="muted mt-0 text-sm">
-              The company-wide look new users get. Anyone can still personalize
-              their own from the profile menu.
-            </p>
-            <div className="mt-2">
-              <AppearanceControls value={appearance} onChange={(k, v) => setAppearance((a) => ({ ...a, [k]: v }))} />
-            </div>
-            <button
-              className="btn-primary mt-4 flex-none"
-              disabled={savingAppearance}
-              onClick={saveAppearance}
-            >
-              {savingAppearance ? "Saving…" : "Save default appearance"}
-            </button>
-          </div>
-
-          <div className="card">
-            <div className="spread mb-3">
-              <h3 className="m-0 flex items-center gap-2">
-                <span className="text-xl">🌿</span> BambooHR
-              </h3>
-              <span className={`badge ${bamboo.subdomain && (bamboo.key_set || bamboo.api_key) ? "green" : "amber"}`}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                 <Sprout aria-hidden="true" /> BambooHR
+              </CardTitle>
+              <CardAction><Badge variant={bamboo.subdomain && (bamboo.key_set || bamboo.api_key) ? "success" : "warning"}>
                 {bamboo.subdomain && (bamboo.key_set || bamboo.api_key) ? "Configured" : "Not configured"}
-              </span>
-            </div>
-            <p className="muted mt-0 text-sm">
+              </Badge></CardAction>
+              <CardDescription>
               Connect BambooHR so new joiners can be pushed from the Onboarding screen.
-            </p>
-            <div className="field">
-              <label>Subdomain</label>
-              <input
+              </CardDescription>
+            </CardHeader>
+            <CardContent><FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="settings-bamboo-subdomain">Subdomain</FieldLabel>
+              <Input id="settings-bamboo-subdomain"
                 value={bamboo.subdomain}
                 onChange={(e) => setBamboo((b) => ({ ...b, subdomain: e.target.value }))}
                 placeholder="yourcompany (from yourcompany.bamboohr.com)"
               />
-            </div>
-            <div className="field">
-              <label>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-bamboo-key">
                 API key{" "}
-                {bamboo.key_set && <span className="text-xs font-normal text-emerald-600">• set</span>}
-              </label>
-              <input
+                {bamboo.key_set && <span className="text-xs font-normal text-success">• set</span>}
+              </FieldLabel>
+              <Input id="settings-bamboo-key"
                 type="password"
                 value={bamboo.api_key}
                 placeholder={bamboo.key_set ? "•••••• (leave blank to keep)" : ""}
                 onChange={(e) => setBamboo((b) => ({ ...b, api_key: e.target.value }))}
               />
-            </div>
-            <button className="btn-primary flex-none" disabled={savingBamboo} onClick={saveBamboo}>
+            </Field>
+            <Button type="button" disabled={savingBamboo} onClick={saveBamboo}>
               {savingBamboo ? "Saving…" : "Save BambooHR"}
-            </button>
-          </div>
+            </Button>
+            </FieldGroup></CardContent>
+          </Card>
 
           <NotificationsCard />
+          <BackupsCard />
 
           <IntegrationsSettings />
 
           <DemoDataCard variant="card" />
 
-          <div className="card bg-gradient-to-br from-slate-50 to-white">
-            <h3 className="mt-0">Setup guide</h3>
-            <ol className="space-y-2 pl-4 text-sm text-ink-muted">
+          <Card>
+            <CardHeader><CardTitle>Setup guide</CardTitle></CardHeader>
+            <CardContent><ol className="flex list-decimal flex-col gap-2 pl-4 text-sm text-muted-foreground">
               <li>Azure Portal → <strong>Entra ID → App registrations → New registration</strong>.</li>
               <li>
                 Add a <strong>Web</strong> redirect URI:
@@ -408,54 +391,171 @@ export default function SettingsPage() {
               <li>Under <strong>Certificates &amp; secrets</strong>, create a client secret and paste its value here.</li>
               <li>For directory sync, grant the Graph application permission <strong>User.Read.All</strong> and admin-consent it.</li>
               <li>Save, then <strong>Test connection</strong>.</li>
-            </ol>
-          </div>
+            </ol></CardContent>
+          </Card>
         </div>
       )}
     </div>
   );
 }
 
+type BackupRow = {
+  id: string;
+  status: string;
+  source: "created" | "imported";
+  filename?: string;
+  size_bytes?: number;
+  checksum_sha256?: string;
+  error?: string;
+  created_at: string;
+};
+
+function BackupsCard() {
+  const { notify } = useToast();
+  const [rows, setRows] = useState<BackupRow[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const load = () => api<BackupRow[]>("/api/backups").then(setRows).catch(() => {});
+  useEffect(() => { void load(); }, []);
+  async function create() {
+    setCreating(true);
+    try {
+      await api("/api/backups", { method: "POST" });
+      notify("Backup started. This card will show it when complete.");
+      await load();
+    } catch (error) { notify(error instanceof Error ? error.message : "Backup could not start.", "error"); } finally {
+      setCreating(false);
+    }
+  }
+
+  async function importArchive(file: File) {
+    setImporting(true);
+    const form = new FormData();
+    form.append("archive", file);
+    try {
+      await api("/api/backups/import", { method: "POST", form });
+      notify("Backup archive imported.");
+      await load();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Backup could not be imported.", "error");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+         <CardTitle className="flex items-center gap-2"><DatabaseBackup aria-hidden="true" /> Backups</CardTitle>
+        <CardAction>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            ref={fileRef}
+            className="hidden"
+            type="file"
+            accept=".zip,application/zip"
+            aria-label="Import backup archive"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importArchive(file);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={importing}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Upload data-icon="inline-start" /> {importing ? "Importing…" : "Import backup"}
+          </Button>
+          <Button type="button" disabled={creating} onClick={create}>
+            {creating ? "Starting…" : "Create backup"}
+          </Button>
+        </div>
+        </CardAction>
+        <CardDescription>
+        PostgreSQL and uploaded media are archived daily at 02:00 Asia/Dubai and retained for 30 days.
+        Import adds a downloaded platform archive back to this protected list; it does not restore live data.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+      {rows.length === 0 ? (
+        <div className="text-muted-foreground">No backups yet.</div>
+      ) : rows.slice(0, 5).map((row) => (
+        <div className="flex items-center justify-between gap-2 border-t border-border py-2" key={row.id}>
+          <div>
+            <strong>{row.filename ?? "Backup"}</strong>
+            <div className="text-xs text-muted-foreground">
+              {new Date(row.created_at).toLocaleString()} · {row.status}
+              {row.source === "imported" ? " · imported" : ""}
+            </div>
+          </div>
+          {row.status === "completed" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void downloadFile(
+                `/api/backups/${row.id}/download`,
+                row.filename ?? "backup.zip",
+              )}
+            >
+              <Download data-icon="inline-start" /> Download
+            </Button>
+          )}
+        </div>
+      ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function NotificationsCard() {
   const { notify } = useToast();
-  const [status, setStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [status, setRecordStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     void api<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean }>("/api/notifications/channels")
-      .then(setStatus)
+      .then(setRecordStatus)
       .catch(() => {});
   }, []);
 
   async function sendTest() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const res = await api<{ external_channels: string[] }>("/api/notifications/test", { method: "POST" });
       notify(res.external_channels.length ? `Sent via: ${res.external_channels.join(", ")}` : "In-app notification sent (no external channels configured).");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
-    setBusy(false);
+
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-3">
-        <h3 className="m-0 flex items-center gap-2"><span className="text-xl">🔔</span> Notifications</h3>
-        <span className={`badge ${status?.outbound_enabled ? "green" : "amber"}`}>{status?.outbound_enabled ? "Outbound on" : "In-app only"}</span>
-      </div>
-      <p className="muted mt-0 text-sm">
+    <Card>
+      <CardHeader>
+         <CardTitle className="flex items-center gap-2"><Bell aria-hidden="true" /> Notifications</CardTitle>
+        <CardAction><Badge variant={status?.outbound_enabled ? "success" : "warning"}>{status?.outbound_enabled ? "Outbound on" : "In-app only"}</Badge></CardAction>
+        <CardDescription>
         In-app notifications always work. Configure SMTP, a Slack webhook and/or a Microsoft
         Teams webhook (env vars <code>SMTP_HOST</code>, <code>SLACK_WEBHOOK_URL</code>,
         <code> TEAMS_WEBHOOK_URL</code>) and set <code>NOTIFY_OUTBOUND=true</code> to mirror
         notifications to those channels. Employees can mute categories from the bell menu.
-      </p>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2 text-sm">
-        <span className={`badge ${status?.email_configured ? "green" : ""}`}>Email {status?.email_configured ? "configured" : "off"}</span>
-        <span className={`badge ${status?.slack_configured ? "green" : ""}`}>Slack {status?.slack_configured ? "configured" : "off"}</span>
-        <span className={`badge ${status?.teams_configured ? "green" : ""}`}>Teams {status?.teams_configured ? "configured" : "off"}</span>
+        <Badge variant={status?.email_configured ? "success" : "secondary"}>Email {status?.email_configured ? "configured" : "off"}</Badge>
+        <Badge variant={status?.slack_configured ? "success" : "secondary"}>Slack {status?.slack_configured ? "configured" : "off"}</Badge>
+        <Badge variant={status?.teams_configured ? "success" : "secondary"}>Teams {status?.teams_configured ? "configured" : "off"}</Badge>
       </div>
-      <button className="btn mt-3 flex-none" disabled={busy} onClick={sendTest}>{busy ? "Sending…" : "Send test notification"}</button>
-    </div>
+      <Button type="button" variant="outline" disabled={isSubmitting} onClick={sendTest}>{isSubmitting ? "Sending…" : "Send test notification"}</Button>
+      </CardContent>
+    </Card>
   );
 }

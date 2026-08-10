@@ -58,3 +58,29 @@ async def test_webhook_test_endpoint(client, auth):
     })).json()
     res = (await client.post(f"/api/webhooks/{created['id']}/test", headers=auth)).json()
     assert res["success"] is False and res["error"]
+
+
+async def test_webhook_test_endpoint_records_success(client, auth, monkeypatch):
+    from app.services import webhooks
+
+    monkeypatch.setattr(webhooks, "_post", lambda url, body, signature: (204, None))
+    created = (await client.post("/api/webhooks", headers=auth, json={
+        "url": "https://hooks.example.test/company-tools",
+    })).json()
+    result = await client.post(f"/api/webhooks/{created['id']}/test", headers=auth)
+    assert result.status_code == 200
+    assert result.json() == {"status_code": 204, "success": True, "error": None}
+
+    deliveries = (
+        await client.get(f"/api/webhooks/{created['id']}/deliveries", headers=auth)
+    ).json()
+    assert deliveries[0]["event"] == "test.ping"
+    assert deliveries[0]["success"] is True
+    assert deliveries[0]["status_code"] == 204
+
+
+async def test_webhook_rejects_non_http_endpoint(client, auth):
+    response = await client.post(
+        "/api/webhooks", headers=auth, json={"url": "ftp://example.test/hook"}
+    )
+    assert response.status_code == 422

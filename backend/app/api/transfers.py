@@ -203,6 +203,7 @@ async def transfer_meta(token: str, db: AsyncSession = Depends(get_db)):
         filename=t.filename,
         size_bytes=t.size_bytes,
         requires_password=t.has_password,
+        one_time=t.one_time,
         sender_name=sender_name,
         message=t.message,
         expires_at=t.expires_at,

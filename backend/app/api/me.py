@@ -18,6 +18,7 @@ from app.auth.deps import get_current_user
 from app.services.onboarding_sync import sync_linked_task
 from app.core.database import get_db
 from app.models.people import OnboardingJourney, OnboardingTask
+from app.models.preference import DashboardPreference
 from app.models.user import User
 from app.models.workplace import (
     Announcement,
@@ -26,13 +27,133 @@ from app.models.workplace import (
     Task,
     Ticket,
 )
-from app.schemas.home import Celebration, HomeFeed, WhosOutToday
+from app.schemas.home import (
+    Celebration,
+    DashboardPreferencesIn,
+    DashboardPreferencesOut,
+    HomeFeed,
+    WhosOutToday,
+)
 from app.schemas.workplace import WorkSummary
 from app.services.people import user_names
 
 router = APIRouter(prefix="/me", tags=["my-work"])
 
 OPEN_TICKET = ("open", "in_progress")
+
+DASHBOARD_WIDGETS = [
+    "clock",
+    "my_work",
+    "home_feed",
+    "announcements",
+    "leave",
+    "analytics",
+    "trends",
+    "activity",
+    "warranties",
+    "calendar",
+    "backup_status",
+    "cafe",
+    "lost_found",
+]
+
+
+def _dashboard_defaults(user: User) -> list[str]:
+    if user.is_admin or user.role == "admin":
+        return list(DASHBOARD_WIDGETS)
+    if user.role == "manager":
+        return [
+            "clock", "my_work", "home_feed", "announcements", "leave",
+            "calendar", "cafe", "lost_found", "analytics", "activity",
+        ]
+    return [
+        "clock", "my_work", "announcements", "leave", "home_feed",
+        "calendar", "cafe", "lost_found",
+    ]
+
+
+def _clean_widgets(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    return [
+        value for value in values
+        if value in DASHBOARD_WIDGETS and not (value in seen or seen.add(value))
+    ]
+
+
+@router.get("/dashboard-preferences", response_model=DashboardPreferencesOut)
+async def get_dashboard_preferences(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    row = (
+        await db.execute(
+            select(DashboardPreference).where(DashboardPreference.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    defaults = _dashboard_defaults(user)
+    if not row:
+        return DashboardPreferencesOut(
+            widget_order=defaults,
+            hidden_widgets=[],
+            available_widgets=DASHBOARD_WIDGETS,
+            is_default=True,
+        )
+    order = _clean_widgets(row.widget_order or [])
+    order.extend(widget for widget in defaults if widget not in order)
+    return DashboardPreferencesOut(
+        widget_order=order,
+        hidden_widgets=_clean_widgets(row.hidden_widgets or []),
+        available_widgets=DASHBOARD_WIDGETS,
+        is_default=False,
+    )
+
+
+@router.put("/dashboard-preferences", response_model=DashboardPreferencesOut)
+async def set_dashboard_preferences(
+    body: DashboardPreferencesIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = _clean_widgets(body.widget_order)
+    hidden = _clean_widgets(body.hidden_widgets)
+    defaults = _dashboard_defaults(user)
+    order.extend(widget for widget in defaults if widget not in order)
+    row = (
+        await db.execute(
+            select(DashboardPreference).where(DashboardPreference.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if not row:
+        row = DashboardPreference(user_id=user.id)
+        db.add(row)
+    row.widget_order = order
+    row.hidden_widgets = hidden
+    await db.commit()
+    return DashboardPreferencesOut(
+        widget_order=order,
+        hidden_widgets=hidden,
+        available_widgets=DASHBOARD_WIDGETS,
+        is_default=False,
+    )
+
+
+@router.delete("/dashboard-preferences", response_model=DashboardPreferencesOut)
+async def reset_dashboard_preferences(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    row = (
+        await db.execute(
+            select(DashboardPreference).where(DashboardPreference.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if row:
+        await db.delete(row)
+        await db.commit()
+    return DashboardPreferencesOut(
+        widget_order=_dashboard_defaults(user),
+        hidden_widgets=[],
+        available_widgets=DASHBOARD_WIDGETS,
+        is_default=True,
+    )
 
 
 def _next_occurrence(d: date, today: date) -> date:

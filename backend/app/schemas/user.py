@@ -89,6 +89,7 @@ class UserCreate(BaseModel):
     personal_email: str | None = None
     job_title: str | None = None
     department: str | None = None
+    department_id: uuid.UUID | None = None
     office_location: str | None = None
     mobile_phone: str | None = None
     business_phone: str | None = None

@@ -18,10 +18,15 @@ import {
   Empty,
   ErrorState,
   ListSkeleton,
+  MetricCard,
   Modal,
   PageHead,
   useToast,
 } from "../components/ui";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default function SharedPage() {
   const { notify } = useToast();
@@ -54,23 +59,15 @@ export default function SharedPage() {
       />
 
       {!loading && !error && (data?.length ?? 0) > 0 && (
-        <div className="grid cols-3 mb-4">
-          <div className="card stat">
-            <div className="value">{data!.length}</div>
-            <div className="label">Active shares</div>
-          </div>
-          <div className="card stat">
-            <div className="value">{totalOpens}</div>
-            <div className="label">Total opens</div>
-          </div>
-          <div className="card stat">
-            <div className="value">{totalDownloads}</div>
-            <div className="label">Total downloads</div>
-          </div>
+        <div className="mb-4 grid gap-4 sm:grid-cols-3">
+          <MetricCard value={data!.length} label="Active shares" />
+          <MetricCard value={totalOpens} label="Total opens" />
+          <MetricCard value={totalDownloads} label="Total downloads" />
         </div>
       )}
 
-      <div className="card">
+      <Card className="py-0">
+        <CardContent className="p-0">
         {loading ? (
           <ListSkeleton />
         ) : error ? (
@@ -82,23 +79,23 @@ export default function SharedPage() {
             hint="Use the Share button on a brochure or marketing asset to publish it."
           />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Controls</th>
-                <th>Opens</th>
-                <th>Downloads</th>
-                <th>Last opened</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Document</TableHead>
+                <TableHead>Controls</TableHead>
+                <TableHead className="text-right">Opens</TableHead>
+                <TableHead className="text-right">Downloads</TableHead>
+                <TableHead>Last opened</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data!.map((d) => (
-                <tr key={`${d.kind}-${d.id}`}>
-                  <td>
+                <TableRow key={`${d.kind}-${d.id}`}>
+                  <TableCell>
                     <div className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-brand-50 text-brand-600">
+                      <span className="grid size-9 flex-none place-items-center bg-primary text-primary-foreground">
                         {d.kind === "brochure" ? (
                           <BookOpen size={16} />
                         ) : (
@@ -106,88 +103,86 @@ export default function SharedPage() {
                         )}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate font-semibold">{d.title}</div>
-                        <code className="text-xs text-ink-muted">/s/{d.share_code}</code>
+                         <div className="truncate font-semibold" title={d.title}>{d.title}</div>
+                        <code className="text-xs text-muted-foreground">/s/{d.share_code}</code>
                       </div>
                     </div>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {d.expires_at && (
-                        <span
-                          className="badge amber inline-flex items-center gap-1"
+                        <Badge variant="warning"
                           title={`Expires ${new Date(d.expires_at).toLocaleString()}`}
                         >
                           <Clock size={11} /> Expires
-                        </span>
+                        </Badge>
                       )}
                       {d.has_passcode && (
-                        <span className="badge blue inline-flex items-center gap-1">
+                        <Badge variant="info">
                           <KeyRound size={11} /> Passcode
-                        </span>
+                        </Badge>
                       )}
                       {d.require_lead && (
-                        <span className="badge inline-flex items-center gap-1">
+                        <Badge variant="secondary">
                           <UserPlus size={11} /> Lead gate
-                        </span>
+                        </Badge>
                       )}
                       {!d.expires_at && !d.has_passcode && !d.require_lead && (
-                        <span className="muted text-xs">Open link</span>
+                        <span className="text-xs text-muted-foreground">Open link</span>
                       )}
                     </div>
-                  </td>
-                  <td>
-                    <span className="badge blue inline-flex items-center gap-1">
-                      <Eye size={11} /> {d.opens}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="badge">{d.downloads}</span>
-                  </td>
-                  <td className="muted text-sm">
+                  </TableCell>
+                   <TableCell className="text-right tabular-nums">
+                     <span className="inline-flex items-center gap-1"><Eye size={14} /> {d.opens}</span>
+                  </TableCell>
+                   <TableCell className="text-right tabular-nums">
+                     {d.downloads}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
                     {d.last_opened
                       ? new Date(d.last_opened).toLocaleDateString()
                       : "—"}
-                  </td>
-                  <td className="text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="inline-flex items-center gap-1.5">
-                      <button
-                        className="btn-sm"
+                      <Button type="button" variant="outline" size="icon-sm"
                         title="QR code"
+                        aria-label="QR code"
                         onClick={() => setQr(d)}
                       >
                         <QrCode size={14} />
-                      </button>
-                      <button
-                        className="btn-sm"
+                      </Button>
+                      <Button type="button" variant="outline" size="icon-sm"
                         title="Copy link"
+                        aria-label="Copy link"
                         onClick={() => copy(d.share_url)}
                       >
                         <Copy size={14} />
-                      </button>
+                      </Button>
                       <a
-                        className="btn-sm"
-                        title="Open public page"
                         href={d.public_url}
                         target="_blank"
                         rel="noreferrer"
+                        className={buttonVariants({ variant: "outline", size: "icon-sm" })}
+                        title="Open public page"
+                        aria-label="Open public page"
                       >
                         <ExternalLink size={14} />
                       </a>
-                      <button
-                        className="btn-sm btn-danger inline-flex items-center gap-1"
+                      <Button type="button" variant="destructive" size="sm"
                         onClick={() => revoke(d)}
                       >
                         <Lock size={14} /> Revoke
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {qr && (
         <Modal title={`QR — ${qr.title}`} onClose={() => setQr(null)} maxWidth={360}>
@@ -199,12 +194,12 @@ export default function SharedPage() {
               alt="QR code"
               width={220}
               height={220}
-              className="mx-auto rounded-xl border border-border bg-white p-2"
+              className="mx-auto border border-border bg-card p-2"
             />
             <code className="mt-3 block text-sm">{qr.share_url}</code>
-            <button className="btn mt-3" onClick={() => copy(qr.share_url)}>
+            <Button type="button" variant="outline" className="mt-3" onClick={() => copy(qr.share_url)}>
               Copy link
-            </button>
+            </Button>
           </div>
         </Modal>
       )}

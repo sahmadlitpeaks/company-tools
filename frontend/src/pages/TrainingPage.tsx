@@ -4,9 +4,19 @@ import { api } from "../api/client";
 import type { Certification, Course, CourseAssignment, User } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 
-const A_BADGE: Record<string, string> = { assigned: "amber", in_progress: "blue", completed: "green", waived: "" };
+const A_BADGE: Record<string, "warning" | "info" | "success" | "secondary"> = { assigned: "warning", in_progress: "info", completed: "success", waived: "secondary" };
 
 export default function TrainingPage() {
   const { user } = useAuth();
@@ -16,11 +26,11 @@ export default function TrainingPage() {
   return (
     <div>
       <PageHead title="Training" subtitle="Assigned learning, course catalogue and certifications." />
-      <div className="row mb-4" style={{ gap: 8 }}>
-        <button className={tab === "mine" ? "btn-primary" : "btn"} style={{ flex: "0 0 auto" }} onClick={() => setTab("mine")}>My learning</button>
-        <button className={tab === "certs" ? "btn-primary" : "btn"} style={{ flex: "0 0 auto" }} onClick={() => setTab("certs")}>Certifications</button>
-        {canManage && <button className={tab === "courses" ? "btn-primary" : "btn"} style={{ flex: "0 0 auto" }} onClick={() => setTab("courses")}>Course catalogue</button>}
-      </div>
+      <ToggleGroup className="mb-4" value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline">
+        <ToggleGroupItem value="mine">My learning</ToggleGroupItem>
+        <ToggleGroupItem value="certs">Certifications</ToggleGroupItem>
+        {canManage && <ToggleGroupItem value="courses">Course catalogue</ToggleGroupItem>}
+      </ToggleGroup>
       {tab === "mine" && <MyLearning />}
       {tab === "certs" && <Certifications />}
       {tab === "courses" && canManage && <Courses />}
@@ -32,7 +42,7 @@ function MyLearning() {
   const { notify } = useToast();
   const mine = useFetch<CourseAssignment[]>("/api/training/my/assignments");
 
-  async function setStatus(a: CourseAssignment, status: string) {
+  async function setRecordStatus(a: CourseAssignment, status: string) {
     try {
       await api(`/api/training/assignments/${a.id}?status=${status}`, { method: "PATCH" });
       mine.reload();
@@ -42,31 +52,31 @@ function MyLearning() {
   }
 
   if (mine.loading) return <Loading />;
-  if ((mine.data?.length ?? 0) === 0) return <div className="card"><Empty icon="📚" message="No training assigned" hint="Assigned courses will appear here." /></div>;
+  if ((mine.data?.length ?? 0) === 0) return <Card><CardContent><Empty icon={<BookOpen />} message="No training assigned" hint="Assigned courses will appear here." /></CardContent></Card>;
 
   return (
-    <div className="card">
-      <table className="table">
-        <thead><tr><th>Course</th><th>Due</th><th>Status</th><th /></tr></thead>
-        <tbody>
+    <Card className="py-0"><CardContent className="p-0">
+      <Table>
+        <TableHeader><TableRow><TableHead>Course</TableHead><TableHead>Due</TableHead><TableHead>Status</TableHead><TableHead className="text-right"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+        <TableBody>
           {mine.data!.map((a) => (
-            <tr key={a.id}>
-              <td className="font-medium">{a.course_title}</td>
-              <td className="muted">{a.due_date ?? "—"}</td>
-              <td><span className={`badge ${A_BADGE[a.status]}`}>{a.status.replace("_", " ")}</span></td>
-              <td className="text-right">
+            <TableRow key={a.id}>
+              <TableCell className="max-w-[28rem] whitespace-normal"><span className="line-clamp-2 font-medium">{a.course_title}</span></TableCell>
+              <TableCell className="text-muted-foreground">{a.due_date ?? "—"}</TableCell>
+              <TableCell><Badge variant={A_BADGE[a.status]}>{a.status.replace("_", " ")}</Badge></TableCell>
+              <TableCell className="text-right">
                 {a.status !== "completed" && (
-                  <span className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
-                    {a.status === "assigned" && <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setStatus(a, "in_progress")}>Start</button>}
-                    <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setStatus(a, "completed")}>Mark complete</button>
+                  <span className="flex justify-end gap-1">
+                    {a.status === "assigned" && <Button type="button" variant="outline" size="sm" onClick={() => setRecordStatus(a, "in_progress")}>Start</Button>}
+                    <Button type="button" size="sm" onClick={() => setRecordStatus(a, "completed")}>Mark complete</Button>
                   </span>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </CardContent></Card>
   );
 }
 
@@ -75,10 +85,13 @@ function Certifications() {
   const certs = useFetch<Certification[]>("/api/training/my/certifications");
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ name: "", issuer: "", issued_date: "", expiry_date: "", credential_id: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState<Certification | null>(null);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!f.name.trim()) return;
+    setIsSubmitting(true);
     try {
       await api("/api/training/my/certifications", { method: "POST", body: { ...f, issued_date: f.issued_date || null, expiry_date: f.expiry_date || null } });
       setF({ name: "", issuer: "", issued_date: "", expiry_date: "", credential_id: "" });
@@ -86,60 +99,77 @@ function Certifications() {
       certs.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function del(c: Certification) {
-    if (!confirm(`Remove "${c.name}"?`)) return;
     await api(`/api/training/my/certifications/${c.id}`, { method: "DELETE" });
     certs.reload();
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-3">
-        <h3 className="m-0 inline-flex items-center gap-2"><Award size={18} className="text-brand-600" /> My certifications</h3>
-        <button className="btn-sm btn-primary inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}><Plus size={14} /> Add</button>
-      </div>
+    <Card className="py-0">
+      <CardHeader className="grid grid-cols-[1fr_auto] items-center py-(--card-spacing)">
+        <CardTitle className="inline-flex items-center gap-2"><Award /> My certifications</CardTitle>
+        <Button type="button" size="sm" onClick={() => setAdding((v) => !v)}><Plus data-icon="inline-start" /> Add</Button>
+      </CardHeader>
+      <CardContent className={certs.data?.length ? "p-0" : undefined}>
       {adding && (
-        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
-          <div className="row" style={{ gap: 8 }}>
-            <div className="field" style={{ flex: 2 }}><label>Name</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-            <div className="field" style={{ flex: 1 }}><label>Issuer</label><input value={f.issuer} onChange={(e) => setF({ ...f, issuer: e.target.value })} /></div>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <div className="field"><label>Issued</label><input type="date" value={f.issued_date} onChange={(e) => setF({ ...f, issued_date: e.target.value })} /></div>
-            <div className="field"><label>Expires</label><input type="date" value={f.expiry_date} onChange={(e) => setF({ ...f, expiry_date: e.target.value })} /></div>
-            <div className="field"><label>Credential ID</label><input value={f.credential_id} onChange={(e) => setF({ ...f, credential_id: e.target.value })} /></div>
-          </div>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Save</button>
+        <form onSubmit={add} className="mb-3 border p-3">
+          <FieldGroup>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field><FieldLabel htmlFor="cert-name">Name</FieldLabel><Input id="cert-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+            <Field><FieldLabel htmlFor="cert-issuer">Issuer</FieldLabel><Input id="cert-issuer" value={f.issuer} onChange={(e) => setF({ ...f, issuer: e.target.value })} /></Field>
+          </FieldGroup>
+          <FieldGroup className="grid gap-3 sm:grid-cols-3">
+            <Field><FieldLabel htmlFor="cert-issued">Issued</FieldLabel><Input id="cert-issued" type="date" value={f.issued_date} onChange={(e) => setF({ ...f, issued_date: e.target.value })} /></Field>
+            <Field><FieldLabel htmlFor="cert-expires">Expires</FieldLabel><Input id="cert-expires" type="date" value={f.expiry_date} onChange={(e) => setF({ ...f, expiry_date: e.target.value })} /></Field>
+            <Field><FieldLabel htmlFor="cert-id">Credential ID</FieldLabel><Input id="cert-id" value={f.credential_id} onChange={(e) => setF({ ...f, credential_id: e.target.value })} /></Field>
+          </FieldGroup>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save"}
+          </Button>
+          </FieldGroup>
         </form>
       )}
       {certs.loading ? (
         <Loading />
       ) : (certs.data?.length ?? 0) === 0 ? (
-        <Empty icon="🎓" message="No certifications recorded" />
+        <Empty icon={<Award />} message="No certifications recorded" />
       ) : (
-        <table className="table">
-          <thead><tr><th>Name</th><th>Issuer</th><th>Expiry</th><th /></tr></thead>
-          <tbody>
+        <Table>
+           <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Issuer</TableHead><TableHead>Expiry</TableHead><TableHead className="text-right"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+          <TableBody>
             {certs.data!.map((c) => (
-              <tr key={c.id}>
-                <td className="font-medium">{c.name}</td>
-                <td className="muted">{c.issuer ?? "—"}</td>
-                <td>
+              <TableRow key={c.id}>
+                <TableCell className="max-w-[28rem] whitespace-normal"><span className="truncate font-medium" title={c.name}>{c.name}</span></TableCell>
+                <TableCell className="text-muted-foreground">{c.issuer ?? "—"}</TableCell>
+                <TableCell>
                   {c.expiry_date ? (
-                    <span className={`badge ${c.expired ? "red" : (c.days_to_expiry ?? 999) < 60 ? "amber" : "green"}`}>
+                    <Badge variant={c.expired ? "destructive" : (c.days_to_expiry ?? 999) < 60 ? "warning" : "success"}>
                       {c.expired ? "expired" : `${c.days_to_expiry}d`}
-                    </span>
-                  ) : <span className="muted">—</span>}
-                </td>
-                <td className="text-right"><button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(c)}><Trash2 size={13} /></button></td>
-              </tr>
+                    </Badge>
+                  ) : <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="text-right"><Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeleting(c)}><Trash2 /></Button></TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
-    </div>
+      </CardContent>
+      {deleting && (
+        <ConfirmDialog
+          title="Remove certification"
+          message={`Remove "${deleting.name}"?`}
+          confirmLabel="Remove certification"
+          danger
+          onConfirm={() => del(deleting)}
+          onClose={() => setDeleting(null)}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -148,45 +178,64 @@ function Courses() {
   const courses = useFetch<Course[]>("/api/training/courses");
   const [creating, setCreating] = useState(false);
   const [assignFor, setAssignFor] = useState<Course | null>(null);
+  const [deleting, setDeleting] = useState<Course | null>(null);
 
   async function del(c: Course) {
-    if (!confirm(`Delete course "${c.title}"?`)) return;
     await api(`/api/training/courses/${c.id}`, { method: "DELETE" });
     courses.reload();
   }
 
   return (
     <div>
-      <div className="spread mb-3">
-        <h3 className="m-0 inline-flex items-center gap-2"><BookOpen size={18} className="text-brand-600" /> Course catalogue</h3>
-        <button className="btn-sm btn-primary inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => setCreating(true)}><Plus size={14} /> New course</button>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="inline-flex items-center gap-2"><BookOpen /> Course catalogue</h3>
+        <Button type="button" size="sm" onClick={() => setCreating(true)}><Plus data-icon="inline-start" /> New course</Button>
       </div>
       {courses.loading ? (
         <Loading />
       ) : (courses.data?.length ?? 0) === 0 ? (
-        <div className="card"><Empty icon="📘" message="No courses yet" /></div>
+        <Card><CardContent><Empty icon={<BookOpen />} message="No courses yet" /></CardContent></Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {courses.data!.map((c) => (
-            <div key={c.id} className="card">
-              <div className="spread">
+            <Card key={c.id}>
+              <CardContent className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold">{c.title}{c.category && <span className="badge ml-1">{c.category}</span>}</div>
-                  {c.description && <p className="muted text-sm mt-1">{c.description}</p>}
-                  {c.url && <a className="text-brand-700 text-sm inline-flex items-center gap-1" href={c.url} target="_blank" rel="noreferrer">Open content <ExternalLink size={12} /></a>}
-                  <div className="muted text-xs mt-1">{c.assigned_count} assigned</div>
+                  <div className="font-semibold">{c.title}{c.category && <Badge variant="secondary" className="ml-1">{c.category}</Badge>}</div>
+                  {c.description && <p className="mt-1 text-sm text-muted-foreground">{c.description}</p>}
+                  {c.url && (
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={cn(buttonVariants({ variant: "link" }), "px-0")}
+                    >
+                      Open content <ExternalLink data-icon="inline-end" />
+                    </a>
+                  )}
+                  <div className="mt-1 text-xs text-muted-foreground">{c.assigned_count} assigned</div>
                 </div>
-                <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-                  <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setAssignFor(c)}>Assign</button>
-                  <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(c)}><Trash2 size={13} /></button>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={() => setAssignFor(c)}>Assign</Button>
+                  <Button aria-label="Delete" type="button" variant="destructive" size="icon-sm" onClick={() => setDeleting(c)}><Trash2 /></Button>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
       {creating && <CourseModal onClose={() => setCreating(false)} onDone={() => { setCreating(false); courses.reload(); notify("Course created."); }} />}
       {assignFor && <AssignModal course={assignFor} onClose={() => setAssignFor(null)} onDone={() => { setAssignFor(null); courses.reload(); }} />}
+      {deleting && (
+        <ConfirmDialog
+          title="Delete course"
+          message={`Delete course "${deleting.title}"?`}
+          confirmLabel="Delete course"
+          danger
+          onConfirm={() => del(deleting)}
+          onClose={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 }
@@ -194,28 +243,32 @@ function Courses() {
 function CourseModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { notify } = useToast();
   const [f, setF] = useState({ title: "", category: "", url: "", description: "" });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   async function save() {
     if (!f.title.trim()) { notify("Title required", "error"); return; }
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/training/courses", { method: "POST", body: { ...f, category: f.category || null, url: f.url || null } });
       onDone();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
   return (
     <Modal title="New course" onClose={onClose} maxWidth={480}>
-      <div className="field"><label>Title</label><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
-      <div className="field"><label>Category</label><input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} /></div>
-      <div className="field"><label>Content URL</label><input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://lms/..." /></div>
-      <div className="field"><label>Description</label><textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></div>
-      <div className="row mt-2" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Saving…" : "Create"}</button>
+      <FieldGroup>
+      <Field><FieldLabel htmlFor="course-title">Title</FieldLabel><Input id="course-title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+      <Field><FieldLabel htmlFor="course-category">Category</FieldLabel><Input id="course-category" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} /></Field>
+      <Field><FieldLabel htmlFor="course-url">Content URL</FieldLabel><Input id="course-url" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://lms/..." /></Field>
+      <Field><FieldLabel htmlFor="course-description">Description</FieldLabel><Textarea id="course-description" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Saving…" : "Create"}</Button>
       </div>
+      </FieldGroup>
     </Modal>
   );
 }
@@ -225,38 +278,44 @@ function AssignModal({ course, onClose, onDone }: { course: Course; onClose: () 
   const people = useFetch<User[]>("/api/users");
   const [selected, setSelected] = useState<string[]>([]);
   const [due, setDue] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   function toggle(id: string) {
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   }
   async function save() {
     if (selected.length === 0) { notify("Pick at least one person", "error"); return; }
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/training/courses/${course.id}/assign`, { method: "POST", body: { user_ids: selected, due_date: due || null } });
       notify("Assigned.");
       onDone();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
   return (
     <Modal title={`Assign — ${course.title}`} onClose={onClose} maxWidth={460}>
-      <div className="field"><label>Due date (optional)</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
-      <label className="muted text-xs">Employees</label>
-      <div className="mt-1 max-h-64 overflow-auto rounded-lg border border-slate-200 p-1">
+      <FieldGroup>
+      <Field><FieldLabel htmlFor="assign-due">Due date (optional)</FieldLabel><Input id="assign-due" type="date" value={due} onChange={(e) => setDue(e.target.value)} /></Field>
+      <Field><FieldLabel>Employees</FieldLabel>
+      <div className="max-h-64 overflow-auto border border-border p-2">
         {(people.data ?? []).map((u) => (
-          <label key={u.id} className="flex items-center gap-2 px-1 py-0.5 text-sm">
-            <input type="checkbox" checked={selected.includes(u.id)} onChange={() => toggle(u.id)} /> {u.display_name ?? u.email}
-          </label>
+          <Field key={u.id} orientation="horizontal">
+            <Checkbox id={`assign-${u.id}`} checked={selected.includes(u.id)} onCheckedChange={() => toggle(u.id)} />
+            <FieldLabel htmlFor={`assign-${u.id}`}>{u.display_name ?? u.email}</FieldLabel>
+          </Field>
         ))}
       </div>
-      <div className="row mt-2" style={{ justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-        <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>{busy ? "Assigning…" : `Assign (${selected.length})`}</button>
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="button" disabled={isSubmitting} onClick={save}>{isSubmitting ? "Assigning…" : `Assign (${selected.length})`}</Button>
       </div>
+      </FieldGroup>
     </Modal>
   );
 }

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { API_BASE_URL, api, tokenStore } from "../api/client";
+import { API_BASE_URL, api } from "../api/client";
 import type { User } from "../api/types";
 
 interface AuthState {
@@ -16,7 +16,7 @@ interface AuthState {
   login: () => void;
   passwordLogin: (email: string, password: string, code?: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refresh: () => Promise<void>;
   /** Whether the current user may access a permission module. */
   can: (module: string) => boolean;
@@ -29,16 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!tokenStore.get()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
     try {
       const me = await api<User>("/api/auth/me");
       setUser(me);
     } catch {
-      tokenStore.clear();
       setUser(null);
     } finally {
       setLoading(false);
@@ -56,12 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const passwordLogin = useCallback(
     async (email: string, password: string, code?: string) => {
-      const res = await api<{ access_token: string }>("/api/auth/login", {
+      await api<{ access_token: string }>("/api/auth/login", {
         method: "POST",
         auth: false,
         body: { email, password, code },
       });
-      tokenStore.set(res.access_token);
       await refresh();
     },
     [refresh],
@@ -78,8 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
-  const logout = useCallback(() => {
-    tokenStore.clear();
+  const logout = useCallback(async () => {
+    await api("/api/auth/logout", { method: "POST" });
     setUser(null);
   }, []);
 

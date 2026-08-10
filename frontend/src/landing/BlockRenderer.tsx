@@ -1,4 +1,12 @@
 import { useState } from "react";
+import { Handshake, ShieldCheck, Sparkles, Zap, type LucideIcon } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { readableForeground } from "@/lib/color";
 import { api } from "../api/client";
 import type { Block, FormBlock, LeadField } from "./blocks";
 import { useLandingSlug } from "./LandingContext";
@@ -10,17 +18,24 @@ const FIELD_LABEL: Record<LeadField, string> = {
   message: "Message",
 };
 
+const FEATURE_ICONS: Record<string, LucideIcon> = {
+  zap: Zap,
+  "shield-check": ShieldCheck,
+  handshake: Handshake,
+  sparkles: Sparkles,
+};
+
 function FormBlockView({ block }: { block: FormBlock }) {
   const slug = useLandingSlug();
   const [form, setForm] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!slug) return; // preview mode (builder) — no endpoint to post to
-    setBusy(true);
+    setIsSubmitting(true);
     setError(null);
     try {
       await api(`/api/public/landing-pages/${slug}/leads`, {
@@ -37,91 +52,74 @@ function FormBlockView({ block }: { block: FormBlock }) {
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "11px 13px",
-    border: "1px solid #cbd5e1",
-    borderRadius: 9,
-    marginBottom: 12,
-    font: "inherit",
-    boxSizing: "border-box",
-  };
 
   return (
     <section style={{ background: block.bg, padding: "56px 24px" }}>
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
-        <h2 style={{ textAlign: "center", color: "#0c1a2b", marginTop: 0 }}>
+        <h2 className="mt-0 text-center text-foreground">
           {block.heading}
         </h2>
         {block.subheading && (
-          <p style={{ textAlign: "center", color: "#64748b", marginBottom: 24 }}>
+          <p className="mb-6 text-center text-muted-foreground">
             {block.subheading}
           </p>
         )}
         {done ? (
-          <div
-            style={{
-              background: "#dcfce7",
-              color: "#15803d",
-              padding: 18,
-              borderRadius: 10,
-              textAlign: "center",
-              fontWeight: 600,
-            }}
+          <Alert
+            role="status"
+            aria-live="polite"
+            className="text-center"
           >
-            {block.successMessage}
-          </div>
+            <AlertDescription className="font-semibold text-foreground">
+              {block.successCopy}
+            </AlertDescription>
+          </Alert>
         ) : (
-          <form onSubmit={submit}>
-            {block.fields.map((f) =>
-              f === "message" ? (
-                <textarea
-                  key={f}
-                  placeholder={FIELD_LABEL[f]}
-                  rows={4}
-                  style={inputStyle}
-                  value={form[f] ?? ""}
-                  onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
-                />
-              ) : (
-                <input
-                  key={f}
-                  type={f === "email" ? "email" : "text"}
-                  placeholder={FIELD_LABEL[f]}
-                  style={inputStyle}
-                  value={form[f] ?? ""}
-                  onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
-                />
-              ),
-            )}
+          <form onSubmit={submit} aria-busy={isSubmitting || undefined} className="flex flex-col gap-4">
+            <FieldGroup>
+              {block.fields.map((f) => (
+                <Field key={f}>
+                  <FieldLabel htmlFor={`landing-${block.id}-${f}`} className="sr-only">
+                    {FIELD_LABEL[f]}
+                  </FieldLabel>
+                  {f === "message" ? (
+                    <Textarea
+                      id={`landing-${block.id}-${f}`}
+                      aria-label={FIELD_LABEL[f]}
+                      placeholder={FIELD_LABEL[f]}
+                      rows={4}
+                      value={form[f] ?? ""}
+                      onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
+                    />
+                  ) : (
+                    <Input
+                      id={`landing-${block.id}-${f}`}
+                      aria-label={FIELD_LABEL[f]}
+                      type={f === "email" ? "email" : f === "phone" ? "tel" : "text"}
+                      placeholder={FIELD_LABEL[f]}
+                      value={form[f] ?? ""}
+                      required
+                      onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
+                    />
+                  )}
+                </Field>
+              ))}
+            </FieldGroup>
             {error && (
-              <div style={{ color: "#dc2626", marginBottom: 10 }}>{error}</div>
+              <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
             )}
-            <button
+            <Button
               type="submit"
-              disabled={busy}
-              style={{
-                width: "100%",
-                background: "#0b5cab",
-                color: "#fff",
-                border: "none",
-                padding: "13px",
-                borderRadius: 9,
-                fontWeight: 700,
-                fontSize: 15,
-                cursor: "pointer",
-              }}
+              disabled={isSubmitting}
+              className="w-full"
             >
-              {busy ? "Sending…" : block.buttonText}
-            </button>
+              {isSubmitting ? "Sending…" : block.buttonText}
+            </Button>
             {!slug && (
-              <div
-                style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 8 }}
-              >
+              <div className="mt-2 text-center text-xs text-muted-foreground">
                 (Form is live once the page is published.)
               </div>
             )}
@@ -145,7 +143,7 @@ export function BlockView({ block }: { block: Block }) {
         <section
           style={{
             background: block.bg,
-            color: block.color,
+            color: readableForeground(block.bg, block.color),
             padding: "80px 24px",
             textAlign: block.align,
           }}
@@ -160,15 +158,7 @@ export function BlockView({ block }: { block: Block }) {
             {block.buttonText && (
               <a
                 href={block.buttonUrl || "#"}
-                style={{
-                  display: "inline-block",
-                  background: "#fff",
-                  color: block.bg,
-                  padding: "13px 30px",
-                  borderRadius: 9,
-                  fontWeight: 700,
-                  textDecoration: "none",
-                }}
+                className={buttonVariants({ variant: "secondary", size: "lg" })}
               >
                 {block.buttonText}
               </a>
@@ -185,7 +175,7 @@ export function BlockView({ block }: { block: Block }) {
             maxWidth: 820,
             margin: "48px auto 8px",
             padding: "0 24px",
-            color: "#0c1a2b",
+            color: "var(--foreground)",
           }}
         >
           {block.text}
@@ -201,7 +191,7 @@ export function BlockView({ block }: { block: Block }) {
             maxWidth: 720,
             margin: "12px auto",
             padding: "0 24px",
-            color: "#334155",
+            color: "var(--foreground)",
           }}
         >
           {block.text}
@@ -214,22 +204,20 @@ export function BlockView({ block }: { block: Block }) {
             <img
               src={block.url}
               alt={block.alt}
-              style={{ maxWidth: "100%", borderRadius: 12 }}
+              style={{ maxWidth: "100%" }}
             />
           ) : (
             <div
+              className="bg-primary/15 text-foreground"
               style={{
-                background: "#e2e8f0",
-                color: "#64748b",
                 padding: "60px 0",
-                borderRadius: 12,
               }}
             >
               Image placeholder
             </div>
           )}
           {block.caption && (
-            <figcaption style={{ color: "#64748b", marginTop: 8 }}>
+            <figcaption className="mt-2 text-muted-foreground">
               {block.caption}
             </figcaption>
           )}
@@ -237,9 +225,9 @@ export function BlockView({ block }: { block: Block }) {
       );
     case "features":
       return wrap(
-        <section style={{ padding: "48px 24px", background: "#f8fafc" }}>
+        <section className="bg-muted" style={{ padding: "48px 24px" }}>
           <div style={{ maxWidth: 980, margin: "0 auto" }}>
-            <h2 style={{ textAlign: "center", fontSize: 28, color: "#0c1a2b" }}>
+            <h2 style={{ textAlign: "center", fontSize: 28, color: "var(--foreground)" }}>
               {block.heading}
             </h2>
             <div
@@ -250,22 +238,23 @@ export function BlockView({ block }: { block: Block }) {
                 marginTop: 28,
               }}
             >
-              {block.items.map((it, i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 12,
-                    padding: 22,
-                    textAlign: "center",
-                  }}
+              {block.items.map((it) => {
+                const FeatureIcon = FEATURE_ICONS[it.icon];
+                return <Card
+                  key={it.id}
+                  className="text-center"
                 >
-                  <div style={{ fontSize: 32 }}>{it.icon}</div>
-                  <h3 style={{ margin: "10px 0 6px", color: "#0c1a2b" }}>{it.title}</h3>
-                  <p style={{ color: "#64748b", margin: 0 }}>{it.body}</p>
-                </div>
-              ))}
+                  <CardHeader>
+                    <div aria-hidden="true">
+                      {FeatureIcon ? <FeatureIcon /> : it.icon ? it.icon : <Sparkles />}
+                    </div>
+                    <CardTitle>{it.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="m-0 text-muted-foreground">{it.body}</p>
+                  </CardContent>
+                </Card>;
+              })}
             </div>
           </div>
         </section>,
@@ -275,7 +264,7 @@ export function BlockView({ block }: { block: Block }) {
         <section
           style={{
             background: block.bg,
-            color: "#fff",
+            color: "var(--background)",
             padding: "56px 24px",
             textAlign: "center",
           }}
@@ -284,15 +273,7 @@ export function BlockView({ block }: { block: Block }) {
           <p style={{ opacity: 0.85, margin: "0 0 22px" }}>{block.subheading}</p>
           <a
             href={block.buttonUrl || "#"}
-            style={{
-              display: "inline-block",
-              background: "#fff",
-              color: block.bg,
-              padding: "13px 30px",
-              borderRadius: 9,
-              fontWeight: 700,
-              textDecoration: "none",
-            }}
+            className={buttonVariants({ variant: "secondary", size: "lg" })}
           >
             {block.buttonText}
           </a>

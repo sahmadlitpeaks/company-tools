@@ -1,3 +1,8 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Download, FileText, KeyRound, Loader2, Lock } from "lucide-react";
@@ -28,13 +33,13 @@ export default function PublicDocPage({ base }: { base: "brochures" | "assets" }
   }, [base, id]);
 
   const brand = meta?.brand;
-  const accent = brand?.primary_color ?? "#0b5cab";
+  const accent = brand?.primary_color || "var(--primary)";
 
   if (error)
     return (
       <Shell accent={accent} brand={brand}>
         <h2>Document unavailable</h2>
-        <p className="muted">
+        <p className="text-muted-foreground">
           This link is no longer active or the document isn't shared publicly.
         </p>
       </Shell>
@@ -42,8 +47,8 @@ export default function PublicDocPage({ base }: { base: "brochures" | "assets" }
 
   if (!meta)
     return (
-      <div className="center-screen">
-        <Loader2 className="animate-spin text-ink-muted" size={28} />
+      <div className="grid min-h-dvh place-items-center bg-muted p-5">
+        <Loader2 className="animate-spin text-muted-foreground" size={28} />
       </div>
     );
 
@@ -70,8 +75,8 @@ export default function PublicDocPage({ base }: { base: "brochures" | "assets" }
     return (
       <Suspense
         fallback={
-          <div className="center-screen">
-            <Loader2 className="animate-spin text-ink-muted" size={28} />
+          <div className="grid min-h-dvh place-items-center bg-muted p-5">
+            <Loader2 className="animate-spin text-muted-foreground" size={28} />
           </div>
         }
       >
@@ -88,16 +93,16 @@ export default function PublicDocPage({ base }: { base: "brochures" | "assets" }
   if (isImage)
     return (
       <Shell accent={accent} brand={brand} wide>
-        <img src={apiUrl(url)} alt={meta.title} className="mx-auto max-h-[70vh] rounded-xl" />
-        <DownloadBtn url={url} name={meta.title} accent={accent} />
+        <img src={apiUrl(url)} alt={meta.title} className="mx-auto max-h-[70vh]" />
+        <DownloadBtn url={url} name={meta.title} />
       </Shell>
     );
 
   if (isVideo)
     return (
       <Shell accent={accent} brand={brand} wide>
-        <video src={apiUrl(url)} controls className="mx-auto max-h-[70vh] w-full rounded-xl" />
-        <DownloadBtn url={url} name={meta.title} accent={accent} />
+        <video src={apiUrl(url)} controls className="mx-auto max-h-[70vh] w-full" />
+        <DownloadBtn url={url} name={meta.title} />
       </Shell>
     );
 
@@ -105,8 +110,8 @@ export default function PublicDocPage({ base }: { base: "brochures" | "assets" }
     <Shell accent={accent} brand={brand}>
       <FileText className="mx-auto mb-3" size={40} style={{ color: accent }} />
       <h2 className="mb-1">{meta.title}</h2>
-      <p className="muted mb-4">Shared with you.</p>
-      <DownloadBtn url={url} name={meta.title} accent={accent} />
+      <p className="mb-4 text-muted-foreground">Shared with you.</p>
+      <DownloadBtn url={url} name={meta.title} />
     </Shell>
   );
 }
@@ -123,31 +128,34 @@ function Shell({
   wide?: boolean;
 }) {
   return (
-    <div className="center-screen" style={{ background: `${accent}0d` }}>
-      <div
-        className="login-card text-center"
-        style={{ maxWidth: wide ? 720 : undefined, borderTop: `4px solid ${accent}` }}
+    <div className="grid min-h-dvh place-items-center bg-muted p-5">
+      <Card
+        className="w-full text-center"
+        style={{ maxWidth: wide ? 720 : 420, borderTop: `4px solid ${accent}` }}
       >
-        {brand &&
-          (brand.logo_url ? (
-            <img src={brand.logo_url} alt={brand.name} className="mx-auto mb-4 h-9" />
-          ) : (
-            <div className="mb-3 text-lg font-bold" style={{ color: accent }}>
-              {brand.name}
-            </div>
-          ))}
-        {children}
-        {brand?.website && (
-          <a
-            href={brand.website}
-            target="_blank"
-            rel="noreferrer"
-            className="muted mt-4 block text-xs"
-          >
-            {brand.website.replace(/^https?:\/\//, "")}
-          </a>
+        {brand && (
+          <CardHeader>
+            {brand.logo_url ? (
+              <img src={brand.logo_url} alt={brand.name} className="mx-auto h-9" />
+            ) : (
+              <CardTitle style={{ color: accent }}>{brand.name}</CardTitle>
+            )}
+          </CardHeader>
         )}
-      </div>
+        <CardContent className="flex flex-col gap-4">{children}</CardContent>
+        {brand?.website && (
+          <CardFooter className="justify-center">
+            <a
+              href={brand.website}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground"
+            >
+              {brand.website.replace(/^https?:\/\//, "")}
+            </a>
+          </CardFooter>
+        )}
+      </Card>
     </div>
   );
 }
@@ -155,20 +163,17 @@ function Shell({
 function DownloadBtn({
   url,
   name,
-  accent,
 }: {
   url: string;
   name: string;
-  accent: string;
 }) {
   return (
-    <button
-      className="btn-primary mx-auto inline-flex items-center gap-2"
-      style={{ background: accent }}
+    <Button type="button"
+      className="mx-auto"
       onClick={() => downloadFile(url, name)}
     >
-      <Download size={16} /> Download
-    </button>
+      <Download data-icon="inline-start" /> Download
+    </Button>
   );
 }
 
@@ -189,13 +194,13 @@ function GateForm({
     phone: "",
     passcode: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     setErr(null);
     try {
       const params = new URLSearchParams();
@@ -220,68 +225,65 @@ function GateForm({
           ? "That passcode is incorrect."
           : "Something went wrong. Please try again.",
       );
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={submit} className="text-left">
+    <form onSubmit={submit} aria-busy={isSubmitting || undefined} className="flex flex-col gap-4 text-left">
       <div className="mb-4 text-center">
-        <Lock className="mx-auto mb-2 text-ink-muted" size={28} />
+        <Lock className="mx-auto mb-2 text-muted-foreground" size={28} />
         <h2 className="mb-1">{meta.title}</h2>
-        <p className="muted text-sm">
+        <p className="text-sm text-muted-foreground">
           {meta.requires_lead
             ? "Tell us where to send it and you'll get instant access."
             : "Enter the passcode to view this document."}
         </p>
       </div>
 
+      <FieldGroup>
       {meta.requires_lead && (
         <>
-          <div className="field">
-            <input
+          <Field><FieldLabel htmlFor="public-doc-name" className="sr-only">Your name</FieldLabel>
+            <Input id="public-doc-name" aria-label="Your name"
               placeholder="Your name"
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <input
+            /></Field>
+          <Field><FieldLabel htmlFor="public-doc-email" className="sr-only">Email address</FieldLabel>
+            <Input id="public-doc-email" aria-label="Email address"
               type="email"
               required
               placeholder="Email address"
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <input
+            /></Field>
+          <Field><FieldLabel htmlFor="public-doc-phone" className="sr-only">Phone</FieldLabel>
+            <Input id="public-doc-phone" aria-label="Phone (optional)"
               placeholder="Phone (optional)"
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
-            />
-          </div>
+            /></Field>
         </>
       )}
 
       {meta.requires_passcode && (
-        <div className="field">
-          <label className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-            <KeyRound size={14} /> Passcode
-          </label>
-          <input
+        <Field>
+          <FieldLabel htmlFor="public-doc-passcode"><KeyRound /> Passcode</FieldLabel>
+          <Input id="public-doc-passcode"
             required
             value={form.passcode}
             onChange={(e) => set("passcode", e.target.value)}
           />
-        </div>
+        </Field>
       )}
+      </FieldGroup>
 
-      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      {err && <Alert variant="destructive"><AlertDescription>{err}</AlertDescription></Alert>}
 
-      <button className="btn-primary w-full" disabled={busy}>
-        {busy ? "Unlocking…" : "View document"}
-      </button>
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? "Unlocking…" : "View document"}
+      </Button>
     </form>
   );
 }

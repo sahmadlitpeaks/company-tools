@@ -24,11 +24,16 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if credentials is None:
+    token = (
+        credentials.credentials
+        if credentials is not None
+        else request.cookies.get("ag_platform_session")
+    )
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
         )
-    payload = decode_access_token(credentials.credentials)
+    payload = decode_access_token(token)
     if not payload or "sub" not in payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"

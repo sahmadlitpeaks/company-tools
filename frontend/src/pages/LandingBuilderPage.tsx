@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Blocks, Copy, GripVertical, X } from "lucide-react";
 import { api } from "../api/client";
 import type { LandingPage } from "../api/types";
 import {
@@ -11,7 +20,7 @@ import {
   parseBlocks,
 } from "../landing/blocks";
 import { BlockList, BlockView } from "../landing/BlockRenderer";
-import { Loading, useToast } from "../components/ui";
+import { Empty, Loading, useToast } from "../components/ui";
 import { useBrand } from "../brand/BrandContext";
 
 const PALETTE: BlockType[] = [
@@ -46,7 +55,7 @@ export default function LandingBuilderPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
-  const [status, setStatus] = useState("draft");
+  const [status, setRecordStatus] = useState("draft");
   const [saving, setSaving] = useState(false);
   const dragIndex = useRef<number | null>(null);
 
@@ -54,7 +63,7 @@ export default function LandingBuilderPage() {
     api<LandingPage>(`/api/landing-pages/${id}`).then((p) => {
       setPage(p);
       setTitle(p.title);
-      setStatus(p.status);
+      setRecordStatus(p.status);
       setBlocks(parseBlocks(p.blocks));
     });
   }, [id]);
@@ -116,7 +125,7 @@ export default function LandingBuilderPage() {
           html: exportHtml(title, blocks),
         },
       });
-      setStatus(nextStatus);
+      setRecordStatus(nextStatus);
       notify(publish ? "Page published." : "Draft saved.");
     } catch (e) {
       notify(e instanceof Error ? e.message : "Save failed", "error");
@@ -129,39 +138,44 @@ export default function LandingBuilderPage() {
 
   return (
     <div>
-      <div className="page-head">
-        <div className="row" style={{ gap: 10, justifyContent: "flex-start" }}>
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => navigate("/landing-pages")}>
+      <div className="mb-4 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => navigate("/landing-pages")}>
             ← Back
-          </button>
-          <input
+          </Button>
+          <Input aria-label="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{ fontWeight: 600, maxWidth: 360 }}
+            className="max-w-sm font-semibold"
           />
-          <span className={`badge ${status === "published" ? "green" : ""}`}>{status}</span>
+          <Badge variant={status === "published" ? "success" : "secondary"}>{status}</Badge>
         </div>
-        <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
+        <div className="flex flex-wrap gap-2">
           {status === "published" && (
-            <a className="btn btn-sm" href={`/p/${page.slug}`} target="_blank" rel="noreferrer">
+            <a
+              href={`/p/${page.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
               View live
             </a>
           )}
-          <button className="btn" style={{ flex: "0 0 auto" }} disabled={saving} onClick={() => save(false)}>
+          <Button type="button" variant="outline" disabled={saving} onClick={() => save(false)}>
             Save draft
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={saving} onClick={() => save(true)}>
+          </Button>
+          <Button type="button" disabled={saving} onClick={() => save(true)}>
             Publish
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr_280px]">
         {/* ---- Left: block list + palette ---- */}
-        <div className="card self-start lg:sticky lg:top-[84px]">
-          <h4 style={{ margin: "0 0 10px" }}>Blocks</h4>
+        <Card className="self-start lg:sticky lg:top-[84px]">
+          <CardHeader><CardTitle>Blocks</CardTitle></CardHeader><CardContent>
           {blocks.length === 0 && (
-            <div className="muted" style={{ fontSize: 13 }}>
+            <div className="text-xs text-muted-foreground">
               Add blocks below to start building.
             </div>
           )}
@@ -172,91 +186,90 @@ export default function LandingBuilderPage() {
               onDragStart={() => (dragIndex.current = i)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => onDrop(i)}
-              onClick={() => setSelectedId(b.id)}
-              className={selectedId === b.id ? "btn-primary" : "btn"}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                width: "100%",
-                marginBottom: 6,
-                cursor: "grab",
-              }}
+              className={`mb-1.5 flex w-full cursor-grab items-center justify-between border p-1 ${selectedId === b.id ? "border-primary bg-primary/10" : "border-border"}`}
             >
-              <span>⠿ {BLOCK_LABELS[b.type]}</span>
-              <span style={{ display: "flex", gap: 4 }}>
-                <span
+              <Button type="button" variant="ghost" className="flex-1 justify-start" onClick={() => setSelectedId(b.id)}>
+                 <GripVertical data-icon="inline-start" aria-hidden="true" /> {BLOCK_LABELS[b.type]}
+              </Button>
+              <span className="flex gap-1">
+                <Button type="button" size="icon-xs" variant="ghost"
+                  aria-label="Duplicate"
                   title="Duplicate"
                   onClick={(e) => {
                     e.stopPropagation();
                     duplicateBlock(b.id);
                   }}
                 >
-                  ⧉
-                </span>
-                <span
+                   <Copy data-icon="inline-start" />
+                </Button>
+                <Button type="button" size="icon-xs" variant="destructive"
+                  aria-label="Delete"
                   title="Delete"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeBlock(b.id);
                   }}
                 >
-                  ✕
-                </span>
+                   <X data-icon="inline-start" />
+                </Button>
               </span>
             </div>
           ))}
-          <h4 style={{ margin: "16px 0 8px" }}>Add block</h4>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <h4 className="mb-2 mt-4 font-medium">Add block</h4>
+          <div className="grid grid-cols-2 gap-1.5">
             {PALETTE.map((t) => (
-              <button key={t} className="btn btn-sm" onClick={() => addBlock(t)}>
+              <Button type="button" key={t} size="sm" variant="outline" onClick={() => addBlock(t)}>
                 + {BLOCK_LABELS[t]}
-              </button>
+              </Button>
             ))}
           </div>
-        </div>
+          </CardContent></Card>
 
         {/* ---- Middle: live preview ---- */}
-        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-slate-100 p-3 shadow-card">
-          <div className="min-h-[420px] overflow-hidden rounded-lg bg-white shadow-soft">
+        <div className="bg-muted p-3">
+          <Card className="min-h-[420px] shadow-none">
+          <CardContent className="p-0">
           {blocks.length === 0 ? (
-            <div className="empty">
-              <div className="text-4xl opacity-70">🧱</div>
-              <div className="mt-2 font-semibold text-ink">Your page preview appears here</div>
-              <div className="text-sm text-ink-muted">Add a block from the panel on the left.</div>
-            </div>
+            <Empty
+              icon={<Blocks />}
+              message="Your page preview appears here"
+              hint="Add a block from the panel on the left."
+            />
           ) : (
             blocks.map((b) => (
               <div
                 key={b.id}
-                onClick={() => setSelectedId(b.id)}
                 style={{
                   outline:
-                    selectedId === b.id ? "2px solid var(--brand)" : "none",
+                    selectedId === b.id ? "2px solid var(--primary)" : "none",
                   outlineOffset: -2,
                   cursor: "pointer",
                 }}
               >
+                <Button type="button" size="sm" variant="outline" className="m-1" onClick={() => setSelectedId(b.id)}>
+                  Edit {BLOCK_LABELS[b.type]}
+                </Button>
                 <BlockView block={b} />
               </div>
             ))
           )}
-          </div>
+          </CardContent>
+          </Card>
         </div>
 
         {/* ---- Right: inspector ---- */}
-        <div className="card self-start lg:sticky lg:top-[84px]">
-          <h4 style={{ margin: "0 0 10px" }}>
+        <Card className="self-start lg:sticky lg:top-[84px]">
+          <CardHeader><CardTitle>
             {selected ? `Edit: ${BLOCK_LABELS[selected.type]}` : "Inspector"}
-          </h4>
+          </CardTitle></CardHeader><CardContent>
           {!selected ? (
-            <div className="muted" style={{ fontSize: 13 }}>
+            <div className="text-xs text-muted-foreground">
               Select a block to edit its content.
             </div>
           ) : (
-            <BlockEditor block={selected} patch={patchSelected} />
+            <FieldGroup><BlockEditor block={selected} patch={patchSelected} /></FieldGroup>
           )}
-        </div>
+          </CardContent></Card>
       </div>
     </div>
   );
@@ -273,15 +286,16 @@ function Text({
   onChange: (v: string) => void;
   area?: boolean;
 }) {
+  const id = useId();
   return (
-    <div className="field">
-      <label>{label}</label>
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {area ? (
-        <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <input value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
-    </div>
+    </Field>
   );
 }
 
@@ -294,11 +308,9 @@ function Color({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const id = useId();
   return (
-    <div className="field">
-      <label>{label}</label>
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
-    </div>
+    <Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type="color" value={value} onChange={(e) => onChange(e.target.value)} /></Field>
   );
 }
 
@@ -319,16 +331,13 @@ function BlockEditor({
           <Text label="Button URL" value={block.buttonUrl} onChange={(v) => patch({ buttonUrl: v })} />
           <Color label="Background" value={block.bg} onChange={(v) => patch({ bg: v })} />
           <Color label="Text colour" value={block.color} onChange={(v) => patch({ color: v })} />
-          <div className="field">
-            <label>Alignment</label>
-            <select
+          <Field><FieldLabel htmlFor="builder-hero-alignment">Alignment</FieldLabel>
+            <Select items={[{ value: "center", label: "Center" }, { value: "left", label: "Left" }]}
               value={block.align}
-              onChange={(e) => patch({ align: e.target.value as "left" | "center" })}
+              onValueChange={(value) => value !== null && patch({ align: value as "left" | "center" })}
             >
-              <option value="center">Center</option>
-              <option value="left">Left</option>
-            </select>
-          </div>
+              <SelectTrigger id="builder-hero-alignment" aria-label="Alignment" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="center">Center</SelectItem><SelectItem value="left">Left</SelectItem></SelectGroup></SelectContent>
+            </Select></Field>
         </>
       );
     case "heading":
@@ -336,16 +345,13 @@ function BlockEditor({
       return (
         <>
           <Text label="Content" area value={block.text} onChange={(v) => patch({ text: v })} />
-          <div className="field">
-            <label>Alignment</label>
-            <select
+          <Field><FieldLabel htmlFor="builder-text-alignment">Alignment</FieldLabel>
+            <Select items={[{ value: "center", label: "Center" }, { value: "left", label: "Left" }]}
               value={block.align}
-              onChange={(e) => patch({ align: e.target.value as "left" | "center" })}
+              onValueChange={(value) => value !== null && patch({ align: value as "left" | "center" })}
             >
-              <option value="center">Center</option>
-              <option value="left">Left</option>
-            </select>
-          </div>
+              <SelectTrigger id="builder-text-alignment" aria-label="Alignment" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="center">Center</SelectItem><SelectItem value="left">Left</SelectItem></SelectGroup></SelectContent>
+            </Select></Field>
         </>
       );
     case "image":
@@ -371,11 +377,9 @@ function BlockEditor({
         <>
           <Text label="Heading" value={block.heading} onChange={(v) => patch({ heading: v })} />
           {block.items.map((it, i) => (
-            <div key={i} className="card" style={{ padding: 10, marginBottom: 8 }}>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+            <Card key={it.id} size="sm"><CardHeader><CardTitle>
                 Feature {i + 1}
-              </div>
-              <input
+              </CardTitle></CardHeader><CardContent className="flex flex-col gap-2"><Input aria-label="Feature icon"
                 placeholder="Icon"
                 value={it.icon}
                 onChange={(e) => {
@@ -383,9 +387,8 @@ function BlockEditor({
                   items[i] = { ...it, icon: e.target.value };
                   patch({ items });
                 }}
-                style={{ marginBottom: 6 }}
               />
-              <input
+              <Input aria-label="Title"
                 placeholder="Title"
                 value={it.title}
                 onChange={(e) => {
@@ -393,9 +396,8 @@ function BlockEditor({
                   items[i] = { ...it, title: e.target.value };
                   patch({ items });
                 }}
-                style={{ marginBottom: 6 }}
               />
-              <textarea
+              <Textarea aria-label="Body"
                 rows={2}
                 placeholder="Body"
                 value={it.body}
@@ -405,25 +407,22 @@ function BlockEditor({
                   patch({ items });
                 }}
               />
-              <button
-                className="btn-sm btn-danger"
-                style={{ marginTop: 6 }}
+              <Button type="button" size="sm" variant="destructive"
                 onClick={() => patch({ items: block.items.filter((_, j) => j !== i) })}
               >
                 Remove
-              </button>
-            </div>
+              </Button></CardContent>
+            </Card>
           ))}
-          <button
-            className="btn btn-sm"
+          <Button type="button" size="sm" variant="outline"
             onClick={() =>
               patch({
-                items: [...block.items, { icon: "★", title: "New feature", body: "Describe it." }],
+                items: [...block.items, { id: crypto.randomUUID(), icon: "sparkles", title: "New feature", body: "Describe it." }],
               })
             }
           >
             + Add feature
-          </button>
+          </Button>
         </>
       );
     case "form":
@@ -436,29 +435,21 @@ function BlockEditor({
             value={block.subheading}
             onChange={(v) => patch({ subheading: v })}
           />
-          <div className="field">
-            <label>Fields to collect</label>
+          <FieldSet><FieldLegend>Fields to collect</FieldLegend>
             {LEAD_FIELDS.map((f) => (
-              <label
-                key={f}
-                style={{ display: "flex", gap: 8, fontWeight: 400, textTransform: "capitalize" }}
-              >
-                <input
-                  type="checkbox"
-                  style={{ width: "auto" }}
+              <Field key={f} orientation="horizontal"><Checkbox id={`builder-field-${f}`}
                   checked={block.fields.includes(f)}
-                  onChange={(e) =>
+                  onCheckedChange={(checked) =>
                     patch({
-                      fields: e.target.checked
+                      fields: checked
                         ? [...block.fields, f]
                         : block.fields.filter((x) => x !== f),
                     })
                   }
                 />
-                {f}
-              </label>
+                <FieldLabel htmlFor={`builder-field-${f}`} className="capitalize">{f}</FieldLabel></Field>
             ))}
-          </div>
+          </FieldSet>
           <Text
             label="Button text"
             value={block.buttonText}
@@ -467,24 +458,22 @@ function BlockEditor({
           <Text
             label="Success message"
             area
-            value={block.successMessage}
-            onChange={(v) => patch({ successMessage: v })}
+            value={block.successCopy}
+            onChange={(v) => patch({ successCopy: v })}
           />
           <Color label="Background" value={block.bg} onChange={(v) => patch({ bg: v })} />
         </>
       );
     case "spacer":
       return (
-        <div className="field">
-          <label>Height: {block.size}px</label>
-          <input
+        <Field><FieldLabel htmlFor="builder-spacer-height">Height: {block.size}px</FieldLabel>
+          <Input id="builder-spacer-height" aria-label="range"
             type="range"
             min={8}
             max={160}
             value={block.size}
             onChange={(e) => patch({ size: Number(e.target.value) })}
-          />
-        </div>
+          /></Field>
       );
   }
 }

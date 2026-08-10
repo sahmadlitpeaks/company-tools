@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
-import { useBrand } from "./BrandContext";
+import { Check, ChevronDown, Palette } from "lucide-react";
+import { resolveBrandTheme, useBrand } from "./BrandContext";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function Swatch({ color, src }: { color: string; src?: string | null }) {
   if (src) {
@@ -9,13 +18,13 @@ function Swatch({ color, src }: { color: string; src?: string | null }) {
       <img
         src={src}
         alt=""
-        className="h-5 w-5 flex-none rounded object-contain"
+        className="size-5 shrink-0 object-contain"
       />
     );
   }
   return (
     <span
-      className="h-4 w-4 flex-none rounded-full ring-1 ring-black/10"
+      className="size-4 shrink-0 ring-1 ring-foreground/20"
       style={{ background: color }}
     />
   );
@@ -23,65 +32,53 @@ function Swatch({ color, src }: { color: string; src?: string | null }) {
 
 export default function BrandSwitcher() {
   const { brands, active, setActive } = useBrand();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
 
   if (!active) return null;
+  const activeTheme = resolveBrandTheme(active);
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-white px-2.5 py-1.5 hover:bg-slate-50"
-        aria-label="Switch company"
-        title="Switch company"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 gap-2 px-2.5"
+            aria-label="Switch company"
+            title="Switch company"
+          />
+        }
       >
-        <Swatch color={active.primary_color} src={active.logo_url} />
-        <span className="hidden max-w-[140px] truncate text-sm font-semibold sm:block">
+        <Swatch color={activeTheme.accent} src={active.logo_url} />
+        <span className="hidden max-w-[140px] truncate text-sm font-medium sm:block">
           {active.name}
         </span>
-        <ChevronDown size={14} className="text-ink-muted" />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-[240px] overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-pop">
-          <div className="border-b border-[var(--border)] px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-            Company
-          </div>
-          <div className="max-h-[300px] overflow-y-auto">
-            {brands.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => {
-                  setActive(b.id);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center gap-2.5 border-0 px-3.5 py-2.5 text-left ${
-                  b.id === active.id ? "bg-brand-50" : "bg-white hover:bg-slate-50"
-                }`}
-              >
-                <Swatch color={b.primary_color} src={b.logo_url} />
-                <span className="flex-1 truncate font-medium">{b.name}</span>
-                {b.id === active.id && <span className="text-brand-600">✓</span>}
-              </button>
-            ))}
-          </div>
-          <Link
-            to="/branding"
-            onClick={() => setOpen(false)}
-            className="block border-t border-[var(--border)] px-3.5 py-2.5 text-sm font-medium hover:bg-slate-50 hover:no-underline"
+        <ChevronDown data-icon="inline-end" className="opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Company</DropdownMenuLabel>
+          {brands.map((brand) => {
+            const theme = resolveBrandTheme(brand);
+            return (
+              <DropdownMenuItem key={brand.id} onClick={() => setActive(brand.id)}>
+                <Swatch color={theme.accent} src={brand.logo_url} />
+                <span className="min-w-0 flex-1 truncate">{brand.name}</span>
+                {brand.id === active.id ? <Check className="text-foreground" /> : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            render={<Link to="/branding" aria-label="Brand Center" />}
           >
-            🎨 Brand Center
-          </Link>
-        </div>
-      )}
-    </div>
+            <Palette />
+            Brand Center
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

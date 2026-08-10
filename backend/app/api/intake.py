@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.crm import CrmLead
 from app.models.intake import (
@@ -194,7 +194,7 @@ async def _source_out(db: AsyncSession, s: IntakeSource) -> SourceOut:
 
 
 @router.get("/sources", response_model=list[SourceOut])
-async def list_sources(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def list_sources(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
     rows = (await db.execute(select(IntakeSource).order_by(IntakeSource.name))).scalars().all()
     return [await _source_out(db, s) for s in rows]
 
@@ -203,7 +203,7 @@ async def list_sources(db: AsyncSession = Depends(get_db), _: User = Depends(get
 async def create_source(
     payload: SourceCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_admin),
 ):
     if not payload.name.strip():
         raise HTTPException(status_code=422, detail="Name is required")
@@ -231,7 +231,7 @@ async def update_source(
     source_id: uuid.UUID,
     payload: SourceUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     s = await db.get(IntakeSource, source_id)
     if not s:
@@ -247,7 +247,7 @@ async def update_source(
 async def rotate_key(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     s = await db.get(IntakeSource, source_id)
     if not s:
@@ -262,7 +262,7 @@ async def rotate_key(
 async def rotate_signing_secret(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     """Generate (or clear) the HMAC signing secret. Returned only once here."""
     s = await db.get(IntakeSource, source_id)
@@ -278,7 +278,7 @@ async def rotate_signing_secret(
 async def clear_signing_secret(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     s = await db.get(IntakeSource, source_id)
     if s:
@@ -290,7 +290,7 @@ async def clear_signing_secret(
 async def delete_source(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_admin),
 ):
     s = await db.get(IntakeSource, source_id)
     if s:

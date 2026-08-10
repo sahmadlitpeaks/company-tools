@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
  *   npx playwright install   # one-time: download browsers
  *   npm run test:e2e
  *
- * Dev-login must be enabled (ENVIRONMENT=development) for the auth flow specs.
+ * E2E_EMAIL and E2E_PASSWORD must identify an active local account.
  */
 export default defineConfig({
   testDir: "./e2e",

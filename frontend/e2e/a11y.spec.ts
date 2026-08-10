@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { login } from "./auth";
 
 test("login page has no serious accessibility violations", async ({ page }) => {
   await page.goto("/login");
@@ -13,10 +14,8 @@ test("login page has no serious accessibility violations", async ({ page }) => {
 });
 
 test("dashboard has no serious accessibility violations", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByPlaceholder("you@agholding.net").fill("a11y@agholding.net");
-  await page.getByRole("button", { name: "Go" }).click();
-  await expect(page.getByText(/Welcome/)).toBeVisible();
+  await login(page);
+  await expect(page.getByText(/Welcome back/)).toBeVisible();
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();

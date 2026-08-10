@@ -85,7 +85,7 @@ async def test_modules_catalogue(client, auth):
 async def test_appearance_default_and_admin_update(client, auth):
     # Default appearance is readable by any signed-in user.
     d = (await client.get("/api/settings/appearance", headers=auth)).json()
-    assert d["mode"] == "light" and d["accent"] == "#0b5cab"
+    assert d["mode"] == "light" and d["accent"] == "#facc15"
 
     # Admin can set the org default.
     r = await client.put(

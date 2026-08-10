@@ -1,13 +1,7 @@
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
-const TOKEN_KEY = "ag_platform_token";
-
-export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
-};
+// Empty = same-origin relative URLs. In Vite dev, the proxy forwards /api etc.
+// to the backend. Do not default to http://localhost:8000 — that breaks cookies
+// across ports and bypasses the dev proxy.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
   status: number;
@@ -23,15 +17,13 @@ type Options = {
   /** Send a FormData body (file uploads) instead of JSON. */
   form?: FormData;
   auth?: boolean;
+  signal?: AbortSignal;
 };
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
-  const { method = "GET", body, form, auth = true } = opts;
+  const { method = "GET", body, form, auth = true, signal } = opts;
+  void auth;
   const headers: Record<string, string> = {};
-  if (auth) {
-    const token = tokenStore.get();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
   let payload: BodyInit | undefined;
   if (form) {
     payload = form;
@@ -44,11 +36,10 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     method,
     headers,
     body: payload,
+    credentials: "include",
+    signal,
   });
 
-  if (res.status === 401 && auth) {
-    tokenStore.clear();
-  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -74,13 +65,12 @@ export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
  * Bearer token and would 401.
  */
 export async function apiBlob(path: string, auth = true): Promise<Blob> {
+  void auth;
   const headers: Record<string, string> = {};
-  if (auth) {
-    const token = tokenStore.get();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
-  const res = await fetch(`${API_BASE_URL}${path}`, { headers });
-  if (res.status === 401 && auth) tokenStore.clear();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) {
     let detail = res.statusText;
     try {

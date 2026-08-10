@@ -3,17 +3,18 @@
 ## Overview
 
 ```
-┌────────────┐     OIDC (auth code)      ┌──────────────────┐
-│  Azure     │◀──────────────────────────│  FastAPI backend │
-│  Entra ID  │──────────────────────────▶│  (this app)      │
-└────────────┘   id_token + Graph token  └──────────────────┘
-                                              │  ▲
-                       app JWT (8h)           │  │ SQLAlchemy (async)
-                                              ▼  │
-┌────────────┐   Bearer app JWT          ┌──────────────────┐
-│  React SPA │◀─────────────────────────▶│   PostgreSQL     │
-│  (Vite)    │      /api/*               └──────────────────┘
-└────────────┘
+┌────────────┐       OIDC        ┌──────────────────┐   SQLAlchemy   ┌────────────┐
+│ Azure      │◀─────────────────▶│ FastAPI backend  │◀─────────────▶│ PostgreSQL │
+│ Entra ID   │                   │                  │   (async)      │            │
+└────────────┘                   └─────────▲────────┘                └────────────┘
+                                          │
+                              same-origin /api/*
+                              HttpOnly session cookie
+                                          │
+                                ┌─────────▼────────┐
+                                │ React SPA       │
+                                │ Vite or nginx   │
+                                └──────────────────┘
 ```
 
 ## Authentication flow
@@ -22,13 +23,29 @@
 2. Backend redirects to Azure Entra ID (Authlib OIDC).
 3. Azure redirects back to `GET /api/auth/callback` with an auth code.
 4. Backend exchanges the code, calls Microsoft Graph `/me`, **upserts** the
-   user into PostgreSQL, and mints a short-lived app JWT (`HS256`).
-5. Backend redirects to `FRONTEND_BASE_URL/auth/callback#token=...`.
-6. SPA stores the token and sends it as `Authorization: Bearer` on every
-   `/api/*` call. `get_current_user` validates it and loads the `User` row.
+   user into PostgreSQL, and mints a short-lived signed application session.
+5. Backend sets the session in the HttpOnly, SameSite=Lax
+   `ag_platform_session` cookie (`Secure` in production) and redirects to
+   `FRONTEND_BASE_URL/auth/callback`.
+6. The SPA stores no credential in browser storage. Its same-origin `/api/*`
+   requests use `credentials: "include"`; `get_current_user` validates the
+   cookie and loads the `User` row. A Bearer credential remains supported for
+   non-browser API clients.
 
-`POST /api/auth/dev-login?email=...` is a development-only shortcut that
-bypasses Azure (returns 404 when `ENVIRONMENT != development`).
+Local password login uses the same application session cookie. In development,
+Vite proxies `/api`, media, and redirect routes to FastAPI so the browser keeps
+one cookie origin. Production nginx provides the equivalent same-origin proxy.
+
+Authlib stores temporary OIDC authorization state in Starlette's signed,
+HttpOnly, SameSite=Lax `session` cookie. That cookie is also `Secure` in
+production. Production must therefore be browser-facing HTTPS, even when a
+proxy terminates TLS in front of FastAPI.
+
+Module-scoped feature routers are protected server-side by the catalogue in
+`backend/app/core/permissions.py`; other sensitive routes enforce role or
+ownership checks in their handlers. The frontend uses matching module keys for
+module-scoped route and navigation visibility, but hidden UI is never the
+authorization boundary.
 
 ## Modules & key endpoints
 
@@ -109,13 +126,18 @@ Uploaded files are written under `MEDIA_ROOT` and served at `MEDIA_URL`
 ## Migrations
 
 Schema changes are managed by Alembic (`backend/alembic`). Generate a revision
-with `alembic revision --autogenerate -m "..."` and apply with
-`alembic upgrade head`. `scripts/init_db.py` is a no-Alembic shortcut for quick
-local spin-ups and seeds the default signature template.
+with `python -m alembic revision --autogenerate -m "..."` and apply with
+`python -m alembic upgrade head`. Production Docker runs `alembic upgrade head`
+before FastAPI starts. The repository must therefore have exactly one migration
+head; check with `python -m alembic heads` after adding or rebasing migrations.
+When parallel work creates multiple heads, add an explicit merge revision.
 
-## Roadmap / nice-to-haves
+`scripts/init_db.py` is a no-Alembic shortcut for disposable development only.
+It is not a production migration path.
 
-- Role-based access beyond the `is_admin` flag (per-module permissions).
-- Background directory sync (Celery/APScheduler) instead of on-demand.
+## Current Extension Points
+
 - Object-storage backend (S3/Azure Blob) for uploads.
-- Audit log for admin actions.
+- Additional background workers if lifespan scheduler jobs outgrow one process.
+- More domain-specific audit coverage on top of the existing activity/audit
+  records.

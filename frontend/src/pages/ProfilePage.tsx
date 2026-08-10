@@ -1,3 +1,13 @@
+import { Badge, type badgeVariants } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import type { VariantProps } from "class-variance-authority";
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -11,6 +21,7 @@ import {
   Download,
   FileText,
   KeyRound,
+  LockKeyhole,
   ListChecks,
   Mail,
   MapPin,
@@ -19,12 +30,15 @@ import {
   Phone,
   Sliders,
   Smartphone,
+  ShieldX,
   Target,
   Trash2,
   UserRound,
   Users,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
+import { numericInput } from "../utils/numbers";
 import { api, downloadFile } from "../api/client";
 import type {
   CompensationRecord,
@@ -43,6 +57,7 @@ import type {
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, Modal, useToast } from "../components/ui";
+import { Button } from "@/components/ui/button";
 
 const ROLES = ["member", "manager", "admin"];
 const USER_STATUSES = ["active", "invited", "suspended", "offboarding", "departed"];
@@ -52,36 +67,40 @@ const EVENT_TYPES = [
   "contract", "compensation", "leave", "note", "terminated",
 ];
 
-const STATUS_BADGE: Record<string, string> = {
-  active: "green",
-  available: "green",
-  assigned: "blue",
-  revoked: "red",
-  disabled: "red",
-  pending: "amber",
-  maintenance: "amber",
-  suspended: "amber",
+const STATUS_BADGE: Record<string, VariantProps<typeof badgeVariants>["variant"]> = {
+  active: "success",
+  available: "success",
+  assigned: "secondary",
+  revoked: "destructive",
+  disabled: "destructive",
+  pending: "warning",
+  maintenance: "warning",
+  suspended: "warning",
 };
 
 function badge(s?: string | null) {
-  return s ? `badge ${STATUS_BADGE[s] ?? ""}` : "badge";
+  return s ? STATUS_BADGE[s] ?? "secondary" : "secondary";
 }
 
-const TABS: { key: string; label: string; sensitive?: boolean }[] = [
-  { key: "personal", label: "Personal" },
-  { key: "job", label: "Job" },
-  { key: "comp", label: "Compensation", sensitive: true },
-  { key: "documents", label: "Documents", sensitive: true },
-  { key: "performance", label: "Performance" },
-  { key: "assets", label: "Assets & Access" },
-  { key: "history", label: "Change History", sensitive: true },
+const TABS: { key: string; label: string; description: string; icon: LucideIcon; sensitive?: boolean }[] = [
+  { key: "personal", label: "Personal", description: "Contact details, personal information and custom fields.", icon: UserRound },
+  { key: "job", label: "Job", description: "Employment details, reporting lines and employment history.", icon: Briefcase },
+  { key: "comp", label: "Compensation", description: "Current compensation, pay records and total rewards.", icon: Banknote, sensitive: true },
+  { key: "documents", label: "Documents", description: "Employment documents, downloads and signature requests.", icon: FileText, sensitive: true },
+  { key: "performance", label: "Performance", description: "Goals, progress and due dates.", icon: Target },
+  { key: "assets", label: "Assets & Access", description: "Assigned equipment, subscriptions, access and open work.", icon: Boxes },
+  { key: "history", label: "Change History", description: "An audit trail of changes made to this profile.", icon: CalendarClock, sensitive: true },
 ];
 
 export default function ProfilePage() {
   const { id } = useParams();
   const { user: viewer } = useAuth();
-  const viewerId = viewer?.id;
   const path = id ? `/api/profiles/${id}` : "/api/profiles/me";
+
+  return <ProfileContent key={path} path={path} viewerId={viewer?.id} />;
+}
+
+function ProfileContent({ path, viewerId }: { path: string; viewerId?: string }) {
   const { data: p, loading, error, reload } = useFetch<Profile>(path);
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState("personal");
@@ -94,20 +113,18 @@ export default function ProfilePage() {
     if (sessionExpired) {
       return (
         <Empty
-          icon="🔒"
+          icon={<LockKeyhole />}
           message="Your session has expired"
           hint="Please sign in again to continue."
           action={
-            <Link to="/login" className="btn-primary inline-block">
-              Go to sign in
-            </Link>
+            <Button render={<Link to="/login" />}>Go to sign in</Button>
           }
         />
       );
     }
     return (
       <Empty
-        icon="🚫"
+        icon={<ShieldX />}
         message={error ? "You don't have access to this profile" : "Profile not found"}
         hint={
           error
@@ -119,10 +136,12 @@ export default function ProfilePage() {
   }
 
   const tabs = TABS.filter((t) => !t.sensitive || p.can_see_sensitive);
+  const activeTab = tabs.find((item) => item.key === tab) ?? tabs[0];
+  const activeTabKey = activeTab.key;
   const canEditGoals = p.can_manage || p.id === viewerId;
 
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       {editing && (
         <EditProfileModal
           profile={p}
@@ -131,69 +150,71 @@ export default function ProfilePage() {
         />
       )}
 
-      {/* Hero header */}
-      <div className="overflow-hidden rounded-2xl shadow-sm">
-        <div
-          className="flex flex-wrap items-center gap-4 px-6 py-5 text-white"
-          style={{ background: "linear-gradient(120deg, var(--brand-600), var(--brand-800))" }}
-        >
-          <Avatar name={p.name} email={p.email} url={p.avatar_url} />
-          <div className="min-w-0">
-            <h1 className="m-0 text-2xl font-bold leading-tight">{p.name ?? p.email}</h1>
-            <div className="text-white/85">
-              {p.job_title ?? "—"}
-              {(p.department_name || p.hr_department) ? ` · ${p.department_name ?? p.hr_department}` : ""}
+      <header className="flex flex-col gap-5 border-b pb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <ProfileAvatar name={p.name} email={p.email} url={p.avatar_url} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="m-0 truncate text-2xl font-semibold tracking-tight">{p.name ?? p.email}</h1>
+              <Badge variant={badge(p.status)}>{p.status}</Badge>
             </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {p.job_title ?? "No job title"}
+              {(p.department_name || p.hr_department) ? ` · ${p.department_name ?? p.hr_department}` : ""}
+            </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium capitalize">{p.status}</span>
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium">{p.is_admin ? "admin" : p.role}</span>
-              {p.employment_type && (
-                <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-medium capitalize">
-                  {p.employment_type.replace("_", " ")}
-                </span>
-              )}
+              <Badge variant="secondary" className="capitalize">{p.is_admin ? "admin" : p.role}</Badge>
+              {p.employment_type ? (
+                <Badge variant="secondary" className="capitalize">{p.employment_type.replace("_", " ")}</Badge>
+              ) : null}
             </div>
           </div>
-          {p.can_manage && (
-            <button
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/25"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil size={15} /> Edit
-            </button>
-          )}
+          {p.can_manage ? (
+            <Button type="button" variant="outline" className="self-start sm:self-center" onClick={() => setEditing(true)}>
+              <Pencil data-icon="inline-start" strokeWidth={1.5} /> Edit profile
+            </Button>
+          ) : null}
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-1.5 px-6 py-3 text-sm" style={{ background: "var(--brand-50)" }}>
-          <Fact icon={<Building2 size={14} />} value={p.department_name ?? p.hr_department} />
-          {p.manager_id && (
-            <Fact icon={<Users size={14} />} value={<Link to={`/people/${p.manager_id}`} className="text-brand-700 hover:underline">{p.manager_name}</Link>} />
-          )}
-          <Fact icon={<MapPin size={14} />} value={p.office_location} />
-          <Fact icon={<CalendarDays size={14} />} value={p.hire_date ? `Joined ${p.hire_date}` : null} />
-          <Fact icon={<Mail size={14} />} value={p.email} />
-          <Fact icon={<Phone size={14} />} value={p.mobile_phone} />
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <Fact icon={<Building2 />} value={p.department_name ?? p.hr_department} />
+          {p.manager_id ? (
+            <Fact icon={<Users />} value={<Link to={`/people/${p.manager_id}`} className="font-medium hover:underline">{p.manager_name}</Link>} />
+          ) : null}
+          <Fact icon={<MapPin />} value={p.office_location} />
+          <Fact icon={<CalendarDays />} value={p.hire_date ? `Joined ${p.hire_date}` : null} />
+          <Fact icon={<Mail />} value={p.email} />
+          <Fact icon={<Phone />} value={p.mobile_phone} />
         </div>
-      </div>
+      </header>
 
-      {/* Tabs */}
-      <div className="mt-4 flex gap-1 overflow-x-auto border-b border-slate-200">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition ${
-              tab === t.key
-                ? "border-brand-600 text-brand-700"
-                : "border-transparent text-ink-muted hover:text-ink"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col gap-8 lg:flex-row">
+        <aside className="lg:w-56 lg:shrink-0">
+          <nav aria-label="Profile sections" className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-col">
+            {tabs.map((item) => (
+              <Button
+                key={item.key}
+                type="button"
+                variant="ghost"
+                onClick={() => setTab(item.key)}
+                className={activeTabKey === item.key
+                  ? "h-9 w-full justify-start bg-foreground px-3 text-background hover:bg-foreground hover:text-background"
+                  : "h-9 w-full justify-start px-3 text-foreground/75 hover:text-foreground"}
+                aria-current={activeTabKey === item.key ? "page" : undefined}
+              >
+                <item.icon data-icon="inline-start" strokeWidth={1.5} />
+                <span className="truncate">{item.label}</span>
+              </Button>
+            ))}
+          </nav>
+        </aside>
 
-      <div className="mt-4 space-y-4">
-        {tab === "personal" && (
+        <main className="min-w-0 flex-1">
+          <div className="mb-5">
+            <h2 className="m-0 text-lg font-semibold">{activeTab.label}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{activeTab.description}</p>
+          </div>
+          <div className="flex flex-col gap-4">
+        {activeTabKey === "personal" && (
           <>
             <div className="grid gap-4 md:grid-cols-2">
               <InfoCard icon={<UserRound size={16} />} title="Contact">
@@ -218,7 +239,7 @@ export default function ProfilePage() {
           </>
         )}
 
-        {tab === "job" && (
+        {activeTabKey === "job" && (
           <>
             <div className="grid gap-4 md:grid-cols-2">
               <InfoCard icon={<Briefcase size={16} />} title="Employment">
@@ -232,18 +253,18 @@ export default function ProfilePage() {
               <InfoCard icon={<Users size={16} />} title="Reporting">
                 {p.manager_id ? (
                   <div className="flex justify-between gap-2 text-sm">
-                    <span className="muted">Manager</span>
-                    <Link to={`/people/${p.manager_id}`} className="text-brand-600 hover:underline">{p.manager_name}</Link>
+                    <span className="text-muted-foreground">Manager</span>
+                    <Link to={`/people/${p.manager_id}`} className="font-medium hover:underline">{p.manager_name}</Link>
                   </div>
                 ) : <Row label="Manager" value={null} />}
                 <div className="mt-1">
-                  <div className="muted mb-1 text-xs">Direct reports ({p.direct_reports.length})</div>
+                  <div className="mb-1 text-xs text-muted-foreground">Direct reports ({p.direct_reports.length})</div>
                   {p.direct_reports.length === 0 ? (
-                    <p className="muted text-sm">None.</p>
+                    <p className="text-sm text-muted-foreground">None.</p>
                   ) : (
                     p.direct_reports.map((r) => (
-                      <Link key={r.id} to={`/people/${r.id}`} className="block text-sm text-brand-600 hover:underline">
-                        {r.label} {r.sub && <span className="muted text-xs">· {r.sub}</span>}
+                      <Link key={r.id} to={`/people/${r.id}`} className="block text-sm font-medium hover:underline">
+                        {r.label} {r.sub && <span className="text-xs text-muted-foreground">· {r.sub}</span>}
                       </Link>
                     ))
                   )}
@@ -256,99 +277,105 @@ export default function ProfilePage() {
           </>
         )}
 
-        {tab === "comp" && p.can_see_sensitive && (
+        {activeTabKey === "comp" && p.can_see_sensitive && (
           <CompensationSection userId={p.id} canManage={p.can_manage} />
         )}
 
-        {tab === "history" && p.can_see_sensitive && <FieldHistorySection userId={p.id} />}
+        {activeTabKey === "history" && p.can_see_sensitive && <FieldHistorySection userId={p.id} />}
 
-        {tab === "documents" && p.can_see_sensitive && (
+        {activeTabKey === "documents" && p.can_see_sensitive && (
           <DocumentsSection userId={p.id} canManage={p.can_manage} isSelf={p.id === viewerId} />
         )}
 
-        {tab === "performance" && (
+        {activeTabKey === "performance" && (
           <GoalsSection userId={p.id} canEdit={canEditGoals} />
         )}
 
-        {tab === "assets" && (
+        {activeTabKey === "assets" && (
           <>
             <Section icon={<Wallet size={16} />} title="Subscriptions" count={p.subscriptions.length}>
               {p.subscriptions.length === 0 ? <Muted>No subscriptions.</Muted> : p.subscriptions.map((s) => (
                 <Item key={s.subscription_id + s.source} label={s.name} sub={s.vendor}
-                  right={<span className="badge">{s.source === "seat" ? (s.seat_status ?? "seat") : s.source}</span>} />
+                  right={<Badge variant="secondary">{s.source === "seat" ? (s.seat_status ?? "seat") : s.source}</Badge>} />
               ))}
             </Section>
             <div className="grid gap-4 md:grid-cols-2">
               <Section icon={<Boxes size={16} />} title="Assets" count={p.assets.length}>
                 {p.assets.length === 0 ? <Muted>None assigned.</Muted> : p.assets.map((a) => (
-                  <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
+                  <Item key={a.id} label={a.label} sub={a.sub} right={<Badge variant={badge(a.status)}>{a.status}</Badge>} />
                 ))}
               </Section>
               <Section icon={<Smartphone size={16} />} title="Phone lines" count={p.phones.length}>
                 {p.phones.length === 0 ? <Muted>None assigned.</Muted> : p.phones.map((a) => (
-                  <Item key={a.id} label={a.label} sub={a.sub} right={<span className={badge(a.status)}>{a.status}</span>} />
+                  <Item key={a.id} label={a.label} sub={a.sub} right={<Badge variant={badge(a.status)}>{a.status}</Badge>} />
                 ))}
               </Section>
             </div>
             <Section icon={<KeyRound size={16} />} title="Access grants" count={p.access_grants.length}>
               {p.access_grants.length === 0 ? <Muted>No tracked accounts.</Muted> : p.access_grants.map((g) => (
-                <Item key={g.id} label={g.label} sub={g.sub} right={<span className={badge(g.status)}>{g.status}</span>} />
+                <Item key={g.id} label={g.label} sub={g.sub} right={<Badge variant={badge(g.status)}>{g.status}</Badge>} />
               ))}
             </Section>
             <Section icon={<CheckSquare size={16} />} title="Open tasks" count={p.open_tasks.length}>
               {p.open_tasks.length === 0 ? <Muted>No open tasks.</Muted> : p.open_tasks.map((t) => (
-                <Item key={t.id} label={t.title} sub={t.due_date ? `due ${t.due_date}` : null} right={<span className="badge">{t.status}</span>} />
+                <Item key={t.id} label={t.title} sub={t.due_date ? `due ${t.due_date}` : null} right={<Badge variant="secondary">{t.status}</Badge>} />
               ))}
             </Section>
             <Section icon={<KeyRound size={16} />} title="Module access" count={p.modules.length}>
               <div className="flex flex-wrap gap-1 py-1">
-                {p.modules.map((m) => <span key={m} className="badge">{m}</span>)}
+                {p.modules.map((m) => <Badge key={m} variant="secondary">{m}</Badge>)}
               </div>
             </Section>
             {p.journeys.length > 0 && (
               <Section icon={<ListChecks size={16} />} title="Onboarding / Offboarding" count={p.journeys.length}>
                 {p.journeys.map((j) => (
-                  <Link key={j.id} to="/people-ops" className="block">
+                  <Link
+                    key={j.id}
+                    to="/people-ops"
+                    className="block"
+                    aria-label={j.kind === "offboarding" ? "Offboarding journey" : "Onboarding journey"}
+                    title={j.kind === "offboarding" ? "Offboarding" : "Onboarding"}
+                  >
                     <Item label={j.kind === "offboarding" ? "Offboarding" : "Onboarding"}
                       sub={`${j.done_tasks}/${j.total_tasks} steps`}
-                      right={<span className={badge(j.status === "completed" ? "active" : "pending")}>{j.status}</span>} />
+                      right={<Badge variant={badge(j.status === "completed" ? "active" : "pending")}>{j.status}</Badge>} />
                   </Link>
                 ))}
               </Section>
             )}
           </>
         )}
+          </div>
+        </main>
       </div>
     </div>
   );
 }
 
-function Avatar({ name, email, url }: { name?: string | null; email?: string | null; url?: string | null }) {
+function ProfileAvatar({ name, email, url }: { name?: string | null; email?: string | null; url?: string | null }) {
   const src = (name || email || "?").trim();
   const parts = src.split(/\s+/);
   const init = (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)).toUpperCase();
   return (
-    <span className="grid h-20 w-20 flex-none place-items-center overflow-hidden rounded-full bg-white/20 text-2xl font-bold text-white ring-4 ring-white/25">
-      {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : init}
-    </span>
+    <Avatar className="size-20">
+      {url && <AvatarImage src={url} alt="" />}
+      <AvatarFallback className="bg-primary/15 text-xl font-semibold text-foreground">{init}</AvatarFallback>
+    </Avatar>
   );
 }
 
 function Fact({ icon, value }: { icon: React.ReactNode; value: React.ReactNode }) {
   if (!value) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-ink-muted">
-      <span className="text-brand-600">{icon}</span> {value}
+    <span className="inline-flex items-center gap-1.5 text-muted-foreground [&_svg]:size-3.5 [&_svg]:stroke-[1.5]">
+      <span aria-hidden="true">{icon}</span> {value}
     </span>
   );
 }
 
 function InfoCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="card">
-      <h3 className="mt-0 mb-2 flex items-center gap-2 text-base">{icon} {title}</h3>
-      <div className="space-y-1 text-sm">{children}</div>
-    </div>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2 [&_svg]:stroke-[1.5]">{icon} {title}</CardTitle></CardHeader><CardContent className="flex flex-col gap-1 text-sm">{children}</CardContent></Card>
   );
 }
 
@@ -365,10 +392,12 @@ function GoalsSection({ userId, canEdit }: { userId: string; canEdit: boolean })
   const goals = useFetch<PerformanceGoal[]>(`/api/performance/goals/by-user/${userId}`);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ title: "", due_date: "", description: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) return;
+    setIsSubmitting(true);
     try {
       await api(`/api/performance/goals/by-user/${userId}`, {
         method: "POST",
@@ -379,6 +408,8 @@ function GoalsSection({ userId, canEdit }: { userId: string; canEdit: boolean })
       goals.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function patch(id: string, body: Record<string, unknown>) {
@@ -394,74 +425,64 @@ function GoalsSection({ userId, canEdit }: { userId: string; canEdit: boolean })
   if (!canEdit && (goals.data?.length ?? 0) === 0) return null;
 
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 flex items-center gap-2 text-base"><Target size={16} /> Goals</h3>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Target /> Goals</CardTitle>
         {canEdit && (
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+          <CardAction>
+          <Button aria-label="Adding" type="button" size="sm" variant="outline" onClick={() => setAdding((v) => !v)}>
             {adding ? "Cancel" : "+ Goal"}
-          </button>
+          </Button>
+          </CardAction>
         )}
-      </div>
+      </CardHeader><CardContent>
       {adding && (
-        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
-          <div className="field"><label>Goal</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Ship the HR module" /></div>
-          <div className="row">
-            <div className="field"><label>Due</label><input type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} /></div>
-          </div>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add goal</button>
-        </form>
+        <form onSubmit={add} className="mb-3 flex flex-col gap-4 border border-border p-2"><FieldGroup><Field><FieldLabel htmlFor="profile-goal">Goal</FieldLabel><Input id="profile-goal" aria-label="Ship the HR module" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Ship the HR module" /></Field><Field><FieldLabel htmlFor="profile-goal-due">Due</FieldLabel><Input id="profile-goal-due" type="date" value={form.due_date} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} /></Field></FieldGroup><Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Adding…" : "Add goal"}
+          </Button></form>
       )}
       {(goals.data?.length ?? 0) === 0 ? (
         <Muted>No goals set.</Muted>
       ) : (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {goals.data!.map((g) => (
-            <div key={g.id} className="rounded-lg border border-slate-100 p-2">
-              <div className="flex items-center justify-between gap-2">
+            <div key={g.id} className="border border-border p-2">
+              <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                 <span className="font-medium">{g.title}</span>
-                <div className="flex flex-none items-center gap-2">
+                <div className="flex w-full flex-none items-center gap-2 sm:w-auto">
                   {canEdit ? (
-                    <select
-                      className="!w-auto !py-1 text-xs"
-                      value={g.status}
-                      onChange={(e) => patch(g.id, { status: e.target.value })}
-                    >
-                      {GOAL_STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
-                    </select>
+                    <Select items={GOAL_STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))} value={g.status} onValueChange={(value) => value !== null && patch(g.id, { status: value })}>
+                      <SelectTrigger id={`goal-status-${g.id}`} aria-label="Status" className="w-full" size="sm"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{GOAL_STATUSES.map((s) => <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent>
+                    </Select>
                   ) : (
-                    <span className="badge">{g.status.replace("_", " ")}</span>
+                    <Badge variant="secondary">{g.status.replace("_", " ")}</Badge>
                   )}
                   {canEdit && (
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(g.id)}>
-                      <Trash2 size={13} />
-                    </button>
+                    <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(g.id)}><Trash2 /></Button>
                   )}
                 </div>
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <div className="h-1.5 flex-1 rounded-full bg-slate-100">
-                  <div className="h-1.5 rounded-full bg-brand-500" style={{ width: `${g.progress}%` }} />
+                <div className="h-1.5 flex-1 bg-muted">
+                  <div className="h-1.5 bg-foreground/60" style={{ width: `${g.progress}%` }} />
                 </div>
                 {canEdit ? (
-                  <input
+                  <Input aria-label="Numeric value"
                     type="number"
                     min={0}
                     max={100}
                     defaultValue={g.progress}
-                    className="!w-16 !py-0.5 text-xs"
-                    onBlur={(e) => { const v = Number(e.target.value); if (v !== g.progress) patch(g.id, { progress: v }); }}
+                    className="w-16"
+                    onBlur={(e) => { const v = numericInput(e.target.value, g.progress); if (v !== g.progress) patch(g.id, { progress: v }); }}
                   />
                 ) : (
-                  <span className="muted text-xs">{g.progress}%</span>
+                  <span className="text-xs text-muted-foreground">{g.progress}%</span>
                 )}
               </div>
-              {g.due_date && <div className="muted mt-1 text-xs">Due {g.due_date}</div>}
+              {g.due_date && <div className="mt-1 text-xs text-muted-foreground">Due {g.due_date}</div>}
             </div>
           ))}
         </div>
-      )}
-    </div>
+      )}</CardContent>
+    </Card>
   );
 }
 
@@ -478,12 +499,12 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
   const rewards = useFetch<TotalRewards>(`/api/compensation/total-rewards/${userId}`);
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ record_type: "salary", amount: "", currency: "USD", pay_period: "annual", effective_date: "", note: "" });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!f.amount) return;
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/compensation/by-user/${userId}`, {
         method: "POST",
@@ -495,8 +516,10 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
       records.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
-    setBusy(false);
+
   }
   async function del(id: string) {
     await api(`/api/compensation/${id}`, { method: "DELETE" });
@@ -506,23 +529,23 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
 
   const c = current.data;
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 flex items-center gap-2 text-base"><Banknote size={16} /> Compensation</h3>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Banknote /> Compensation</CardTitle>
         {canManage && (
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+          <CardAction>
+          <Button aria-label="Adding" type="button" size="sm" variant="outline" onClick={() => setAdding((v) => !v)}>
             {adding ? "Cancel" : "+ Record"}
-          </button>
+          </Button>
+          </CardAction>
         )}
-      </div>
+      </CardHeader><CardContent>
 
       {c?.amount ? (
         <div className="mb-2">
           <div className="flex items-end gap-2">
             <span className="text-2xl font-bold">{money(c.amount, c.currency)}</span>
-            <span className="muted mb-0.5 text-sm">/ {c.pay_period}</span>
+            <span className="mb-0.5 text-sm text-muted-foreground">/ {c.pay_period}</span>
           </div>
-          <div className="muted text-xs">
+          <div className="text-xs text-muted-foreground">
             since {c.effective_date}
             {c.pay_period !== "annual" && c.annualised ? ` · ${money(c.annualised, c.currency)}/yr` : ""}
             {c.band_name ? ` · ${c.band_name}` : ""}
@@ -533,44 +556,20 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
       )}
 
       {adding && (
-        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
-          <div className="row">
-            <div className="field">
-              <label>Type</label>
-              <select value={f.record_type} onChange={(e) => setF((p) => ({ ...p, record_type: e.target.value }))}>
-                {COMP_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Amount</label><input type="number" step="0.01" value={f.amount} onChange={(e) => setF((p) => ({ ...p, amount: e.target.value }))} /></div>
-            <div className="field" style={{ maxWidth: 80 }}><label>Currency</label><input value={f.currency} onChange={(e) => setF((p) => ({ ...p, currency: e.target.value.toUpperCase() }))} /></div>
-          </div>
-          <div className="row">
-            <div className="field">
-              <label>Period</label>
-              <select value={f.pay_period} onChange={(e) => setF((p) => ({ ...p, pay_period: e.target.value }))}>
-                {PAY_PERIODS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Effective</label><input type="date" value={f.effective_date} onChange={(e) => setF((p) => ({ ...p, effective_date: e.target.value }))} /></div>
-          </div>
-          <div className="field"><label>Note</label><input value={f.note} onChange={(e) => setF((p) => ({ ...p, note: e.target.value }))} /></div>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-        </form>
+        <form onSubmit={add} className="mb-3 flex flex-col gap-4 border border-border p-2"><FieldGroup><div className="grid gap-4 sm:grid-cols-[1fr_1fr_80px]"><Field><FieldLabel htmlFor="comp-type">Type</FieldLabel><Select items={COMP_TYPES.map((t) => ({ value: t, label: t }))} value={f.record_type} onValueChange={(value) => setF((p) => ({ ...p, record_type: value ?? "" }))}><SelectTrigger id="comp-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{COMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="comp-amount">Amount</FieldLabel><Input id="comp-amount" type="number" step="0.01" value={f.amount} onChange={(e) => setF((p) => ({ ...p, amount: e.target.value }))} /></Field><Field><FieldLabel htmlFor="comp-currency">Currency</FieldLabel><Input id="comp-currency" value={f.currency} onChange={(e) => setF((p) => ({ ...p, currency: e.target.value.toUpperCase() }))} /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="comp-period">Period</FieldLabel><Select items={PAY_PERIODS.map((t) => ({ value: t, label: t }))} value={f.pay_period} onValueChange={(value) => setF((p) => ({ ...p, pay_period: value ?? "" }))}><SelectTrigger id="comp-period" aria-label="Period" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{PAY_PERIODS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="comp-effective">Effective</FieldLabel><Input id="comp-effective" type="date" value={f.effective_date} onChange={(e) => setF((p) => ({ ...p, effective_date: e.target.value }))} /></Field></div><Field><FieldLabel htmlFor="comp-note">Note</FieldLabel><Input id="comp-note" value={f.note} onChange={(e) => setF((p) => ({ ...p, note: e.target.value }))} /></Field></FieldGroup><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving…" : "Save"}</Button></form>
       )}
 
       {(records.data?.length ?? 0) > 0 && (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-border">
           {records.data!.map((r) => (
             <div key={r.id} className="flex items-center justify-between py-1.5 text-sm">
               <div>
-                <span className="badge mr-1">{r.record_type}</span>
+                <Badge variant="secondary" className="mr-1">{r.record_type}</Badge>
                 <span className="font-medium">{money(r.amount, r.currency)}</span>
-                <span className="muted"> / {r.pay_period} · {r.effective_date}</span>
+                <span className="text-muted-foreground"> / {r.pay_period} · {r.effective_date}</span>
               </div>
               {canManage && (
-                <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(r.id)}>
-                  <Trash2 size={13} />
-                </button>
+                <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(r.id)}><Trash2 /></Button>
               )}
             </div>
           ))}
@@ -578,22 +577,22 @@ function CompensationSection({ userId, canManage }: { userId: string; canManage:
       )}
 
       {rewards.data && Number(rewards.data.total_annual) > 0 && (
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="spread mb-1">
+        <div className="mt-3 border border-border bg-muted p-3">
+          <div className="mb-1 flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center">
             <span className="text-sm font-semibold">Total rewards (annual)</span>
             <span className="text-lg font-bold">{money(String(rewards.data.total_annual), rewards.data.currency)}</span>
           </div>
-          <div className="space-y-0.5 text-xs">
-            {rewards.data.components.map((c, i) => (
-              <div key={i} className="flex justify-between">
-                <span className="muted">{c.label}</span>
+          <div className="flex flex-col gap-0.5 text-xs">
+            {rewards.data.components.map((c) => (
+              <div key={`${c.label}-${c.annual_amount}`} className="flex justify-between">
+                <span className="text-muted-foreground">{c.label}</span>
                 <span>{money(String(c.annual_amount), rewards.data!.currency)}</span>
               </div>
             ))}
           </div>
         </div>
-      )}
-    </div>
+      )}</CardContent>
+    </Card>
   );
 }
 
@@ -603,7 +602,7 @@ function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canMa
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ title: "", category: "contract", issue_date: "", expiry_date: "" });
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [signing, setSigning] = useState<HrDocument | null>(null);
 
   async function requestSig(id: string) {
@@ -619,7 +618,7 @@ function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canMa
   async function upload(e: React.FormEvent) {
     e.preventDefault();
     if (!file || !form.title.trim()) return;
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -634,8 +633,10 @@ function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canMa
       docs.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Upload failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
-    setBusy(false);
+
   }
   async function del(id: string) {
     await api(`/api/hr-documents/${id}`, { method: "DELETE" });
@@ -643,85 +644,63 @@ function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canMa
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 flex items-center gap-2 text-base"><FileText size={16} /> Documents</h3>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Documents</CardTitle>
         {canManage && (
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+          <CardAction>
+          <Button aria-label="Adding" type="button" size="sm" variant="outline" onClick={() => setAdding((v) => !v)}>
             {adding ? "Cancel" : "+ Upload"}
-          </button>
+          </Button>
+          </CardAction>
         )}
-      </div>
+      </CardHeader><CardContent>
       {adding && (
-        <form onSubmit={upload} className="mb-3 rounded-lg border border-slate-200 p-2">
-          <div className="row">
-            <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></div>
-            <div className="field">
-              <label>Category</label>
-              <select value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}>
-                {DOC_CATEGORIES.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="row">
-            <div className="field"><label>Issue date</label><input type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></div>
-            <div className="field"><label>Expiry date</label><input type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></div>
-          </div>
-          <div className="field"><label>File</label><input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy || !file}>{busy ? "Uploading…" : "Upload"}</button>
-        </form>
+        <form onSubmit={upload} className="mb-3 flex flex-col gap-4 border border-border p-2"><FieldGroup><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="doc-title">Title</FieldLabel><Input id="doc-title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} /></Field><Field><FieldLabel htmlFor="doc-category">Category</FieldLabel><Select items={DOC_CATEGORIES.map((c) => ({ value: c, label: c.replace("_", " ") }))} value={form.category} onValueChange={(value) => setForm((p) => ({ ...p, category: value ?? "" }))}><SelectTrigger id="doc-category" aria-label="Category" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{DOC_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="doc-issue">Issue date</FieldLabel><Input id="doc-issue" type="date" value={form.issue_date} onChange={(e) => setForm((p) => ({ ...p, issue_date: e.target.value }))} /></Field><Field><FieldLabel htmlFor="doc-expiry">Expiry date</FieldLabel><Input id="doc-expiry" type="date" value={form.expiry_date} onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))} /></Field></div><Field><FieldLabel htmlFor="doc-file">File</FieldLabel><Input id="doc-file" type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field></FieldGroup><Button type="submit" disabled={isSubmitting || !file}>{isSubmitting ? "Uploading…" : "Upload"}</Button></form>
       )}
       {docs.loading ? (
         <Loading />
       ) : (docs.data?.length ?? 0) === 0 ? (
         <Muted>No documents.</Muted>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-border">
           {docs.data!.map((d) => {
             const expSoon = d.days_to_expiry != null && d.days_to_expiry <= 30;
             const expired = d.days_to_expiry != null && d.days_to_expiry < 0;
             return (
-              <div key={d.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+              <div key={d.id} className="flex flex-col items-start justify-between gap-2 py-1.5 text-sm sm:flex-row sm:items-center">
                 <div className="min-w-0">
                   <div className="font-medium">
-                    <span className="badge mr-1">{d.category.replace("_", " ")}</span>{d.title}
+                    <Badge variant="secondary" className="mr-1">{d.category.replace("_", " ")}</Badge>{d.title}
                   </div>
                   {d.expiry_date && (
-                    <div className={`text-xs ${expired ? "text-rose-600" : expSoon ? "text-amber-600" : "muted"}`}>
+                <div className={`text-xs ${expired ? "text-destructive" : expSoon ? "text-warning-foreground" : "text-muted-foreground"}`}>
                       {expired ? "Expired " : "Expires "}{d.expiry_date}
                       {d.days_to_expiry != null && !expired ? ` (${d.days_to_expiry}d)` : ""}
                     </div>
                   )}
                   {d.signature_status && (
                     <div className="mt-0.5">
-                      <span className={`badge ${d.signature_status === "signed" ? "green" : "amber"}`}>
-                        {d.signature_status === "signed" ? "✓ signed" : "awaiting signature"}
-                      </span>
+                      <Badge variant={d.signature_status === "signed" ? "success" : "warning"}>
+                        {d.signature_status === "signed" ? "signed" : "awaiting signature"}
+                      </Badge>
                     </div>
                   )}
                 </div>
                 <div className="flex flex-none gap-1">
                   {isSelf && d.signature_status === "pending" && (
-                    <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} onClick={() => setSigning(d)}>
+                    <Button type="button" size="sm" onClick={() => setSigning(d)}>
                       Sign
-                    </button>
+                    </Button>
                   )}
                   {canManage && !d.signature_status && (
-                    <button className="btn-sm inline-flex items-center gap-1" style={{ flex: "0 0 auto" }} onClick={() => requestSig(d.id)} title="Request signature">
-                      <PenLine size={13} />
-                    </button>
+                    <Button type="button" size="icon-sm" variant="outline" aria-label="Request signature" onClick={() => requestSig(d.id)} title="Request signature"><PenLine /></Button>
                   )}
-                  <button
-                    className="btn-sm inline-flex items-center gap-1"
-                    style={{ flex: "0 0 auto" }}
+                  <Button aria-label="Download" type="button" size="icon-sm" variant="outline"
                     onClick={() => downloadFile(`/api/hr-documents/${d.id}/download`, d.title).catch(() => notify("Download failed", "error"))}
                   >
-                    <Download size={13} />
-                  </button>
+                    <Download />
+                  </Button>
                   {canManage && (
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(d.id)}>
-                      <Trash2 size={13} />
-                    </button>
+                    <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(d.id)}><Trash2 /></Button>
                   )}
                 </div>
               </div>
@@ -736,7 +715,7 @@ function DocumentsSection({ userId, canManage, isSelf }: { userId: string; canMa
           onDone={() => { setSigning(null); docs.reload(); }}
         />
       )}
-    </div>
+    </CardContent></Card>
   );
 }
 
@@ -744,12 +723,12 @@ function SignModal({ doc, onClose, onDone }: { doc: HrDocument; onClose: () => v
   const { notify } = useToast();
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !consent || !doc.signature_request_id) return;
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/hr-documents/signatures/${doc.signature_request_id}/sign`, {
         method: "POST",
@@ -759,35 +738,31 @@ function SignModal({ doc, onClose, onDone }: { doc: HrDocument; onClose: () => v
       onDone();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={`Sign — ${doc.title}`} onClose={onClose} maxWidth={460}>
-      <form onSubmit={submit}>
-        <p className="muted text-sm">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
           Review the document, then type your full name to e-sign. This records a
           legal audit trail (your name, the date, and your IP address).
         </p>
-        <button
+        <Button
           type="button"
-          className="btn-sm my-2 inline-flex items-center gap-1"
-          style={{ flex: "0 0 auto" }}
+          size="sm" variant="outline"
           onClick={() => downloadFile(`/api/hr-documents/${doc.id}/download`, doc.title).catch(() => notify("Download failed", "error"))}
         >
-          <Download size={13} /> View document
-        </button>
-        <div className="field"><label>Full name</label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full legal name" /></div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="!w-auto" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-          I agree this constitutes my electronic signature.
-        </label>
-        <div className="row mt-3" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy || !name.trim() || !consent}>
-            {busy ? "Signing…" : "Sign"}
-          </button>
+          <Download data-icon="inline-start" /> View document
+        </Button>
+        <FieldGroup><Field><FieldLabel htmlFor="signature-name">Full name</FieldLabel><Input id="signature-name" aria-label="Your full legal name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full legal name" /></Field><Field orientation="horizontal"><Checkbox id="signature-consent" checked={consent} onCheckedChange={(checked) => setConsent(Boolean(checked))} /><FieldLabel htmlFor="signature-consent">I agree this constitutes my electronic signature.</FieldLabel></Field></FieldGroup>
+        <div className="mt-3 flex flex-col-reverse justify-end gap-2 sm:flex-row">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={isSubmitting || !name.trim() || !consent}>
+            {isSubmitting ? "Signing…" : "Sign"}
+          </Button>
         </div>
       </form>
     </Modal>
@@ -808,10 +783,12 @@ function EmploymentHistory({
   const { notify } = useToast();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ event_type: "note", title: "", effective_date: "", detail: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) return;
+    setIsSubmitting(true);
     try {
       await api(`/api/people/${userId}/events`, {
         method: "POST",
@@ -827,6 +804,8 @@ function EmploymentHistory({
       onChange();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function del(id: string) {
@@ -835,54 +814,41 @@ function EmploymentHistory({
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 flex items-center gap-2 text-base"><CalendarClock size={16} /> Employment history</h3>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock /> Employment history</CardTitle>
         {canManage && (
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>
+          <CardAction>
+          <Button aria-label="Adding" type="button" size="sm" variant="outline" onClick={() => setAdding((v) => !v)}>
             {adding ? "Cancel" : "+ Add"}
-          </button>
+          </Button>
+          </CardAction>
         )}
-      </div>
+      </CardHeader><CardContent>
       {adding && (
-        <form onSubmit={add} className="mb-3 rounded-lg border border-slate-200 p-2">
-          <div className="row">
-            <div className="field">
-              <label>Type</label>
-              <select value={form.event_type} onChange={(e) => setForm((p) => ({ ...p, event_type: e.target.value }))}>
-                {EVENT_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Date</label><input type="date" value={form.effective_date} onChange={(e) => setForm((p) => ({ ...p, effective_date: e.target.value }))} /></div>
-          </div>
-          <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Promoted to Senior" /></div>
-          <div className="field"><label>Detail</label><textarea rows={2} value={form.detail} onChange={(e) => setForm((p) => ({ ...p, detail: e.target.value }))} /></div>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add event</button>
-        </form>
+        <form onSubmit={add} className="mb-3 flex flex-col gap-4 border border-border p-2"><FieldGroup><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="event-type">Type</FieldLabel><Select items={EVENT_TYPES.map((t) => ({ value: t, label: t.replace("_", " ") }))} value={form.event_type} onValueChange={(value) => setForm((p) => ({ ...p, event_type: value ?? "" }))}><SelectTrigger id="event-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{EVENT_TYPES.map((t) => <SelectItem key={t} value={t}>{t.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="event-date">Date</FieldLabel><Input id="event-date" type="date" value={form.effective_date} onChange={(e) => setForm((p) => ({ ...p, effective_date: e.target.value }))} /></Field></div><Field><FieldLabel htmlFor="event-title">Title</FieldLabel><Input id="event-title" aria-label="Promoted to Senior" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} placeholder="Promoted to Senior" /></Field><Field><FieldLabel htmlFor="event-detail">Detail</FieldLabel><Textarea id="event-detail" rows={2} value={form.detail} onChange={(e) => setForm((p) => ({ ...p, detail: e.target.value }))} /></Field></FieldGroup><Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Adding…" : "Add event"}
+          </Button></form>
       )}
       {events.length === 0 ? (
         <Muted>No history recorded.</Muted>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-border">
           {events.map((e) => (
             <div key={e.id} className="flex items-start justify-between gap-2 py-1.5 text-sm">
               <div className="min-w-0">
                 <div className="font-medium">
-                  <span className="badge mr-1">{e.event_type.replace("_", " ")}</span>
+                  <Badge variant="secondary" className="mr-1">{e.event_type.replace("_", " ")}</Badge>
                   {e.title}
                 </div>
-                <div className="muted text-xs">{e.effective_date}{e.detail ? ` · ${e.detail}` : ""}</div>
+                <div className="text-xs text-muted-foreground">{e.effective_date}{e.detail ? ` · ${e.detail}` : ""}</div>
               </div>
               {canManage && (
-                <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(e.id)}>
-                  <Trash2 size={13} />
-                </button>
+                <Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(e.id)}><Trash2 /></Button>
               )}
             </div>
           ))}
         </div>
-      )}
-    </div>
+      )}</CardContent>
+    </Card>
   );
 }
 
@@ -923,12 +889,12 @@ function EditProfileModal({
     status: profile.status,
     department_id: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const body: Record<string, unknown> = {
         job_title: f.job_title || null,
@@ -965,104 +931,35 @@ function EditProfileModal({
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={`Edit ${profile.name ?? profile.email}`} onClose={onClose} maxWidth={560}>
-      <form onSubmit={save}>
-        <div className="field">
-          <label>Full name</label>
-          <input
-            value={f.display_name}
-            onChange={(e) => set("display_name", e.target.value)}
-            placeholder="e.g. Sana Khan"
-          />
-        </div>
-        <div className="row">
-          <div className="field"><label>Job title</label><input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="e.g. CEO" /></div>
-          <div className="field"><label>Department (label)</label><input value={f.hr_department} onChange={(e) => set("hr_department", e.target.value)} /></div>
-        </div>
-        <div className="field"><label>Office location</label><input value={f.office_location} onChange={(e) => set("office_location", e.target.value)} /></div>
-        <div className="row">
-          <div className="field"><label>Mobile</label><input value={f.mobile_phone} onChange={(e) => set("mobile_phone", e.target.value)} /></div>
-          <div className="field"><label>Work phone</label><input value={f.business_phone} onChange={(e) => set("business_phone", e.target.value)} /></div>
-        </div>
-
-        <div className="row">
-          <div className="field">
-            <label>Employment type</label>
-            <select value={f.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
-              <option value="">—</option>
-              {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
-            </select>
-          </div>
-          <div className="field"><label>Hire date</label><input type="date" value={f.hire_date} onChange={(e) => set("hire_date", e.target.value)} /></div>
-        </div>
-        <div className="row">
-          <div className="field"><label>Probation end</label><input type="date" value={f.probation_end_date} onChange={(e) => set("probation_end_date", e.target.value)} /></div>
-          <div className="field"><label>Contract end</label><input type="date" value={f.contract_end_date} onChange={(e) => set("contract_end_date", e.target.value)} /></div>
-        </div>
-        {isAdmin && (
-          <div className="field">
-            <label>Manager</label>
-            <select value={f.manager_id} onChange={(e) => set("manager_id", e.target.value)}>
-              <option value="">— None —</option>
-              {(people.data ?? []).filter((u) => u.id !== profile.id).map((u) => (
-                <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {profile.can_see_sensitive && (
-          <>
-            <div className="field"><label>Personal email</label><input value={f.personal_email} onChange={(e) => set("personal_email", e.target.value)} /></div>
-            <div className="row">
-              <div className="field"><label>Nationality</label><input value={f.nationality} onChange={(e) => set("nationality", e.target.value)} /></div>
-              <div className="field"><label>Passport</label><input value={f.passport_no} onChange={(e) => set("passport_no", e.target.value)} /></div>
-              <div className="field"><label>Date of birth</label><input type="date" value={f.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)} /></div>
-            </div>
-            <div className="row">
-              <div className="field"><label>Emergency contact</label><input value={f.emergency_contact_name} onChange={(e) => set("emergency_contact_name", e.target.value)} /></div>
-              <div className="field"><label>Contact phone</label><input value={f.emergency_contact_phone} onChange={(e) => set("emergency_contact_phone", e.target.value)} /></div>
-              <div className="field"><label>Relationship</label><input value={f.emergency_contact_relationship} onChange={(e) => set("emergency_contact_relationship", e.target.value)} /></div>
-            </div>
-          </>
-        )}
-        {isAdmin && (
-          <div className="row">
-            <div className="field">
-              <label>Role</label>
-              <select value={f.role} onChange={(e) => set("role", e.target.value)}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Status</label>
-              <select value={f.status} onChange={(e) => set("status", e.target.value)}>
-                {USER_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Access department</label>
-              <select value={f.department_id} onChange={(e) => set("department_id", e.target.value)}>
-                <option value="">Keep current</option>
-                {(departments.data ?? []).map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
-        </div>
-      </form>
+      <form onSubmit={save} className="flex flex-col gap-4"><FieldGroup>
+        <ProfileInput id="profile-name" label="Full name" value={f.display_name} onChange={(value) => set("display_name", value)} placeholder="e.g. Sana Khan" />
+        <div className="grid gap-4 sm:grid-cols-2"><ProfileInput id="profile-title" label="Job title" value={f.job_title} onChange={(value) => set("job_title", value)} placeholder="e.g. CEO" /><ProfileInput id="profile-department" label="Department (label)" value={f.hr_department} onChange={(value) => set("hr_department", value)} /></div>
+        <ProfileInput id="profile-office" label="Office location" value={f.office_location} onChange={(value) => set("office_location", value)} />
+        <div className="grid gap-4 sm:grid-cols-2"><ProfileInput id="profile-mobile" label="Mobile" value={f.mobile_phone} onChange={(value) => set("mobile_phone", value)} /><ProfileInput id="profile-work-phone" label="Work phone" value={f.business_phone} onChange={(value) => set("business_phone", value)} /></div>
+        <div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="profile-employment">Employment type</FieldLabel><Select items={[{ value: null, label: "—" }, ...EMPLOYMENT_TYPES.map((type) => ({ value: type, label: type.replace("_", " ") }))]} value={f.employment_type || null} onValueChange={(value) => set("employment_type", value ?? "")}><SelectTrigger id="profile-employment" aria-label="Employment type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>—</SelectItem>{EMPLOYMENT_TYPES.map((type) => <SelectItem key={type} value={type}>{type.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><ProfileInput id="profile-hire-date" label="Hire date" type="date" value={f.hire_date} onChange={(value) => set("hire_date", value)} /></div>
+        <div className="grid gap-4 sm:grid-cols-2"><ProfileInput id="profile-probation" label="Probation end" type="date" value={f.probation_end_date} onChange={(value) => set("probation_end_date", value)} /><ProfileInput id="profile-contract" label="Contract end" type="date" value={f.contract_end_date} onChange={(value) => set("contract_end_date", value)} /></div>
+        {isAdmin && <Field><FieldLabel htmlFor="profile-manager">Manager</FieldLabel><Select items={[{ value: null, label: "— None —" }, ...(people.data ?? []).filter((person) => person.id !== profile.id).map((person) => ({ value: person.id, label: person.display_name ?? person.email }))]} value={f.manager_id || null} onValueChange={(value) => set("manager_id", value ?? "")}><SelectTrigger id="profile-manager" aria-label="Manager" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>— None —</SelectItem>{(people.data ?? []).filter((person) => person.id !== profile.id).map((person) => <SelectItem key={person.id} value={person.id}>{person.display_name ?? person.email}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>}
+        {profile.can_see_sensitive && <><ProfileInput id="profile-personal-email" label="Personal email" value={f.personal_email} onChange={(value) => set("personal_email", value)} /><div className="grid gap-4 sm:grid-cols-3"><ProfileInput id="profile-nationality" label="Nationality" value={f.nationality} onChange={(value) => set("nationality", value)} /><ProfileInput id="profile-passport" label="Passport" value={f.passport_no} onChange={(value) => set("passport_no", value)} /><ProfileInput id="profile-birth" label="Date of birth" type="date" value={f.date_of_birth} onChange={(value) => set("date_of_birth", value)} /></div><div className="grid gap-4 sm:grid-cols-3"><ProfileInput id="profile-emergency" label="Emergency contact" value={f.emergency_contact_name} onChange={(value) => set("emergency_contact_name", value)} /><ProfileInput id="profile-emergency-phone" label="Contact phone" value={f.emergency_contact_phone} onChange={(value) => set("emergency_contact_phone", value)} /><ProfileInput id="profile-relationship" label="Relationship" value={f.emergency_contact_relationship} onChange={(value) => set("emergency_contact_relationship", value)} /></div></>}
+        {isAdmin && <div className="grid gap-4 sm:grid-cols-3"><ProfileSelect id="profile-role" label="Role" value={f.role} options={ROLES} onChange={(value) => set("role", value)} /><ProfileSelect id="profile-status" label="Status" value={f.status} options={USER_STATUSES} onChange={(value) => set("status", value)} /><Field><FieldLabel htmlFor="profile-access-department">Access department</FieldLabel><Select items={[{ value: null, label: "Keep current" }, ...(departments.data ?? []).map((department) => ({ value: department.id, label: department.name }))]} value={f.department_id || null} onValueChange={(value) => set("department_id", value ?? "")}><SelectTrigger id="profile-access-department" aria-label="Access department" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Keep current</SelectItem>{(departments.data ?? []).map((department) => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field></div>}
+      </FieldGroup><div className="flex flex-col-reverse justify-end gap-2 sm:flex-row"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving…" : "Save"}</Button></div></form>
     </Modal>
   );
+}
+
+function ProfileInput({ id, label, value, onChange, type = "text", placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: React.HTMLInputTypeAttribute; placeholder?: string }) {
+  return <Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></Field>;
+}
+
+function ProfileSelect({ id, label, value, options, onChange }: { id: string; label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return <Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Select items={options.map((option) => ({ value: option, label: option }))} value={value} onValueChange={(nextValue) => onChange(nextValue ?? "")}><SelectTrigger id={id} aria-label={label} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>;
 }
 
 function CustomFieldsSection({ userId }: { userId: string }) {
@@ -1070,7 +967,7 @@ function CustomFieldsSection({ userId }: { userId: string }) {
   const cv = useFetch<CustomValues>(`/api/custom-fields/values/${userId}`);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const data = cv.data;
   if (cv.loading || !data) return null;
@@ -1083,15 +980,17 @@ function CustomFieldsSection({ userId }: { userId: string }) {
     setEditing(true);
   }
   async function save() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/custom-fields/values/${userId}`, { method: "PUT", body: { values: draft } });
       setEditing(false);
       cv.reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
-    setBusy(false);
+
   }
 
   // Group single-value fields by section.
@@ -1103,33 +1002,32 @@ function CustomFieldsSection({ userId }: { userId: string }) {
   return (
     <>
       {data.fields.length > 0 && (
-        <div className="card">
-          <div className="spread mb-2">
-            <h3 className="m-0 flex items-center gap-2 text-base"><Sliders size={16} /> Additional information</h3>
+        <Card><CardHeader><CardTitle className="flex items-center gap-2"><Sliders /> Additional information</CardTitle>
             {data.can_edit && (
-              editing ? (
-                <span className="flex gap-1">
-                  <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setEditing(false)}>Cancel</button>
-                  <button className="btn-sm btn-primary" style={{ flex: "0 0 auto" }} disabled={busy} onClick={save}>Save</button>
-                </span>
-              ) : (
-                <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={startEdit}>Edit</button>
-              )
+              <CardAction>
+                {editing ? (
+                  <span className="flex gap-1">
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>Cancel</Button><Button type="button" size="sm" disabled={isSubmitting} onClick={save}>Save</Button>
+                  </span>
+                ) : (
+                  <Button type="button" size="sm" variant="outline" onClick={startEdit}>Edit</Button>
+                )}
+              </CardAction>
             )}
-          </div>
+          </CardHeader><CardContent>
           {Object.entries(bySection).map(([section, fields]) => (
             <div key={section} className="mb-2">
-              <div className="muted mb-1 text-xs uppercase tracking-wide">{section}</div>
-              <div className="space-y-1 text-sm">
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{section}</div>
+              <div className="flex flex-col gap-1 text-sm">
                 {fields.map((f) =>
                   editing ? (
-                    <div key={f.def_id} className="flex items-center justify-between gap-2">
-                      <span className="muted">{f.label}</span>
-                      <span style={{ flex: "0 0 60%" }}>{renderInput(f, draft[f.def_id], (v) => setDraft((p) => ({ ...p, [f.def_id]: v })))}</span>
+                    <div key={f.def_id} className="grid gap-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:items-center sm:gap-2">
+                      <span className="text-muted-foreground">{f.label}</span>
+                      <span>{renderInput(f, draft[f.def_id], (v) => setDraft((p) => ({ ...p, [f.def_id]: v })))}</span>
                     </div>
                   ) : (
                     <div key={f.def_id} className="flex justify-between gap-2">
-                      <span className="muted">{f.label}{f.sensitive ? " 🔒" : ""}</span>
+                      <span className="inline-flex items-center gap-1 text-muted-foreground">{f.label}{f.sensitive && <LockKeyhole aria-label="Sensitive" />}</span>
                       <span className="text-right">{formatValue(f.value) || "—"}</span>
                     </div>
                   ),
@@ -1137,7 +1035,7 @@ function CustomFieldsSection({ userId }: { userId: string }) {
               </div>
             </div>
           ))}
-        </div>
+          </CardContent></Card>
       )}
 
       {data.tables.map((t) => (
@@ -1149,18 +1047,15 @@ function CustomFieldsSection({ userId }: { userId: string }) {
 
 function renderInput(f: CustomFieldValue, value: unknown, onChange: (v: unknown) => void) {
   if (f.field_type === "bool")
-    return <input type="checkbox" className="!w-auto" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;
+    return <Checkbox aria-label="Value" checked={!!value} onCheckedChange={(checked) => onChange(Boolean(checked))} />;
   if (f.field_type === "select")
     return (
-      <select value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
-        <option value="">—</option>
-        {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <Select items={[{ value: null, label: "—" }, ...(f.options ?? []).map((o) => ({ value: o, label: o }))]} value={String(value ?? "") || null} onValueChange={(nextValue) => onChange(nextValue ?? "")}><SelectTrigger id={`custom-field-${f.def_id}`} aria-label="String Value" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>—</SelectItem>{(f.options ?? []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectGroup></SelectContent></Select>
     );
   if (f.field_type === "textarea")
-    return <textarea rows={2} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
+    return <Textarea aria-label="String Value" rows={2} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
   const type = f.field_type === "number" ? "number" : f.field_type === "date" ? "date" : "text";
-  return <input type={type} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
+  return <Input aria-label="type" type={type} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function formatValue(v: unknown): string {
@@ -1181,9 +1076,11 @@ function CustomTableCard({
   const { notify } = useToast();
   const [adding, setAdding] = useState(false);
   const [row, setRow] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       await api(`/api/custom-fields/tables/${table.table_id}/rows/${userId}`, { method: "POST", body: { data: row } });
       setRow({});
@@ -1191,6 +1088,8 @@ function CustomTableCard({
       onChange();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
   async function del(id: string) {
@@ -1199,54 +1098,46 @@ function CustomTableCard({
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 text-base">{table.label}{table.sensitive ? " 🔒" : ""}</h3>
+    <Card className="py-0"><CardHeader className="py-(--card-spacing)"><CardTitle className="flex items-center gap-2">{table.label}{table.sensitive && <LockKeyhole aria-label="Sensitive" />}</CardTitle>
         {canEdit && (
-          <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => setAdding((v) => !v)}>{adding ? "Cancel" : "+ Add"}</button>
+          <CardAction>
+          <Button aria-label="Adding" type="button" size="sm" variant="outline" onClick={() => setAdding((v) => !v)}>{adding ? "Cancel" : "+ Add"}</Button>
+          </CardAction>
         )}
-      </div>
+      </CardHeader><CardContent className="p-0">
       {table.rows.length === 0 ? (
-        <Muted>No entries.</Muted>
+        <div className="px-(--card-spacing)"><Muted>No entries.</Muted></div>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr>{table.columns.map((c) => <th key={c.key} className="text-left">{c.label}</th>)}{canEdit && <th />}</tr>
-          </thead>
-          <tbody>
+        <Table><TableHeader><TableRow>{table.columns.map((c) => <TableHead key={c.key} className="whitespace-normal">{c.label}</TableHead>)}{canEdit && <TableHead><span className="sr-only">Actions</span></TableHead>}</TableRow></TableHeader><TableBody>
             {table.rows.map((r) => (
-              <tr key={r.id}>
-                {table.columns.map((c) => <td key={c.key}>{formatValue(r.data[c.key])}</td>)}
+              <TableRow key={r.id}>
+                {table.columns.map((c) => <TableCell key={c.key} className="max-w-[24rem] whitespace-normal"><span className="block break-words">{formatValue(r.data[c.key])}</span></TableCell>)}
                 {canEdit && (
-                  <td className="text-right">
-                    <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => del(r.id)}><Trash2 size={12} /></button>
-                  </td>
+                  <TableCell className="text-right"><Button aria-label="Delete" type="button" size="icon-sm" variant="destructive" onClick={() => del(r.id)}><Trash2 /></Button></TableCell>
                 )}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody></Table>
       )}
-      {adding && (
-        <form onSubmit={add} className="mt-2 flex flex-wrap items-end gap-2">
+      </CardContent>{adding && (
+        <CardFooter><form onSubmit={add} className="grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))_auto] lg:items-end">
           {table.columns.map((c) => (
-            <div key={c.key} className="field" style={{ marginBottom: 0, flex: 1 }}>
-              <label>{c.label}</label>
-              <input value={row[c.key] ?? ""} onChange={(e) => setRow((p) => ({ ...p, [c.key]: e.target.value }))} />
-            </div>
+            <Field key={c.key}><FieldLabel htmlFor={`custom-${table.table_id}-${c.key}`}>{c.label}</FieldLabel><Input id={`custom-${table.table_id}-${c.key}`} value={row[c.key] ?? ""} onChange={(e) => setRow((p) => ({ ...p, [c.key]: e.target.value }))} /></Field>
           ))}
-          <button className="btn-primary" style={{ flex: "0 0 auto" }}>Add</button>
-        </form>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Adding…" : "Add"}
+          </Button>
+        </form></CardFooter>
       )}
-    </div>
+    </Card>
   );
 }
 
 function Row({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div className="flex justify-between gap-2">
-      <span className="muted">{label}</span>
+    <div className="flex justify-between gap-4 py-0.5">
+      <span className="text-muted-foreground">{label}</span>
       <span className="text-right">{value}</span>
     </div>
   );
@@ -1254,22 +1145,16 @@ function Row({ label, value }: { label: string; value?: string | null }) {
 
 function Section({ icon, title, count, children }: { icon: React.ReactNode; title: string; count: number; children: React.ReactNode }) {
   return (
-    <div className="card">
-      <div className="spread mb-2">
-        <h3 className="m-0 flex items-center gap-2 text-base">{icon} {title}</h3>
-        <span className="badge">{count}</span>
-      </div>
-      <div className="divide-y divide-slate-100">{children}</div>
-    </div>
+    <Card><CardHeader><CardTitle className="flex items-center gap-2 [&_svg]:stroke-[1.5]">{icon} {title}</CardTitle><CardAction><Badge variant="secondary">{count}</Badge></CardAction></CardHeader><CardContent><div className="divide-y divide-border">{children}</div></CardContent></Card>
   );
 }
 
 function Item({ label, sub, right }: { label: string; sub?: string | null; right?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-1.5 text-sm">
+    <div className="flex items-center justify-between gap-3 py-2 text-sm">
       <div className="min-w-0">
         <div className="truncate font-medium">{label}</div>
-        {sub && <div className="muted text-xs">{sub}</div>}
+        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </div>
       {right}
     </div>
@@ -1277,7 +1162,7 @@ function Item({ label, sub, right }: { label: string; sub?: string | null; right
 }
 
 function Muted({ children }: { children: React.ReactNode }) {
-  return <p className="muted py-1 text-sm">{children}</p>;
+  return <p className="py-1 text-sm text-muted-foreground">{children}</p>;
 }
 
 interface FieldChangeRow {
@@ -1292,29 +1177,18 @@ interface FieldChangeRow {
 function FieldHistorySection({ userId }: { userId: string }) {
   const history = useFetch<FieldChangeRow[]>(`/api/profiles/${userId}/field-history`);
   return (
-    <div className="card">
-      <h3 className="mt-0 flex items-center gap-2 text-base">Change history</h3>
-      <p className="muted mt-0 text-sm">Every edit to this profile's fields, with who made it.</p>
+    <Card className="py-0"><CardHeader className="py-(--card-spacing)"><CardTitle>Change history</CardTitle><CardDescription>Every edit to this profile's fields, with who made it.</CardDescription></CardHeader><CardContent className="p-0">
       {history.loading ? (
-        <Loading />
+        <div className="px-(--card-spacing)"><Loading /></div>
       ) : (history.data?.length ?? 0) === 0 ? (
-        <Muted>No changes recorded yet.</Muted>
+        <div className="px-(--card-spacing)"><Muted>No changes recorded yet.</Muted></div>
       ) : (
-        <table className="table">
-          <thead><tr><th>Field</th><th>From</th><th>To</th><th>By</th><th>When</th></tr></thead>
-          <tbody>
+        <Table><TableHeader><TableRow><TableHead>Field</TableHead><TableHead>From</TableHead><TableHead>To</TableHead><TableHead>By</TableHead><TableHead>When</TableHead></TableRow></TableHeader><TableBody>
             {history.data!.map((h) => (
-              <tr key={h.id}>
-                <td className="font-medium">{h.field.replace(/_/g, " ")}</td>
-                <td className="muted">{h.old_value ?? "—"}</td>
-                <td>{h.new_value ?? "—"}</td>
-                <td className="muted">{h.actor_name ?? "—"}</td>
-                <td className="muted text-xs">{new Date(h.created_at).toLocaleString()}</td>
-              </tr>
+              <TableRow key={h.id}><TableCell className="font-medium">{h.field.replace(/_/g, " ")}</TableCell><TableCell className="max-w-[20rem] whitespace-normal text-muted-foreground"><span className="break-words">{h.old_value ?? "—"}</span></TableCell><TableCell className="max-w-[20rem] whitespace-normal"><span className="break-words">{h.new_value ?? "—"}</span></TableCell><TableCell className="text-muted-foreground">{h.actor_name ?? "—"}</TableCell><TableCell className="text-muted-foreground">{new Date(h.created_at).toLocaleString()}</TableCell></TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody></Table>
       )}
-    </div>
+    </CardContent></Card>
   );
 }

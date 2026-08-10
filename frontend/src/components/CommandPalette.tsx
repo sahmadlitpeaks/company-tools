@@ -1,204 +1,324 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowRight,
-  CornerDownLeft,
+  BookOpen,
+  CheckSquare,
+  ClipboardCheck,
+  ClipboardList,
   FileText,
+  Headphones,
+  Package,
   Plus,
-  Search as SearchIcon,
+  Search,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 import { api } from "../api/client";
 import type { SearchHit, SearchResults } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { visibleNavGroups, type NavItem } from "./navigation";
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
 
-interface Command {
+interface NavCommand {
   id: string;
   label: string;
-  hint?: string;
   to: string;
   module?: string;
   create?: boolean;
   adminOrManager?: boolean;
 }
 
-const NAV_COMMANDS: Command[] = [
-  { id: "go-dash", label: "Dashboard", to: "/", module: "dashboard" },
-  { id: "go-dir", label: "Employee Directory", to: "/directory", module: "directory" },
-  { id: "go-cards", label: "Digital Cards", to: "/cards", module: "cards" },
-  { id: "go-assets", label: "Marketing Assets", to: "/marketing-assets", module: "marketing_assets" },
-  { id: "go-brand", label: "Brand Center", to: "/branding", module: "branding" },
-  { id: "go-prod", label: "Products & Brochures", to: "/products", module: "products" },
-  { id: "go-shared", label: "Shared Links", to: "/shared", module: "shared" },
-  { id: "go-crm", label: "Leads (CRM)", to: "/crm", module: "crm" },
-  { id: "go-camp", label: "Campaign Studio", to: "/campaigns", module: "campaigns" },
-  { id: "go-tracker", label: "Asset Tracker", to: "/asset-tracker", module: "asset_tracker" },
-  { id: "go-tasks", label: "Tasks", to: "/tasks", module: "tasks" },
-  { id: "go-routine", label: "Routine Checks", to: "/routine-checks", module: "routine_checks" },
-  { id: "go-checklists", label: "Checklists", to: "/checklists", module: "routine_checks" },
-  { id: "go-appr", label: "Approvals", to: "/approvals", module: "approvals" },
-  { id: "go-leave", label: "Leave", to: "/leave", module: "approvals" },
-  { id: "go-sd", label: "Service Desk", to: "/service-desk", module: "service_desk" },
-  { id: "go-kb", label: "Knowledge Base", to: "/knowledge", module: "knowledge" },
-  { id: "go-ann", label: "Announcements", to: "/announcements", module: "announcements" },
-  { id: "go-qr", label: "QR Codes", to: "/qrcodes", module: "qrcodes" },
-  { id: "go-lp", label: "Landing Pages", to: "/landing-pages", module: "landing_pages" },
-  { id: "go-sig", label: "Email Signatures", to: "/signatures", module: "signatures" },
-  { id: "go-short", label: "URL Shortener", to: "/shortener", module: "shortener" },
-  { id: "go-trans", label: "Secure Transfers", to: "/transfers", module: "transfers" },
-];
-
-const CREATE_COMMANDS: Command[] = [
+const CREATE_COMMANDS: NavCommand[] = [
   { id: "new-task", label: "New task", to: "/tasks?new=1", module: "tasks", create: true },
   { id: "new-ticket", label: "New ticket", to: "/service-desk?new=1", module: "service_desk", create: true },
   { id: "new-approval", label: "New request (approval)", to: "/approvals?new=1", module: "approvals", create: true },
   { id: "new-ann", label: "New announcement", to: "/announcements?new=1", module: "announcements", create: true, adminOrManager: true },
 ];
 
-export default function CommandPalette({ onClose }: { onClose: () => void }) {
+export const ROUTINE_NAV_ITEMS: NavItem[] = [
+  {
+    to: "/routine-checks",
+    label: "Routine Checks",
+    icon: ClipboardCheck,
+    module: "routine_checks",
+    keywords: ["rounds", "recurring", "inspections"],
+  },
+  {
+    to: "/checklists",
+    label: "Checklists",
+    icon: ClipboardList,
+    module: "routine_checks",
+    keywords: ["templates", "routine checks", "recurring"],
+  },
+];
+
+const RESULT_GROUP: Record<string, string> = {
+  person: "People",
+  task: "Projects & tasks",
+  ticket: "Tickets",
+  knowledge: "Knowledge",
+  document: "Documents",
+  asset: "Marketing assets",
+  brochure: "Products & brochures",
+  product: "Products & brochures",
+  idea: "Feedback & ideas",
+  lost_found: "Lost & found",
+};
+
+const RESULT_ICON: Record<string, LucideIcon> = {
+  person: Users,
+  task: CheckSquare,
+  ticket: Headphones,
+  knowledge: BookOpen,
+  document: FileText,
+  asset: FileText,
+  brochure: Package,
+  product: Package,
+  idea: BookOpen,
+  lost_found: Search,
+};
+
+export default function CommandPalette({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!open) return null;
+
+  return <OpenCommandPalette onOpenChange={onOpenChange} />;
+}
+
+function OpenCommandPalette({
+  onOpenChange,
+}: {
+  onOpenChange: (open: boolean) => void;
+}) {
   const navigate = useNavigate();
   const { user, can } = useAuth();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
-  const [active, setActive] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   const isManager = user?.is_admin || user?.role === "manager";
+  // Ignore the same click that opened the palette (Base UI outsidePress).
+  const [openedAt] = useState(() => Date.now());
+  const searchRequestIdRef = useRef(0);
+  const searchControllerRef = useRef<AbortController | null>(null);
 
-  const commands = useMemo(() => {
-    const all = [...CREATE_COMMANDS, ...NAV_COMMANDS].filter(
-      (c) =>
-        (!c.module || can(c.module)) && (!c.adminOrManager || isManager),
-    );
-    if (!q.trim()) return all;
-    const needle = q.toLowerCase();
-    return all.filter((c) => c.label.toLowerCase().includes(needle));
-  }, [q, can, isManager]);
-
-  // Document search (debounced).
-  useEffect(() => {
-    if (q.trim().length < 1) {
-      setHits([]);
+  function handleOpenChange(
+    next: boolean,
+    details?: { reason?: string },
+  ) {
+    // Same click that opened the dialog is often reported as outsidePress /
+    // focusOut and would close it immediately (common when opening from the
+    // expanded sidebar search control).
+    const reason = details?.reason;
+    if (
+      !next &&
+      (reason === "outsidePress" || reason === "focusOut") &&
+      Date.now() - openedAt < 400
+    ) {
       return;
     }
-    const t = setTimeout(() => {
-      api<SearchResults>(`/api/search?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => setHits(r.hits))
-        .catch(() => setHits([]));
-    }, 200);
-    return () => clearTimeout(t);
-  }, [q]);
+    if (!next) {
+      searchRequestIdRef.current += 1;
+      searchControllerRef.current?.abort();
+      searchControllerRef.current = null;
+      setHits([]);
+    }
+    onOpenChange(next);
+  }
 
-  useEffect(() => inputRef.current?.focus(), []);
-  useEffect(() => setActive(0), [q]);
+  function handleQueryChange(nextQuery: string) {
+    searchRequestIdRef.current += 1;
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    setHits([]);
+    setQ(nextQuery);
+  }
 
-  // Flatten commands + hits for arrow navigation.
-  const rows = useMemo(
-    () => [
-      ...commands.map((c) => ({ type: "cmd" as const, cmd: c })),
-      ...hits.map((h) => ({ type: "hit" as const, hit: h })),
-    ],
-    [commands, hits],
+  const createCommands = useMemo(
+    () =>
+      CREATE_COMMANDS.filter(
+        (c) => (!c.module || can(c.module)) && (!c.adminOrManager || isManager)
+      ),
+    [can, isManager]
   );
 
-  function run(i: number) {
-    const row = rows[i];
-    if (!row) return;
-    onClose();
-    if (row.type === "cmd") navigate(row.cmd.to);
-    else navigate(row.hit.href);
+  const navGroups = useMemo(() => {
+    const groups = visibleNavGroups(!!user?.is_admin, can);
+    const knownPaths = new Set(
+      groups.flatMap((group) => group.items.map((item) => item.to)),
+    );
+    const routineItems = ROUTINE_NAV_ITEMS.filter(
+      (item) =>
+        !knownPaths.has(item.to) && (!item.module || can(item.module)),
+    );
+    if (routineItems.length > 0) {
+      const requestsIndex = groups.findIndex(
+        (group) => group.section === "Requests & Support",
+      );
+      const routineGroup = { section: "Routine Operations", items: routineItems };
+      groups.splice(
+        requestsIndex >= 0 ? requestsIndex + 1 : groups.length,
+        0,
+        routineGroup,
+      );
+    }
+    const needle = q.trim().toLowerCase();
+    if (!needle) return groups;
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) =>
+          [item.label, group.section, ...(item.keywords ?? [])]
+            .join(" ")
+            .toLowerCase()
+            .includes(needle),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [q, user?.is_admin, can]);
+
+  const navCount = navGroups.reduce((total, group) => total + group.items.length, 0);
+
+  const filteredCreate = useMemo(() => {
+    if (!q.trim()) return createCommands;
+    const needle = q.toLowerCase();
+    return createCommands.filter((c) => c.label.toLowerCase().includes(needle));
+  }, [q, createCommands]);
+
+  useEffect(() => {
+    const requestId = ++searchRequestIdRef.current;
+    const query = q.trim();
+    setHits([]);
+
+    if (query.length < 1) {
+      return;
+    }
+
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const t = setTimeout(async () => {
+      try {
+        const result = await api<SearchResults>(
+          `/api/search?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal },
+        );
+        if (requestId !== searchRequestIdRef.current || controller.signal.aborted) return;
+        setHits(result.hits);
+      } catch {
+        if (requestId !== searchRequestIdRef.current || controller.signal.aborted) return;
+        setHits([]);
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+      if (searchControllerRef.current === controller) {
+        searchControllerRef.current = null;
+      }
+      if (requestId === searchRequestIdRef.current) {
+        searchRequestIdRef.current += 1;
+      }
+    };
+  }, [q]);
+
+  function run(to: string) {
+    handleOpenChange(false);
+    navigate(to);
   }
 
-  function onKey(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((a) => Math.min(a + 1, rows.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((a) => Math.max(a - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      run(active);
-    } else if (e.key === "Escape") {
-      onClose();
-    }
-  }
+  const hitGroups = hits.reduce<Record<string, SearchHit[]>>((all, hit) => {
+    const group = RESULT_GROUP[hit.kind] ?? "Other";
+    (all[group] ??= []).push(hit);
+    return all;
+  }, {});
+
+  const hasAny =
+    filteredCreate.length > 0 || navCount > 0 || hits.length > 0;
 
   return (
-    <div
-      className="fixed inset-0 z-[120] flex items-start justify-center p-4 pt-[12vh]"
-      style={{ background: "rgba(8,12,22,.5)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[560px] overflow-hidden rounded-2xl shadow-pop"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 border-b border-[var(--border)] px-3">
-          <SearchIcon size={16} className="text-ink-muted" />
-          <input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="Search or jump to… (try 'new task')"
-            className="!border-0 !bg-transparent !px-1 !py-3 focus:!shadow-none"
-            style={{ outline: "none" }}
-          />
-          <kbd className="muted hidden text-xs sm:block">Esc</kbd>
-        </div>
-
-        <div className="max-h-[50vh] overflow-y-auto p-1.5">
-          {rows.length === 0 && (
-            <div className="px-3 py-6 text-center text-sm text-ink-muted">
-              No matches.
-            </div>
-          )}
-          {rows.map((row, i) => {
-            const selected = i === active;
-            const base =
-              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm";
-            const bg = selected ? { background: "var(--surface-2)" } : undefined;
-            if (row.type === "cmd") {
-              const Icon = row.cmd.create ? Plus : ArrowRight;
-              return (
-                <button
-                  key={row.cmd.id}
-                  className={base}
-                  style={bg}
-                  onMouseEnter={() => setActive(i)}
-                  onClick={() => run(i)}
+    <CommandDialog open onOpenChange={handleOpenChange} className="sm:max-w-xl">
+      <Command shouldFilter={false}>
+        <CommandInput
+          placeholder="Search people, tools, tasks, tickets and files…"
+          value={q}
+          onValueChange={handleQueryChange}
+        />
+        <CommandList className="max-h-80 p-1">
+          {!hasAny && <CommandEmpty>No matches.</CommandEmpty>}
+          {filteredCreate.length > 0 && (
+            <CommandGroup heading="Create">
+              {filteredCreate.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={`create-${c.id}-${c.label}`}
+                  onSelect={() => run(c.to)}
                 >
-                  <span
-                    className="grid h-6 w-6 flex-none place-items-center rounded-md"
-                    style={{ background: "var(--brand-50)", color: "var(--brand-600)" }}
-                  >
-                    <Icon size={13} />
-                  </span>
-                  <span className="flex-1 font-medium">{row.cmd.label}</span>
-                  {selected && <CornerDownLeft size={13} className="text-ink-muted" />}
-                </button>
-              );
-            }
-            return (
-              <button
-                key={`hit-${row.hit.kind}-${row.hit.id}`}
-                className={base}
-                style={bg}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => run(i)}
-              >
-                <span className="grid h-6 w-6 flex-none place-items-center rounded-md bg-slate-100 text-ink-muted">
-                  <FileText size={13} />
-                </span>
-                <span className="flex-1 truncate">
-                  {row.hit.title}
-                  <span className="muted ml-2 text-xs">{row.hit.subtitle}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+                  <Plus />
+                  <span>{c.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {filteredCreate.length > 0 && navCount > 0 && <CommandSeparator />}
+          {navGroups.map((group) => (
+            <CommandGroup key={group.section} heading={group.section}>
+              {group.items.map((item) => (
+                <CommandItem
+                  key={item.to}
+                  value={`nav-${group.section}-${item.label}-${(item.keywords ?? []).join("-")}`}
+                  onSelect={() => run(item.to)}
+                >
+                  <item.icon strokeWidth={1.5} />
+                  <span>{item.label}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">Tool</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))}
+          {hits.length > 0 && (
+            <>
+              {(filteredCreate.length > 0 || navCount > 0) && (
+                <CommandSeparator />
+              )}
+              {Object.entries(hitGroups).map(([group, groupHits]) => (
+                <CommandGroup key={group} heading={group}>
+                  {groupHits.map((h) => {
+                    const Icon = RESULT_ICON[h.kind] ?? FileText;
+                    return (
+                      <CommandItem
+                        key={`${h.kind}-${h.id}`}
+                        value={`hit-${h.kind}-${h.id}-${h.title}`}
+                        onSelect={() => run(h.href)}
+                      >
+                        <Icon />
+                        <span className="min-w-0 truncate">
+                          {h.title}
+                          {h.subtitle ? (
+                            <span className="ml-2 text-foreground/75">{h.subtitle}</span>
+                          ) : null}
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              ))}
+            </>
+          )}
+        </CommandList>
+      </Command>
+    </CommandDialog>
   );
 }

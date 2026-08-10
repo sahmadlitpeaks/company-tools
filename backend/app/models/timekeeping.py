@@ -45,6 +45,49 @@ class TimeEntry(UUIDMixin, TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(8), default="manual")
 
 
+class TimeBreak(UUIDMixin, TimestampMixin, Base):
+    """A pause inside a clock-created time entry."""
+
+    __tablename__ = "time_breaks"
+
+    entry_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("time_entries.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TimeCorrectionRequest(UUIDMixin, TimestampMixin, Base):
+    """A structured request to correct a time entry, mirrored in approvals."""
+
+    __tablename__ = "time_correction_requests"
+
+    entry_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("time_entries.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    approval_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("approval_requests.id", ondelete="SET NULL"),
+        unique=True,
+        nullable=True,
+    )
+    requested_clock_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requested_clock_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requested_minutes: Mapped[int | None] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+
+
 class Timesheet(UUIDMixin, TimestampMixin, Base):
     """A week's worth of time for one person, with an approval workflow."""
 

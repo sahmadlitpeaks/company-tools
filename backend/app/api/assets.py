@@ -188,6 +188,28 @@ async def download_asset(
     )
 
 
+@router.get("/{asset_id}/preview")
+async def preview_asset(
+    asset_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Serve an authenticated inline preview in a sandboxed browser frame."""
+    asset = await db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(
+        absolute_path(asset.file_path),
+        media_type=asset.content_type or "application/octet-stream",
+        filename=asset.name,
+        content_disposition_type="inline",
+        headers={
+            "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post("/{asset_id}/share", response_model=ShareInfo)
 async def share_asset(
     asset_id: uuid.UUID,

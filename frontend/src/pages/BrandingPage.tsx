@@ -1,11 +1,41 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+} from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  BookOpen,
+  Building2,
+  Download,
+  FileText,
+  Folder,
+  Image,
+  Paperclip,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import type { Brand, BrandDocument, BrandDocumentVersion } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useAuth } from "../auth/AuthContext";
 import { useBrand } from "../brand/BrandContext";
 import {
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ListSkeleton,
   Modal,
@@ -20,23 +50,46 @@ interface PaletteColor {
   hex: string;
 }
 
+interface EditablePaletteColor extends PaletteColor {
+  readonly id: string;
+}
+
+let nextPaletteColorId = 0;
+
 function parsePalette(raw?: string | null): PaletteColor[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v)
+      ? v.map((color: PaletteColor) => ({ name: color.name, hex: color.hex }))
+      : [];
   } catch {
     return [];
   }
 }
 
+function createEditablePalette(raw?: string | null): EditablePaletteColor[] {
+  return parsePalette(raw).map((color) => ({
+    ...color,
+    id: `palette-color-${nextPaletteColorId++}`,
+  }));
+}
+
+function createPaletteColor(): EditablePaletteColor {
+  return {
+    id: `palette-color-${nextPaletteColorId++}`,
+    name: "Colour",
+    hex: "#888888",
+  };
+}
+
 const CATEGORIES = ["logo", "guideline", "font", "document", "other"];
-const DOC_ICON: Record<string, string> = {
-  logo: "🖼",
-  guideline: "📘",
-  font: "🔤",
-  document: "📄",
-  other: "📎",
+const DOC_ICON: Record<string, LucideIcon> = {
+  logo: Image,
+  guideline: BookOpen,
+  font: Type,
+  document: FileText,
+  other: Paperclip,
 };
 
 function ColorField({
@@ -52,15 +105,15 @@ function ColorField({
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <input
+      <Input aria-label={`${label} color`}
         type="color"
-        value={value || "#0b5cab"}
+        value={value || "#f78d2b"}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className="!h-12 !w-16 !p-1"
       />
       <span className="text-xs font-medium capitalize">{label}</span>
-      <span className="text-[10px] text-ink-muted">{value}</span>
+      <span className="text-[10px] text-muted-foreground">{value}</span>
     </div>
   );
 }
@@ -75,18 +128,17 @@ function VersionsModal({ doc, onClose }: { doc: BrandDocument; onClose: () => vo
       {loading ? (
         <ListSkeleton rows={3} />
       ) : (
-        <table>
-          <tbody>
+        <Table>
+          <TableBody>
             {(data ?? []).map((v) => (
-              <tr key={v.id}>
-                <td className="font-semibold">v{v.version}</td>
-                <td className="muted">{bytes(v.size_bytes)}</td>
-                <td className="muted text-xs">
+              <TableRow key={v.id}>
+                <TableCell className="font-semibold">v{v.version}</TableCell>
+                <TableCell className="text-muted-foreground">{bytes(v.size_bytes)}</TableCell>
+                <TableCell className="text-muted-foreground">
                   {new Date(v.created_at).toLocaleString()}
-                </td>
-                <td className="text-right">
-                  <button
-                    className="btn-sm"
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button type="button" size="sm"
                     onClick={() =>
                       downloadFile(
                         `/api/companies/document-versions/${v.id}/download`,
@@ -95,12 +147,12 @@ function VersionsModal({ doc, onClose }: { doc: BrandDocument; onClose: () => vo
                     }
                   >
                     Download
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
     </Modal>
   );
@@ -111,8 +163,8 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
   const logoRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState(brand);
-  const [palette, setPalette] = useState<PaletteColor[]>(parsePalette(brand.palette));
-  const [busy, setBusy] = useState(false);
+  const [palette, setPalette] = useState<EditablePaletteColor[]>(() => createEditablePalette(brand.palette));
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [docName, setDocName] = useState("");
   const [docCategory, setDocCategory] = useState("guideline");
   const [versionsFor, setVersionsFor] = useState<BrandDocument | null>(null);
@@ -120,13 +172,14 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
 
   useEffect(() => {
     setForm(brand);
-    setPalette(parsePalette(brand.palette));
+    setPalette(createEditablePalette(brand.palette));
   }, [brand]);
 
-  const set = (k: keyof Brand, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof Brand>(k: K, v: Brand[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
   async function saveIdentity() {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api(`/api/companies/${brand.id}`, {
         method: "PATCH",
@@ -136,7 +189,8 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
           secondary_color: form.secondary_color,
           accent_color: form.accent_color,
           font_family: form.font_family || null,
-          palette: JSON.stringify(palette),
+          base_font_size: form.base_font_size,
+          palette: JSON.stringify(palette.map(({ name, hex }) => ({ name, hex }))),
           website: form.website || null,
           contact_email: form.contact_email || null,
           phone: form.phone || null,
@@ -149,7 +203,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
     } catch (err) {
       notify(err instanceof Error ? err.message : "Save failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -189,21 +243,22 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {/* Identity */}
-      <div className="card">
-        <div className="spread mb-4">
-          <h3 className="m-0">{brand.name} — identity</h3>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle>{brand.name} — identity</CardTitle>
           {canManage && (
-            <button className="btn-primary flex-none" disabled={busy} onClick={saveIdentity}>
-              {busy ? "Saving…" : "Save identity"}
-            </button>
+            <Button type="button" disabled={isSubmitting} onClick={saveIdentity}>
+              {isSubmitting ? "Saving…" : "Save identity"}
+            </Button>
           )}
-        </div>
+        </CardHeader>
+        <CardContent>
 
-        <div className="mb-5 flex items-center gap-4">
+        <div className="mb-5 grid gap-4 sm:grid-cols-[auto_1fr]">
           <div
-            className="grid h-24 w-24 flex-none place-items-center overflow-hidden rounded-2xl border border-[var(--border)]"
+            className="grid size-24 flex-none place-items-center overflow-hidden border"
             style={{ background: `${form.primary_color}14`, color: form.primary_color }}
           >
             {form.logo_url ? (
@@ -212,26 +267,42 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
               <span className="text-2xl font-bold">{form.name.slice(0, 2).toUpperCase()}</span>
             )}
           </div>
-          {canManage && (
-            <div>
-              <button className="btn-sm" onClick={() => logoRef.current?.click()}>
-                Upload logo
-              </button>
-              <input ref={logoRef} type="file" accept="image/*" hidden onChange={uploadLogo} />
-              <div className="muted mt-1 text-xs">PNG or SVG, transparent background.</div>
+          <div className="flex min-w-0 flex-col justify-center gap-2">
+            <div className="flex flex-wrap gap-2">
+              {canManage && (
+                <Button type="button" variant="outline" size="sm" onClick={() => logoRef.current?.click()}>
+                  Upload logo
+                </Button>
+              )}
+              {form.logo_url && (
+                <Button type="button" size="sm"
+                  onClick={() => {
+                    const extension = form.logo_url?.split("?")[0].split(".").pop() || "png";
+                    void downloadFile(`/api/companies/${brand.id}/logo/download`, `${brand.slug}-logo.${extension}`).catch(() => notify("Logo download failed", "error"));
+                  }}
+                >
+                  <Download data-icon="inline-start" /> Download logo
+                </Button>
+              )}
             </div>
-          )}
+            {canManage && (
+              <>
+              <Input aria-label="Upload logo" ref={logoRef} type="file" accept="image/*" hidden onChange={uploadLogo} />
+              <div className="text-xs text-muted-foreground">PNG or SVG with a transparent background works best.</div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Colors */}
         <div className="mb-2 text-sm font-semibold">Brand colours</div>
         <div className="mb-4 flex flex-wrap items-start gap-5">
           <ColorField label="primary" value={form.primary_color} disabled={!canManage} onChange={(v) => set("primary_color", v)} />
-          <ColorField label="secondary" value={form.secondary_color ?? "#64748b"} disabled={!canManage} onChange={(v) => set("secondary_color", v)} />
+          <ColorField label="secondary" value={form.secondary_color ?? "#71717a"} disabled={!canManage} onChange={(v) => set("secondary_color", v)} />
           <ColorField label="accent" value={form.accent_color} disabled={!canManage} onChange={(v) => set("accent_color", v)} />
           {palette.map((c, i) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <input
+            <div key={c.id} className="flex flex-col items-center gap-1">
+              <Input aria-label={`${c.name} color`}
                 type="color"
                 value={c.hex}
                 disabled={!canManage}
@@ -240,7 +311,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
                 }
                 className="!h-12 !w-16 !p-1"
               />
-              <input
+              <Input aria-label="Color name"
                 value={c.name}
                 disabled={!canManage}
                 placeholder="name"
@@ -250,119 +321,139 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
                 className="!w-16 !py-0.5 text-center !text-xs"
               />
               {canManage && (
-                <button
-                  className="text-[10px] text-red-500"
+                <Button type="button" variant="link" size="xs" className="text-destructive"
                   onClick={() => setPalette((p) => p.filter((_, j) => j !== i))}
                 >
                   remove
-                </button>
+                </Button>
               )}
             </div>
           ))}
           {canManage && (
-            <button
-              className="grid h-12 w-16 place-items-center rounded-lg border-2 border-dashed border-slate-300 text-lg text-slate-400 hover:border-brand-400"
-              onClick={() => setPalette((p) => [...p, { name: "Colour", hex: "#888888" }])}
+            <Button type="button" variant="outline"
+              className="h-12 w-16 border-2 border-dashed text-lg text-muted-foreground"
+              onClick={() => setPalette((p) => [...p, createPaletteColor()])}
               title="Add palette colour"
             >
               +
-            </button>
+            </Button>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-x-3">
-          <div className="field">
-            <label>Font family</label>
-            <input disabled={!canManage} value={form.font_family ?? ""} onChange={(e) => set("font_family", e.target.value)} placeholder="e.g. Montserrat, Arial" />
-          </div>
-          <div className="field">
-            <label>Website</label>
-            <input disabled={!canManage} value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Contact email</label>
-            <input disabled={!canManage} value={form.contact_email ?? ""} onChange={(e) => set("contact_email", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Phone</label>
-            <input disabled={!canManage} value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
-          </div>
+        <FieldGroup>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="rd-brandingpage-275-font-family">Font family</FieldLabel>
+              <Input id="rd-brandingpage-275-font-family" aria-label="e.g. Montserrat, Arial" disabled={!canManage} value={form.font_family ?? ""} onChange={(e) => set("font_family", e.target.value)} placeholder="e.g. Montserrat, Arial" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="brand-base-font-size">Base font size</FieldLabel>
+              <Input id="brand-base-font-size" type="number" min={12} max={24} disabled={!canManage}
+                value={form.base_font_size || 16}
+                onChange={(e) => set("base_font_size", Number(e.target.value))}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rd-brandingpage-279-website">Website</FieldLabel>
+              <Input id="rd-brandingpage-279-website" disabled={!canManage} value={form.website ?? ""} onChange={(e) => set("website", e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rd-brandingpage-283-contact-email">Contact email</FieldLabel>
+              <Input id="rd-brandingpage-283-contact-email" disabled={!canManage} value={form.contact_email ?? ""} onChange={(e) => set("contact_email", e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rd-brandingpage-287-phone">Phone</FieldLabel>
+              <Input id="rd-brandingpage-287-phone" disabled={!canManage} value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
+            </Field>
+          </FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="rd-brandingpage-292-tagline">Tagline</FieldLabel>
+            <Input id="rd-brandingpage-292-tagline" disabled={!canManage} value={form.tagline ?? ""} onChange={(e) => set("tagline", e.target.value)} />
+          </Field>
+        </FieldGroup>
+        <div className="mt-5 border bg-muted/25 p-4" style={{ fontFamily: form.font_family || undefined, fontSize: `${form.base_font_size || 16}px` }}>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Typography preview</div>
+          <div className="mt-2 text-[1.5em] font-semibold leading-tight">{form.name}</div>
+          <p className="mt-1 max-w-2xl text-[1em] leading-relaxed text-muted-foreground">
+            {form.tagline || "Add a tagline to preview how this company sounds and looks across marketing materials."}
+          </p>
         </div>
-        <div className="field">
-          <label>Tagline</label>
-          <input disabled={!canManage} value={form.tagline ?? ""} onChange={(e) => set("tagline", e.target.value)} />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Documents */}
-      <div className="card">
-        <div className="spread mb-3">
-          <h3 className="m-0">Brand documents</h3>
+      <Card className="py-0">
+        <CardHeader className="pt-4">
+          <CardTitle>Brand documents</CardTitle>
+          <CardDescription>
+            Re-upload a document with the same name to add a new version. Full history is kept.
+          </CardDescription>
           {canManage && (
-            <div className="row" style={{ gap: 6, flex: "0 0 auto" }}>
-              <input
+            <FieldGroup className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+              <Field>
+              <FieldLabel htmlFor="brand-document-name">Document name</FieldLabel>
+              <Input id="brand-document-name"
                 placeholder="Document name (e.g. Logo Pack)"
                 value={docName}
                 onChange={(e) => setDocName(e.target.value)}
-                style={{ width: 200 }}
               />
-              <select value={docCategory} onChange={(e) => setDocCategory(e.target.value)} className="!w-auto">
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <button className="btn-primary flex-none" onClick={() => docRef.current?.click()}>
+              </Field>
+              <Field>
+              <FieldLabel htmlFor="brand-document-category">Category</FieldLabel>
+              <Select items={CATEGORIES.map((c) => ({ value: c, label: c }))} value={docCategory} onValueChange={(value) => setDocCategory(value ?? "")}>
+                <SelectTrigger className="w-full" id="brand-document-category"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
+              </Field>
+              <Button type="button" onClick={() => docRef.current?.click()}>
                 Upload
-              </button>
-              <input ref={docRef} type="file" hidden onChange={uploadDoc} />
-            </div>
+              </Button>
+              <Input aria-label="Upload document" ref={docRef} type="file" hidden onChange={uploadDoc} />
+            </FieldGroup>
           )}
-        </div>
-        <div className="muted mb-3 text-xs">
-          Re-upload a document with the same name to add a new version — full history is kept.
-        </div>
+        </CardHeader>
 
+        <CardContent className="p-0">
         {docs.loading ? (
-          <ListSkeleton rows={3} />
+          <div className="p-4"><ListSkeleton rows={3} /></div>
         ) : !docs.data || docs.data.length === 0 ? (
-          <Empty icon="📁" message="No documents yet" hint="Upload logos, guideline PDFs or fonts above." />
+          <Empty icon={<Folder />} message="No documents yet" hint="Upload logos, guideline PDFs or fonts above." />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Category</th>
-                <th>Version</th>
-                <th>Size</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {docs.data.map((d) => (
-                <tr key={d.id}>
-                  <td className="font-semibold">
-                    <span className="mr-2">{DOC_ICON[d.category] ?? "📄"}</span>
-                    {d.name}
-                  </td>
-                  <td><span className="badge">{d.category}</span></td>
-                  <td>
-                    <button className="badge blue" onClick={() => setVersionsFor(d)}>
+          <Table>
+            <TableBody>
+              {docs.data.map((d) => {
+                const DocumentIcon = DOC_ICON[d.category] ?? FileText;
+                return <TableRow key={d.id}>
+                  <TableCell className="max-w-[28rem] whitespace-normal">
+                    <DocumentIcon className="mr-2 inline-block" aria-hidden="true" />
+                    <span className="inline-block max-w-72 truncate align-middle font-semibold" title={d.name}>{d.name}</span>
+                  </TableCell>
+                  <TableCell><Badge variant="secondary">{d.category}</Badge></TableCell>
+                  <TableCell>
+                      <Button type="button" variant="link" size="sm" className="text-foreground" onClick={() => setVersionsFor(d)}>
                       v{d.current_version} · {d.version_count} versions
-                    </button>
-                  </td>
-                  <td className="muted">{d.latest_size != null ? bytes(d.latest_size) : "—"}</td>
-                  <td className="text-right">
-                    <button
-                      className="btn-sm"
-                      onClick={() => setVersionsFor(d)}
-                    >
-                      History
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums">{d.latest_size != null ? bytes(d.latest_size) : "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="inline-flex gap-2">
+                      <Button type="button" size="sm"
+                        onClick={() => downloadFile(`/api/companies/documents/${d.id}/download`, d.name).catch(() => notify("Download failed", "error"))}
+                      >
+                        <Download data-icon="inline-start" /> Download
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setVersionsFor(d)}>
+                        History
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>;
+              })}
+            </TableBody>
+          </Table>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {versionsFor && (
         <VersionsModal doc={versionsFor} onClose={() => setVersionsFor(null)} />
@@ -372,6 +463,7 @@ function BrandHub({ brand, canManage, onSaved }: { brand: Brand; canManage: bool
 }
 
 export default function BrandingPage() {
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { brands, loading, reload, setActive } = useBrand();
   const { notify } = useToast();
@@ -380,8 +472,13 @@ export default function BrandingPage() {
   const [deleting, setDeleting] = useState<Brand | null>(null);
 
   useEffect(() => {
-    if (!selectedId && brands.length > 0) setSelectedId(brands[0].id);
-  }, [brands, selectedId]);
+    const requested = searchParams.get("company");
+    if (requested && brands.some((brand) => brand.id === requested)) {
+      setSelectedId(requested);
+    } else if (!selectedId && brands.length > 0) {
+      setSelectedId(brands[0].id);
+    }
+  }, [brands, searchParams, selectedId]);
 
   const selected = brands.find((b) => b.id === selectedId) ?? null;
   const isAdmin = !!user?.is_admin;
@@ -409,9 +506,9 @@ export default function BrandingPage() {
         subtitle="Each company's colours, fonts, logo and versioned brand documents — all in one place."
         action={
           isAdmin && (
-            <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Button type="button" onClick={() => setCreating(true)}>
               + New brand
-            </button>
+            </Button>
           )
         }
       />
@@ -419,71 +516,63 @@ export default function BrandingPage() {
       {loading ? (
         <ListSkeleton rows={5} />
       ) : brands.length === 0 ? (
-        <Empty icon="🏢" message="No brands yet" hint="Create your first company brand to get started." />
+        <Empty icon={<Building2 />} message="No brands yet" hint="Create your first company brand to get started." />
       ) : (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {/* Brand selector */}
           <div className="flex flex-wrap gap-2">
             {brands.map((b) => {
               const active = b.id === selectedId;
               return (
-                <button
+                <Button aria-label={`Select ${b.name}`} type="button"
                   key={b.id}
                   onClick={() => setSelectedId(b.id)}
-                  className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                    active
-                      ? "border-brand-600 bg-brand-600 text-white"
-                      : "border-[var(--border)] bg-white text-ink hover:border-brand-400"
-                  }`}
+                  variant={active ? "default" : "outline"}
                 >
                   {b.logo_url ? (
-                    <img src={b.logo_url} alt="" className="h-5 w-5 flex-none rounded bg-white object-contain" />
+                    <img src={b.logo_url} alt="" className="size-5 flex-none object-contain" />
                   ) : (
                     <span
-                      className="h-3.5 w-3.5 flex-none rounded-full ring-1 ring-black/10"
+                      className="size-3.5 flex-none ring-1 ring-foreground/10"
                       style={{ background: b.primary_color }}
                     />
                   )}
                   <span className="truncate">{b.name}</span>
                   {b.is_default && (
-                    <span className={`text-[10px] font-medium ${active ? "text-white/70" : "text-ink-muted"}`}>
+                    <span className="text-[10px] font-medium opacity-70">
                       default
                     </span>
                   )}
-                </button>
+                </Button>
               );
             })}
           </div>
 
           {selected ? (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               <BrandHub key={selected.id} brand={selected} canManage={canManage(selected)} onSaved={reload} />
-              <div className="row" style={{ gap: 8 }}>
-                <button
-                  className="btn-sm"
-                  style={{ flex: "0 0 auto" }}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm"
                   onClick={() => {
                     setActive(selected.id);
                     notify(`Switched active brand to ${selected.name}.`);
                   }}
                 >
                   Make active brand
-                </button>
+                </Button>
                 {isAdmin && !selected.is_default && (
-                  <button
-                    className="btn-sm btn-danger"
-                    style={{ flex: "0 0 auto" }}
+                  <Button type="button" variant="destructive" size="sm"
                     onClick={() => setDeleting(selected)}
                   >
                     Delete brand
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
           ) : (
-            <div className="card">
-              <Empty message="Select a brand to manage." />
-            </div>
+            <Card>
+              <CardContent><Empty message="Select a brand to manage." /></CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -494,12 +583,12 @@ export default function BrandingPage() {
           label="Brand / company name"
           placeholder="e.g. Agiomix"
           submitLabel="Create brand"
-          onSubmit={createBrand}
+          onConfirm={createBrand}
           onClose={() => setCreating(false)}
         />
       )}
       {deleting && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete brand"
           message={`Delete ${deleting.name}? Its documents will be removed; linked items keep working but lose their brand.`}
           confirmLabel="Delete"

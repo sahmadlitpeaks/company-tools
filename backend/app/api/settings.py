@@ -21,7 +21,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 VALID_MODES = {"light", "dark", "system"}
 VALID_DENSITY = {"comfortable", "compact"}
-VALID_FONTS = {"system", "inter", "serif"}
+VALID_FONTS = {"system", "dm-sans", "serif"}
 
 
 class AppearanceIn(BaseModel):

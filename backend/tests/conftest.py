@@ -2,10 +2,13 @@
 import os
 
 # Configure the environment BEFORE the app/config singletons are imported.
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("RUN_SCHEDULER", "false")
+# Tests must never inherit the Docker service's live PostgreSQL URL. Assign
+# these explicitly so the destructive drop_all/create_all fixture always uses
+# the disposable SQLite database, even when pytest runs inside `docker compose`.
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
+os.environ["ENVIRONMENT"] = "development"
+os.environ["SECRET_KEY"] = "test-secret-key"
+os.environ["RUN_SCHEDULER"] = "false"
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
@@ -41,7 +44,7 @@ async def client():
 
 @pytest_asyncio.fixture
 async def auth(client):
-    from tests.helpers import clear_forced_password_change
+    from helpers import clear_forced_password_change
 
     r = await client.post(
         "/api/auth/login",

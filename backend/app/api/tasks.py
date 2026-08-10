@@ -9,8 +9,11 @@ from sqlalchemy.orm import selectinload
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.models.workplace import Task, TaskComment, TaskItem
+from app.models.workplace import Project, Task, TaskComment, TaskItem
 from app.schemas.workplace import (
+    ProjectCreate,
+    ProjectOut,
+    ProjectUpdate,
     TaskCommentCreate,
     TaskCommentOut,
     TaskCreate,
@@ -27,12 +30,129 @@ from app.services.onboarding_sync import reflect_task_into_checklist
 from app.services.people import user_names
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+projects_router = APIRouter(prefix="/projects", tags=["projects"])
 
 # ``submitted`` belongs to checklist runs (awaiting manager verification); it is
 # accepted here so run rows serialise, but runs are edited via /checklist-runs.
 STATUSES = {"todo", "in_progress", "blocked", "submitted", "done"}
 PRIORITIES = {"low", "normal", "high", "urgent"}
 RECURRENCES = {"daily", "weekly", "monthly"}
+PROJECT_STATUSES = {"planned", "active", "on_hold", "completed", "cancelled"}
+
+
+async def _project_out(db: AsyncSession, project: Project) -> ProjectOut:
+    total, completed = (
+        await db.execute(
+            select(
+                func.count(Task.id),
+                func.coalesce(func.sum(case((Task.status == "done", 1), else_=0)), 0),
+            ).where(Task.project_id == project.id)
+        )
+    ).one()
+    names = await user_names(db, {project.owner_id})
+    total = int(total)
+    completed = int(completed)
+    out = ProjectOut.model_validate(project)
+    out.owner_name = names.get(project.owner_id) if project.owner_id else None
+    out.task_count = total
+    out.completed_tasks = completed
+    out.progress = round(completed / total * 100) if total else 0
+    return out
+
+
+@projects_router.get("", response_model=list[ProjectOut])
+async def list_projects(
+    status: str | None = None,
+    owner_id: uuid.UUID | None = None,
+    company_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    stmt = select(Project).order_by(Project.created_at.desc())
+    if status:
+        stmt = stmt.where(Project.status == status)
+    if owner_id:
+        stmt = stmt.where(Project.owner_id == owner_id)
+    if company_id:
+        stmt = stmt.where(Project.company_id == company_id)
+    projects = (await db.execute(stmt)).scalars().all()
+    return [await _project_out(db, project) for project in projects]
+
+
+@projects_router.post("", response_model=ProjectOut, status_code=201)
+async def create_project(
+    payload: ProjectCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if payload.status not in PROJECT_STATUSES:
+        raise HTTPException(status_code=422, detail="Invalid project status")
+    if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
+        raise HTTPException(status_code=422, detail="End date must be on or after start date")
+    data = payload.model_dump()
+    data["owner_id"] = payload.owner_id or user.id
+    project = Project(**data)
+    db.add(project)
+    record(
+        db, user=user, action="created", entity_type="project", entity_id=project.id,
+        summary=f"{user.display_name or user.email} created project '{project.name}'",
+    )
+    await db.commit()
+    await db.refresh(project)
+    return await _project_out(db, project)
+
+
+@projects_router.get("/{project_id}", response_model=ProjectOut)
+async def get_project(
+    project_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await _project_out(db, project)
+
+
+@projects_router.patch("/{project_id}", response_model=ProjectOut)
+async def update_project(
+    project_id: uuid.UUID,
+    payload: ProjectUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not (user.is_admin or user.role == "manager" or project.owner_id == user.id):
+        raise HTTPException(status_code=403, detail="Only the project owner or a manager can edit it")
+    data = payload.model_dump(exclude_unset=True)
+    if "status" in data and data["status"] not in PROJECT_STATUSES:
+        raise HTTPException(status_code=422, detail="Invalid project status")
+    start = data.get("start_date", project.start_date)
+    end = data.get("end_date", project.end_date)
+    if start and end and end < start:
+        raise HTTPException(status_code=422, detail="End date must be on or after start date")
+    for field, value in data.items():
+        setattr(project, field, value)
+    await db.commit()
+    await db.refresh(project)
+    return await _project_out(db, project)
+
+
+@projects_router.delete("/{project_id}", status_code=204)
+async def delete_project(
+    project_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = await db.get(Project, project_id)
+    if not project:
+        return
+    if not (user.is_admin or user.role == "manager" or project.owner_id == user.id):
+        raise HTTPException(status_code=403, detail="Only the project owner or a manager can delete it")
+    await db.delete(project)
+    await db.commit()
 
 
 def _advance(d: date, rec: str) -> date:
@@ -107,6 +227,7 @@ async def list_tasks(
         description="Include recurring checklist runs (excluded by default — a "
         "daily 100-item round would swamp the board; see /api/checklist-runs)",
     ),
+    project_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -135,6 +256,8 @@ async def list_tasks(
         )
     if q:
         stmt = stmt.where(Task.title.ilike(f"%{q}%"))
+    if project_id:
+        stmt = stmt.where(Task.project_id == project_id)
     tasks = (await db.execute(stmt)).scalars().all()
     names = await user_names(
         db, {t.assignee_id for t in tasks} | {t.created_by_id for t in tasks}
@@ -268,6 +391,7 @@ async def update_task(
             recurrence=task.recurrence,
             assignee_id=task.assignee_id,
             company_id=task.company_id,
+            project_id=task.project_id,
             created_by_id=task.created_by_id,
             due_date=_advance(base, task.recurrence),
             status="todo",

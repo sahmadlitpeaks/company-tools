@@ -1,6 +1,26 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { lazy, Suspense, useRef, useState } from "react";
-import { BookOpen, History, Lock, Share2, Trash2 } from "lucide-react";
-import { api, downloadFile } from "../api/client";
+import {
+  Archive,
+  Eye,
+  File,
+  FileText,
+  Folder as FolderIcon,
+  History,
+  Home,
+  Image,
+  Lock,
+  Share2,
+  Sheet,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
+import { api, apiUrl, downloadFile } from "../api/client";
 import ShareControl from "../components/ShareControl";
 import PdfThumb from "../components/PdfThumb";
 import VersionsModal from "../components/VersionsModal";
@@ -8,9 +28,10 @@ import type { Asset, Folder } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import {
   AuthImage,
-  ConfirmModal,
+  ConfirmDialog,
   Empty,
   ListSkeleton,
+  Modal,
   PageHead,
   PromptModal,
   bytes,
@@ -28,14 +49,46 @@ function isImage(name: string): boolean {
   return ["png", "jpg", "jpeg", "gif", "webp"].includes(ext);
 }
 
-function fileIcon(name: string): string {
+function isVideo(name: string): boolean {
+  return ["mp4", "webm", "mov"].includes(name.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function isAudio(name: string): boolean {
+  return ["mp3", "wav", "m4a", "ogg"].includes(name.split(".").pop()?.toLowerCase() ?? "");
+}
+
+function AssetPreviewModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+  const { notify } = useToast();
+  const path = `/api/assets/${asset.id}/preview`;
+  return (
+    <Modal title={`View — ${asset.name}`} maxWidth={960} onClose={onClose}>
+      <div className="grid min-h-80 place-items-center border bg-muted/30 p-3">
+        {isImage(asset.name) ? (
+          <AuthImage path={path} alt={asset.name} width={900} height={600} style={{ maxWidth: "100%", maxHeight: "65vh", objectFit: "contain" }} />
+        ) : isVideo(asset.name) ? (
+          <video controls className="max-h-[65vh] max-w-full" src={apiUrl(path)} />
+        ) : isAudio(asset.name) ? (
+          <audio controls className="w-full max-w-xl" src={apiUrl(path)} />
+        ) : (
+          <iframe title={`Preview of ${asset.name}`} src={apiUrl(path)} sandbox="" className="h-[65vh] w-full border-0 bg-background" />
+        )}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button type="button" onClick={() => downloadFile(`/api/assets/${asset.id}/download`, asset.name).catch(() => notify("Download failed", "error"))}>
+          Download
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function fileIcon(name: string): LucideIcon {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "🖼";
-  if (["pdf"].includes(ext)) return "📕";
-  if (["doc", "docx", "txt", "rtf"].includes(ext)) return "📝";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "📊";
-  if (["zip", "rar", "7z"].includes(ext)) return "🗜";
-  return "📄";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return Image;
+  if (["pdf", "doc", "docx", "txt", "rtf"].includes(ext)) return FileText;
+  if (["xls", "xlsx", "csv"].includes(ext)) return Sheet;
+  if (["zip", "rar", "7z"].includes(ext)) return Archive;
+  return File;
 }
 
 export default function AssetsPage() {
@@ -43,9 +96,9 @@ export default function AssetsPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [crumbs, setCrumbs] = useState<Folder[]>([]);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [reading, setReading] = useState<Asset | null>(null);
+  const [viewing, setViewing] = useState<Asset | null>(null);
   const [versioning, setVersioning] = useState<Asset | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -130,127 +183,121 @@ export default function AssetsPage() {
         title="Marketing Assets"
         subtitle="Organise campaign files in folders for easy team access."
         action={
-          <div className="row" style={{ gap: 8 }}>
-            <button
-              className="btn"
-              style={{ flex: "0 0 auto" }}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline"
               onClick={() => setNewFolderOpen(true)}
             >
               + Folder
-            </button>
-            <button
-              className="btn-primary"
-              style={{ flex: "0 0 auto" }}
+            </Button>
+            <Button type="button"
               onClick={() => fileRef.current?.click()}
             >
               Upload file
-            </button>
-            <input ref={fileRef} type="file" hidden onChange={upload} />
+            </Button>
+            <Input aria-label="Upload" ref={fileRef} type="file" hidden onChange={upload} />
           </div>
         }
       />
 
       {/* Breadcrumb */}
       <div className="mb-4 flex flex-wrap items-center gap-1 text-sm">
-        <button
-          className="!border-0 !bg-transparent !px-1.5 !py-0.5 font-medium text-brand-600 hover:underline"
+        <Button type="button" variant="link" size="sm"
           onClick={() => goTo(-1)}
         >
-          🏠 Home
-        </button>
+          <Home data-icon="inline-start" aria-hidden="true" /> Home
+        </Button>
         {crumbs.map((c, i) => (
           <span key={c.id} className="flex items-center gap-1">
-            <span className="text-ink-muted">/</span>
-            <button
-              className="!border-0 !bg-transparent !px-1.5 !py-0.5 font-medium text-brand-600 hover:underline"
+            <span className="text-muted-foreground">/</span>
+            <Button type="button" variant="link" size="sm"
               onClick={() => goTo(i)}
             >
               {c.name}
-            </button>
+            </Button>
           </span>
         ))}
       </div>
 
       {/* Bulk action toolbar */}
       {selected.size > 0 && (
-        <div className="mb-3 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2 border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm">
           <strong>{selected.size} selected</strong>
           <span className="flex-1" />
-          <button className="btn-sm inline-flex items-center gap-1.5" onClick={() => bulk("share")}>
-            <Share2 size={14} /> Share
-          </button>
-          <button className="btn-sm inline-flex items-center gap-1.5" onClick={() => bulk("unshare")}>
-            <Lock size={14} /> Make private
-          </button>
-          <button
-            className="btn-sm btn-danger inline-flex items-center gap-1.5"
+          <Button type="button" variant="outline" size="sm" onClick={() => bulk("share")}>
+            <Share2 data-icon="inline-start" /> Share
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => bulk("unshare")}>
+            <Lock data-icon="inline-start" /> Make private
+          </Button>
+          <Button type="button" variant="destructive" size="sm"
             onClick={() => setConfirmDelete(true)}
           >
-            <Trash2 size={14} /> Delete
-          </button>
+            <Trash2 data-icon="inline-start" /> Delete
+          </Button>
         </div>
       )}
 
-      <div className="card !p-0 overflow-hidden">
+      <Card className="py-0">
+        <CardContent className="p-0">
         {folders.loading || assets.loading ? (
           <div className="p-4">
             <ListSkeleton rows={6} />
           </div>
         ) : (folders.data?.length ?? 0) + (assets.data?.length ?? 0) === 0 ? (
           <Empty
-            icon="📂"
+            icon={<FolderIcon />}
             message="This folder is empty"
             hint="Create a sub-folder or upload a file to get started."
           />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: 36 }}></th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Client sharing</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-9"></TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Client sharing</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {folders.data?.map((f) => (
-                <tr key={f.id} className="cursor-pointer" onClick={() => open(f)}>
-                  <td></td>
-                  <td>
+                <TableRow key={f.id}>
+                  <TableCell></TableCell>
+                  <TableCell className="max-w-[32rem] whitespace-normal">
                     <div className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-amber-50 text-lg">
-                        📁
+                      <span className="grid size-9 flex-none place-items-center bg-primary/10 text-lg text-foreground">
+                        <FolderIcon aria-hidden="true" />
                       </span>
-                      <span className="font-semibold">{f.name}</span>
+                       <span className="truncate font-semibold" title={f.name}>{f.name}</span>
                     </div>
-                  </td>
-                  <td><span className="badge amber">Folder</span></td>
-                  <td className="muted">—</td>
-                  <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                  </TableCell>
+                   <TableCell><Badge variant="secondary">Folder</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">—</TableCell>
+                  <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
-                      <button className="btn-sm" onClick={() => open(f)}>Open ›</button>
-                      <button
-                        className="btn-sm btn-danger"
+                      <Button type="button" variant="outline" size="sm" onClick={() => open(f)}>Open ›</Button>
+                      <Button type="button" variant="destructive" size="icon-sm"
                         title="Delete folder"
                         onClick={() => setDeletingFolder(f)}
                       >
-                        <Trash2 size={13} />
-                      </button>
+                        <Trash2 />
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-              {assets.data?.map((a) => (
-                <tr key={a.id} className={selected.has(a.id) ? "bg-brand-50" : ""}>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
+              {assets.data?.map((a) => {
+                const FileIcon = fileIcon(a.name);
+                return (
+                <TableRow key={a.id} data-state={selected.has(a.id) ? "selected" : undefined}>
+                   <TableCell>
+                    <Checkbox aria-label={`Select ${a.name}`}
                       checked={selected.has(a.id)}
-                      onChange={() => toggle(a.id)}
+                      onCheckedChange={() => toggle(a.id)}
                     />
-                  </td>
-                  <td>
+                  </TableCell>
+                   <TableCell className="max-w-[32rem] whitespace-normal">
                     <div className="flex items-center gap-3">
                       {isPdf(a.name) ? (
                         <PdfThumb url={`/api/assets/${a.id}/download`} size={40} />
@@ -260,28 +307,28 @@ export default function AssetsPage() {
                           alt={a.name}
                           width={40}
                           height={40}
-                          style={{ borderRadius: 8, objectFit: "cover", flex: "none" }}
+                          style={{ width: 40, height: 40, objectFit: "cover", flex: "none" }}
                         />
                       ) : (
-                        <span className="grid h-10 w-10 flex-none place-items-center rounded-lg bg-slate-100 text-lg">
-                          {fileIcon(a.name)}
+                        <span className="grid size-10 flex-none place-items-center bg-primary/10 text-lg text-foreground">
+                           <FileIcon aria-hidden="true" />
                         </span>
                       )}
                       <div className="min-w-0">
-                        <div className="truncate font-medium">{a.name}</div>
-                        <div className="muted text-xs">
+                         <div className="truncate font-medium" title={a.name}>{a.name}</div>
+                        <div className="text-xs text-muted-foreground">
                           {bytes(a.size_bytes)}
                           {a.version > 1 && ` · v${a.version}`}
                         </div>
                       </div>
                     </div>
-                  </td>
-                  <td>
-                    <span className="badge">
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
                       {(a.name.split(".").pop() ?? "file").toUpperCase()}
-                    </span>
-                  </td>
-                  <td>
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <ShareControl
                       base={`/api/assets/${a.id}`}
                       name={a.name}
@@ -292,48 +339,51 @@ export default function AssetsPage() {
                       hasPasscode={a.share_has_passcode}
                       onChange={() => assets.reload()}
                     />
-                  </td>
-                  <td className="text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
-                      {isPdf(a.name) && (
-                        <button
-                          className="btn-sm inline-flex items-center gap-1.5"
-                          onClick={() => setReading(a)}
-                          title="Read as flipbook"
-                        >
-                          <BookOpen size={14} /> Read
-                        </button>
-                      )}
-                      <button
-                        className="btn-sm inline-flex items-center gap-1.5"
+                      <Button type="button" size="sm" onClick={() => setViewing(a)} title={`View ${a.name}`}>
+                        <Eye data-icon="inline-start" /> View
+                      </Button>
+                      <Button type="button" variant="outline" size="sm"
                         onClick={() => setVersioning(a)}
                         title="Version history / upload new version"
                       >
-                        <History size={14} /> v{a.version}
-                      </button>
-                      <button
-                        className="btn-sm"
+                        <History data-icon="inline-start" /> v{a.version}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm"
                         onClick={() => downloadFile(`/api/assets/${a.id}/download`, a.name)}
                       >
                         Download
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </TableCell>
+                </TableRow>
+                );
+              })}
+            </TableBody>
+           </Table>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
-      {reading && (
-        <Suspense fallback={null}>
+      {viewing && isPdf(viewing.name) && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 grid place-items-center bg-background/80" role="status" aria-live="polite">
+              Loading document viewer…
+            </div>
+          }
+        >
           <FlipbookModal
-            url={`/api/assets/${reading.id}/download`}
-            name={reading.name}
-            onClose={() => setReading(null)}
+            url={`/api/assets/${viewing.id}/download`}
+            name={viewing.name}
+            onClose={() => setViewing(null)}
           />
         </Suspense>
+      )}
+      {viewing && !isPdf(viewing.name) && (
+        <AssetPreviewModal asset={viewing} onClose={() => setViewing(null)} />
       )}
 
       {versioning && (
@@ -352,12 +402,12 @@ export default function AssetsPage() {
           label="Folder name"
           placeholder="e.g. Q2 Campaign"
           submitLabel="Create folder"
-          onSubmit={createFolder}
+          onConfirm={createFolder}
           onClose={() => setNewFolderOpen(false)}
         />
       )}
       {confirmDelete && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete files"
           message={`Delete ${selected.size} file(s)? This can't be undone.`}
           confirmLabel="Delete"
@@ -367,7 +417,7 @@ export default function AssetsPage() {
         />
       )}
       {deletingFolder && (
-        <ConfirmModal
+        <ConfirmDialog
           title="Delete folder"
           message={`Delete "${deletingFolder.name}" and everything inside it? This can't be undone.`}
           confirmLabel="Delete folder"

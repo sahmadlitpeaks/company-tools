@@ -1,3 +1,14 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableSurface,
+} from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
 import { Download, History, Upload } from "lucide-react";
 import { api, downloadFile } from "../api/client";
@@ -24,19 +35,28 @@ export default function VersionsModal({
 }) {
   const { notify } = useToast();
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setVersions(await api<DocVersion[]>(`${base}/versions`));
   }
   useEffect(() => {
-    load().catch(() => setVersions([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    void api<DocVersion[]>(`${base}/versions`)
+      .then((nextVersions) => {
+        if (!cancelled) setVersions(nextVersions);
+      })
+      .catch(() => {
+        if (!cancelled) setVersions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [base]);
 
   async function upload(file: File) {
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -47,25 +67,24 @@ export default function VersionsModal({
     } catch (e) {
       notify(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
-      setBusy(false);
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title={`Versions — ${name}`} onClose={onClose} maxWidth={520}>
-      <div className="mb-4 flex items-center justify-between rounded-xl border border-border bg-slate-50 p-3">
+      <div className="mb-4 flex flex-col items-start justify-between gap-3 border border-border bg-muted p-3 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2 text-sm">
-          <History size={16} className="text-brand-600" />
+          <History className="text-foreground" />
           Current version <strong>v{currentVersion}</strong>
         </div>
-        <button
-          className="btn-primary inline-flex items-center gap-1.5"
-          disabled={busy}
+        <Button type="button"
+          disabled={isSubmitting}
           onClick={() => fileRef.current?.click()}
         >
-          <Upload size={14} /> Upload new version
-        </button>
-        <input
+          <Upload data-icon="inline-start" /> Upload new version
+        </Button>
+        <Input aria-label="Target"
           ref={fileRef}
           type="file"
           className="hidden"
@@ -78,30 +97,32 @@ export default function VersionsModal({
       </div>
 
       {versions === null ? (
-        <p className="muted">Loading…</p>
+        <p className="text-muted-foreground">Loading…</p>
       ) : versions.length === 0 ? (
-        <p className="muted">No previous versions yet. v1 is the current file.</p>
+        <p className="text-muted-foreground">No previous versions yet. v1 is the current file.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Version</th>
-              <th>Size</th>
-              <th>Replaced</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+        <TableSurface>
+          <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Version</TableHead>
+              <TableHead className="text-right">Size</TableHead>
+              <TableHead>Replaced</TableHead>
+              <TableHead><span className="sr-only">Actions</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {versions.map((v) => (
-              <tr key={v.id}>
-                <td className="font-semibold">v{v.version}</td>
-                <td className="muted">{bytes(v.size_bytes)}</td>
-                <td className="muted">
+              <TableRow key={v.id}>
+                <TableCell className="font-semibold">v{v.version}</TableCell>
+                <TableCell className="text-right text-muted-foreground tabular-nums">{bytes(v.size_bytes)}</TableCell>
+                <TableCell className="text-muted-foreground">
                   {new Date(v.created_at).toLocaleDateString()}
-                </td>
-                <td className="text-right">
-                  <button
-                    className="btn-sm inline-flex items-center gap-1.5"
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button type="button"
+                    size="sm"
+                    variant="outline"
                     onClick={() =>
                       downloadFile(
                         `${base}/versions/${v.version}/download`,
@@ -109,13 +130,14 @@ export default function VersionsModal({
                       )
                     }
                   >
-                    <Download size={14} /> Download
-                  </button>
-                </td>
-              </tr>
+                    <Download data-icon="inline-start" /> Download
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+          </Table>
+        </TableSurface>
       )}
     </Modal>
   );

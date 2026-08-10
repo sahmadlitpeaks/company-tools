@@ -1,3 +1,4 @@
+import mimetypes
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import can_manage_company, get_current_admin, get_current_user
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.company import Company
 from app.models.brand_document import BrandDocument, BrandDocumentVersion
 from app.models.user import User
@@ -116,6 +118,27 @@ async def upload_logo(
     await db.commit()
     await db.refresh(brand)
     return brand
+
+
+@router.get("/{company_id}/logo/download")
+async def download_logo(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    brand = await db.get(Company, company_id)
+    if not brand or not brand.logo_url:
+        raise HTTPException(status_code=404, detail="Logo not found")
+    prefix = f"{settings.MEDIA_URL.rstrip('/')}/"
+    if not brand.logo_url.startswith(prefix):
+        raise HTTPException(status_code=409, detail="Only uploaded logos can be downloaded")
+    rel_path = brand.logo_url[len(prefix):]
+    suffix = rel_path.rsplit(".", 1)[-1] if "." in rel_path else "png"
+    return FileResponse(
+        absolute_path(rel_path),
+        media_type=mimetypes.guess_type(rel_path)[0] or "application/octet-stream",
+        filename=f"{brand.slug}-logo.{suffix}",
+    )
 
 
 @router.delete("/{company_id}", status_code=204)
@@ -255,6 +278,32 @@ async def list_versions(
             .order_by(BrandDocumentVersion.version.desc())
         )
     ).scalars().all()
+
+
+@router.get("/documents/{document_id}/download")
+async def download_latest_document(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    doc = await db.get(BrandDocument, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    version = (
+        await db.execute(
+            select(BrandDocumentVersion)
+            .where(BrandDocumentVersion.document_id == document_id)
+            .order_by(BrandDocumentVersion.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="Document version not found")
+    return FileResponse(
+        absolute_path(version.file_path),
+        media_type=version.content_type or "application/octet-stream",
+        filename=doc.name,
+    )
 
 
 @router.get("/document-versions/{version_id}/download")

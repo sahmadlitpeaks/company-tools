@@ -8,6 +8,44 @@ from app.schemas.people import JourneyTaskOut
 
 
 # ---- Tasks ----
+class ProjectCreate(BaseModel):
+    name: str
+    description: str | None = None
+    status: str = "planned"
+    start_date: date | None = None
+    end_date: date | None = None
+    owner_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    status: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    owner_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+
+
+class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    status: str
+    start_date: date | None = None
+    end_date: date | None = None
+    owner_id: uuid.UUID | None = None
+    owner_name: str | None = None
+    company_id: uuid.UUID | None = None
+    task_count: int = 0
+    completed_tasks: int = 0
+    progress: int = 0
+    created_at: datetime
+
+
 class TaskCreate(BaseModel):
     title: str
     description: str | None = None
@@ -17,6 +55,7 @@ class TaskCreate(BaseModel):
     recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -28,6 +67,7 @@ class TaskUpdate(BaseModel):
     recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
 
 
 class TaskItemCreate(BaseModel):
@@ -79,6 +119,7 @@ class TaskOut(BaseModel):
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
     company_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
     completed_at: datetime | None = None
     created_at: datetime
     onboarding_task_id: uuid.UUID | None = None

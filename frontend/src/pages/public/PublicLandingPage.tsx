@@ -1,3 +1,4 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
@@ -5,6 +6,7 @@ import type { LandingPage } from "../../api/types";
 import { parseBlocks } from "../../landing/blocks";
 import { BlockList } from "../../landing/BlockRenderer";
 import { LandingSlugContext } from "../../landing/LandingContext";
+import DOMPurify from "dompurify";
 
 export default function PublicLandingPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -19,12 +21,12 @@ export default function PublicLandingPage() {
 
   if (error)
     return (
-      <div className="center-screen">
-        <div className="login-card">
-          <h2>Page not found</h2>
-          <p className="muted">This landing page isn't published.</p>
-        </div>
-      </div>
+      <main className="grid min-h-dvh place-items-center bg-muted p-5">
+        <Card className="w-full max-w-md">
+          <CardHeader><CardTitle>Page not found</CardTitle></CardHeader>
+          <CardContent><p className="text-muted-foreground">This landing page isn't published.</p></CardContent>
+        </Card>
+      </main>
     );
   if (!page) return null;
 
@@ -32,7 +34,7 @@ export default function PublicLandingPage() {
   if (blocks.length > 0) {
     return (
       <LandingSlugContext.Provider value={page.slug}>
-        <div style={{ background: "#fff", minHeight: "100vh" }}>
+        <div className="min-h-dvh bg-background">
           <BlockList blocks={blocks} />
         </div>
       </LandingSlugContext.Provider>
@@ -40,12 +42,12 @@ export default function PublicLandingPage() {
   }
   // Fallback for pages authored as raw HTML.
   if (page.html) {
-    return <div dangerouslySetInnerHTML={{ __html: page.html }} />;
+    return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(page.html) }} />;
   }
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 40 }}>
+    <main className="mx-auto max-w-3xl p-10">
       <h1>{page.title}</h1>
-      <p className="muted">{page.description}</p>
-    </div>
+      <p className="text-muted-foreground">{page.description}</p>
+    </main>
   );
 }

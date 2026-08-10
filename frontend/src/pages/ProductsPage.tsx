@@ -1,5 +1,10 @@
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { BookOpen, History } from "lucide-react";
+import { BookOpen, FileText, History, Package } from "lucide-react";
 import { api, downloadFile } from "../api/client";
 import ShareControl from "../components/ShareControl";
 import PdfThumb from "../components/PdfThumb";
@@ -51,46 +56,48 @@ function BrochurePanel({ product }: { product: Product }) {
   }
 
   return (
-    <div className="card">
-      <div className="spread mb-3">
+    <Card className="py-0">
+      <CardHeader className="py-(--card-spacing)">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h3 className="m-0">{product.name}</h3>
-          {product.sku && <div className="muted text-sm">SKU: {product.sku}</div>}
+          <CardTitle>{product.name}</CardTitle>
+          {product.sku && <div className="text-sm text-muted-foreground">SKU: {product.sku}</div>}
         </div>
-        <button
-          className="btn-primary flex-none"
+        <Button type="button"
           onClick={() => fileRef.current?.click()}
         >
           + Upload brochure
-        </button>
-        <input ref={fileRef} type="file" hidden onChange={upload} />
+        </Button>
+        <Input aria-label="Upload" ref={fileRef} type="file" hidden onChange={upload} />
       </div>
       {product.description && (
-        <p className="muted mt-0">{product.description}</p>
+        <p className="text-muted-foreground">{product.description}</p>
       )}
+      </CardHeader>
 
+      <CardContent className={data && data.length > 0 ? "p-0" : undefined}>
       {loading ? (
         <ListSkeleton rows={3} />
       ) : !data || data.length === 0 ? (
         <Empty
-          icon="📄"
+          icon={<FileText />}
           message="No brochures yet"
           hint="Upload a PDF or document to share with customers."
         />
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Brochure</th>
-              <th>Downloads</th>
-              <th>Client sharing</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Brochure</TableHead>
+              <TableHead className="text-right">Downloads</TableHead>
+              <TableHead>Client sharing</TableHead>
+              <TableHead><span className="sr-only">Actions</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {data.map((b) => (
-              <tr key={b.id}>
-                <td>
+              <TableRow key={b.id}>
+                <TableCell className="max-w-[28rem] whitespace-normal">
                   <div className="flex items-center gap-3">
                     {isPdf(b) ? (
                       <PdfThumb
@@ -98,23 +105,23 @@ function BrochurePanel({ product }: { product: Product }) {
                         size={40}
                       />
                     ) : (
-                      <span className="grid h-10 w-10 flex-none place-items-center rounded-lg bg-slate-100 text-lg">
-                        📄
+                      <span className="grid size-10 flex-none place-items-center bg-muted text-lg">
+                        <FileText aria-hidden="true" />
                       </span>
                     )}
                     <div className="min-w-0">
-                      <div className="truncate font-semibold">{b.title}</div>
-                      <div className="muted text-xs">
+                      <div className="truncate font-semibold text-foreground" title={b.title}>{b.title}</div>
+                      <div className="text-xs text-muted-foreground">
                         {bytes(b.size_bytes)}
                         {b.version > 1 && ` · v${b.version}`}
                       </div>
                     </div>
                   </div>
-                </td>
-                <td>
-                  <span className="badge">{b.download_count}</span>
-                </td>
-                <td>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {b.download_count}
+                </TableCell>
+                <TableCell>
                   <ShareControl
                     base={`/api/products/brochures/${b.id}`}
                     name={b.title}
@@ -125,43 +132,47 @@ function BrochurePanel({ product }: { product: Product }) {
                     hasPasscode={b.share_has_passcode}
                     onChange={() => reload()}
                   />
-                </td>
-                <td className="text-right">
+                </TableCell>
+                <TableCell className="text-right">
                   <div className="inline-flex items-center gap-2">
                     {isPdf(b) && (
-                      <button
-                        className="btn-sm inline-flex items-center gap-1.5"
+                      <Button type="button" size="sm" variant="outline"
                         onClick={() => setReading(b)}
                         title="Read as flipbook"
                       >
-                        <BookOpen size={14} /> Read
-                      </button>
+                        <BookOpen data-icon="inline-start" /> Read
+                      </Button>
                     )}
-                    <button
-                      className="btn-sm inline-flex items-center gap-1.5"
+                    <Button type="button" size="sm" variant="outline"
                       onClick={() => setVersioning(b)}
                       title="Version history / upload new version"
                     >
-                      <History size={14} /> v{b.version}
-                    </button>
-                    <button
-                      className="btn-sm"
+                      <History data-icon="inline-start" /> v{b.version}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline"
                       onClick={() =>
                         downloadFile(`/api/products/brochures/${b.id}/download`, b.title)
                       }
                     >
                       Download
-                    </button>
+                    </Button>
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
+      </CardContent>
 
       {reading && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 grid place-items-center bg-background/80" role="status" aria-live="polite">
+              Loading document viewer…
+            </div>
+          }
+        >
           <FlipbookModal
             url={`/api/products/brochures/${reading.id}/download`}
             name={reading.title}
@@ -179,7 +190,7 @@ function BrochurePanel({ product }: { product: Product }) {
           onReplaced={reload}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -209,9 +220,9 @@ export default function ProductsPage() {
         title="Products & Brochures"
         subtitle="Catalogue products and host downloadable brochures."
         action={
-          <button className="btn-primary" onClick={() => setCreating(true)}>
+          <Button type="button" onClick={() => setCreating(true)}>
             + New product
-          </button>
+          </Button>
         }
       />
 
@@ -219,51 +230,41 @@ export default function ProductsPage() {
         <ListSkeleton rows={5} />
       ) : !data || data.length === 0 ? (
         <Empty
-          icon="📦"
+          icon={<Package />}
           message="No products yet"
           hint="Add a product or service, then attach downloadable brochures."
           action={
-            <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Button type="button" onClick={() => setCreating(true)}>
               + New product
-            </button>
+            </Button>
           }
         />
       ) : (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {/* Product selector */}
-          <div className="flex flex-wrap gap-2">
+          <ToggleGroup value={[selectedId ?? ""]} onValueChange={(value) => value[0] && setSelectedId(value[0])} className="flex flex-wrap justify-start">
             {data.map((p) => {
-              const active = p.id === selectedId;
               return (
-                <button
+                <ToggleGroupItem aria-label={`Select ${p.name}`}
                   key={p.id}
-                  onClick={() => setSelectedId(p.id)}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors ${
-                    active
-                      ? "border-brand-600 bg-brand-600 text-white"
-                      : "border-[var(--border)] bg-white text-ink hover:border-brand-400"
-                  }`}
+                  value={p.id}
                 >
                   {p.name}
                   {p.sku && (
-                    <span
-                      className={`ml-1.5 text-xs font-normal ${active ? "text-white/70" : "text-ink-muted"}`}
-                    >
+                    <span className="text-xs font-normal text-muted-foreground">
                       {p.sku}
                     </span>
                   )}
-                </button>
+                </ToggleGroupItem>
               );
             })}
-          </div>
+          </ToggleGroup>
 
           {/* Selected product's brochures */}
           {selected ? (
             <BrochurePanel key={selected.id} product={selected} />
           ) : (
-            <div className="card">
-              <Empty message="Select a product to see its brochures." />
-            </div>
+            <Card><CardContent><Empty message="Select a product to see its brochures." /></CardContent></Card>
           )}
         </div>
       )}
@@ -273,7 +274,7 @@ export default function ProductsPage() {
           title="New product"
           label="Product / service name"
           placeholder="e.g. Company Setup"
-          onSubmit={create}
+          onConfirm={create}
           onClose={() => setCreating(false)}
         />
       )}

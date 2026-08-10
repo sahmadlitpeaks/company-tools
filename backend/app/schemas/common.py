@@ -208,6 +208,7 @@ class QRCodeCreate(BaseModel):
     fill_color: str = "#000000"
     back_color: str = "#ffffff"
     dynamic: bool = True
+    company_id: uuid.UUID | None = None
     product_id: uuid.UUID | None = None
 
 
@@ -228,6 +229,7 @@ class QRCodeOut(BaseModel):
     back_color: str
     scan_count: int
     dynamic: bool
+    company_id: uuid.UUID | None = None
     product_id: uuid.UUID | None = None
     created_at: datetime
 

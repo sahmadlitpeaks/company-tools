@@ -74,9 +74,9 @@ def email_domain_allowed(email: str | None, allowed: list[str]) -> bool:
 # Organization-wide appearance default (users may override locally).
 APPEARANCE_DEFAULT = {
     "mode": "light",          # light | dark | system
-    "accent": "#0b5cab",
+    "accent": "#facc15",
     "density": "comfortable",  # comfortable | compact
-    "font": "system",          # system | inter | serif
+    "font": "dm-sans",         # system | dm-sans | serif
 }
 
 

@@ -54,7 +54,13 @@ from app.models.people import (  # noqa: F401
     OnboardingTemplateItem,
 )
 from app.models.worklog import WorkLog  # noqa: F401
-from app.models.timekeeping import TimeEntry, Timesheet, WorkSchedule  # noqa: F401
+from app.models.timekeeping import (  # noqa: F401
+    TimeBreak,
+    TimeCorrectionRequest,
+    TimeEntry,
+    Timesheet,
+    WorkSchedule,
+)
 from app.models.intake import IntakeSource, Submission  # noqa: F401
 from app.models.workspace import WorkspaceItem  # noqa: F401
 from app.models.checklist import (  # noqa: F401
@@ -68,6 +74,7 @@ from app.models.workplace import (  # noqa: F401
     Attachment,
     KnowledgeArticle,
     LeaveBalance,
+    Project,
     Task,
     Ticket,
     TicketComment,
@@ -110,3 +117,5 @@ from app.models.training import (  # noqa: F401
     CourseAssignment,
 )
 from app.models.api_token import ApiToken  # noqa: F401
+from app.models.preference import DashboardPreference  # noqa: F401
+from app.models.operations import BackupRecord, BookingSpace, CafeMenuItem, CafeOrder, CompanyEvent, Idea, IdeaComment, IdeaVote, LostFoundReport, PurchaseRequest, SpaceBooking, Visitor  # noqa: F401

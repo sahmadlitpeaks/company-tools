@@ -1,4 +1,5 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { forwardRef, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import HTMLFlipBook from "react-pageflip";
 import {
   ChevronLeft,
@@ -9,29 +10,29 @@ import {
   X,
 } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
+import type { RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { apiBlob, downloadFile } from "../api/client";
+import { apiUrl, downloadFile } from "../api/client";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** A single rasterised PDF page. react-pageflip needs each page to forward a ref. */
-const Page = forwardRef<HTMLDivElement, { src: string; number: number }>(
-  ({ src, number }, ref) => (
-    <div className="fb-page" ref={ref}>
-      <img src={src} alt={`Page ${number}`} draggable={false} />
+const Page = forwardRef<HTMLDivElement, { src: string; number: number; total: number }>(
+  ({ src, number, total }, ref) => (
+    <div className="overflow-hidden bg-white" ref={ref}>
+      <img
+        className="block size-full select-none bg-white object-contain [-webkit-user-drag:none]"
+        src={src}
+        alt={`Page ${number} of ${total}`}
+        draggable={false}
+        data-page={number}
+      />
     </div>
   ),
 );
 Page.displayName = "FlipPage";
 
-export default function FlipbookModal({
-  url,
-  name,
-  onClose,
-  auth = true,
-  brandName,
-  brandLogo,
-}: {
+type FlipbookModalProps = {
   /** Download path of the PDF, e.g. `/api/assets/:id/download`. */
   url: string;
   name: string;
@@ -42,27 +43,69 @@ export default function FlipbookModal({
   /** Optional brand identity shown in the header (public viewer). */
   brandName?: string | null;
   brandLogo?: string | null;
-}) {
-  const [pages, setPages] = useState<string[]>([]);
+};
+
+type RenderedPage = {
+  number: number;
+  src: string;
+};
+
+type FlipBookHandle = {
+  pageFlip: () => {
+    flipNext: () => void;
+    flipPrev: () => void;
+  };
+};
+
+export default function FlipbookModal(props: FlipbookModalProps) {
+  const { auth = true, url } = props;
+
+  return <FlipbookViewer key={`${auth ? "auth" : "public"}:${url}`} {...props} />;
+}
+
+function FlipbookViewer({
+  url,
+  name,
+  onClose,
+  brandName,
+  brandLogo,
+}: Omit<FlipbookModalProps, "auth">) {
+  const [pages, setPages] = useState<RenderedPage[]>([]);
   const [total, setTotal] = useState(0);
   const [rendered, setRendered] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState(0);
   const [dims, setDims] = useState({ w: 460, h: 620 });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bookRef = useRef<any>(null);
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const handleClose = useEffectEvent(() => onClose?.());
+  const bookRef = useRef<FlipBookHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | undefined;
+    let renderTask: RenderTask | undefined;
+
+    const abortController = new AbortController();
+
     (async () => {
       try {
-        const data = await (await apiBlob(url, auth)).arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const response = await fetch(apiUrl(url), {
+          credentials: "include",
+          signal: abortController.signal,
+        });
+        if (!response.ok) throw new Error(response.statusText || "Could not load PDF");
+        const data = await response.arrayBuffer();
+        if (cancelled) return;
+        loadingTask = pdfjsLib.getDocument({ data });
+        const pdf = await loadingTask.promise;
         if (cancelled) return;
         setTotal(pdf.numPages);
-        const urls: string[] = [];
+        const renderedPages: RenderedPage[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
+          if (cancelled) return;
           const base = page.getViewport({ scale: 1 });
           const scale = Math.min(2, 1400 / base.width); // crisp but bounded
           const viewport = page.getViewport({ scale });
@@ -71,25 +114,36 @@ export default function FlipbookModal({
           canvas.height = viewport.height;
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Canvas unavailable");
-          await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+          const currentRenderTask = page.render({ canvas, canvasContext: ctx, viewport });
+          renderTask = currentRenderTask;
+          await currentRenderTask.promise;
           if (cancelled) return;
-          urls.push(canvas.toDataURL("image/jpeg", 0.85));
+          renderedPages.push({
+            number: i,
+            src: canvas.toDataURL("image/jpeg", 0.85),
+          });
           if (i === 1) {
             const ar = base.width / base.height;
             const h = Math.min(760, Math.round(window.innerHeight * 0.74));
             setDims({ w: Math.round(h * ar), h });
           }
           setRendered(i);
+          // react-pageflip updates from appended children and preserves its current page.
+          setPages([...renderedPages]);
         }
-        if (!cancelled) setPages(urls);
+        await loadingTask.destroy();
+        loadingTask = undefined;
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not open this PDF.");
       }
     })();
     return () => {
       cancelled = true;
+      abortController.abort();
+      renderTask?.cancel();
+      void loadingTask?.destroy();
     };
-  }, [url, auth]);
+  }, [url]);
 
   const flip = (dir: 1 | -1) => {
     const pf = bookRef.current?.pageFlip?.();
@@ -97,52 +151,87 @@ export default function FlipbookModal({
     dir === 1 ? pf.flipNext() : pf.flipPrev();
   };
 
+  const handleViewerKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "ArrowRight") flip(1);
+    else if (event.key === "ArrowLeft") flip(-1);
+  });
+
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose?.();
-      else if (e.key === "ArrowRight") flip(1);
-      else if (e.key === "ArrowLeft") flip(-1);
+    function onKeyDown(event: KeyboardEvent) {
+      handleViewerKeyDown(event);
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const isModal = onClose !== undefined;
+
+  useEffect(() => {
+    if (!isModal) return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+    function onCancel(event: Event) {
+      event.preventDefault();
+      handleClose();
+    }
+
+    dialog.addEventListener("cancel", onCancel);
+    dialog.showModal();
+    closeRef.current?.focus();
+
+    return () => {
+      dialog.removeEventListener("cancel", onCancel);
+      if (dialog.open) dialog.close();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [isModal]);
 
   const ready = pages.length > 0 && !error;
 
-  return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-900/95 backdrop-blur-sm">
+  const viewer = (
+    <>
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
-        <span className="flex min-w-0 items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           {brandLogo ? (
             <img
               src={brandLogo}
-              alt={brandName ?? ""}
-              className="h-7 w-auto flex-none rounded bg-white/90 p-0.5"
+              alt="Brand logo"
+              className="h-7 w-auto flex-none bg-card/90 p-0.5"
             />
           ) : brandName ? (
             <span className="flex-none text-sm font-semibold text-white/90">
               {brandName}
             </span>
           ) : null}
-          <span className="truncate text-sm font-medium">{name}</span>
-        </span>
+          <h1 id={titleId} className="truncate text-sm font-medium">{name}</h1>
+        </div>
         <div className="flex items-center gap-2">
           {ready && (
             <span className="hidden text-xs text-white/70 sm:inline">
               Page {Math.min(current + 1, total)}–{Math.min(current + 2, total)} of {total}
             </span>
           )}
-          <button
-            className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
-            title="Download PDF"
-            aria-label="Download PDF"
+          <Button type="button"
+            size="sm"
+            variant="secondary"
+            title={`Download ${name} as PDF`}
+            aria-label={`Download ${name} as PDF`}
             onClick={() => downloadFile(url, name)}
           >
-            <Download size={17} />
-          </button>
-          <button
-            className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+            <Download data-icon="inline-start" />
+            <span className="hidden sm:inline">Download PDF</span>
+          </Button>
+          <Button type="button"
+            size="icon-sm"
+            variant="secondary"
             title="Fullscreen"
             aria-label="Toggle fullscreen"
             onClick={() => {
@@ -150,17 +239,18 @@ export default function FlipbookModal({
               else document.documentElement.requestFullscreen?.();
             }}
           >
-            <Maximize2 size={17} />
-          </button>
+            <Maximize2 />
+          </Button>
           {onClose && (
-            <button
-              className="grid h-9 w-9 place-items-center rounded-lg border-0 bg-white/10 text-white hover:bg-white/20"
+            <Button ref={closeRef} type="button"
+              size="icon-sm"
+              variant="secondary"
               title="Close (Esc)"
               aria-label="Close viewer"
               onClick={onClose}
             >
-              <X size={18} />
-            </button>
+              <X />
+            </Button>
           )}
         </div>
       </div>
@@ -170,30 +260,36 @@ export default function FlipbookModal({
         {error ? (
           <div className="text-center text-white/80">
             <p className="mb-3">{error}</p>
-            <button
-              className="btn"
+            <Button type="button"
+              variant="secondary"
               onClick={() => downloadFile(url, name)}
             >
               Download instead
-            </button>
+            </Button>
           </div>
         ) : !ready ? (
           <div className="flex flex-col items-center gap-3 text-white/80">
             <Loader2 className="animate-spin" size={28} />
             <p className="text-sm">
-              {total ? `Rendering page ${rendered} of ${total}…` : "Opening document…"}
+              {total
+                ? rendered
+                  ? `Rendering page ${rendered} of ${total}…`
+                  : `Rendering first page of ${total}…`
+                : "Opening document…"}
             </p>
           </div>
         ) : (
           <>
-            <button
-              className="absolute left-3 z-10 grid h-11 w-11 place-items-center rounded-full border-0 bg-white/10 text-white hover:bg-white/25 disabled:opacity-30"
+            <Button type="button"
+              size="icon-lg"
+              variant="secondary"
+              className="absolute left-3"
               onClick={() => flip(-1)}
               disabled={current === 0}
               aria-label="Previous page"
             >
-              <ChevronLeft size={22} />
-            </button>
+              <ChevronLeft />
+            </Button>
             {/* @ts-expect-error react-pageflip's types omit children */}
             <HTMLFlipBook
               ref={bookRef}
@@ -207,24 +303,45 @@ export default function FlipbookModal({
               showCover
               maxShadowOpacity={0.5}
               mobileScrollSupport
-              className="flipbook"
+              renderOnlyPageLengthChange
+              className="shadow-2xl"
               onFlip={(e: { data: number }) => setCurrent(e.data)}
             >
-              {pages.map((src, i) => (
-                <Page key={i} src={src} number={i + 1} />
+              {pages.map((page) => (
+                <Page key={page.number} src={page.src} number={page.number} total={total} />
               ))}
             </HTMLFlipBook>
-            <button
-              className="absolute right-3 z-10 grid h-11 w-11 place-items-center rounded-full border-0 bg-white/10 text-white hover:bg-white/25 disabled:opacity-30"
+            <Button type="button"
+              size="icon-lg"
+              variant="secondary"
+              className="absolute right-3"
               onClick={() => flip(1)}
-              disabled={current >= total - 1}
+              disabled={current >= pages.length - 1}
               aria-label="Next page"
             >
-              <ChevronRight size={22} />
-            </button>
+              <ChevronRight />
+            </Button>
           </>
         )}
       </div>
-    </div>
+    </>
+  );
+
+  if (!onClose) {
+    return (
+      <main className="fixed inset-0 z-[70] flex flex-col bg-black/95 backdrop-blur-sm">
+        {viewer}
+      </main>
+    );
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-[70] m-0 h-dvh max-h-none w-screen max-w-none flex-col border-0 bg-black/95 p-0 backdrop-blur-sm open:flex"
+    >
+      {viewer}
+    </dialog>
   );
 }

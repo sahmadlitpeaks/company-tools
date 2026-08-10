@@ -41,6 +41,14 @@ MODULES: list[tuple[str, str]] = [
     ("signatures", "Email Signatures"),
     ("shortener", "URL Shortener"),
     ("transfers", "Secure Transfers"),
+    ("cafe", "Café Ordering"),
+    ("bookings", "Room & Desk Booking"),
+    ("visitors", "Visitor Management"),
+    ("purchases", "Purchase Requests"),
+    ("calendar", "Company Calendar"),
+    ("ideas", "Feedback & Ideas"),
+    ("ai_help", "AI Help"),
+    ("lost_found", "Lost & Found"),
 ]
 
 ALL_MODULES: list[str] = [k for k, _ in MODULES]
@@ -66,6 +74,14 @@ MEMBER_DEFAULTS: list[str] = [
     "signatures",
     "shortener",
     "transfers",
+    "cafe",
+    "bookings",
+    "visitors",
+    "purchases",
+    "calendar",
+    "ideas",
+    "ai_help",
+    "lost_found",
 ]
 
 ROLE_DEFAULTS: dict[str, list[str]] = {

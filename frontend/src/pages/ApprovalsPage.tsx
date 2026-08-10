@@ -1,3 +1,12 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Paperclip, Plus, X } from "lucide-react";
@@ -9,11 +18,11 @@ import { Empty, Loading, Modal, PageHead, PromptModal, useToast } from "../compo
 import Attachments from "../components/Attachments";
 
 const TYPES = ["leave", "expense", "purchase", "document", "access", "general"];
-const STATUS_BADGE: Record<string, string> = {
-  pending: "amber",
-  approved: "green",
-  rejected: "red",
-  cancelled: "",
+const STATUS_BADGE: Record<string, "warning" | "success" | "destructive" | "secondary"> = {
+  pending: "warning",
+  approved: "success",
+  rejected: "destructive",
+  cancelled: "secondary",
 };
 
 function money(v?: string | null) {
@@ -61,92 +70,86 @@ export default function ApprovalsPage() {
         title="Approvals"
         subtitle="Submit and track requests for leave, expenses, purchases and more."
         action={
-          <button
-            className="btn-primary inline-flex items-center gap-1.5"
+          <Button type="button"
             onClick={() => setAdding(true)}
           >
-            <Plus size={15} /> New request
-          </button>
+            <Plus data-icon="inline-start" /> New request
+          </Button>
         }
       />
 
-      <div className="mb-4 inline-flex gap-1 rounded-[10px] p-1" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-        <button className={`btn-sm ${scope === "mine" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto", background: scope === "mine" ? undefined : "transparent", border: scope === "mine" ? undefined : "1px solid transparent" }} onClick={() => setScope("mine")}>
-          My requests
-        </button>
-        {canReview && (
-          <button className={`btn-sm ${scope === "to_review" ? "btn-primary" : ""}`} style={{ flex: "0 0 auto", background: scope === "to_review" ? undefined : "transparent", border: scope === "to_review" ? undefined : "1px solid transparent" }} onClick={() => setScope("to_review")}>
-            To review
-          </button>
-        )}
-      </div>
+      <ToggleGroup className="mb-4" value={[scope]} onValueChange={(value) => value[0] && setScope(value[0] as "mine" | "to_review")}>
+        <ToggleGroupItem value="mine">My requests</ToggleGroupItem>
+        {canReview && <ToggleGroupItem value="to_review">To review</ToggleGroupItem>}
+      </ToggleGroup>
 
-      <div className="card">
+      <Card className="py-0">
+        <CardContent className="p-0">
         {list.loading ? (
           <Loading />
         ) : (list.data?.length ?? 0) === 0 ? (
           <Empty message={scope === "mine" ? "You haven't made any requests." : "Nothing to review."} />
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Request</th>
-                <th>{scope === "mine" ? "Approver" : "Requester"}</th>
-                <th>Amount / dates</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Type</TableHead>
+                <TableHead>Request</TableHead>
+                <TableHead>{scope === "mine" ? "Approver" : "Requester"}</TableHead>
+              <TableHead className="text-right">Amount / dates</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {list.data!.map((a) => (
-                <tr key={a.id}>
-                  <td><span className="badge">{a.type}</span></td>
-                  <td>
-                    <div className="font-semibold">{a.title}</div>
-                    {a.details && <div className="muted text-xs">{a.details}</div>}
-                  </td>
-                  <td>{scope === "mine" ? a.approver_name ?? "Any manager" : a.requester_name ?? "—"}</td>
-                  <td className="muted text-sm">
+                <TableRow key={a.id}>
+                  <TableCell><Badge variant="secondary">{a.type}</Badge></TableCell>
+                  <TableCell className="max-w-[28rem] whitespace-normal">
+                    <div className="truncate font-semibold" title={a.title}>{a.title}</div>
+                    {a.details && <div className="line-clamp-2 text-xs text-muted-foreground">{a.details}</div>}
+                  </TableCell>
+                  <TableCell>{scope === "mine" ? a.approver_name ?? "Any manager" : a.requester_name ?? "—"}</TableCell>
+                  <TableCell className="text-right text-muted-foreground tabular-nums">
                     {money(a.amount) ??
                       (a.start_date ? `${a.start_date}${a.end_date ? ` → ${a.end_date}` : ""}` : "—")}
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS_BADGE[a.status] ?? ""}`}>{a.status}</span>
-                    {a.decision_note && <div className="muted text-xs">“{a.decision_note}”</div>}
-                  </td>
-                  <td className="text-right">
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_BADGE[a.status] ?? "secondary"}>{a.status}</Badge>
+                    {a.decision_note && <div className="text-xs text-muted-foreground">“{a.decision_note}”</div>}
+                  </TableCell>
+                  <TableCell className="text-right">
                     <div className="inline-flex items-center gap-1.5">
-                      <button
-                        className="btn-sm"
+                      <Button type="button" variant="outline" size="icon-sm"
                         title="Attachments"
                         onClick={() => setAttachOf(a)}
                       >
-                        <Paperclip size={14} />
-                      </button>
+                        <Paperclip />
+                      </Button>
                       {a.status === "pending" && scope === "to_review" && (
                         <>
-                          <button className="btn-sm btn-primary inline-flex items-center gap-1" onClick={() => decide(a, "approved")}>
-                            <Check size={14} /> Approve
-                          </button>
-                          <button className="btn-sm btn-danger inline-flex items-center gap-1" onClick={() => setRejecting(a)}>
-                            <X size={14} /> Reject
-                          </button>
+                          <Button type="button" size="sm" onClick={() => decide(a, "approved")}>
+                            <Check data-icon="inline-start" /> Approve
+                          </Button>
+                          <Button type="button" variant="destructive" size="sm" onClick={() => setRejecting(a)}>
+                            <X data-icon="inline-start" /> Reject
+                          </Button>
                         </>
                       )}
                       {a.status === "pending" && scope === "mine" && (
-                        <button className="btn-sm" onClick={() => cancel(a)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => cancel(a)}>
                           Cancel
-                        </button>
+                        </Button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
+        </CardContent>
+      </Card>
 
       {adding && (
         <ApprovalModal
@@ -169,7 +172,7 @@ export default function ApprovalsPage() {
           label="Reason (optional)"
           placeholder="Let them know why…"
           submitLabel="Reject"
-          onSubmit={async (note) => {
+          onConfirm={async (note) => {
             await decide(rejecting, "rejected", note);
           }}
           onClose={() => setRejecting(null)}
@@ -191,14 +194,14 @@ function ApprovalModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
     end_date: "",
     approver_id: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const showAmount = ["expense", "purchase"].includes(form.type);
   const showDates = form.type === "leave";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/approvals", {
         method: "POST",
@@ -216,69 +219,94 @@ function ApprovalModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="New request" onClose={onClose}>
-      <form onSubmit={submit}>
-        <div className="row">
-          <div className="field">
-            <label>Type</label>
-            <select value={form.type} onChange={(e) => set("type", e.target.value)}>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Approver (optional)</label>
-            <select value={form.approver_id} onChange={(e) => set("approver_id", e.target.value)}>
-              <option value="">Any manager</option>
-              {(users.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name ?? u.email}
-                </option>
-              ))}
-            </select>
-          </div>
+      <form onSubmit={submit} className="flex flex-col gap-5">
+        <FieldGroup>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="rd-approvalspage-228-type">Type</FieldLabel>
+            <Select items={TYPES.map((t) => ({ value: t, label: t }))} value={form.type} onValueChange={(value) => set("type", value ?? "")}>
+              <SelectTrigger className="w-full" id="rd-approvalspage-228-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="rd-approvalspage-238-approver-optional">Approver (optional)</FieldLabel>
+            <Select
+              items={[
+                { value: null, label: "Any manager" },
+                ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email })),
+              ]}
+              value={form.approver_id || null}
+              onValueChange={(value) => set("approver_id", value ?? "")}
+            >
+              <SelectTrigger className="w-full" id="rd-approvalspage-238-approver-optional">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={null}>Any manager</SelectItem>
+                  {(users.data ?? []).map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.display_name ?? u.email}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
-        <div className="field">
-          <label>Title *</label>
-          <input required value={form.title} onChange={(e) => set("title", e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Details</label>
-          <textarea rows={2} value={form.details} onChange={(e) => set("details", e.target.value)} />
-        </div>
+        <Field>
+          <FieldLabel htmlFor="rd-approvalspage-250-title">Title *</FieldLabel>
+          <Input id="rd-approvalspage-250-title" required value={form.title} onChange={(e) => set("title", e.target.value)} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="rd-approvalspage-254-details">Details</FieldLabel>
+          <Textarea id="rd-approvalspage-254-details" rows={2} value={form.details} onChange={(e) => set("details", e.target.value)} />
+        </Field>
         {showAmount && (
-          <div className="field">
-            <label>Amount</label>
-            <input type="number" step="0.01" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
-          </div>
+          <Field>
+            <FieldLabel htmlFor="rd-approvalspage-259-amount">Amount</FieldLabel>
+            <Input id="rd-approvalspage-259-amount" type="number" step="0.01" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
+          </Field>
         )}
         {showDates && (
-          <div className="row">
-            <div className="field">
-              <label>From</label>
-              <input type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
-            </div>
-            <div className="field">
-              <label>To</label>
-              <input type="date" value={form.end_date} onChange={(e) => set("end_date", e.target.value)} />
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="rd-approvalspage-266-from">From</FieldLabel>
+              <Input id="rd-approvalspage-266-from" type="date" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="rd-approvalspage-270-to">To</FieldLabel>
+              <Input id="rd-approvalspage-270-to" type="date" value={form.end_date} onChange={(e) => set("end_date", e.target.value)} />
+            </Field>
           </div>
         )}
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>
+        </FieldGroup>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Submitting…" : "Submit request"}
-          </button>
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Submitting…" : "Submit request"}
+          </Button>
         </div>
       </form>
     </Modal>

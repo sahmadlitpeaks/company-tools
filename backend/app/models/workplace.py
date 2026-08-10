@@ -26,6 +26,22 @@ from app.models.base import TimestampMixin, UUIDMixin
 # --------------------------------------------------------------------------
 # Tasks (work management)
 # --------------------------------------------------------------------------
+class Project(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "projects"
+
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="planned", index=True)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+
 class Task(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "tasks"
 
@@ -47,6 +63,9 @@ class Task(UUIDMixin, TimestampMixin, Base):
     )
     company_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), index=True, nullable=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # When set, this task mirrors an onboarding/offboarding checklist item and

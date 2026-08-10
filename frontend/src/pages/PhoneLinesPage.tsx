@@ -1,3 +1,11 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field as FormField, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { useMemo, useRef, useState } from "react";
 import {
   CreditCard,
@@ -22,25 +30,27 @@ import type {
   User,
 } from "../api/types";
 import { useFetch } from "../hooks/useApi";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { Empty, Loading, Modal, PageHead, useToast } from "../components/ui";
 
 const STATUSES = ["available", "assigned", "suspended", "cancelled"];
-const STATUS_BADGE: Record<string, string> = {
-  available: "blue",
-  assigned: "green",
-  suspended: "amber",
-  cancelled: "red",
+const STATUS_BADGE: Record<string, "info" | "success" | "warning" | "destructive"> = {
+  available: "info",
+  assigned: "success",
+  suspended: "warning",
+  cancelled: "destructive",
 };
 
 export default function PhoneLinesPage() {
-  const [status, setStatus] = useState("");
+  const [status, setRecordStatus] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set("status", status);
-    if (q) p.set("q", q);
+    if (debouncedQ) p.set("q", debouncedQ);
     return p.toString();
-  }, [status, q]);
+  }, [status, debouncedQ]);
   const lines = useFetch<PhoneLine[]>(`/api/phone-lines${qs ? `?${qs}` : ""}`);
   const summary = useFetch<PhoneSummary>("/api/phone-lines/summary");
   const [adding, setAdding] = useState(false);
@@ -79,46 +89,38 @@ export default function PhoneLinesPage() {
         title="Phone Lines"
         subtitle="Track mobile numbers, who holds them, packages and billing."
         action={
-          <div className="row" style={{ gap: 8, flex: "0 0 auto" }}>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/phone-lines/template.csv", "phone-lines-template.csv").catch(
                   () => notify("Download failed", "error"),
                 )
               }
             >
-              <FileText size={15} /> Template
-            </button>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+              <FileText data-icon="inline-start" /> Template
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() => importRef.current?.click()}
             >
-              <Upload size={15} /> Import
-            </button>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+              <Upload data-icon="inline-start" /> Import
+            </Button>
+            <Button type="button" variant="outline"
               onClick={() =>
                 downloadFile("/api/phone-lines/export.csv", "phone-lines.csv").catch(() =>
                   notify("Export failed", "error"),
                 )
               }
             >
-              <Download size={15} /> Export
-            </button>
-            <button className="btn-primary inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => setAdding(true)}>
-              <Plus size={15} /> Add line
-            </button>
-            <input ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
+              <Download data-icon="inline-start" /> Export
+            </Button>
+            <Button type="button" onClick={() => setAdding(true)}><Plus data-icon="inline-start" /> Add line</Button>
+            <Input aria-label="Import Csv" ref={importRef} type="file" accept=".csv" hidden onChange={importCsv} />
           </div>
         }
       />
 
       {s && (
-        <div className="grid mb-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+        <div className="mb-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
           <Metric icon={<Phone size={16} />} label="Total lines" value={s.total} />
           <Metric icon={<UserCheck size={16} />} label="Assigned" value={s.assigned} />
           <Metric icon={<CreditCard size={16} />} label="Monthly spend" value={fmtMoney(s.monthly_cost)} />
@@ -126,76 +128,69 @@ export default function PhoneLinesPage() {
         </div>
       )}
 
-      <div className="card mb-4">
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-            <label>Search</label>
-            <input
+      <Card className="mb-4"><CardContent><FieldGroup className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(10rem,1fr)]">
+          <FormField><FieldLabel htmlFor="phone-search">Search</FieldLabel>
+            <Input id="phone-search" aria-label="Number, carrier or package…"
               placeholder="Number, carrier or package…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
-          </div>
-          <div className="field" style={{ marginBottom: 0 }}>
-            <label>Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All</option>
+          </FormField>
+          <FormField><FieldLabel htmlFor="phone-status">Status</FieldLabel>
+            <Select items={[{ value: null, label: "All" }, ...STATUSES.map((st) => ({ value: st, label: st }))]} value={status || null} onValueChange={(value) => setRecordStatus(value ?? "")}>
+              <SelectTrigger id="phone-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>All</SelectItem>
               {STATUSES.map((st) => (
-                <option key={st} value={st}>{st}</option>
+                <SelectItem key={st} value={st}>{st}</SelectItem>
               ))}
-            </select>
-          </div>
-        </div>
-      </div>
+              </SelectGroup></SelectContent>
+            </Select>
+          </FormField>
+        </FieldGroup></CardContent></Card>
 
-      <div className="card">
+      <Card className="py-0"><CardContent className="p-0">
         {lines.loading ? (
-          <Loading />
+          <div className="px-(--card-spacing)"><Loading /></div>
         ) : (lines.data?.length ?? 0) === 0 ? (
-          <Empty message="No phone lines yet." />
+          <div className="px-(--card-spacing)"><Empty message="No phone lines yet." /></div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Number</th>
-                <th>Carrier</th>
-                <th>Package</th>
-                <th>Monthly</th>
-                <th>Assigned to</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+         <Table><TableHeader><TableRow><TableHead>Number</TableHead><TableHead>Carrier</TableHead><TableHead>Package</TableHead><TableHead className="text-right">Monthly</TableHead><TableHead>Assigned to</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>
               {lines.data!.map((l) => (
-                <tr key={l.id} className="cursor-pointer" onClick={() => setOpenId(l.id)}>
-                  <td className="font-semibold [font-variant-numeric:tabular-nums]">{l.number}</td>
-                  <td>{l.carrier ?? "—"}</td>
-                  <td>
+                <TableRow key={l.id}>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 font-semibold text-foreground tabular-nums"
+                      aria-label={`Open phone line ${l.number}`}
+                      onClick={() => setOpenId(l.id)}
+                    >
+                      {l.number}
+                    </Button>
+                  </TableCell>
+                  <TableCell>{l.carrier ?? "—"}</TableCell>
+                  <TableCell>
                     {l.plan_name ?? "—"}
-                    {l.data_allowance && <span className="muted text-xs"> · {l.data_allowance}</span>}
-                  </td>
-                  <td>{fmtMoney(l.monthly_cost)}</td>
-                  <td>
+                    {l.data_allowance && <span className="text-xs text-muted-foreground"> · {l.data_allowance}</span>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{fmtMoney(l.monthly_cost)}</TableCell>
+                  <TableCell>
                     {l.assigned_to_name ? (
                       <div className="leading-tight">
                         <div>{l.assigned_to_name}</div>
                         {l.assigned_to_title && (
-                          <div className="muted text-xs">{l.assigned_to_title}</div>
+                          <div className="text-xs text-muted-foreground">{l.assigned_to_title}</div>
                         )}
                       </div>
                     ) : (
-                      <span className="muted">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td><span className={`badge ${STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span></td>
-                  <td className="text-right font-medium text-brand-600">Open ›</td>
-                </tr>
+                  </TableCell>
+                  <TableCell><Badge variant={STATUS_BADGE[l.status] ?? "secondary"}>{l.status}</Badge></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody></Table>
         )}
-      </div>
+      </CardContent></Card>
 
       {adding && (
         <LineModal
@@ -215,12 +210,9 @@ export default function PhoneLinesPage() {
 
 function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
-    <div className="card" style={{ padding: 14 }}>
-      <div className="muted inline-flex items-center gap-1.5 text-xs">
+    <Card><CardContent><div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
         {icon} {label}
-      </div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-    </div>
+      </div><div className="mt-1 text-2xl font-semibold">{value}</div></CardContent></Card>
   );
 }
 
@@ -244,12 +236,12 @@ function LineModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
     contract_end: "",
     notes: "",
   });
-  const [busy, setBusy] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setIsSubmitting(true);
     try {
       await api("/api/phone-lines", {
         method: "POST",
@@ -269,60 +261,35 @@ function LineModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
       onSaved();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-      setBusy(false);
+
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Modal title="Add phone line" onClose={onClose}>
-      <form onSubmit={submit}>
-        <div className="row">
-          <div className="field">
-            <label>Number *</label>
-            <input required placeholder="+9715xxxxxxxx" value={form.number} onChange={(e) => set("number", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Carrier</label>
-            <input placeholder="Etisalat / du" value={form.carrier} onChange={(e) => set("carrier", e.target.value)} />
-          </div>
+      <form onSubmit={submit} className="flex flex-col gap-4"><FieldGroup>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField><FieldLabel htmlFor="phone-number">Number *</FieldLabel><Input id="phone-number" aria-label="+9715xxxxxxxx" required placeholder="+9715xxxxxxxx" value={form.number} onChange={(e) => set("number", e.target.value)} /></FormField>
+          <FormField><FieldLabel htmlFor="phone-carrier">Carrier</FieldLabel><Input id="phone-carrier" aria-label="Etisalat / du" placeholder="Etisalat / du" value={form.carrier} onChange={(e) => set("carrier", e.target.value)} /></FormField>
         </div>
-        <div className="row">
-          <div className="field">
-            <label>Package</label>
-            <input placeholder="Business 20GB" value={form.plan_name} onChange={(e) => set("plan_name", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Monthly cost</label>
-            <input type="number" step="0.01" min="0" value={form.monthly_cost} onChange={(e) => set("monthly_cost", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Data allowance</label>
-            <input placeholder="20 GB" value={form.data_allowance} onChange={(e) => set("data_allowance", e.target.value)} />
-          </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField><FieldLabel htmlFor="phone-package">Package</FieldLabel><Input id="phone-package" aria-label="Business 20GB" placeholder="Business 20GB" value={form.plan_name} onChange={(e) => set("plan_name", e.target.value)} /></FormField>
+          <FormField><FieldLabel htmlFor="phone-monthly">Monthly cost</FieldLabel><Input id="phone-monthly" type="number" step="0.01" min="0" value={form.monthly_cost} onChange={(e) => set("monthly_cost", e.target.value)} /></FormField>
+          <FormField><FieldLabel htmlFor="phone-data">Data allowance</FieldLabel><Input id="phone-data" aria-label="20 GB" placeholder="20 GB" value={form.data_allowance} onChange={(e) => set("data_allowance", e.target.value)} /></FormField>
         </div>
-        <div className="row">
-          <div className="field">
-            <label>SIM / ICCID</label>
-            <input value={form.sim_number} onChange={(e) => set("sim_number", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Contract start</label>
-            <input type="date" value={form.contract_start} onChange={(e) => set("contract_start", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Contract end</label>
-            <input type="date" value={form.contract_end} onChange={(e) => set("contract_end", e.target.value)} />
-          </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField><FieldLabel htmlFor="phone-sim">SIM / ICCID</FieldLabel><Input id="phone-sim" value={form.sim_number} onChange={(e) => set("sim_number", e.target.value)} /></FormField>
+          <FormField><FieldLabel htmlFor="phone-contract-start">Contract start</FieldLabel><Input id="phone-contract-start" type="date" value={form.contract_start} onChange={(e) => set("contract_start", e.target.value)} /></FormField>
+          <FormField><FieldLabel htmlFor="phone-contract-end">Contract end</FieldLabel><Input id="phone-contract-end" type="date" value={form.contract_end} onChange={(e) => set("contract_end", e.target.value)} /></FormField>
         </div>
-        <div className="field">
-          <label>Notes</label>
-          <textarea rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: "0 0 auto" }} onClick={onClose}>Cancel</button>
-          <button className="btn-primary" style={{ flex: "0 0 auto" }} disabled={busy}>
-            {busy ? "Saving…" : "Add line"}
-          </button>
+        <FormField><FieldLabel htmlFor="phone-notes">Notes</FieldLabel><Textarea id="phone-notes" rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} /></FormField>
+        </FieldGroup><div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Add line"}
+          </Button>
         </div>
       </form>
     </Modal>
@@ -388,10 +355,10 @@ function LineDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`badge ${STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span>
-            {l.carrier && <span className="badge">{l.carrier}</span>}
+            <Badge variant={STATUS_BADGE[l.status] ?? "secondary"}>{l.status}</Badge>
+            {l.carrier && <Badge variant="secondary">{l.carrier}</Badge>}
             {l.assigned_to_name && (
-              <span className="muted inline-flex items-center gap-1 text-xs">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Smartphone size={12} /> {l.assigned_to_name}
                 {l.assigned_to_title && ` · ${l.assigned_to_title}`}
               </span>
@@ -399,133 +366,102 @@ function LineDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
           </div>
 
           {/* Package & contract */}
-          <div className="card mb-3 grid grid-cols-3 gap-3" style={{ padding: 12, background: "var(--surface-2)" }}>
+          <Card className="mb-3 bg-muted"><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Package" value={l.plan_name} />
             <Field label="Monthly" value={fmtMoney(l.monthly_cost)} />
             <Field label="Data" value={l.data_allowance} />
             <Field label="SIM / ICCID" value={l.sim_number} />
             <Field label="Contract start" value={l.contract_start} />
             <Field label="Contract end" value={l.contract_end} />
-          </div>
+          </CardContent></Card>
 
           {/* Assignment + status controls */}
-          <div className="row mb-3" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-              <label>Assign to</label>
-              <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-                <option value="">Select employee…</option>
+          <div className="mb-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+            <FormField className="flex-1"><FieldLabel htmlFor="phone-assign">Assign to</FieldLabel>
+              <Select items={[{ value: null, label: "Select employee…" }, ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]} value={assignee || null} onValueChange={(value) => setAssignee(value ?? "")}>
+                <SelectTrigger id="phone-assign" aria-label="Assign to" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>Select employee…</SelectItem>
                 {(users.data ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
+                  <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>
                 ))}
-              </select>
-            </div>
-            <button
-              className="btn inline-flex items-center gap-1.5"
-              style={{ flex: "0 0 auto" }}
+                </SelectGroup></SelectContent>
+              </Select>
+            </FormField>
+            <Button type="button" variant="outline"
               disabled={!assignee}
               onClick={() => assignee && act("/assign", { user_id: assignee })}
             >
-              <UserCheck size={14} /> Assign
-            </button>
+              <UserCheck data-icon="inline-start" /> Assign
+            </Button>
             {l.assigned_to_id && (
-              <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={() => act("/unassign")}>
-                <UserX size={14} /> Release
-              </button>
+              <Button type="button" variant="outline" onClick={() => act("/unassign")}><UserX data-icon="inline-start" /> Release</Button>
             )}
           </div>
           <div className="mb-4 flex flex-wrap gap-2">
             {l.status !== "suspended" && (
-              <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => act("/status", { status: "suspended" })}>Suspend</button>
+              <Button type="button" size="sm" variant="outline" onClick={() => act("/status", { status: "suspended" })}>Suspend</Button>
             )}
             {l.status !== "available" && l.status !== "assigned" && (
-              <button className="btn-sm" style={{ flex: "0 0 auto" }} onClick={() => act("/status", { status: "available" })}>Reactivate</button>
+              <Button type="button" size="sm" variant="outline" onClick={() => act("/status", { status: "available" })}>Reactivate</Button>
             )}
             {l.status !== "cancelled" && (
-              <button className="btn-sm btn-danger" style={{ flex: "0 0 auto" }} onClick={() => act("/status", { status: "cancelled" })}>Cancel line</button>
+              <Button type="button" size="sm" variant="destructive" onClick={() => act("/status", { status: "cancelled" })}>Cancel line</Button>
             )}
           </div>
 
           {/* Edit package inline */}
-          <div className="row mb-4" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0, flex: 2 }}>
-              <label>Update package</label>
-              <input
+          <div className="mb-4 grid gap-4 sm:grid-cols-[2fr_120px]">
+            <FormField><FieldLabel htmlFor="phone-update-package">Update package</FieldLabel><Input id="phone-update-package"
                 defaultValue={l.plan_name ?? ""}
                 onBlur={(e) => e.target.value !== (l.plan_name ?? "") && patch({ plan_name: e.target.value })}
-              />
-            </div>
-            <div className="field" style={{ marginBottom: 0, width: 120 }}>
-              <label>Monthly</label>
-              <input
+              /></FormField>
+            <FormField><FieldLabel htmlFor="phone-update-monthly">Monthly</FieldLabel><Input id="phone-update-monthly"
                 type="number"
                 step="0.01"
                 defaultValue={l.monthly_cost ?? ""}
                 onBlur={(e) => e.target.value !== (l.monthly_cost ?? "") && patch({ monthly_cost: e.target.value || null })}
-              />
-            </div>
+              /></FormField>
           </div>
 
           {/* Billing */}
           <h4 className="mb-2 inline-flex items-center gap-1.5"><CreditCard size={15} /> Billing</h4>
           <div className="mb-2 flex flex-col gap-1">
-            {l.bills.length === 0 && <p className="muted text-sm">No bills logged.</p>}
+            {l.bills.length === 0 && <p className="text-sm text-muted-foreground">No bills logged.</p>}
             {l.bills.map((b) => (
               <div key={b.id} className="group flex items-center justify-between gap-2 text-sm">
                 <span>
                   <span className="font-medium [font-variant-numeric:tabular-nums]">{b.period}</span>
-                  <span className="muted"> · {fmtMoney(b.amount)}{b.data_used ? ` · ${b.data_used}` : ""}</span>
-                  <span className={`badge ml-2 ${b.status === "paid" ? "green" : "amber"}`}>{b.status}</span>
+                  <span className="text-muted-foreground"> · {fmtMoney(b.amount)}{b.data_used ? ` · ${b.data_used}` : ""}</span>
+                  <Badge className="ml-2" variant={b.status === "paid" ? "success" : "warning"}>{b.status}</Badge>
                 </span>
-                <button className="text-ink-muted opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100" onClick={() => delBill(b)}>
-                  <Trash2 size={13} />
-                </button>
+                <Button aria-label="Delete" type="button" size="icon-xs" variant="destructive" onClick={() => delBill(b)}><Trash2 /></Button>
               </div>
             ))}
           </div>
-          <div className="row mb-4" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0, width: 110 }}>
-              <label>Period</label>
-              <input placeholder="2026-06" value={bill.period} onChange={(e) => setBill((s) => ({ ...s, period: e.target.value }))} />
-            </div>
-            <div className="field" style={{ marginBottom: 0, width: 100 }}>
-              <label>Amount</label>
-              <input type="number" step="0.01" value={bill.amount} onChange={(e) => setBill((s) => ({ ...s, amount: e.target.value }))} />
-            </div>
-            <div className="field" style={{ marginBottom: 0, flex: 1 }}>
-              <label>Data used</label>
-              <input placeholder="23 GB" value={bill.data_used} onChange={(e) => setBill((s) => ({ ...s, data_used: e.target.value }))} />
-            </div>
-            <div className="field" style={{ marginBottom: 0, width: 110 }}>
-              <label>Status</label>
-              <select value={bill.status} onChange={(e) => setBill((s) => ({ ...s, status: e.target.value }))}>
-                <option value="unpaid">unpaid</option>
-                <option value="paid">paid</option>
-              </select>
-            </div>
-            <button className="btn inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={addBill}>
-              <Plus size={14} /> Log
-            </button>
+          <div className="mb-4 grid items-end gap-3 sm:grid-cols-[110px_100px_1fr_110px_auto]">
+            <FormField><FieldLabel htmlFor="bill-period">Period</FieldLabel><Input id="bill-period" aria-label="2026-06" placeholder="2026-06" value={bill.period} onChange={(e) => setBill((s) => ({ ...s, period: e.target.value }))} /></FormField>
+            <FormField><FieldLabel htmlFor="bill-amount">Amount</FieldLabel><Input id="bill-amount" type="number" step="0.01" value={bill.amount} onChange={(e) => setBill((s) => ({ ...s, amount: e.target.value }))} /></FormField>
+            <FormField><FieldLabel htmlFor="bill-data">Data used</FieldLabel><Input id="bill-data" aria-label="23 GB" placeholder="23 GB" value={bill.data_used} onChange={(e) => setBill((s) => ({ ...s, data_used: e.target.value }))} /></FormField>
+            <FormField><FieldLabel htmlFor="bill-status">Status</FieldLabel><Select items={[{ value: "unpaid", label: "unpaid" }, { value: "paid", label: "paid" }]} value={bill.status} onValueChange={(value) => setBill((s) => ({ ...s, status: value ?? "" }))}><SelectTrigger id="bill-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="unpaid">unpaid</SelectItem><SelectItem value="paid">paid</SelectItem></SelectGroup></SelectContent></Select></FormField>
+            <Button type="button" variant="outline" onClick={addBill}><Plus data-icon="inline-start" /> Log</Button>
           </div>
 
           {/* History */}
           <h4 className="mb-2 inline-flex items-center gap-1.5"><History size={15} /> History</h4>
-          <div className="mb-3 flex flex-col gap-1.5" style={{ maxHeight: 200, overflow: "auto" }}>
+          <div className="mb-3 flex max-h-50 flex-col gap-1.5 overflow-auto">
             {l.events.map((e: PhoneLineEvent) => (
               <div key={e.id} className="flex items-center justify-between gap-2 text-xs">
                 <span>
-                  <span className="badge">{e.event_type.replace("_", " ")}</span>
+                  <Badge variant="secondary">{e.event_type.replace("_", " ")}</Badge>
                   {e.user_name && <span className="ml-1 font-medium">{e.user_name}</span>}
-                  {e.note && <span className="muted"> — {e.note}</span>}
+                  {e.note && <span className="text-muted-foreground"> — {e.note}</span>}
                 </span>
-                <span className="muted flex-none whitespace-nowrap">{new Date(e.created_at).toLocaleDateString()}</span>
+                <span className="flex-none whitespace-nowrap text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</span>
               </div>
             ))}
           </div>
 
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <button className="btn-danger inline-flex items-center gap-1.5" style={{ flex: "0 0 auto" }} onClick={removeLine}>
-              <Trash2 size={14} /> Delete line
-            </button>
+          <div className="flex justify-end">
+            <Button type="button" variant="destructive" onClick={removeLine}><Trash2 data-icon="inline-start" /> Delete line</Button>
           </div>
         </>
       )}
@@ -536,7 +472,7 @@ function LineDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <div className="muted text-[11px]">{label}</div>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
       <div className="text-sm font-medium">{value || "—"}</div>
     </div>
   );

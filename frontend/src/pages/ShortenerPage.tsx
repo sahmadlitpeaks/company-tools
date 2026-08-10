@@ -1,17 +1,26 @@
 import { useState } from "react";
+import { Link as LinkIcon } from "lucide-react";
 import { api } from "../api/client";
 import type { ShortLink } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { Empty, ListSkeleton, PageHead, useToast } from "../components/ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default function ShortenerPage() {
   const { notify } = useToast();
   const { data, loading, reload } = useFetch<ShortLink[]>("/api/short-links");
   const [form, setForm] = useState({ target_url: "", code: "", campaign: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       await api("/api/short-links", {
         method: "POST",
@@ -26,6 +35,8 @@ export default function ShortenerPage() {
       reload();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -47,93 +58,89 @@ export default function ShortenerPage() {
         title="URL Shortener"
         subtitle="Branded short links with click tracking for campaigns."
       />
-      <div className="card" style={{ marginBottom: 18 }}>
+      <Card className="mb-5">
+        <CardContent>
         <form onSubmit={create}>
-          <div className="row" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ marginBottom: 0, flex: 3 }}>
-              <label>Destination URL *</label>
-              <input
+          <FieldGroup className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="short-destination">Destination URL *</FieldLabel>
+              <Input id="short-destination"
                 required
                 placeholder="https://agholding.net/landing"
                 value={form.target_url}
                 onChange={(e) => set("target_url", e.target.value)}
               />
-            </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Custom code</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="short-code">Custom code</FieldLabel>
+              <Input id="short-code"
                 placeholder="optional"
                 value={form.code}
                 onChange={(e) => set("code", e.target.value)}
               />
-            </div>
-            <div className="field" style={{ marginBottom: 0 }}>
-              <label>Campaign</label>
-              <input
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="short-campaign">Campaign</FieldLabel>
+              <Input id="short-campaign"
                 placeholder="optional"
                 value={form.campaign}
                 onChange={(e) => set("campaign", e.target.value)}
               />
-            </div>
-            <button className="btn-primary" style={{ flex: "0 0 auto" }}>
-              Shorten
-            </button>
-          </div>
+            </Field>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Creating…" : "Shorten"}
+            </Button>
+          </FieldGroup>
         </form>
-      </div>
+        </CardContent>
+      </Card>
 
       {loading ? (
         <ListSkeleton rows={4} />
       ) : !data || data.length === 0 ? (
-        <Empty icon="🔗" message="No short links yet" hint="Shorten a destination URL above to start tracking clicks." />
+        <Empty icon={<LinkIcon />} message="No short links yet" hint="Shorten a destination URL above to start tracking clicks." />
       ) : (
-        <div className="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Short link</th>
-                <th>Destination</th>
-                <th>Campaign</th>
-                <th>Clicks</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="py-0">
+          <CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow>
+                <TableHead>Short link</TableHead>
+                <TableHead>Destination</TableHead>
+                <TableHead>Campaign</TableHead>
+                <TableHead className="text-right">Clicks</TableHead>
+                <TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
               {data.map((l) => (
-                <tr key={l.id}>
-                  <td>
+                <TableRow key={l.id}>
+                  <TableCell>
                     <code>/s/{l.code}</code>
-                  </td>
-                  <td className="muted" style={{ maxWidth: 320, wordBreak: "break-all" }}>
+                  </TableCell>
+                  <TableCell className="max-w-80 whitespace-normal break-all text-muted-foreground">
                     {l.target_url}
-                  </td>
-                  <td>{l.campaign ? <span className="badge">{l.campaign}</span> : "—"}</td>
-                  <td>
-                    <span className="badge blue">{l.click_count}</span>
-                  </td>
-                  <td>
-                    <div className="row" style={{ gap: 6 }}>
-                      <button
-                        className="btn-sm"
-                        style={{ flex: "0 0 auto" }}
+                  </TableCell>
+                  <TableCell>{l.campaign ? <Badge variant="secondary">{l.campaign}</Badge> : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">{l.click_count}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" size="sm"
                         onClick={() => copy(l.code)}
                       >
                         Copy
-                      </button>
-                      <button
-                        className="btn-sm btn-danger"
-                        style={{ flex: "0 0 auto" }}
+                      </Button>
+                      <Button type="button" variant="destructive" size="sm"
                         onClick={() => remove(l.id)}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

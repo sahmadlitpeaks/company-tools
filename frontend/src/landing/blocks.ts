@@ -45,6 +45,7 @@ export interface ImageBlock {
   caption: string;
 }
 export interface FeatureItem {
+  id: string;
   icon: string;
   title: string;
   body: string;
@@ -77,7 +78,7 @@ export interface FormBlock {
   subheading: string;
   fields: LeadField[];
   buttonText: string;
-  successMessage: string;
+  successCopy: string;
   bg: string;
 }
 
@@ -115,8 +116,8 @@ export function createBlock(type: BlockType): Block {
         subheading: "A short, compelling subheading for the campaign.",
         buttonText: "Get started",
         buttonUrl: "#",
-        bg: "#0b5cab",
-        color: "#ffffff",
+        bg: "#f78d2b",
+        color: "#000000",
         align: "center",
       };
     case "heading":
@@ -136,9 +137,9 @@ export function createBlock(type: BlockType): Block {
         type,
         heading: "Why choose us",
         items: [
-          { icon: "⚡", title: "Fast", body: "Quick turnaround on every engagement." },
-          { icon: "🛡", title: "Trusted", body: "Fully licensed and compliant." },
-          { icon: "🤝", title: "Personal", body: "A dedicated advisor for your account." },
+          { id: uid(), icon: "zap", title: "Fast", body: "Quick turnaround on every engagement." },
+          { id: uid(), icon: "shield-check", title: "Trusted", body: "Fully licensed and compliant." },
+          { id: uid(), icon: "handshake", title: "Personal", body: "A dedicated advisor for your account." },
         ],
       };
     case "cta":
@@ -149,7 +150,7 @@ export function createBlock(type: BlockType): Block {
         subheading: "Talk to our team today.",
         buttonText: "Contact us",
         buttonUrl: "#",
-        bg: "#0c1a2b",
+        bg: "var(--foreground)",
       };
     case "form":
       return {
@@ -159,8 +160,8 @@ export function createBlock(type: BlockType): Block {
         subheading: "Leave your details and we'll get back to you.",
         fields: ["name", "email", "phone", "message"],
         buttonText: "Submit",
-        successMessage: "Thanks! We'll be in touch shortly.",
-        bg: "#f8fafc",
+        successCopy: "Thanks! We'll be in touch shortly.",
+        bg: "#fafafa",
       };
     case "spacer":
       return { id: uid(), type, size: 40 };
@@ -171,7 +172,15 @@ export function parseBlocks(json: string | null | undefined): Block[] {
   if (!json) return [];
   try {
     const parsed = JSON.parse(json);
-    return Array.isArray(parsed) ? (parsed as Block[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as Block[]).map((block) =>
+      block.type === "features"
+        ? {
+            ...block,
+            items: block.items.map((item) => ({ ...item, id: item.id || uid() })),
+          }
+        : block,
+    );
   } catch {
     return [];
   }

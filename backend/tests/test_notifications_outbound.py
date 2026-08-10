@@ -2,8 +2,6 @@ import pytest
 
 from app.services import dispatch
 
-pytestmark = pytest.mark.asyncio
-
 
 def test_deliver_gating_no_config(monkeypatch):
     # Nothing configured → no channels attempted.
@@ -62,6 +60,7 @@ def test_deliver_swallows_transport_errors(monkeypatch):
     assert dispatch.deliver_notification(to_email="a@b.com", title="Hi") == []
 
 
+@pytest.mark.asyncio
 async def test_channels_and_test_endpoints(client, auth):
     status = (await client.get("/api/notifications/channels", headers=auth)).json()
     assert "outbound_enabled" in status and "email_configured" in status
