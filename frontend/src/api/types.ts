@@ -609,7 +609,17 @@ export interface CrmLead {
   owner_name?: string | null;
   value?: string | null;
   notes?: string | null;
+  /** Website provenance, present on leads that arrived through a web form. */
+  intake_form_id?: string | null;
+  page_url?: string | null;
+  fields?: LeadField[] | null;
   created_at: string;
+}
+
+export interface LeadField {
+  key: string;
+  label: string;
+  value: string;
 }
 
 export interface CrmSummary {
@@ -1661,8 +1671,14 @@ export interface IntakeSource {
   spam_threshold?: number | null;
   clean_threshold?: number | null;
   has_signing_secret: boolean;
+  site_url?: string | null;
+  signature_ttl_sec: number;
+  require_timestamp: boolean;
+  auto_create_forms: boolean;
+  captcha_mode: string;
   created_at: string;
   submission_count: number;
+  form_count: number;
 }
 
 export interface Submission {
@@ -1685,7 +1701,160 @@ export interface Submission {
   assignee_name?: string | null;
   converted_lead_id?: string | null;
   converted_ticket_id?: string | null;
+  converted_candidate_id?: string | null;
+  form_id?: string | null;
+  form_name?: string | null;
+  site_url?: string | null;
+  mapping_status: string;
+  utm?: Record<string, string> | null;
+  referrer?: string | null;
+  external_id?: string | null;
+  /** Human labels for the keys in `payload`, resolved from the form. */
+  field_labels?: Record<string, string> | null;
+  raw_payload?: Record<string, unknown> | null;
   created_at: string;
+}
+
+/** One instruction in a form's mapping: take these fields, put them there. */
+export interface MappingRule {
+  sources: string[];
+  target: string;
+  combine: "first" | "join";
+  join: string;
+  transform: string[];
+  label?: string | null;
+}
+
+export interface MappingDoc {
+  version: number;
+  rules: MappingRule[];
+  extras: string;
+}
+
+export interface IntakeFormField {
+  name: string;
+  label?: string | null;
+  type?: string | null;
+  options?: string[] | null;
+  required: boolean;
+  sample?: string | null;
+  seen_count: number;
+  origin?: string | null;
+}
+
+export interface IntakeForm {
+  id: string;
+  source_id: string;
+  source_name?: string | null;
+  form_key: string;
+  name: string;
+  provider: string;
+  site_url?: string | null;
+  mapping_status: string;
+  destination: string;
+  default_type?: string | null;
+  auto_convert?: boolean | null;
+  notify_user_id?: string | null;
+  job_id?: string | null;
+  active: boolean;
+  submission_count: number;
+  last_submission_at?: string | null;
+  field_count: number;
+  created_at: string;
+}
+
+export interface IntakeFormDetail extends IntakeForm {
+  fields: IntakeFormField[];
+  mapping?: MappingDoc | null;
+  /** Core columns no rule feeds — what the editor warns about. */
+  unmapped_targets: string[];
+}
+
+export interface MappingPreviewItem {
+  submission_id?: string | null;
+  received_at?: string | null;
+  core: Record<string, string | null>;
+  extras: Record<string, unknown>;
+  labels: Record<string, string>;
+  status: string;
+  notes: string[];
+  spam_score: number;
+  spam_reasons: string[];
+}
+
+export interface MappingPreview {
+  items: MappingPreviewItem[];
+  unmapped_targets: string[];
+}
+
+export interface RemapResult {
+  examined: number;
+  updated: number;
+  skipped_no_raw: number;
+  leads_updated: number;
+  dry_run: boolean;
+}
+
+export interface RoutingCondition {
+  kind: string;
+  op: string;
+  value?: string | null;
+  field?: string | null;
+}
+
+export interface RoutingOutcome {
+  type?: string | null;
+  destination?: string | null;
+  job_id?: string | null;
+  job_from_field?: string | null;
+  assignee_id?: string | null;
+  auto_convert?: boolean | null;
+  tag?: string | null;
+}
+
+export interface RoutingRule {
+  id: string;
+  name: string;
+  source_id?: string | null;
+  form_id?: string | null;
+  priority: number;
+  active: boolean;
+  conditions: RoutingCondition[];
+  outcome?: RoutingOutcome | null;
+  match_count: number;
+  created_at: string;
+}
+
+export interface RoutingTestResult {
+  rule_id?: string | null;
+  rule_name?: string | null;
+  type?: string | null;
+  destination?: string | null;
+  job_id?: string | null;
+}
+
+export interface BlocklistEntry {
+  id: string;
+  kind: string;
+  value: string;
+  action: string;
+  reason?: string | null;
+  source_id?: string | null;
+  hit_count: number;
+  expires_at?: string | null;
+  created_at: string;
+}
+
+/** Vocabulary driving the mapping and routing editors. */
+export interface IntakeTargets {
+  targets: string[];
+  transforms: string[];
+  destinations: string[];
+  types: string[];
+  condition_kinds: string[];
+  condition_ops: string[];
+  blocklist_kinds: string[];
+  blocklist_actions: string[];
 }
 
 export interface IntakeSummary {

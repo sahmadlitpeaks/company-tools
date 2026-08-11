@@ -7,11 +7,13 @@ from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.services.app_settings import (
+    CAPTCHA_PROVIDERS,
     encrypt,
     get_allowed_domains,
     get_appearance,
     get_azure_config,
     get_bamboo_config,
+    get_captcha_config,
     integrations_status,
     set_integration,
     set_many,
@@ -92,6 +94,47 @@ async def put_bamboo(
     await set_many(db, values)
     cfg = await get_bamboo_config(db)
     return {"configured": cfg["configured"]}
+
+
+class CaptchaConfigIn(BaseModel):
+    provider: str | None = None  # turnstile | recaptcha | hcaptcha | "" to disable
+    site_key: str | None = None
+    secret: str | None = None  # blank keeps the existing secret
+
+
+@router.get("/captcha")
+async def get_captcha(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    cfg = await get_captcha_config(db)
+    # The secret itself is never returned — only whether one is stored.
+    return {
+        "provider": cfg["provider"],
+        "site_key": cfg["site_key"],
+        "secret_set": bool(cfg["secret"]),
+        "configured": cfg["configured"],
+        "providers": sorted(CAPTCHA_PROVIDERS),
+    }
+
+
+@router.put("/captcha")
+async def put_captcha(
+    payload: CaptchaConfigIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    provider = (payload.provider or "").strip().lower()
+    if provider and provider not in CAPTCHA_PROVIDERS:
+        raise HTTPException(status_code=422, detail="Unknown captcha provider")
+    values: dict[str, str | None] = {
+        "captcha_provider": provider or None,
+        "captcha_site_key": (payload.site_key or "").strip() or None,
+    }
+    if payload.secret and payload.secret.strip():
+        values["captcha_secret"] = encrypt(payload.secret.strip())
+    await set_many(db, values)
+    cfg = await get_captcha_config(db)
+    return {"configured": cfg["configured"], "provider": cfg["provider"]}
 
 
 class IntegrationIn(BaseModel):

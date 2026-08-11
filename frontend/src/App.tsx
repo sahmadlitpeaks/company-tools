@@ -39,6 +39,8 @@ const CustomFieldsAdminPage = lazy(() => import("./pages/CustomFieldsAdminPage")
 const AutomationsPage = lazy(() => import("./pages/AutomationsPage"));
 const TimePage = lazy(() => import("./pages/TimePage"));
 const InboxPage = lazy(() => import("./pages/InboxPage"));
+const IntakeFormPage = lazy(() => import("./pages/IntakeFormPage"));
+const IntakeRulesPage = lazy(() => import("./pages/IntakeRulesPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const RecruitingPage = lazy(() => import("./pages/RecruitingPage"));
 const PayrollPage = lazy(() => import("./pages/PayrollPage"));
@@ -233,6 +235,14 @@ export default function App() {
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
           <Route path="/inbox" element={<Protected module="crm"><InboxPage /></Protected>} />
+          <Route
+            path="/inbox/forms/:id"
+            element={<Protected module="crm"><IntakeFormPage /></Protected>}
+          />
+          <Route
+            path="/inbox/rules"
+            element={<Protected module="crm"><IntakeRulesPage /></Protected>}
+          />
           <Route
             path="/campaigns"
             element={<Protected module="campaigns"><CampaignsPage /></Protected>}

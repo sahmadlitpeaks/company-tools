@@ -11,6 +11,7 @@ from app.models.base import TimestampMixin, UUIDMixin
 WEBHOOK_EVENTS = [
     "submission.created",
     "lead.created",
+    "candidate.created",
     "employee.created",
     "kudos.created",
     "leave.requested",

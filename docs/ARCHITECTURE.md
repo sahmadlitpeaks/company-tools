@@ -62,6 +62,39 @@ authorization boundary.
 | 9. Secure transfers | `api/transfers.py` | `POST/GET /api/transfers`, `DELETE /api/transfers/{id}` | `GET /api/public/transfers/{token}/meta`, `POST /api/public/transfers/{token}/download` |
 | 10. Routine checks | `api/checklists.py` | `CRUD /api/checklist-templates` + `/generate`, `/generate-due`, `/samples`; `/api/checklist-runs` + `/{id}/claim`, `/submit`, `/verify`, `/items/{id}`, `/summary` | – |
 
+### Website intake (WordPress / Contact Form 7 → CRM)
+
+`api/intake.py` receives form submissions from connected websites and turns them
+into CRM leads, recruiting candidates or tickets.
+
+- Public: `POST /api/intake/ingest`, `POST /api/intake/ingest/schema`,
+  `GET /api/intake/ingest/ping` — authenticated by a per-site key, optionally
+  HMAC-signed with a timestamp replay window.
+- Managed (`crm` module): `/api/intake/submissions`, `/api/intake/sources`,
+  `/api/intake/forms` (+ `/mapping`, `/preview-mapping`, `/remap`),
+  `/api/intake/routing-rules`, `/api/intake/blocklist`. Reads are open to CRM
+  users; anything that changes how data is interpreted is admin-only.
+
+Three ideas carry the design, and are worth knowing before changing anything
+here:
+
+1. **The submitted body is stored verbatim** (`Submission.raw_payload`). Every
+   other column is derived from it, so a mapping can be corrected and replayed
+   rather than the data being lost. Do not weaken this.
+2. **Field mapping is per form** (`IntakeForm.mapping`), because form builders
+   let each site name its fields freely — there is no shape to hardcode.
+   `services/intake_mapping.py` is pure, so replay produces exactly what live
+   ingestion produced.
+3. **Screening is layered** (`services/spam/`): blocklist, captcha, content,
+   cross-site correlation, and a filter that learns from the team's own
+   quarantine decisions. Content matching alone cannot catch a well-formed bot
+   submission.
+
+Job applications route to `Candidate` in Recruiting and never create a CRM lead,
+which also keeps CVs behind the HR-only `recruiting` module.
+
+Full payload contract, mapping model and plugin notes: `docs/INTAKE_CF7.md`.
+
 ### Routine checks (recurring checklists)
 
 Replaces paper daily rounds. A `ChecklistTemplate` describes the round —
@@ -116,6 +149,10 @@ copies it from the UI.
 - Landing pages store their layout as a JSON block list in `LandingPage.blocks`
   (rendered by the SPA builder/public page) plus a self-contained static HTML
   snapshot in `LandingPage.html` for portability/embedding.
+- Website intake keeps the inbound body untouched in `Submission.raw_payload`;
+  `payload` holds only the fields no mapping rule claimed, and field *labels*
+  live on `IntakeForm.fields` rather than the submission, so relabelling a form
+  retro-fixes every past record without a migration.
 
 ## Storage
 

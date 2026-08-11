@@ -61,7 +61,14 @@ from app.models.timekeeping import (  # noqa: F401
     Timesheet,
     WorkSchedule,
 )
-from app.models.intake import IntakeSource, Submission  # noqa: F401
+from app.models.intake import (  # noqa: F401
+    IntakeBlocklist,
+    IntakeForm,
+    IntakeRoutingRule,
+    IntakeSource,
+    SpamToken,
+    Submission,
+)
 from app.models.workspace import WorkspaceItem  # noqa: F401
 from app.models.checklist import (  # noqa: F401
     ChecklistTemplate,
