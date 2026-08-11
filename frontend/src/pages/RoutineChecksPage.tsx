@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  FileDown,
   MinusCircle,
   RefreshCw,
   ShieldCheck,
@@ -65,7 +66,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { api } from "../api/client";
+import { api, apiUrl } from "../api/client";
 import type {
   ChecklistRun,
   ChecklistRunDetail,
@@ -778,6 +779,21 @@ function RunModal({
           <CardTitle className="flex flex-wrap items-center gap-2">
             <RunStatusBadge status={run.status} />
             {run.is_late ? <Badge variant="destructive">Late</Badge> : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              onClick={() =>
+                window.open(
+                  apiUrl(`/api/checklist-runs/${id}/report.pdf`),
+                  "_blank",
+                  "noopener",
+                )
+              }
+            >
+              <FileDown data-icon="inline-start" /> Export PDF
+            </Button>
           </CardTitle>
           <CardDescription>
             Due {fmtDate(run.due_date ?? run.run_date)}
@@ -1090,7 +1106,13 @@ function ItemRow({
                       key={choice.key}
                       value={choice.key}
                       aria-label={`${choice.label}: ${item.title}`}
-                      className="min-h-11 min-w-0 lg:min-h-9 lg:min-w-20"
+                      className={cn(
+                        "min-h-11 min-w-0 lg:min-h-9 lg:min-w-20",
+                        // "Issue" reads as a problem: red outline always, solid
+                        // red when it's the selected response.
+                        choice.key === "issue" &&
+                          "border-destructive/50 text-destructive data-[state=on]:border-destructive data-[state=on]:bg-destructive data-[state=on]:text-destructive-foreground",
+                      )}
                     >
                       <Icon data-icon="inline-start" /> {choice.label}
                     </ToggleGroupItem>

@@ -15,7 +15,7 @@ from app.models.brand_document import BrandDocument, BrandDocumentVersion
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanyOut, CompanyUpdate
 from app.services.activity import record
-from app.services.storage import absolute_path, media_url, save_upload
+from app.services.storage import absolute_path, media_url, save_upload, validate_image_upload
 from app.services.utils import slugify
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -113,6 +113,7 @@ async def upload_logo(
     if not brand:
         raise HTTPException(status_code=404, detail="Company not found")
     _require_manage(user, brand)
+    validate_image_upload(file)
     rel_path, _size = await save_upload(file, subdir="brands")
     brand.logo_url = media_url(rel_path)
     await db.commit()

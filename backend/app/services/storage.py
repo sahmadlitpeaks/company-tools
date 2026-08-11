@@ -2,11 +2,33 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from app.core.config import settings
 
 MEDIA_ROOT = Path(settings.MEDIA_ROOT)
+
+# Raster image types safe to serve inline. Deliberately excludes SVG and HTML,
+# which can carry executable script.
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def validate_image_upload(file: UploadFile) -> None:
+    """Reject non-image uploads for files that will be served inline as public
+    static assets (card photos, company logos).
+
+    Those subtrees are served directly by StaticFiles, so an uploaded
+    ``.svg``/``.html`` would be returned with an executable content type from
+    the app's own origin — stored XSS. Everything else is served through the
+    download API with attachment disposition and isn't affected.
+    """
+    ext = Path(file.filename or "").suffix.lower()
+    ctype = (file.content_type or "").lower()
+    if ext not in _IMAGE_EXTS or not ctype.startswith("image/") or "svg" in ctype:
+        raise HTTPException(
+            status_code=422,
+            detail="Only PNG, JPEG, GIF or WebP images are allowed here.",
+        )
 
 
 def ensure_media_root() -> None:

@@ -97,6 +97,37 @@ class Settings(BaseSettings):
         return f"https://login.microsoftonline.com/{self.AZURE_TENANT_ID}"
 
 
+# Secrets that ship as defaults and must never survive into production.
+_INSECURE_SECRETS = {"change-me", "change-me-to-a-long-random-string"}
+
+
+def assert_production_secrets(s: "Settings") -> None:
+    """Refuse to run production with shipped-default credentials.
+
+    A default ``SECRET_KEY`` lets anyone forge an admin session JWT (the token is
+    only signed, not encrypted), so this is a hard boot failure rather than a
+    warning. Called from the app's startup lifespan so import-only use (tooling,
+    tests inspecting the app) is unaffected.
+    """
+    if s.ENVIRONMENT.lower() != "production":
+        return
+    problems: list[str] = []
+    if s.SECRET_KEY in _INSECURE_SECRETS or len(s.SECRET_KEY) < 32:
+        problems.append(
+            "SECRET_KEY must be set to a unique random value of at least 32 "
+            "characters (the default lets attackers forge admin tokens)."
+        )
+    if s.DEFAULT_ADMIN_PASSWORD == "admin":
+        problems.append(
+            "DEFAULT_ADMIN_PASSWORD must be changed from the public default."
+        )
+    if problems:
+        raise RuntimeError(
+            "Refusing to start in production with insecure configuration:\n  - "
+            + "\n  - ".join(problems)
+        )
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

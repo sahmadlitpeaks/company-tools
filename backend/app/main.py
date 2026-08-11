@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,12 +87,16 @@ from app.services.storage import ensure_media_root
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Seed defaults and own background jobs for the full application lifetime."""
+    from app.core.config import assert_production_secrets
     from app.core.database import AsyncSessionLocal
     from app.services.bootstrap import (
         ensure_default_admin,
         ensure_default_departments,
         ensure_default_leave_types,
     )
+
+    # Fail fast rather than boot production with a forgeable default SECRET_KEY.
+    assert_production_secrets(settings)
 
     async with AsyncSessionLocal() as db:
         # Production starts with only the bootstrap admin; sample departments and
@@ -151,11 +156,24 @@ async def _capture_request_base(request, call_next):
     return await call_next(request)
 
 
-# Serve uploaded media (dev only — front a CDN/object store in prod).
+# Serve ONLY genuinely-public media subtrees as static files: card photos and
+# company logos, which are embedded as <img> on public pages. Everything else
+# under MEDIA_ROOT — HR documents, approval/ticket attachments, expense receipts,
+# résumés, personal workspace files, brand documents, and passcode-gated
+# marketing assets/brochures — is sensitive and is served exclusively through
+# the authenticated (or passcode-enforcing) /api download handlers. Mounting the
+# whole MEDIA_ROOT would let anyone fetch those files by path with no auth,
+# bypassing every permission, passcode, expiry and revocation check.
 ensure_media_root()
-app.mount(
-    settings.MEDIA_URL, StaticFiles(directory=settings.MEDIA_ROOT), name="media"
-)
+_PUBLIC_MEDIA_SUBTREES = ("cards", "brands")
+for _sub in _PUBLIC_MEDIA_SUBTREES:
+    _dir = Path(settings.MEDIA_ROOT) / _sub
+    _dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        f"{settings.MEDIA_URL}/{_sub}",
+        StaticFiles(directory=str(_dir)),
+        name=f"media-{_sub}",
+    )
 
 
 @app.get("/health", tags=["meta"])

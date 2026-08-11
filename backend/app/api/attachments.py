@@ -56,6 +56,55 @@ async def _ensure_entity(db: AsyncSession, entity_type: str, entity_id: uuid.UUI
     return obj
 
 
+# Entity types whose attachments are community-shared by design: any holder of
+# the module may see them (the ideas board, lost & found). Everything else is
+# restricted to the people actually involved in the specific record.
+_SHARED_ENTITY_TYPES = {"idea", "lost_found"}
+
+
+async def _authorize_entity(
+    db: AsyncSession, user: User, entity_type: str, obj
+) -> None:
+    """Holding the entity's module is necessary but not sufficient — the caller
+    must also be a party to THIS record (or an admin/manager).
+
+    Without this, module access alone (every member holds ``approvals``,
+    ``service_desk`` and ``tasks`` by default) let anyone read or download the
+    attachments on another employee's approval, ticket or task by id.
+    """
+    if entity_type in _SHARED_ENTITY_TYPES:
+        return
+    if user.is_admin or user.role == "manager":
+        return
+    if entity_type in ("task", "task_item"):
+        task = obj if entity_type == "task" else await db.get(Task, obj.task_id)
+        if task is None:
+            return
+        if task.template_id:
+            # Routine-checks run: worked by a whole team as a group (unassigned
+            # department rota — one colleague starts it, another continues), so
+            # access follows the run's own department-aware rule, not just
+            # creator/assignee. Otherwise a teammate couldn't add/see photos.
+            from app.api.checklists import _can_view
+
+            if await _can_view(db, user, task):
+                return
+            raise HTTPException(
+                status_code=403, detail="You don't have access to this item"
+            )
+        involved = {task.created_by_id, task.assignee_id, task.reviewer_id}
+    elif entity_type == "approval":
+        involved = {obj.requester_id, obj.approver_id}
+    elif entity_type == "ticket":
+        involved = {obj.requester_id, obj.assignee_id}
+    else:
+        involved = set()
+    if user.id not in involved:
+        raise HTTPException(
+            status_code=403, detail="You don't have access to this item"
+        )
+
+
 @router.get("/by/{entity_type}/{entity_id}", response_model=list[AttachmentOut])
 async def list_attachments(
     entity_type: str,
@@ -64,7 +113,8 @@ async def list_attachments(
     user: User = Depends(get_current_user),
 ):
     _require(user, entity_type)
-    await _ensure_entity(db, entity_type, entity_id)
+    obj = await _ensure_entity(db, entity_type, entity_id)
+    await _authorize_entity(db, user, entity_type, obj)
     return (
         await db.execute(
             select(Attachment)
@@ -86,7 +136,8 @@ async def upload_attachment(
     user: User = Depends(get_current_user),
 ):
     _require(user, entity_type)
-    await _ensure_entity(db, entity_type, entity_id)
+    obj = await _ensure_entity(db, entity_type, entity_id)
+    await _authorize_entity(db, user, entity_type, obj)
     rel_path, size = await save_upload(file, subdir="attachments")
     att = Attachment(
         entity_type=entity_type,
@@ -113,6 +164,8 @@ async def download_attachment(
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     _require(user, att.entity_type)
+    obj = await _ensure_entity(db, att.entity_type, att.entity_id)
+    await _authorize_entity(db, user, att.entity_type, obj)
     return FileResponse(
         absolute_path(att.file_path),
         media_type=att.content_type or "application/octet-stream",

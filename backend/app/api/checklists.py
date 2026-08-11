@@ -11,7 +11,7 @@ them.
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -53,6 +53,7 @@ from app.services.checklist_runs import (
     raise_ticket_for_item,
     run_is_late,
 )
+from app.services.checklist_report_pdf import render_run_report
 from app.services.checklist_seed import starter_templates
 from app.services.notify import notify_user
 from app.services.people import user_names
@@ -748,6 +749,78 @@ async def get_run(
         )
         detail.items.append(row)
     return detail
+
+
+@runs_router.get("/{run_id}/report.pdf")
+async def run_report_pdf(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A printable PDF of the run — every checkpoint, its response, notes and
+    embedded photo evidence. Same access rule as viewing the run."""
+    run = await _load_run(db, run_id)
+    await _require_view(db, user, run)
+    base = (await _serialize_runs(db, [run]))[0]
+
+    item_ids = {i.id for i in run.items}
+    photos_by_item: dict = {}
+    if item_ids:
+        atts = (
+            await db.execute(
+                select(Attachment)
+                .where(
+                    Attachment.entity_type == "task_item",
+                    Attachment.entity_id.in_(item_ids),
+                )
+                .order_by(Attachment.created_at.asc())
+            )
+        ).scalars().all()
+        for a in atts:
+            photos_by_item.setdefault(a.entity_id, []).append(a.file_path)
+    responder_names = await user_names(
+        db, {i.responded_by_id for i in run.items if i.responded_by_id}
+    )
+
+    sections: list[dict] = []
+    for item in sorted(run.items, key=lambda x: x.sort):
+        name = item.section or "Checks"
+        if not sections or sections[-1]["name"] != name:
+            sections.append({"name": name, "items": []})
+        sections[-1]["items"].append(
+            {
+                "title": item.title,
+                "status": item.status,
+                "note": item.note,
+                "value": item.value,
+                "responded_by": responder_names.get(item.responded_by_id)
+                if item.responded_by_id
+                else None,
+                "responded_at": item.responded_at.strftime("%Y-%m-%d %H:%M")
+                if item.responded_at
+                else None,
+                "photos": photos_by_item.get(item.id, []),
+            }
+        )
+
+    pdf = render_run_report(
+        {
+            "name": base.template_name or run.title,
+            "run_date": str(run.run_date or ""),
+            "checked_by": base.assignee_name,
+            "verified_by": base.verified_by_name or base.reviewer_name,
+            "status": base.status,
+            "answered": base.items_answered,
+            "total": base.items_total,
+            "sections": sections,
+        }
+    )
+    stamp = str(run.run_date or "report")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="routine-check-{stamp}.pdf"'},
+    )
 
 
 @runs_router.post("/{run_id}/claim", response_model=RunOut)

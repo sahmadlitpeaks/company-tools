@@ -214,6 +214,22 @@ def _serialize(task: Task, names: dict, agg: dict | None = None) -> TaskOut:
     return out
 
 
+def _can_access_task(user: User, task: Task) -> bool:
+    """Who may view or mutate a specific task.
+
+    Admins and managers (oversight), plus the task's creator and current
+    assignee. Everyone else is denied — a task's title, description and comment
+    thread can be confidential, and the mutation handlers must not let an
+    unrelated employee reassign or delete work that isn't theirs.
+    """
+    return (
+        user.is_admin
+        or user.role == "manager"
+        or task.created_by_id == user.id
+        or task.assignee_id == user.id
+    )
+
+
 @router.get("", response_model=list[TaskOut])
 async def list_tasks(
     status: str | None = None,
@@ -234,6 +250,13 @@ async def list_tasks(
     stmt = select(Task).order_by(Task.created_at.desc())
     if not include_runs:
         stmt = stmt.where(Task.template_id.is_(None))
+    # Members only see tasks they created or are assigned to; admins and
+    # managers retain a full-board view for oversight. Without this any member
+    # could read every task in the company.
+    if not (user.is_admin or user.role == "manager"):
+        stmt = stmt.where(
+            or_(Task.assignee_id == user.id, Task.created_by_id == user.id)
+        )
     if status:
         stmt = stmt.where(Task.status == status)
     if priority:
@@ -307,7 +330,7 @@ async def create_task(
 async def get_task(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     task = await db.get(
         Task, task_id,
@@ -315,6 +338,8 @@ async def get_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if not _can_access_task(user, task):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
     ids = {task.assignee_id, task.created_by_id} | {c.author_id for c in task.comments}
     names = await user_names(db, ids)
     detail = TaskDetail.model_validate(task)
@@ -342,6 +367,8 @@ async def update_task(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if not _can_access_task(user, task):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
     if task.template_id:
         raise HTTPException(
             status_code=409,
@@ -447,12 +474,15 @@ async def update_task(
 async def delete_task(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     task = await db.get(Task, task_id)
-    if task:
-        await db.delete(task)
-        await db.commit()
+    if not task:
+        return
+    if not _can_access_task(user, task):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
+    await db.delete(task)
+    await db.commit()
 
 
 # ---- Subtasks / checklist ----
@@ -461,11 +491,13 @@ async def add_item(
     task_id: uuid.UUID,
     payload: TaskItemCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if not _can_access_task(user, task):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
     nxt = (
         await db.execute(
             select(func.coalesce(func.max(TaskItem.sort), -1)).where(
@@ -485,11 +517,14 @@ async def update_item(
     item_id: uuid.UUID,
     payload: TaskItemUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     item = await db.get(TaskItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    parent = await db.get(Task, item.task_id)
+    if parent and not _can_access_task(user, parent):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
     data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
         setattr(item, field, value)
@@ -505,12 +540,16 @@ async def update_item(
 async def delete_item(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     item = await db.get(TaskItem, item_id)
-    if item:
-        await db.delete(item)
-        await db.commit()
+    if not item:
+        return
+    parent = await db.get(Task, item.task_id)
+    if parent and not _can_access_task(user, parent):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
+    await db.delete(item)
+    await db.commit()
 
 
 # ---- Comments ----
@@ -524,6 +563,8 @@ async def add_comment(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if not _can_access_task(user, task):
+        raise HTTPException(status_code=403, detail="You don't have access to this task")
     comment = TaskComment(task_id=task_id, author_id=user.id, body=payload.body)
     db.add(comment)
     # Notify the other party (assignee or creator) of the new comment.

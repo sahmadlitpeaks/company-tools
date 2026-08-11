@@ -647,7 +647,15 @@ async def test_starter_templates_cover_several_departments(client, auth):
     assert "HQ Building / Dr T's Office (Inside)" in sections
     assert "Printer Check — All Locations" in sections
     assert any(i["title"].startswith("HP-DXB-HQ-CS") for i in it["items"])
-    assert any(i["photo_required"] and i["title"] == "Check All Cameras" for i in it["items"])
+    # Dr T's office and meeting room require photo evidence on every checkpoint;
+    # the "Check All Cameras" sweep was retired.
+    assert all(i["title"] != "Check All Cameras" for i in it["items"])
+    assert all(
+        i["photo_required"]
+        for i in it["items"]
+        if i["section"]
+        in {"HQ Building / Dr T's Office (Inside)", "HQ Building / Dr T's Meeting Room"}
+    )
 
     # Facilities mixes response types.
     fac = (
