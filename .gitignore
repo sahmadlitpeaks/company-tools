@@ -56,3 +56,4 @@ playwright-report/
 /frontend/.grok/
 /frontend/opencode.json
 /frontend/skills-lock.json
+qa-out/

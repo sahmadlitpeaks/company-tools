@@ -27,6 +27,25 @@
 5. Backend sets the session in the HttpOnly, SameSite=Lax
    `ag_platform_session` cookie (`Secure` in production) and redirects to
    `FRONTEND_BASE_URL/auth/callback`.
+
+### Who may sign in through SSO
+
+Membership is governed in Azure, not in this application. The app registration
+is restricted to an approved group ("User assignment required" = Yes), so
+completing SSO *is* the approval step: a `pending` account is activated during
+the callback rather than waiting for an administrator.
+
+Two gates still apply in the backend, in this order:
+
+- the **email-domain allowlist** (`allowed_email_domains`), checked before any
+  account is provisioned;
+- the **account status** — anything other than `active` is refused a session
+  and redirected to `/login?error=account_inactive`.
+
+Only `pending` is cleared automatically. Use `disabled` to revoke someone's
+access: setting an account back to `pending` would be undone by their next SSO
+sign-in. Local password login is unchanged and still requires an `active`
+account, so accounts that never use SSO keep the administrator approval step.
 6. The SPA stores no credential in browser storage. Its same-origin `/api/*`
    requests use `credentials: "include"`; `get_current_user` validates the
    cookie and loads the `User` row. A Bearer credential remains supported for

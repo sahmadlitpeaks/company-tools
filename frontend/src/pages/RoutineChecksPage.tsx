@@ -779,11 +779,16 @@ function RunModal({
           <CardTitle className="flex flex-wrap items-center gap-2">
             <RunStatusBadge status={run.status} />
             {run.is_late ? <Badge variant="destructive">Late</Badge> : null}
+          </CardTitle>
+          <CardDescription>
+            Due {fmtDate(run.due_date ?? run.run_date)}
+            {detail.loading ? " · Refreshing…" : ""}
+          </CardDescription>
+          <CardAction>
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="ml-auto"
               onClick={() =>
                 window.open(
                   apiUrl(`/api/checklist-runs/${id}/report.pdf`),
@@ -794,11 +799,7 @@ function RunModal({
             >
               <FileDown data-icon="inline-start" /> Export PDF
             </Button>
-          </CardTitle>
-          <CardDescription>
-            Due {fmtDate(run.due_date ?? run.run_date)}
-            {detail.loading ? " · Refreshing…" : ""}
-          </CardDescription>
+          </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-4">
@@ -878,8 +879,9 @@ function RunModal({
               open={!isCollapsed}
               onOpenChange={(open) => setCollapsed((current) => ({ ...current, [section.key]: !open }))}
             >
-              <Card className="gap-0 py-0">
-                <CardHeader className="border-b p-0">
+              {/* overflow-visible so the header can stick to the dialog scrollport. */}
+              <Card className="gap-0 overflow-visible py-0">
+                <CardHeader className="sticky top-0 z-10 border-b bg-card p-0">
                   <CollapsibleTrigger
                     type="button"
                     render={
