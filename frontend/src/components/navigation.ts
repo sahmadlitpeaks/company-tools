@@ -43,6 +43,7 @@ import {
   Share2,
   ShieldCheck,
   ShoppingCart,
+  Signpost,
   Sliders,
   Smartphone,
   Stamp,
@@ -163,7 +164,8 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Sales",
     items: [
       { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm", keywords: ["customers", "pipeline", "sales"] },
-      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", keywords: ["submissions", "forms", "leads"] },
+      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
+      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
     ],
   },
   {

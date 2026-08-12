@@ -56,6 +56,35 @@ async def save_upload(file: UploadFile, subdir: str = "uploads") -> tuple[str, i
     return rel_path.replace(os.sep, "/"), size
 
 
+# Document types accepted for CVs arriving through the intake webhook. No
+# images or archives: these are stored unexamined from a public endpoint, so the
+# set is kept to what a résumé is actually sent as.
+_DOCUMENT_EXTS = {".pdf", ".doc", ".docx", ".rtf", ".odt", ".txt"}
+
+
+def save_bytes(data: bytes, filename: str, subdir: str = "uploads") -> tuple[str, int]:
+    """Persist raw bytes under MEDIA_ROOT/subdir. Returns (rel_path, size).
+
+    The stored name is always a fresh UUID — the caller's filename only ever
+    contributes its extension, so a hostile name cannot escape the directory or
+    overwrite an existing file.
+    """
+    ensure_media_root()
+    dest_dir = MEDIA_ROOT / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = Path(filename or "").suffix.lower()
+    if suffix not in _DOCUMENT_EXTS:
+        raise HTTPException(
+            status_code=422,
+            detail="Only PDF, Word, RTF, ODT or plain-text documents are accepted.",
+        )
+    dest = dest_dir / f"{uuid.uuid4().hex}{suffix}"
+    dest.write_bytes(data)
+    rel_path = os.path.relpath(dest, MEDIA_ROOT)
+    return rel_path.replace(os.sep, "/"), len(data)
+
+
 def media_url(rel_path: str) -> str:
     return f"{settings.MEDIA_URL}/{rel_path}"
 

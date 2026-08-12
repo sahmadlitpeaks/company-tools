@@ -80,6 +80,30 @@ APPEARANCE_DEFAULT = {
 }
 
 
+CAPTCHA_PROVIDERS = {"turnstile", "recaptcha", "hcaptcha"}
+
+
+async def get_captcha_config(db: AsyncSession) -> dict:
+    """Proof-of-humanity provider used to screen inbound website forms.
+
+    The secret is encrypted at rest and only ever leaves here on its way to the
+    provider's verify endpoint — it must never be returned to a browser, or the
+    check it performs would be worthless.
+    """
+    stored = await get_all(db)
+    provider = (stored.get("captcha_provider") or "").strip().lower() or None
+    if provider not in CAPTCHA_PROVIDERS:
+        provider = None
+    secret_enc = stored.get("captcha_secret")
+    secret = decrypt(secret_enc) if secret_enc else None
+    return {
+        "provider": provider,
+        "secret": secret,
+        "site_key": stored.get("captcha_site_key") or None,
+        "configured": bool(provider and secret),
+    }
+
+
 async def get_bamboo_config(db: AsyncSession) -> dict:
     """BambooHR connection (subdomain + API key, key encrypted at rest)."""
     stored = await get_all(db)

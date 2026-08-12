@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMemo, useState } from "react";
-import { Cable, Copy, Inbox, Plus, Trash2, UserPlus, Ticket as TicketIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Cable, Copy, FileInput, Inbox, Plus, Trash2, UserPlus, Ticket as TicketIcon } from "lucide-react";
 import { api, apiUrl } from "../api/client";
-import type { IntakeSource, Submission } from "../api/types";
+import type { IntakeForm, IntakeSource, Submission } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { ConfirmDialog, Empty, Loading, Modal, PageHead, PromptModal, useToast } from "../components/ui";
@@ -32,7 +33,7 @@ const QUARANTINE_STATUSES = new Set(["quarantined", "spam"]);
 
 export default function InboxPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"inbox" | "quarantine" | "sources">("inbox");
+  const [tab, setTab] = useState<"inbox" | "quarantine" | "forms" | "sources">("inbox");
   const [type, setType] = useState("");
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q);
@@ -55,9 +56,11 @@ export default function InboxPage() {
     <div>
       <PageHead title="Web Inbox" subtitle="Website submissions are spam-screened in quarantine; real leads land in the inbox." />
 
-      <ToggleGroup value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline" spacing={0} className="mb-4"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem>{user?.is_admin && <ToggleGroupItem value="sources">Connected websites</ToggleGroupItem>}</ToggleGroup>
+      <ToggleGroup value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline" spacing={0} className="mb-4"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem><ToggleGroupItem value="forms">Forms</ToggleGroupItem>{user?.is_admin && <ToggleGroupItem value="sources">Connected websites</ToggleGroupItem>}</ToggleGroup>
 
-      {tab === "sources" ? (
+      {tab === "forms" ? (
+        <FormsTab />
+      ) : tab === "sources" ? (
         <SourcesTab />
       ) : (
         <Card className="py-0">
@@ -199,10 +202,41 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
           <div className="text-xs text-muted-foreground">Other fields</div>
           <div className="bg-muted p-2 text-xs">
             {Object.entries(s.payload).map(([k, v]) => (
-              <div key={k}><span className="text-muted-foreground">{k}:</span> {String(v)}</div>
+              <div key={k}>
+                {/* Show the human label the form gave this field, falling back
+                    to its raw name when the form has not been mapped yet. */}
+                <span className="text-muted-foreground">{s.field_labels?.[k] ?? k}:</span>{" "}
+                {Array.isArray(v) ? v.join(", ") : String(v)}
+              </div>
             ))}
           </div>
         </div>
+      )}
+      {(s.form_name || s.site_url) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {s.site_url && <span>{s.site_url}</span>}
+          {s.form_name && <Badge variant="secondary">{s.form_name}</Badge>}
+          {s.mapping_status && s.mapping_status !== "mapped" && (
+            <Badge variant={s.mapping_status === "partial" ? "destructive" : "warning"}>
+              mapping: {s.mapping_status}
+            </Badge>
+          )}
+          {s.form_id && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 text-xs"
+              render={<Link to={`/inbox/forms/${s.form_id}`} />}
+            >
+              Edit field mapping
+            </Button>
+          )}
+        </div>
+      )}
+      {s.utm && Object.keys(s.utm).length > 0 && (
+        <p className="mt-2 mb-0 text-xs text-muted-foreground">
+          {Object.entries(s.utm).map(([k, v]) => `${k}=${v}`).join(" · ")}
+        </p>
       )}
 
       <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2"><FormField><FieldLabel htmlFor="submission-status">Status</FieldLabel><Select items={STATUSES.map((st) => ({ value: st, label: st.replace("_", " ") }))} value={s.status} onValueChange={(value) => value !== null && patch({ status: value })}><SelectTrigger id="submission-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STATUSES.map((st) => <SelectItem key={st} value={st}>{st.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField><FormField><FieldLabel htmlFor="submission-type">Type</FieldLabel><Select items={TYPES.map((t) => ({ value: t, label: t }))} value={s.type} onValueChange={(value) => value !== null && patch({ type: value })}><SelectTrigger id="submission-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField></FieldGroup>
@@ -235,6 +269,133 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
 function Field({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return <div><div className="text-xs text-muted-foreground">{label}</div><div>{value}</div></div>;
+}
+
+const FORM_STATUS_BADGE: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
+  mapped: "success", auto: "warning", partial: "destructive", none: "secondary",
+};
+
+const DESTINATION_LABEL: Record<string, string> = {
+  crm_lead: "CRM lead",
+  candidate: "Recruiting",
+  ticket: "Ticket",
+  inbox_only: "Inbox only",
+};
+
+function FormsTab() {
+  const forms = useFetch<IntakeForm[]>("/api/intake/forms");
+  const [needsReview, setNeedsReview] = useState(false);
+
+  const rows = (forms.data ?? []).filter(
+    (f) => !needsReview || f.mapping_status !== "mapped",
+  );
+
+  return (
+    <Card className="py-0">
+      <CardHeader className="py-(--card-spacing)">
+        <p className="text-sm text-muted-foreground">
+          Every form that has sent us anything. Because field names differ per site and
+          per form, each one carries its own mapping onto the columns the CRM uses.
+        </p>
+        <ToggleGroup
+          value={needsReview ? ["review"] : []}
+          onValueChange={(value) => setNeedsReview(value.includes("review"))}
+          variant="outline"
+          spacing={0}
+        >
+          <ToggleGroupItem value="review">Needs review</ToggleGroupItem>
+        </ToggleGroup>
+      </CardHeader>
+      <CardContent className={rows.length > 0 ? "p-0" : undefined}>
+        {forms.loading ? (
+          <Loading />
+        ) : rows.length === 0 ? (
+          <Empty
+            icon={<FileInput />}
+            message={needsReview ? "Every form is mapped" : "No forms seen yet"}
+            hint="A form appears here the first time it sends a submission, or when the WordPress plugin pushes its field list."
+          />
+        ) : (
+          <>
+            {/* Mobile: cards, because this table loses its meaning when squeezed. */}
+            <div className="flex flex-col gap-3 p-4 md:hidden">
+              {rows.map((f) => (
+                <div key={f.id} className="border border-border p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-left font-medium text-foreground"
+                      render={<Link to={`/inbox/forms/${f.id}`} />}
+                    >
+                      {f.name}
+                    </Button>
+                    <Badge variant={FORM_STATUS_BADGE[f.mapping_status] ?? "secondary"}>
+                      {f.mapping_status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 mb-0 text-xs text-muted-foreground">
+                    {f.source_name ?? "—"} · {f.field_count} fields ·{" "}
+                    {f.submission_count} received
+                  </p>
+                  <p className="mt-1 mb-0 text-xs text-muted-foreground">
+                    Goes to {DESTINATION_LABEL[f.destination] ?? f.destination}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Form</TableHead>
+                    <TableHead>Website</TableHead>
+                    <TableHead>Goes to</TableHead>
+                    <TableHead>Fields</TableHead>
+                    <TableHead>Mapping</TableHead>
+                    <TableHead className="text-right">Received</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((f) => (
+                    <TableRow key={f.id}>
+                      <TableCell>
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="h-auto justify-start p-0 text-left text-foreground"
+                          render={<Link to={`/inbox/forms/${f.id}`} />}
+                        >
+                          {f.name}
+                        </Button>
+                        <div className="text-xs text-muted-foreground">{f.form_key}</div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {f.source_name ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {DESTINATION_LABEL[f.destination] ?? f.destination}
+                      </TableCell>
+                      <TableCell className="tabular-nums">{f.field_count}</TableCell>
+                      <TableCell>
+                        <Badge variant={FORM_STATUS_BADGE[f.mapping_status] ?? "secondary"}>
+                          {f.mapping_status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {f.submission_count}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function SourcesTab() {

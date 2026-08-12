@@ -47,6 +47,11 @@ class CrmLeadOut(BaseModel):
     owner_name: str | None = None
     value: Decimal | None = None
     notes: str | None = None
+    # Website provenance, present on leads that arrived through the intake
+    # pipeline. `fields` carries everything the form asked that has no column.
+    intake_form_id: uuid.UUID | None = None
+    page_url: str | None = None
+    fields: list[dict] | None = None
     created_at: datetime
 
 
