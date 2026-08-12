@@ -18,9 +18,9 @@ export default function LoginPage() {
         /* keep defaults (show both sign-in options) */
       });
     const err = new URLSearchParams(window.location.search).get("error");
-    if (err === "pending_approval") {
+    if (err === "account_inactive") {
       setNotice(
-        "Your account was created and is awaiting administrator approval. You'll get access once an admin activates it.",
+        "This account has been deactivated, so it can't sign in. Contact an administrator if you think that's wrong.",
       );
     } else if (err === "domain_not_allowed") {
       setNotice(

@@ -393,8 +393,9 @@ export default function DirectoryPage() {
       />
       {isAdmin && pendingCount > 0 && (
         <div className="mb-3 border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning-foreground">
-          <strong>{pendingCount}</strong> account{pendingCount > 1 ? "s" : ""} awaiting
-          approval. Review and activate them below.
+          <strong>{pendingCount}</strong> account{pendingCount > 1 ? "s" : ""} not active
+          yet. Anyone signing in with Microsoft is activated automatically; activate the
+          rest below.
         </div>
       )}
       <Card className={view === "list" ? "py-0" : undefined}>

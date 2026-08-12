@@ -116,8 +116,10 @@ export function Modal({
         {/*
           Body uses gap-4 so form fields and inline action rows never collapse
           into each other when callers put buttons inside children.
+          Children must not flex-shrink: cards clip (overflow-hidden) instead
+          of the body scrolling when the content is taller than the dialog.
         */}
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 *:shrink-0">
           {children}
         </div>
         {footer ? (

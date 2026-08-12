@@ -279,11 +279,21 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         user.is_admin = True
         user.role = "admin"
         user.status = "active"
+    elif user.status == "pending":
+        # Who may sign in is decided in Azure: the app registration is limited
+        # to the approved group, so getting this far *is* the approval. Only
+        # ``pending`` is cleared here -- ``disabled`` is a deliberate local
+        # revocation, so use that (not ``pending``) to take someone's access
+        # away, otherwise their next SSO sign-in would let them back in.
+        user.status = "active"
     await db.commit()
 
-    if user.status == "pending":
+    if user.status != "active":
+        # Anything still not active (``disabled``, or a future state) is refused
+        # a session. Checking only for ``pending`` here used to let a disabled
+        # account sign in through SSO even though password login rejected it.
         return RedirectResponse(
-            f"{frontend_base_url()}/login?error=pending_approval"
+            f"{frontend_base_url()}/login?error=account_inactive"
         )
 
     app_token = create_access_token(
