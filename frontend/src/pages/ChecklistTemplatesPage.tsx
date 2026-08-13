@@ -129,12 +129,15 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function ownerDetails(t: ChecklistTemplate): { name: string; kind: string } {
+function ownerDetails(
+  t: ChecklistTemplate,
+): { name: string; kind: string; unrouted?: boolean } {
   if (t.assignee_name) return { name: t.assignee_name, kind: "Person" };
   if (t.assignee_department_name) {
     return { name: t.assignee_department_name, kind: "Department rota" };
   }
-  return { name: "Unassigned", kind: "No owner" };
+  // Predates the routing requirement: its runs are visible to managers only.
+  return { name: "Unassigned", kind: "Only managers see its runs", unrouted: true };
 }
 
 function reviewerDetails(t: ChecklistTemplate): { name: string; required: boolean } {
@@ -182,7 +185,9 @@ function TemplateMobileCard({
           </div>
           <div className="flex min-w-0 flex-col gap-0.5">
             <dt className="text-xs font-medium text-muted-foreground">Owner</dt>
-            <dd className="truncate text-sm" title={owner.name}>{owner.name}</dd>
+            <dd className="truncate text-sm" title={owner.name}>
+              {owner.unrouted ? <Badge variant="warning">{owner.name}</Badge> : owner.name}
+            </dd>
             <dd className="text-xs text-muted-foreground">{owner.kind}</dd>
           </div>
           <div className="flex min-w-0 flex-col gap-0.5">
@@ -347,7 +352,11 @@ export default function ChecklistTemplatesPage() {
                             </p>
                           </TableCell>
                           <TableCell className="min-w-48 whitespace-normal">
-                            <p className="font-medium">{owner.name}</p>
+                            {owner.unrouted ? (
+                              <Badge variant="warning">{owner.name}</Badge>
+                            ) : (
+                              <p className="font-medium">{owner.name}</p>
+                            )}
                             <p className="text-xs text-muted-foreground">{owner.kind}</p>
                           </TableCell>
                           <TableCell className="min-w-44 whitespace-normal">
@@ -612,6 +621,9 @@ function TemplateEditorForm({
   const [form, setForm] = useState<TemplateForm>(() => initialForm(template));
   const [items, setItems] = useState<DraftItem[]>(() => initialItems(template));
   const weeklyDaysMissing = form.schedule === "weekly" && form.days_of_week.length === 0;
+  // Non-managers only see runs they own, review, or that belong to their
+  // department. A round with neither is generated but reaches nobody.
+  const routingMissing = !form.assignee_id && !form.assignee_department_id;
   const usersUnavailable = users.loading || Boolean(users.error && !users.data);
   const departmentsUnavailable = departments.loading || Boolean(departments.error && !departments.data);
   const assetsUnavailable = assets.loading || Boolean(assets.error && !assets.data);
@@ -662,6 +674,13 @@ function TemplateEditorForm({
     setSaveError(null);
     if (weeklyDaysMissing) {
       const message = "Choose at least one day for a weekly checklist.";
+      setSaveError(message);
+      notify(message, "error");
+      return;
+    }
+    if (routingMissing) {
+      const message =
+        "Assign this round to a person or to a department rota — otherwise only managers can see the runs it generates.";
       setSaveError(message);
       notify(message, "error");
       return;
@@ -920,6 +939,17 @@ function TemplateEditorForm({
             <CardDescription>Assign a named owner or let a department rota claim each generated round.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
+            {routingMissing ? (
+              <Alert>
+                <AlertTitle>This round would reach nobody</AlertTitle>
+                <AlertDescription>
+                  Pick a person or a department rota. People who aren't managers only
+                  see rounds they own, review, or that belong to their department —
+                  so an unassigned round generates every day and stays invisible to
+                  the team meant to walk it.
+                </AlertDescription>
+              </Alert>
+            ) : null}
             <FieldGroup className="grid gap-4 lg:grid-cols-3">
               <Field data-disabled={usersUnavailable || undefined}>
                 <FieldLabel htmlFor="checklist-template-assignee">Assign to a person</FieldLabel>

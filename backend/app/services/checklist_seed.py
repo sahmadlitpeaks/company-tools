@@ -172,10 +172,16 @@ def _lab_items() -> list[dict]:
 
 
 def starter_templates() -> list[dict]:
-    """Template payloads matching :class:`ChecklistTemplateCreate`."""
+    """Template payloads matching :class:`ChecklistTemplateCreate`.
+
+    ``department`` is a *name* the seeder resolves to an id — a starter round
+    must ship routed to a department rota, or the runs it generates are visible
+    only to managers and the team it was written for never sees them.
+    """
     return [
         {
             "name": "Morning IT Checks",
+            "department": "IT",
             "description": (
                 "Daily walk-through of every building: meeting-room AV, phones, "
                 "printers, access points and cameras. Transcribed from the paper "
@@ -190,6 +196,7 @@ def starter_templates() -> list[dict]:
         },
         {
             "name": "Facilities Daily Walk-through",
+            "department": "Operations",
             "description": (
                 "Daily building round: access, lighting, washrooms, server-room "
                 "temperature, fire safety and grounds."
@@ -203,6 +210,7 @@ def starter_templates() -> list[dict]:
         },
         {
             "name": "Weekly Lab Safety Round",
+            "department": "Operations",
             "description": (
                 "Weekly lab sweep: cold-storage readings, safety equipment and "
                 "calibration logs."

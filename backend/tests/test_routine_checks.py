@@ -12,6 +12,10 @@ pytestmark = pytest.mark.asyncio
 IT_MODULES = ["dashboard", "routine_checks", "service_desk", "asset_tracker"]
 
 
+async def _me(client, auth):
+    return (await client.get("/api/auth/me", headers=auth)).json()["id"]
+
+
 def _template_body(**over):
     body = {
         "name": "Morning IT Checks",
@@ -47,6 +51,10 @@ def _template_body(**over):
 
 
 async def _template(client, auth, **over):
+    # A template must be routed to a person or a department rota, so default to
+    # the calling admin unless the test is exercising routing itself.
+    if not over.get("assignee_id") and not over.get("assignee_department_id"):
+        over["assignee_id"] = await _me(client, auth)
     r = await client.post("/api/checklist-templates", headers=auth, json=_template_body(**over))
     assert r.status_code == 201, r.text
     return r.json()
@@ -73,19 +81,24 @@ async def test_create_template_with_items(client, auth):
 
 
 async def test_template_validation(client, auth):
+    owner = await _me(client, auth)
     bad = await client.post(
-        "/api/checklist-templates", headers=auth, json=_template_body(schedule="hourly")
+        "/api/checklist-templates",
+        headers=auth,
+        json=_template_body(schedule="hourly", assignee_id=owner),
     )
     assert bad.status_code == 422
     # Weekly needs at least one weekday.
     bad = await client.post(
-        "/api/checklist-templates", headers=auth, json=_template_body(schedule="weekly")
+        "/api/checklist-templates",
+        headers=auth,
+        json=_template_body(schedule="weekly", assignee_id=owner),
     )
     assert bad.status_code == 422
     bad = await client.post(
         "/api/checklist-templates",
         headers=auth,
-        json=_template_body(schedule="weekly", days_of_week=[9]),
+        json=_template_body(schedule="weekly", days_of_week=[9], assignee_id=owner),
     )
     assert bad.status_code == 422
 
@@ -451,6 +464,86 @@ async def test_verify_requires_submitted_state(client, auth):
 
 
 # --------------------------------------------------------------------------
+# Routing
+# --------------------------------------------------------------------------
+async def test_template_must_be_routed_to_a_person_or_department(client, auth):
+    """An unrouted template generates runs only managers can see — refuse it.
+
+    Without this the round looks correctly configured, generates on schedule,
+    and silently never reaches the team that is supposed to walk it.
+    """
+    r = await client.post("/api/checklist-templates", headers=auth, json=_template_body())
+    assert r.status_code == 422
+    assert "department rota" in r.json()["detail"]
+
+
+async def test_routing_cannot_be_cleared_by_update(client, auth):
+    tpl = await _template(client, auth)
+    r = await client.patch(
+        f"/api/checklist-templates/{tpl['id']}",
+        headers=auth,
+        json={"assignee_id": None},
+    )
+    assert r.status_code == 422
+
+    # An unrelated edit still works — validation looks at the merged result, not
+    # only at the fields the patch happens to carry.
+    ok = await client.patch(
+        f"/api/checklist-templates/{tpl['id']}", headers=auth, json={"name": "Renamed"}
+    )
+    assert ok.status_code == 200 and ok.json()["name"] == "Renamed"
+
+
+async def test_swapping_person_for_department_rota_is_allowed(client, auth):
+    depts = (await client.get("/api/departments", headers=auth)).json()
+    tpl = await _template(client, auth)
+    r = await client.patch(
+        f"/api/checklist-templates/{tpl['id']}",
+        headers=auth,
+        json={"assignee_id": None, "assignee_department_id": depts[0]["id"]},
+    )
+    assert r.status_code == 200
+    assert r.json()["assignee_department_id"] == depts[0]["id"]
+
+
+async def test_starter_templates_are_routed_to_a_department(client, auth):
+    """The seeded rounds must reach their team, not just managers."""
+    seeded = (
+        await client.post("/api/checklist-templates/samples", headers=auth)
+    ).json()
+    assert seeded
+    for tpl in seeded:
+        assert tpl["assignee_department_id"] or tpl["assignee_id"], tpl["name"]
+    it_round = next(t for t in seeded if t["name"] == "Morning IT Checks")
+    assert it_round["assignee_department_name"] == "IT"
+
+
+async def test_it_member_sees_and_claims_the_seeded_morning_round(client, auth):
+    """End-to-end guard for the reported bug: a plain IT member — not a manager —
+    can see today's Morning IT Checks and start it."""
+    depts = (await client.get("/api/departments", headers=auth)).json()
+    it = next(d for d in depts if d["name"] == "IT")
+    assert "routine_checks" in it["permissions"]
+
+    hdr, uid = await make_member(client, auth, "ituser@agholding.net")
+    await client.patch(
+        f"/api/users/{uid}", headers=auth, json={"department_id": it["id"]}
+    )
+
+    seeded = (
+        await client.post("/api/checklist-templates/samples", headers=auth)
+    ).json()
+    it_round = next(t for t in seeded if t["name"] == "Morning IT Checks")
+    run_id = (await _generate(client, auth, it_round["id"])).json()["run_ids"][0]
+
+    mine = (await client.get("/api/checklist-runs?mine=true", headers=hdr)).json()
+    assert run_id in [r["id"] for r in mine]
+    assert (
+        await client.post(f"/api/checklist-runs/{run_id}/claim", headers=hdr)
+    ).status_code == 200
+
+
+# --------------------------------------------------------------------------
 # Rota claiming
 # --------------------------------------------------------------------------
 async def test_department_rota_run_can_be_claimed(client, auth):
@@ -535,7 +628,9 @@ async def test_summary_is_manager_only(client, auth):
 async def test_members_cannot_author_templates(client, auth):
     hdr, uid = await make_member(client, auth, "author@agholding.net")
     await client.patch(f"/api/users/{uid}", headers=auth, json={"permissions": IT_MODULES})
-    r = await client.post("/api/checklist-templates", headers=hdr, json=_template_body())
+    r = await client.post(
+        "/api/checklist-templates", headers=hdr, json=_template_body(assignee_id=uid)
+    )
     assert r.status_code == 403
 
 
