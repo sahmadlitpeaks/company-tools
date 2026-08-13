@@ -82,6 +82,16 @@ def _require_manager(user: User) -> None:
 def _validate_template(data: dict) -> None:
     if "schedule" in data and data["schedule"] not in SCHEDULES:
         raise HTTPException(status_code=422, detail="Invalid schedule")
+    # Routing is what makes a run reachable: non-managers only ever see runs they
+    # own, review, or that belong to their department (see ``_can_view``). A
+    # template with neither generates runs nobody but a manager can open, which
+    # looks like the feature silently not working for the team.
+    if not data.get("assignee_id") and not data.get("assignee_department_id"):
+        raise HTTPException(
+            status_code=422,
+            detail="Assign the round to a person or to a department rota — "
+            "otherwise only managers can see the runs it generates",
+        )
     if data.get("team") and data["team"] not in TICKET_CATEGORIES:
         raise HTTPException(status_code=422, detail="Invalid team")
     if data.get("schedule") == "weekly" and not data.get("days_of_week"):
@@ -207,15 +217,31 @@ async def seed_sample_templates(
     machinery serving three departments with different schedules, response types
     and photo rules.
     """
+    from app.models.department import Department
+
     _require_manager(user)
     existing = set(
         (await db.execute(select(ChecklistTemplate.name))).scalars().all()
     )
+    departments = {
+        name.lower(): dept_id
+        for dept_id, name in (
+            await db.execute(select(Department.id, Department.name))
+        ).all()
+    }
     created: list[uuid.UUID] = []
     for spec in starter_templates():
         if spec["name"] in existing:
             continue
         items = spec.pop("items")
+        # Route to the named department's rota. If that department doesn't exist
+        # in this deployment, fall back to the seeding admin rather than leaving
+        # the round unrouted — an unowned round is invisible to everyone but
+        # managers, which is exactly the failure this seeding is meant to avoid.
+        dept_id = departments.get(spec.pop("department", "").lower())
+        spec["assignee_department_id"] = dept_id
+        if not dept_id:
+            spec["assignee_id"] = user.id
         tpl = ChecklistTemplate(**spec, created_by_id=user.id)
         db.add(tpl)
         await db.flush()
@@ -259,7 +285,18 @@ async def update_template(
     _require_manager(user)
     tpl = await _load_template(db, template_id)
     data = payload.model_dump(exclude_unset=True, exclude={"items"})
-    merged = {**{"schedule": tpl.schedule, "team": tpl.team}, **data}
+    # Validate the template as it will look after the patch, so an unrelated
+    # field change isn't rejected by rules about fields it never touched — and
+    # so clearing the last routing field is still caught.
+    merged = {
+        **{
+            "schedule": tpl.schedule,
+            "team": tpl.team,
+            "assignee_id": tpl.assignee_id,
+            "assignee_department_id": tpl.assignee_department_id,
+        },
+        **data,
+    }
     _validate_template(merged)
     for field, value in data.items():
         setattr(tpl, field, value)

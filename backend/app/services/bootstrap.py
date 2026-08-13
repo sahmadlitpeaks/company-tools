@@ -40,8 +40,11 @@ DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
     ("Sales", "Leads, decks and outreach.", _BASE + [
         "crm", "cards", "products", "shared", "campaigns", "shortener", "transfers",
     ]),
+    # routine_checks is not a member role default, so the departments that
+    # actually walk a daily round have to grant it explicitly.
     ("IT", "Assets, phone lines and the service desk.", _BASE + [
         "asset_tracker", "subscriptions", "transfers", "shortener", "qrcodes",
+        "routine_checks",
     ]),
     ("HR", "People operations, records and onboarding.", _BASE + [
         "hr", "recruiting", "people_ops", "directory",
@@ -51,6 +54,7 @@ DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
     ]),
     ("Operations", "Day-to-day running and assets.", _BASE + [
         "asset_tracker", "subscriptions", "products", "shared", "transfers", "qrcodes",
+        "routine_checks",
     ]),
 ]
 
