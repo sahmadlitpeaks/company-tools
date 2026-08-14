@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSurface } from "@/components/ui/table";
 import { useRef, useState } from "react";
-import { Camera, Globe2, Megaphone, MessageCircle, Music2, Search, X, type LucideIcon } from "lucide-react";
+import { Camera, Globe2, Megaphone, MessageCircle, Music2, RefreshCw, Search, X, type LucideIcon } from "lucide-react";
 import { api } from "../api/client";
-import type { Campaign, CampaignBreakdown, CampaignKpis, CampaignMetric, CampaignOverview } from "../api/types";
+import type { Campaign, CampaignBreakdown, CampaignKpis, CampaignMetric, CampaignOverview, SyncResult, SyncRun } from "../api/types";
 import { useBrand } from "../brand/BrandContext";
 import { ConfirmDialog, Empty, ErrorState, ListSkeleton, MetricStrip, MiniBars, Modal, PageHead, useToast } from "../components/ui";
+import SyncStatusStrip from "../components/SyncStatusStrip";
 import { useFetch } from "../hooks/useApi";
 
 const CHANNELS = ["facebook", "instagram", "google", "tiktok", "other"];
@@ -92,7 +93,7 @@ function CampaignDetail({ campaign, onClose }: { campaign: Campaign; onClose: ()
               </form>
             </CardContent>
           </Card>
-           {(metrics.data?.length ?? 0) > 0 && <section><h4 className="mb-2">Rows ({metrics.data!.length})</h4><TableSurface className="max-h-[220px] overflow-auto"><Table><TableHeader><TableRow><TableHead>Channel</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Spend</TableHead><TableHead className="text-right">Conv.</TableHead><TableHead /></TableRow></TableHeader><TableBody>{metrics.data!.map((metric) => <TableRow key={metric.id}><TableCell className="capitalize">{metric.channel}</TableCell><TableCell>{metric.date ?? "—"}</TableCell><TableCell className="text-right tabular-nums">{money(metric.spend)}</TableCell><TableCell className="text-right tabular-nums">{num(metric.conversions)}</TableCell><TableCell className="text-right"><Button type="button" variant="destructive" size="icon-sm" aria-label="Remove metric" onClick={() => removeMetric(metric.id)}><X data-icon="inline-start" /></Button></TableCell></TableRow>)}</TableBody></Table></TableSurface></section>}
+           {(metrics.data?.length ?? 0) > 0 && <section><h4 className="mb-2">Rows ({metrics.data!.length})</h4><TableSurface className="max-h-[220px] overflow-auto"><Table><TableHeader><TableRow><TableHead>Channel</TableHead><TableHead>Source</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Spend</TableHead><TableHead className="text-right">Conv.</TableHead><TableHead /></TableRow></TableHeader><TableBody>{metrics.data!.map((metric) => <TableRow key={metric.id}><TableCell className="capitalize">{metric.channel}</TableCell><TableCell><Badge variant={metric.source === "sync" ? "secondary" : "outline"}>{metric.source ?? "manual"}</Badge></TableCell><TableCell>{metric.date ?? "—"}</TableCell><TableCell className="text-right tabular-nums">{money(metric.spend)}</TableCell><TableCell className="text-right tabular-nums">{num(metric.conversions)}</TableCell><TableCell className="text-right"><Button type="button" variant="destructive" size="icon-sm" aria-label="Remove metric" onClick={() => removeMetric(metric.id)}><X data-icon="inline-start" /></Button></TableCell></TableRow>)}</TableBody></Table></TableSurface></section>}
         </div>
       )}
     </Modal>
@@ -109,7 +110,35 @@ export default function CampaignsPage() {
   const [deleting, setDeleting] = useState<Campaign | null>(null);
   const [form, setForm] = useState({ name: "", objective: "", status: "active", company_id: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const syncRuns = useFetch<SyncRun[]>("/api/campaigns/sync/runs");
+  const [syncing, setSyncing] = useState(false);
   const reloadAll = () => { overview.reload(); campaigns.reload(); };
+
+  async function runSync() {
+    setSyncing(true);
+    try {
+      const results = await api<SyncResult[]>("/api/campaigns/sync", { method: "POST" });
+      const ran = results.filter((result) => !result.skipped);
+      if (ran.length === 0) {
+        notify("No ad accounts are connected yet. Add credentials in Settings.", "error");
+      } else {
+        const rows = ran.reduce((total, result) => total + result.metrics_upserted, 0);
+        const failed = ran.filter((result) => !result.ok);
+        notify(
+          failed.length
+            ? `Synced ${rows} rows. ${failed.length} provider(s) failed - see status below.`
+            : `Synced ${rows} rows from ${ran.length} provider(s).`,
+          failed.length ? "error" : undefined,
+        );
+      }
+      reloadAll();
+      syncRuns.reload();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Sync failed", "error");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function create(event: React.FormEvent) {
     event.preventDefault(); if (!form.name) return; setIsSubmitting(true);
@@ -121,11 +150,22 @@ export default function CampaignsPage() {
 
   return (
     <div>
-      <PageHead title="Campaign Studio" subtitle="Ad performance across channels - upload spend, impressions and conversions to see what's working." action={<Button type="button" onClick={() => setCreating(true)}>+ New campaign</Button>} />
+      <PageHead title="Campaign Studio" subtitle="Ad performance across channels - upload spend, impressions and conversions to see what's working." action={
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={runSync} disabled={syncing}>
+            <RefreshCw data-icon="inline-start" />
+            {syncing ? "Syncing…" : "Sync now"}
+          </Button>
+          <Button type="button" onClick={() => setCreating(true)}>+ New campaign</Button>
+        </div>
+      } />
+      {syncRuns.data && syncRuns.data.length > 0 && (
+        <div className="mb-4"><SyncStatusStrip runs={syncRuns.data} /></div>
+      )}
       {overview.loading || !totals ? <ListSkeleton rows={3} /> : <div className="flex flex-col gap-4"><MetricStrip items={[{ value: money(totals.spend), label: "Total spend" }, { value: num(totals.impressions), label: "Impressions" }, { value: num(totals.clicks), label: "Clicks", sub: `${totals.ctr}% CTR` }, { value: num(totals.conversions), label: "Conversions", sub: `CPA ${money(totals.cpa)}` }, { value: money(totals.revenue), label: "Revenue" }, { value: `${totals.roas}×`, label: "ROAS" }]} /><Card className="py-0"><CardHeader className="py-(--card-spacing)"><CardTitle>Performance by channel</CardTitle></CardHeader><CardContent className="p-0"><ChannelTable rows={overview.data!.by_channel} /></CardContent></Card></div>}
       <h3 className="mt-5">Campaigns</h3>
       {campaigns.loading ? <ListSkeleton rows={4} /> : campaigns.error ? <ErrorState message={campaigns.error} onRetry={campaigns.reload} /> : !campaigns.data?.length ? <Empty icon={<Megaphone />} message="No campaigns yet" hint="Create a campaign, then upload channel performance via CSV or manual entry." action={<Button type="button" onClick={() => setCreating(true)}>+ New campaign</Button>} /> : (
-         <Card className="py-0"><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Campaign</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Spend</TableHead><TableHead className="text-right">Conv.</TableHead><TableHead className="text-right">ROAS</TableHead><TableHead /></TableRow></TableHeader><TableBody>{campaigns.data.map((campaign) => <TableRow key={campaign.id}><TableCell className="max-w-[28rem] whitespace-normal"><div className="truncate font-semibold" title={campaign.name}>{campaign.name}</div>{campaign.objective && <div className="line-clamp-2 text-xs text-muted-foreground">{campaign.objective}</div>}</TableCell><TableCell><Badge variant={STATUS_VARIANT[campaign.status] ?? "secondary"}>{campaign.status}</Badge></TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? money(campaign.kpis.spend) : "—"}</TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? num(campaign.kpis.conversions) : "—"}</TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? `${campaign.kpis.roas}×` : "—"}</TableCell><TableCell><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setDetail(campaign)}>Open</Button><Button type="button" variant="destructive" size="sm" onClick={() => setDeleting(campaign)}>Delete</Button></div></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+         <Card className="py-0"><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Campaign</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Spend</TableHead><TableHead className="text-right">Conv.</TableHead><TableHead className="text-right">ROAS</TableHead><TableHead /></TableRow></TableHeader><TableBody>{campaigns.data.map((campaign) => <TableRow key={campaign.id}><TableCell className="max-w-[28rem] whitespace-normal"><div className="flex items-center gap-2"><div className="truncate font-semibold" title={campaign.name}>{campaign.name}</div>{campaign.provider && <Badge variant="secondary">{campaign.provider}</Badge>}</div>{campaign.objective && <div className="line-clamp-2 text-xs text-muted-foreground">{campaign.objective}</div>}</TableCell><TableCell><Badge variant={STATUS_VARIANT[campaign.status] ?? "secondary"}>{campaign.status}</Badge></TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? money(campaign.kpis.spend) : "—"}</TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? num(campaign.kpis.conversions) : "—"}</TableCell><TableCell className="text-right tabular-nums">{campaign.kpis ? `${campaign.kpis.roas}×` : "—"}</TableCell><TableCell><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => setDetail(campaign)}>Open</Button><Button type="button" variant="destructive" size="sm" onClick={() => setDeleting(campaign)}>Delete</Button></div></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
       )}
       {detail && <CampaignDetail campaign={detail} onClose={() => { setDetail(null); reloadAll(); }} />}
       {creating && <Modal title="New campaign" onClose={() => setCreating(false)}><form onSubmit={create} className="flex flex-col gap-5"><FieldGroup><Field><FieldLabel htmlFor="campaign-name">Name *</FieldLabel><Input id="campaign-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} disabled={isSubmitting} /></Field><Field><FieldLabel htmlFor="campaign-objective">Objective</FieldLabel><Input id="campaign-objective" placeholder="Leads, sales, awareness…" value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="campaign-status">Status</FieldLabel><Select items={["active", "paused", "completed"].map((status) => ({ value: status, label: status }))} value={form.status} onValueChange={(value) => setForm({ ...form, status: value ?? "" })}><SelectTrigger className="w-full" id="campaign-status"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["active", "paused", "completed"].map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectGroup></SelectContent></Select></Field><Field><FieldLabel htmlFor="campaign-brand">Brand</FieldLabel><Select items={[{ value: null, label: active ? `${active.name} (active)` : "—" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]} value={form.company_id || null} onValueChange={(value) => setForm({ ...form, company_id: value ?? "" })}><SelectTrigger className="w-full" id="campaign-brand"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>{active ? `${active.name} (active)` : "—"}</SelectItem>{brands.map((brand) => <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field></div></FieldGroup><div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Creating…" : "Create"}</Button></div></form></Modal>}

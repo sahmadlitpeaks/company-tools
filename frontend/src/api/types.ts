@@ -346,6 +346,9 @@ export interface Campaign {
   notes?: string | null;
   created_at: string;
   kpis?: CampaignKpis | null;
+  /** Source platform for synced campaigns; null for hand-created ones. */
+  provider?: string | null;
+  external_id?: string | null;
 }
 
 export interface CampaignMetric {
@@ -359,6 +362,30 @@ export interface CampaignMetric {
   conversions: number;
   revenue: string;
   created_at: string;
+  /** manual | csv | sync */
+  source?: string;
+  currency?: string | null;
+  spend_original?: string | null;
+  fx_rate?: string | null;
+}
+
+export interface SyncResult {
+  provider: string;
+  ok: boolean;
+  skipped: boolean;
+  campaigns_synced: number;
+  metrics_upserted: number;
+  error?: string | null;
+}
+
+export interface SyncRun {
+  provider: string;
+  started_at: string;
+  finished_at?: string | null;
+  ok: boolean;
+  campaigns_synced: number;
+  metrics_upserted: number;
+  error?: string | null;
 }
 
 export interface ChannelBreakdown extends CampaignKpis {
