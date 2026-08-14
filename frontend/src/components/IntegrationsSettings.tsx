@@ -22,12 +22,52 @@ interface IntegrationStatus {
   fields: IntegrationField[];
 }
 
+interface TestResult {
+  ok: boolean;
+  account_name?: string | null;
+  currency?: string | null;
+  error?: string | null;
+}
+
+// Providers with an ad-sync client behind them. Instagram is excluded by
+// design - IG ad spend arrives via the Facebook/Meta credential.
+const TESTABLE = new Set(["facebook", "google_ads", "tiktok"]);
+
 /** Admin-configurable keys/tokens for ad channels (Facebook, Google, etc.). */
 export default function IntegrationsSettings() {
   const { notify } = useToast();
   const [items, setItems] = useState<IntegrationStatus[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [tested, setTested] = useState<Record<string, { ok: boolean; label: string }>>({});
+
+  async function testConnection(provider: string) {
+    setTesting(provider);
+    try {
+      const result = await api<TestResult>(
+        `/api/settings/integrations/${provider}/test`,
+        { method: "POST" },
+      );
+      setTested((current) => ({
+        ...current,
+        [provider]: {
+          ok: result.ok,
+          label: result.ok
+            ? [result.account_name, result.currency].filter(Boolean).join(" · ") || "Reached"
+            : result.error ?? "Failed",
+        },
+      }));
+      notify(
+        result.ok ? "Connection verified." : result.error ?? "Connection failed",
+        result.ok ? undefined : "error",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Test failed", "error");
+    } finally {
+      setTesting(null);
+    }
+  }
 
   function seed(list: IntegrationStatus[]) {
     setItems(list);
@@ -70,7 +110,10 @@ export default function IntegrationsSettings() {
         </CardTitle>
         <CardDescription>
         Connect your ad accounts so campaign data can be pulled in. Tokens are
-        stored encrypted and never shown again.
+        stored encrypted and never shown again. "Not set" only reports whether a
+        field is filled - use Test connection to confirm the account is reachable.
+        Instagram ad spend arrives through the Facebook / Meta credential, so it
+        has no separate connection to test.
         </CardDescription>
       </CardHeader>
 
@@ -106,12 +149,27 @@ export default function IntegrationsSettings() {
                 </Field>
               ))}
             </FieldGroup>
-            <Button type="button"
-              disabled={saving === it.provider}
-              onClick={() => save(it.provider)}
-            >
-              {saving === it.provider ? "Saving…" : `Save ${it.label}`}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button"
+                disabled={saving === it.provider}
+                onClick={() => save(it.provider)}
+              >
+                {saving === it.provider ? "Saving…" : `Save ${it.label}`}
+              </Button>
+              {TESTABLE.has(it.provider) && (
+                <Button type="button" variant="outline"
+                  disabled={testing === it.provider || !it.configured}
+                  onClick={() => testConnection(it.provider)}
+                >
+                  {testing === it.provider ? "Testing…" : "Test connection"}
+                </Button>
+              )}
+              {tested[it.provider] && (
+                <span className={tested[it.provider].ok ? "text-xs text-success" : "text-xs text-destructive"}>
+                  {tested[it.provider].label}
+                </span>
+              )}
+            </div>
             </CardContent>
           </Card>
         ))}

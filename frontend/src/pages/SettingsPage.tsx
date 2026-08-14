@@ -12,6 +12,7 @@ import {
 import { api, downloadFile } from "../api/client";
 import { ListSkeleton, PageHead, useToast } from "../components/ui";
 import IntegrationsSettings from "../components/IntegrationsSettings";
+import FxRatesSettings from "../components/FxRatesSettings";
 import DemoDataCard from "../components/DemoDataCard";
 import { Button } from "../components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -376,6 +377,8 @@ export default function SettingsPage() {
           <BackupsCard />
 
           <IntegrationsSettings />
+
+          <FxRatesSettings />
 
           <DemoDataCard variant="card" />
 
