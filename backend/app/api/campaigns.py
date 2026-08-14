@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
+from app.models.ad_sync import AdSyncRun
 from app.models.campaign import Campaign, CampaignMetric
 from app.models.user import User
 from app.schemas.campaign import (
@@ -24,7 +25,11 @@ from app.schemas.campaign import (
     MetricCreate,
     MetricOut,
     OverviewItem,
+    SyncRequest,
+    SyncResult,
+    SyncRunOut,
 )
+from app.services.ad_sync.service import PROVIDERS, sync_all
 
 router = APIRouter(prefix="/campaigns", tags=["campaign-studio"])
 
@@ -179,6 +184,45 @@ async def overview(
     items.sort(key=lambda x: x.spend, reverse=True)
 
     return CampaignOverview(totals=totals, by_channel=by_channel, campaigns=items)
+
+
+@router.post("/sync", response_model=list[SyncResult])
+async def trigger_sync(
+    payload: SyncRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Pull from every configured ad platform. Admin-only: it writes financial
+    data across brands and consumes rate-limited API quota."""
+    payload = payload or SyncRequest()
+    if payload.providers:
+        unknown = [p for p in payload.providers if p not in PROVIDERS]
+        if unknown:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown provider(s): {', '.join(unknown)}"
+            )
+    return await sync_all(db, providers=payload.providers, since=payload.since)
+
+
+@router.get("/sync/runs", response_model=list[SyncRunOut])
+async def sync_runs(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Most recent run per provider, for the status strip."""
+    out = []
+    for key in PROVIDERS:
+        run = (
+            await db.execute(
+                select(AdSyncRun)
+                .where(AdSyncRun.provider == key)
+                .order_by(AdSyncRun.started_at.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if run:
+            out.append(SyncRunOut.model_validate(run))
+    return out
 
 
 @router.get("/{campaign_id}/breakdown", response_model=CampaignBreakdown)

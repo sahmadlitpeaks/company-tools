@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,14 +8,18 @@ from app.auth.azure import get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.user import User
+from app.services.ad_sync.fx import BASE_CURRENCY, FX_PREFIX
+from app.services.ad_sync.service import CREDENTIAL_KEY, PROVIDERS
 from app.services.app_settings import (
     CAPTCHA_PROVIDERS,
     encrypt,
+    get_all,
     get_allowed_domains,
     get_appearance,
     get_azure_config,
     get_bamboo_config,
     get_captcha_config,
+    get_integration,
     integrations_status,
     set_integration,
     set_many,
@@ -161,6 +167,71 @@ async def put_integration(
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown integration")
     return await integrations_status(db)
+
+
+class FxRatesIn(BaseModel):
+    rates: dict[str, str] = {}
+
+
+def _stored_rates(stored: dict) -> dict[str, str]:
+    return {
+        key[len(FX_PREFIX):].upper(): value
+        for key, value in stored.items()
+        if key.startswith(FX_PREFIX) and value
+    }
+
+
+@router.get("/fx-rates")
+async def get_fx_rates(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    """Currency to AED rates. AED itself is implicitly 1 and not stored."""
+    return {"base": BASE_CURRENCY, "rates": _stored_rates(await get_all(db))}
+
+
+@router.put("/fx-rates")
+async def put_fx_rates(
+    payload: FxRatesIn,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    values: dict[str, str | None] = {}
+    for currency, raw in payload.rates.items():
+        code = (currency or "").strip().upper()
+        if len(code) != 3 or not code.isalpha():
+            raise HTTPException(status_code=422, detail=f"Invalid currency: {currency}")
+        text = (raw or "").strip()
+        if not text:
+            values[f"{FX_PREFIX}{code}"] = None
+            continue
+        try:
+            rate = Decimal(text)
+        except InvalidOperation:
+            raise HTTPException(status_code=422, detail=f"Invalid rate for {code}")
+        if rate <= 0:
+            raise HTTPException(status_code=422, detail=f"Rate for {code} must be > 0")
+        values[f"{FX_PREFIX}{code}"] = text
+    if values:
+        await set_many(db, values)
+    return {"base": BASE_CURRENCY, "rates": _stored_rates(await get_all(db))}
+
+
+@router.post("/integrations/{provider}/test")
+async def test_integration(
+    provider: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Make a cheap read call so "Connected" means the account was reached,
+    rather than merely that a field was filled in."""
+    key = next((k for k, v in CREDENTIAL_KEY.items() if v == provider), provider)
+    client = PROVIDERS.get(key)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Unknown integration")
+    integration = await get_integration(db, provider)
+    if not integration or not integration["configured"]:
+        return {"ok": False, "error": "Not configured"}
+    return await client.verify(integration["values"])
 
 
 @router.get("/security")

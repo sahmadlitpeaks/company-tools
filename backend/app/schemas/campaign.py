@@ -52,6 +52,8 @@ class CampaignOut(BaseModel):
     notes: str | None = None
     created_at: datetime
     kpis: Kpis | None = None
+    provider: str | None = None
+    external_id: str | None = None
 
 
 class MetricCreate(BaseModel):
@@ -70,6 +72,10 @@ class MetricOut(MetricCreate):
     id: uuid.UUID
     campaign_id: uuid.UUID
     created_at: datetime
+    source: str = "manual"
+    currency: str | None = None
+    spend_original: Decimal | None = None
+    fx_rate: Decimal | None = None
 
 
 class ChannelBreakdown(Kpis):
@@ -91,3 +97,29 @@ class CampaignOverview(BaseModel):
     totals: Kpis
     by_channel: list[ChannelBreakdown]
     campaigns: list[OverviewItem]
+
+
+class SyncRequest(BaseModel):
+    providers: list[str] | None = None
+    since: DateType | None = None
+
+
+class SyncResult(BaseModel):
+    provider: str
+    ok: bool
+    skipped: bool = False
+    campaigns_synced: int = 0
+    metrics_upserted: int = 0
+    error: str | None = None
+
+
+class SyncRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    provider: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    ok: bool
+    campaigns_synced: int
+    metrics_upserted: int
+    error: str | None = None
