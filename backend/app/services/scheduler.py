@@ -17,6 +17,7 @@ from app.services.hr_reminders import run_hr_reminders
 from app.services.sla_alerts import run_sla_alerts
 from app.services.time_reminders import run_time_reminders
 from app.services.backups import run_scheduled_backup
+from app.services.ad_sync.service import run_ad_sync
 
 log = logging.getLogger("scheduler")
 
@@ -34,6 +35,10 @@ CHECKLIST_INTERVAL_SECONDS = 60 * 60
 CHECKLIST_LATE_INTERVAL_SECONDS = 2 * 60 * 60
 TIME_INTERVAL_SECONDS = 12 * 60 * 60
 BACKUP_INTERVAL_SECONDS = 60 * 60
+# Ad platforms restate the recent past, so a daily re-read of the rolling
+# window is both sufficient and necessary. Warmup is late to keep startup
+# free of outbound calls.
+AD_SYNC_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 async def _periodic(name: str, runner, interval: int, warmup: int) -> None:
@@ -69,5 +74,6 @@ def start_scheduler() -> list[asyncio.Task[Any]]:
         ),
         _periodic("time reminders", run_time_reminders, TIME_INTERVAL_SECONDS, 90),
         _periodic("backups", run_scheduled_backup, BACKUP_INTERVAL_SECONDS, 120),
+        _periodic("ad sync", run_ad_sync, AD_SYNC_INTERVAL_SECONDS, 180),
     ]
     return [asyncio.create_task(job) for job in jobs]
