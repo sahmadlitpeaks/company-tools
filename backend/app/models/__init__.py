@@ -6,6 +6,7 @@ from app.models.brand_document import BrandDocument, BrandDocumentVersion  # noq
 from app.models.app_setting import AppSetting  # noqa: F401
 from app.models.crm import CrmLead  # noqa: F401
 from app.models.campaign import Campaign, CampaignMetric  # noqa: F401
+from app.models.ad_sync import AdSyncRun  # noqa: F401
 from app.models.card import DigitalCard, CardScan, Lead  # noqa: F401
 from app.models.asset import Folder, Asset  # noqa: F401
 from app.models.branding import BrandKit, BrandAsset  # noqa: F401
