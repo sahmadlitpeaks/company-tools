@@ -7,7 +7,6 @@ import {
   Clock,
   DollarSign,
   ExternalLink,
-  Filter,
   ListTodo,
   RefreshCw,
   RotateCcw,
@@ -247,51 +246,51 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
       <CardContent className="space-y-4 p-3.5">
         {/* Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-          <div className="p-3 border border-border bg-card space-y-1">
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-              <Calendar className="size-3 text-primary" /> Total Tracked
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+          <div className="p-3.5 border border-border bg-card space-y-1">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+              <Calendar className="size-3.5 text-primary" /> Total Tracked
             </span>
-            <span className="text-lg font-bold font-mono">{totalCount}</span>
+            <span className="text-xl sm:text-2xl font-bold font-mono text-foreground block">{totalCount}</span>
           </div>
-          <div className="p-3 border border-border bg-card space-y-1">
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-              <Clock className="size-3 text-amber-600" /> Due &le; 30 Days
+          <div className="p-3.5 border border-border bg-card space-y-1">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+              <Clock className="size-3.5 text-amber-600" /> Due &le; 30 Days
             </span>
-            <span className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-amber-700 dark:text-amber-400 block">
               {upcoming30Days}
             </span>
           </div>
-          <div className="p-3 border border-border bg-card space-y-1">
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-              <ListTodo className="size-3 text-sky-600" /> Pending Action
+          <div className="p-3.5 border border-border bg-card space-y-1">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+              <ListTodo className="size-3.5 text-sky-600" /> Pending Action
             </span>
-            <span className="text-lg font-bold font-mono text-sky-700 dark:text-sky-400">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-sky-700 dark:text-sky-400 block">
               {pendingTasksCount}
             </span>
           </div>
-          <div className="p-3 border border-border bg-card space-y-1">
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-              <CheckCircle2 className="size-3 text-emerald-600" /> Completed
+          <div className="p-3.5 border border-border bg-card space-y-1">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+              <CheckCircle2 className="size-3.5 text-emerald-600" /> Completed
             </span>
-            <span className="text-lg font-bold font-mono text-emerald-700 dark:text-emerald-400">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-400 block">
               {completedCount}
             </span>
           </div>
-          <div className="p-3 border border-border bg-card space-y-1 col-span-2 sm:col-span-1">
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-              <DollarSign className="size-3 text-emerald-600" /> Tracked Value
+          <div className="p-3.5 border border-border bg-card space-y-1 col-span-2 sm:col-span-1">
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+              <DollarSign className="size-3.5 text-emerald-600" /> Tracked Value
             </span>
-            <span className="text-lg font-bold font-mono text-emerald-700 dark:text-emerald-400 truncate block">
+            <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-400 truncate block">
               ${totalValue.toLocaleString()}
             </span>
           </div>
         </div>
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
           {/* Category Filter Buttons */}
-          <div className="flex flex-wrap gap-1.5 text-xs">
+          <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
             {[
               { id: "all" as CategoryFilter, label: "All Items" },
               { id: "expiry" as CategoryFilter, label: "Expiries & Renewals" },
@@ -301,9 +300,9 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               <Button
                 key={tab.id}
                 variant={categoryFilter === tab.id ? "default" : "outline"}
-                size="xs"
+                size="sm"
                 onClick={() => setCategoryFilter(tab.id)}
-                className="h-7 text-xs rounded-none"
+                className="h-9 px-3.5 text-xs sm:text-sm font-medium rounded-none"
               >
                 {tab.label}
               </Button>
@@ -312,15 +311,15 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
           <div className="flex items-center gap-2">
             {/* Status Select Filter */}
-            <div className="flex items-center gap-1">
-              <Filter className="size-3 text-muted-foreground hidden sm:inline" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Status:</span>
               <Select
                 value={statusFilter}
                 onValueChange={(val) => {
                   if (val) setStatusFilter(val as StatusFilter);
                 }}
               >
-                <SelectTrigger className="h-7 text-xs rounded-none min-w-[120px]">
+                <SelectTrigger className="h-9 text-xs sm:text-sm rounded-none min-w-[130px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="rounded-none">
@@ -336,20 +335,20 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
             </div>
 
             {/* Keyword Search Input */}
-            <div className="w-full sm:w-56">
+            <div className="w-full sm:w-64">
               <InputGroup>
                 <InputGroupAddon align="inline-start">
-                  <Search className="size-3 text-muted-foreground" />
+                  <Search className="size-3.5 text-muted-foreground" />
                 </InputGroupAddon>
                 <InputGroupInput
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Filter tasks…"
-                  className="text-xs h-7"
+                  placeholder="Search tasks, docs, or people…"
+                  className="text-xs sm:text-sm h-9"
                 />
                 {search && (
                   <InputGroupButton onClick={() => setSearch("")} title="Clear search">
-                    <X className="size-3" />
+                    <X className="size-3.5" />
                   </InputGroupButton>
                 )}
               </InputGroup>
@@ -383,23 +382,24 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
                 return (
                   <Card key={r.id} className="rounded-none border-border">
-                    <CardContent className="p-3.5 space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 space-y-0.5">
-                          <h4 className="font-semibold text-xs leading-snug break-words">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <h4 className="font-bold text-sm sm:text-base leading-snug break-words text-foreground">
                             {r.title}
                           </h4>
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span className="font-mono truncate">{r.document_name}</span>
                             {r.document_url && (
                               <a
                                 href={r.document_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-primary hover:text-primary/80 shrink-0"
+                                className="text-primary hover:text-primary/80 shrink-0 inline-flex items-center gap-1 font-semibold"
                                 title="Open document in SharePoint"
                               >
-                                <ExternalLink className="size-2.5" />
+                                <span>Open</span>
+                                <ExternalLink className="size-3.5" />
                               </a>
                             )}
                           </div>
@@ -415,47 +415,47 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                               : "secondary"
                           }
                           className={cn(
-                            "text-[10px] font-mono shrink-0 rounded-none",
+                            "text-xs font-semibold shrink-0 rounded-none py-1 px-2",
                             r.status === "completed" &&
                               "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10",
                             isUrgent &&
-                              "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30"
+                              "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 font-semibold"
                           )}
                         >
                           {r.status === "completed"
-                            ? "Done"
+                            ? "✓ Done"
                             : isOverdue
-                            ? `${Math.abs(daysLeft)}d overdue`
-                            : `${daysLeft}d left`}
+                            ? `🚨 ${Math.abs(daysLeft)}d overdue`
+                            : `⏳ ${daysLeft}d left`}
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground pt-1 border-t border-border/50">
+                      <div className="grid grid-cols-2 gap-2.5 text-xs text-muted-foreground pt-2 border-t border-border/60">
                         <div>
-                          <span className="block text-[10px] uppercase font-semibold">Due Date</span>
-                          <span className="font-mono text-foreground">{r.target_date}</span>
+                          <span className="block text-xs uppercase font-semibold text-muted-foreground">Due Date</span>
+                          <span className="font-mono text-sm font-semibold text-foreground">{r.target_date}</span>
                         </div>
                         <div>
-                          <span className="block text-[10px] uppercase font-semibold">Category</span>
-                          <span className="capitalize">{r.category}</span>
+                          <span className="block text-xs uppercase font-semibold text-muted-foreground">Category</span>
+                          <span className="capitalize text-xs font-medium text-foreground">{r.category}</span>
                         </div>
                         {r.amount !== null && (
                           <div>
-                            <span className="block text-[10px] uppercase font-semibold">Value</span>
-                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            <span className="block text-xs uppercase font-semibold text-muted-foreground">Value</span>
+                            <span className="font-mono font-bold text-sm text-emerald-700 dark:text-emerald-400">
                               {r.amount.toLocaleString()} {r.currency || "USD"}
                             </span>
                           </div>
                         )}
                         <div>
-                          <span className="block text-[10px] uppercase font-semibold">Responsible</span>
-                          <span className="truncate block" title={r.responsible_name || "Unassigned"}>
+                          <span className="block text-xs uppercase font-semibold text-muted-foreground">Responsible</span>
+                          <span className="truncate block text-xs font-medium text-foreground" title={r.responsible_name || "Unassigned"}>
                             {r.responsible_name || "Unassigned"}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between pt-2.5 border-t border-border/60">
                         <Badge
                           variant={
                             r.status === "completed"
@@ -467,37 +467,37 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                               : "secondary"
                           }
                           className={cn(
-                            "text-[10px] font-mono capitalize rounded-none",
+                            "text-xs font-semibold capitalize rounded-none py-1 px-2.5",
                             r.status === "completed" &&
                               "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
                           )}
                         >
-                          {r.status}
+                          {r.status === "completed" ? "✓ Completed" : r.status}
                         </Badge>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           {r.status === "pending" && (
                             <>
                               <Button
                                 variant="outline"
-                                size="xs"
+                                size="sm"
                                 disabled={busyId === r.id}
                                 onClick={() => void completeTask(r.id)}
                                 title="Mark completed"
-                                className="rounded-none h-6 px-2 text-[11px] gap-1 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                className="rounded-none h-8 px-3 text-xs font-semibold gap-1.5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30"
                               >
-                                <Check data-icon="inline-start" className="size-2.5" />
-                                Complete
+                                <Check data-icon="inline-start" className="size-3.5" />
+                                Done
                               </Button>
                               <Button
                                 variant="ghost"
-                                size="icon-xs"
+                                size="icon-sm"
                                 disabled={busyId === r.id}
                                 onClick={() => void dismissReminder(r.id)}
                                 title="Dismiss notification"
-                                className="rounded-none text-destructive/70 hover:text-destructive hover:bg-destructive/15"
+                                className="rounded-none size-8 text-destructive/80 hover:text-destructive hover:bg-destructive/15"
                               >
-                                <BellOff className="size-3.5" />
+                                <BellOff className="size-4" />
                               </Button>
                             </>
                           )}
@@ -505,13 +505,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                           {(r.status === "completed" || r.status === "dismissed") && (
                             <Button
                               variant="ghost"
-                              size="xs"
+                              size="sm"
                               disabled={busyId === r.id}
                               onClick={() => void reopenTask(r.id)}
                               title="Re-open item"
-                              className="rounded-none h-6 px-1.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                              className="rounded-none h-8 px-3 text-xs font-medium gap-1.5 text-muted-foreground hover:text-foreground"
                             >
-                              <RotateCcw data-icon="inline-start" className="size-2.5" />
+                              <RotateCcw data-icon="inline-start" className="size-3.5" />
                               Re-open
                             </Button>
                           )}
@@ -519,13 +519,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                           {isAdmin && (
                             <Button
                               variant="outline"
-                              size="xs"
+                              size="sm"
                               disabled={busyId === r.id}
                               onClick={() => void testSend(r.id)}
-                              className="rounded-none h-6 px-2 text-xs"
+                              className="rounded-none h-8 px-2.5 text-xs gap-1.5"
                               title="Send test email & Teams notification"
                             >
-                              <Send data-icon="inline-start" className="size-2.5" />
+                              <Send data-icon="inline-start" className="size-3.5" />
                               Test
                             </Button>
                           )}
@@ -542,13 +542,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               <Table className="table-fixed w-full min-w-[1050px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[28%] min-w-[200px]">Item & Category</TableHead>
-                    <TableHead className="w-[20%] min-w-[150px]">Document & Path</TableHead>
-                    <TableHead className="w-[14%] min-w-[105px]">Target Date</TableHead>
-                    <TableHead className="w-[10%] min-w-[85px]">Value</TableHead>
-                    <TableHead className="w-[12%] min-w-[100px]">Responsible</TableHead>
-                    <TableHead className="w-[105px] min-w-[105px] text-center">Status</TableHead>
-                    <TableHead className="w-[170px] min-w-[170px] text-end">
+                    <TableHead className="w-[28%] min-w-[200px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Item & Category</TableHead>
+                    <TableHead className="w-[20%] min-w-[150px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Document & Path</TableHead>
+                    <TableHead className="w-[14%] min-w-[115px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Target Date</TableHead>
+                    <TableHead className="w-[10%] min-w-[85px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Value</TableHead>
+                    <TableHead className="w-[12%] min-w-[100px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Responsible</TableHead>
+                    <TableHead className="w-[115px] min-w-[115px] text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">Status</TableHead>
+                    <TableHead className="w-[190px] min-w-[190px] text-end py-3 px-3.5">
                       <span className="sr-only">Actions</span>
                     </TableHead>
                   </TableRow>
@@ -563,20 +563,20 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
                     return (
                       <TableRow key={r.id}>
-                        <TableCell className="whitespace-normal align-middle py-2.5">
+                        <TableCell className="whitespace-normal align-middle py-3.5 px-3.5">
                           <p
                             className={cn(
-                              "text-xs font-medium leading-snug break-words line-clamp-2",
+                              "text-sm font-semibold leading-snug break-words line-clamp-2 text-foreground",
                               r.status === "completed" && "line-through text-muted-foreground"
                             )}
                             title={r.title}
                           >
                             {r.title}
                           </p>
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                             <span
                               className={cn(
-                                "size-1.5 rounded-full shrink-0",
+                                "size-2 rounded-full shrink-0",
                                 r.category === "expiry"
                                   ? "bg-rose-500"
                                   : r.category === "renewal"
@@ -586,10 +586,10 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                   : "bg-amber-500"
                               )}
                             />
-                            <span className="capitalize">{r.category.replace(/_/g, " ")}</span>
+                            <span className="capitalize font-medium">{r.category.replace(/_/g, " ")}</span>
                             {r.notes && (
                               <span
-                                className="text-muted-foreground/70 truncate max-w-[140px]"
+                                className="text-muted-foreground truncate max-w-[160px]"
                                 title={r.notes}
                               >
                                 · {r.notes}
@@ -598,10 +598,10 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                           </div>
                         </TableCell>
 
-                        <TableCell className="whitespace-normal align-middle py-2.5">
-                          <div className="flex items-center gap-1">
+                        <TableCell className="whitespace-normal align-middle py-3.5 px-3.5">
+                          <div className="flex items-center gap-1.5">
                             <p
-                              className="font-medium text-xs line-clamp-2 leading-snug break-words"
+                              className="font-semibold text-xs sm:text-sm line-clamp-2 leading-snug break-words text-foreground"
                               title={r.document_name ?? undefined}
                             >
                               {r.document_name}
@@ -611,26 +611,26 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                 href={r.document_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-primary hover:text-primary/80 shrink-0"
+                                className="text-primary hover:text-primary/80 shrink-0 inline-flex items-center p-0.5"
                                 title="Open in SharePoint"
                               >
-                                <ExternalLink className="size-2.5" />
+                                <ExternalLink className="size-3.5" />
                               </a>
                             )}
                           </div>
                           <div
-                            className="text-[10px] text-muted-foreground font-mono truncate mt-0.5"
+                            className="text-xs text-muted-foreground font-mono truncate mt-1"
                             title={r.document_path || "SharePoint"}
                           >
                             {r.document_path || "SharePoint"}
                           </div>
                         </TableCell>
 
-                        <TableCell className="text-xs font-mono align-middle py-2.5">
-                          <div>{r.target_date}</div>
+                        <TableCell className="text-xs sm:text-sm font-mono align-middle py-3.5 px-3.5">
+                          <div className="font-semibold text-foreground">{r.target_date}</div>
                           <span
                             className={cn(
-                              "text-[10px] font-medium block",
+                              "text-xs font-semibold block mt-0.5",
                               r.status === "completed"
                                 ? "text-emerald-600 dark:text-emerald-400"
                                 : isOverdue
@@ -641,14 +641,14 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                             )}
                           >
                             {r.status === "completed"
-                              ? "Completed"
+                              ? "✓ Done"
                               : isOverdue
-                              ? `${Math.abs(daysLeft)}d overdue`
-                              : `${daysLeft}d left`}
+                              ? `🚨 ${Math.abs(daysLeft)}d overdue`
+                              : `⏳ ${daysLeft}d left`}
                           </span>
-                          <span className="text-[9px] text-muted-foreground/75 block font-sans capitalize">
+                          <span className="text-xs text-muted-foreground block font-sans capitalize mt-0.5">
                             {r.lead_days === 0
-                              ? "Due-day alert"
+                              ? "Due today"
                               : [1, 3, 5].includes(r.lead_days)
                               ? `3x final week (${r.lead_days}d)`
                               : [7, 14, 21].includes(r.lead_days)
@@ -657,9 +657,9 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                           </span>
                         </TableCell>
 
-                        <TableCell className="text-xs font-mono truncate align-middle py-2.5">
+                        <TableCell className="text-sm font-mono truncate align-middle py-3.5 px-3.5">
                           {r.amount !== null ? (
-                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400">
                               {r.amount.toLocaleString()} {r.currency || "USD"}
                             </span>
                           ) : (
@@ -668,15 +668,15 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                         </TableCell>
 
                         <TableCell
-                          className="text-xs text-muted-foreground align-middle py-2.5"
+                          className="text-xs sm:text-sm text-foreground/80 align-middle py-3.5 px-3.5"
                           title={r.recipient_email || r.responsible_name || "Unassigned"}
                         >
-                          <span className="line-clamp-2 leading-snug break-all">
+                          <span className="line-clamp-2 leading-snug break-all font-medium">
                             {r.responsible_name || r.recipient_email || "Unassigned"}
                           </span>
                         </TableCell>
 
-                        <TableCell className="w-[105px] min-w-[105px] text-center whitespace-nowrap align-middle py-2.5 px-2">
+                        <TableCell className="w-[115px] min-w-[115px] text-center whitespace-nowrap align-middle py-3.5 px-2">
                           <Badge
                             variant={
                               r.status === "completed"
@@ -688,39 +688,39 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                 : "secondary"
                             }
                             className={cn(
-                              "capitalize text-[10px] rounded-none font-mono px-2",
+                              "capitalize text-xs font-semibold rounded-none py-1 px-2.5",
                               r.status === "completed" &&
                                 "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
                             )}
                           >
-                            {r.status}
+                            {r.status === "completed" ? "✓ Done" : r.status}
                           </Badge>
                         </TableCell>
 
-                        <TableCell className="w-[170px] min-w-[170px] text-end whitespace-nowrap align-middle py-2.5 px-3">
-                          <div className="flex items-center justify-end gap-1.5 flex-nowrap shrink-0">
+                        <TableCell className="w-[190px] min-w-[190px] text-end whitespace-nowrap align-middle py-3.5 px-3.5">
+                          <div className="flex items-center justify-end gap-2 flex-nowrap shrink-0">
                             {r.status === "pending" && (
                               <>
                                 <Button
                                   variant="outline"
-                                  size="xs"
+                                  size="sm"
                                   disabled={busyId === r.id}
                                   onClick={() => void completeTask(r.id)}
                                   title="Mark as completed"
-                                  className="rounded-none h-6 px-2 text-[11px] gap-1 shrink-0 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                                  className="rounded-none h-8 px-3 text-xs font-semibold gap-1.5 shrink-0 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30"
                                 >
-                                  <Check data-icon="inline-start" className="size-2.5" />
+                                  <Check data-icon="inline-start" className="size-3.5" />
                                   Done
                                 </Button>
                                 <Button
                                   variant="ghost"
-                                  size="icon-xs"
+                                  size="icon-sm"
                                   disabled={busyId === r.id}
                                   onClick={() => void dismissReminder(r.id)}
                                   title="Dismiss item"
-                                  className="rounded-none size-6 shrink-0 text-destructive/70 hover:text-destructive hover:bg-destructive/15"
+                                  className="rounded-none size-8 shrink-0 text-destructive/80 hover:text-destructive hover:bg-destructive/15"
                                 >
-                                  <BellOff className="size-3.5" />
+                                  <BellOff className="size-4" />
                                   <span className="sr-only">Dismiss</span>
                                 </Button>
                               </>
@@ -729,13 +729,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                             {(r.status === "completed" || r.status === "dismissed") && (
                               <Button
                                 variant="ghost"
-                                size="xs"
+                                size="sm"
                                 disabled={busyId === r.id}
                                 onClick={() => void reopenTask(r.id)}
                                 title="Re-open item"
-                                className="rounded-none h-6 px-2 text-[11px] gap-1 shrink-0 text-muted-foreground hover:text-foreground"
+                                className="rounded-none h-8 px-3 text-xs font-medium gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
                               >
-                                <RotateCcw data-icon="inline-start" className="size-2.5" />
+                                <RotateCcw data-icon="inline-start" className="size-3.5" />
                                 Re-open
                               </Button>
                             )}
@@ -743,13 +743,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                             {isAdmin && (
                               <Button
                                 variant="outline"
-                                size="xs"
+                                size="sm"
                                 disabled={busyId === r.id}
                                 onClick={() => void testSend(r.id)}
                                 title="Send test email & Teams notification"
-                                className="rounded-none h-6 px-2 text-[11px] gap-1 shrink-0"
+                                className="rounded-none h-8 px-2.5 text-xs gap-1.5 shrink-0"
                               >
-                                <Send data-icon="inline-start" className="size-2.5" />
+                                <Send data-icon="inline-start" className="size-3.5" />
                                 Test
                               </Button>
                             )}

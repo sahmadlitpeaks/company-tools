@@ -11,7 +11,6 @@ import {
   DollarSign,
   ExternalLink,
   FileText,
-  Filter,
   RefreshCw,
   Send,
   Sparkles,
@@ -181,20 +180,20 @@ export function CentralChatTab() {
     <Card className="rounded-none border-border">
       <CardContent className="p-3.5 space-y-4">
         {/* Assistant Header Banner */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-muted/20 border border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-primary/10 text-primary shrink-0">
-              <Bot className="size-5" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-muted/20 border border-border">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 text-primary shrink-0">
+              <Bot className="size-6" />
             </div>
             <div>
-              <div className="font-semibold text-xs sm:text-sm text-foreground flex items-center gap-1.5">
-                Central AI Document Assistant
-                <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono rounded-none">
-                  Luna RAG
+              <div className="font-bold text-sm sm:text-base text-foreground flex items-center gap-2">
+                AI Document Assistant
+                <Badge variant="outline" className="text-xs py-0.5 px-2 font-mono rounded-none">
+                  Cross-Document
                 </Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Cross-document intelligence grounded strictly in your authorized SharePoint files
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                Ask questions across all company documents you are authorized to view
               </p>
             </div>
           </div>
@@ -202,14 +201,14 @@ export function CentralChatTab() {
           <div className="flex items-center gap-2">
             {/* Scope Filter */}
             <div className="flex items-center gap-1.5">
-              <Filter className="size-3 text-muted-foreground hidden sm:inline" />
+              <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Scope:</span>
               <Select
                 value={selectedDocId}
                 onValueChange={(val) => {
                   if (val) setSelectedDocId(val);
                 }}
               >
-                <SelectTrigger className="h-7 text-xs rounded-none min-w-[160px] max-w-[240px]">
+                <SelectTrigger className="h-9 text-xs sm:text-sm rounded-none min-w-[170px] max-w-[260px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="rounded-none">
@@ -233,10 +232,10 @@ export function CentralChatTab() {
                 size="sm"
                 onClick={clearChat}
                 disabled={busy}
-                className="h-7 px-2 text-xs rounded-none text-muted-foreground hover:text-foreground"
+                className="h-9 px-3 text-xs rounded-none text-muted-foreground hover:text-foreground"
                 title="Clear conversation"
               >
-                <Trash2 data-icon="inline-start" className="size-3" />
+                <Trash2 data-icon="inline-start" className="size-3.5" />
                 Clear
               </Button>
             )}
@@ -244,27 +243,26 @@ export function CentralChatTab() {
         </div>
 
         {!docSearchResult.loading && docs.length === 0 && (
-          <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="size-4 text-amber-600 shrink-0" />
+          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 text-xs sm:text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="size-4.5 text-amber-600 shrink-0" />
             <span>
-              No accessible SharePoint documents are indexed yet. Switch to the Documents tab to sync your files before querying Luna.
+              No accessible SharePoint documents are indexed yet. Switch to the Documents tab to sync your files before querying the AI Assistant.
             </span>
           </div>
         )}
 
         {/* Empty State / Suggestions */}
         {messages.length === 0 && (
-          <div className="space-y-4 py-8 text-center border border-dashed border-border p-4">
-            <div className="space-y-1.5 max-w-md mx-auto">
-              <Sparkles className="size-6 mx-auto text-primary opacity-80" />
-              <h3 className="text-sm font-semibold">How can Luna help you today?</h3>
-              <p className="text-xs text-muted-foreground">
-                Query terms, expirations, commercial values, or project contacts across all your
-                accessible SharePoint documents.
+          <div className="space-y-4 py-8 text-center border border-dashed border-border p-5">
+            <div className="space-y-2 max-w-lg mx-auto">
+              <Sparkles className="size-8 mx-auto text-primary opacity-80" />
+              <h3 className="text-base sm:text-lg font-bold">How can the AI Assistant help you?</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Click any suggested question below or type your own question in the box at the bottom.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-w-3xl mx-auto pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl mx-auto pt-2">
               {SUGGESTIONS.map((s) => {
                 const Icon = s.icon;
                 return (
@@ -273,12 +271,12 @@ export function CentralChatTab() {
                     type="button"
                     disabled={busy}
                     onClick={() => void send(s.prompt)}
-                    className="flex items-start gap-2.5 p-3 text-start border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors text-xs group rounded-none disabled:opacity-50"
+                    className="flex items-start gap-3 p-3.5 text-start border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors group rounded-none disabled:opacity-50 shadow-2xs"
                   >
-                    <Icon className="size-4 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="font-medium text-foreground">{s.label}</div>
-                      <div className="text-[11px] text-muted-foreground line-clamp-2">
+                    <Icon className="size-5 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                    <div className="space-y-1 min-w-0">
+                      <div className="font-semibold text-xs sm:text-sm text-foreground">{s.label}</div>
+                      <div className="text-xs text-muted-foreground line-clamp-2 leading-normal">
                         {s.prompt}
                       </div>
                     </div>
@@ -303,20 +301,20 @@ export function CentralChatTab() {
                 <div
                   key={m.id}
                   className={cn(
-                    "p-3 text-xs leading-relaxed border transition-colors",
+                    "p-4 text-sm sm:text-base leading-relaxed border transition-colors",
                     isUser
-                      ? "bg-primary/10 border-primary/20 ms-6 sm:ms-12 text-foreground"
-                      : "bg-card border-border me-6 sm:me-12 text-foreground shadow-xs"
+                      ? "bg-primary/10 border-primary/20 ms-4 sm:ms-10 text-foreground"
+                      : "bg-card border-border me-4 sm:me-10 text-foreground shadow-2xs"
                   )}
                 >
-                  <div className="flex items-center justify-between font-semibold text-[11px] text-muted-foreground mb-1.5 pb-1 border-b border-border/50">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-between font-semibold text-xs text-muted-foreground mb-2 pb-1.5 border-b border-border/50">
+                    <div className="flex items-center gap-2">
                       {isUser ? (
-                        <UserIcon className="size-3 text-foreground" />
+                        <UserIcon className="size-3.5 text-foreground" />
                       ) : (
-                        <Bot className="size-3 text-primary" />
+                        <Bot className="size-3.5 text-primary" />
                       )}
-                      <span>{isUser ? "You" : "Luna Assistant (Cross-Document)"}</span>
+                      <span>{isUser ? "You" : "AI Assistant"}</span>
                     </div>
 
                     {!isUser && (
@@ -325,17 +323,17 @@ export function CentralChatTab() {
                         variant="ghost"
                         size="xs"
                         onClick={() => void copyMessage(m.id, m.content)}
-                        className="h-5 px-1.5 text-[10px] gap-1 rounded-none"
+                        className="h-6 px-2 text-xs gap-1 rounded-none"
                         title="Copy response text"
                       >
                         {isCopied ? (
                           <>
-                            <Check className="size-2.5 text-emerald-600" />
-                            <span className="text-emerald-600">Copied</span>
+                            <Check className="size-3 text-emerald-600" />
+                            <span className="text-emerald-600 font-semibold">Copied</span>
                           </>
                         ) : (
                           <>
-                            <Copy className="size-2.5" />
+                            <Copy className="size-3" />
                             <span>Copy</span>
                           </>
                         )}
@@ -347,24 +345,24 @@ export function CentralChatTab() {
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   ) : (
                     <div className="space-y-3">
-                      <div className="space-y-1.5 break-words text-xs leading-relaxed [&_ul]:list-disc [&_ul]:ms-4 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:ms-4 [&_ol]:my-1.5 [&_li]:my-0.5 [&_li_ul]:my-0.5 [&_li_ul]:ms-4 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline [&_p]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:ps-2 [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_table]:w-full [&_table]:border [&_table]:border-border [&_table]:my-2 [&_th]:border [&_th]:border-border [&_th]:p-1.5 [&_th]:bg-muted/30 [&_td]:border [&_td]:border-border [&_td]:p-1.5">
+                      <div className="space-y-2 break-words text-sm sm:text-base leading-relaxed [&_ul]:list-disc [&_ul]:ms-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:ms-5 [&_ol]:my-2 [&_li]:my-1 [&_li_ul]:my-1 [&_li_ul]:ms-5 [&_strong]:font-bold [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline [&_p]:my-1.5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:ps-3 [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_table]:w-full [&_table]:border [&_table]:border-border [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:p-2.5 [&_th]:bg-muted/40 [&_td]:border [&_td]:border-border [&_td]:p-2.5">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
                             table: ({ children }) => (
-                              <div className="overflow-x-auto my-2.5 border border-border bg-card">
-                                <table className="w-full text-xs border-collapse">
+                              <div className="overflow-x-auto my-3 border border-border bg-card">
+                                <table className="w-full text-xs sm:text-sm border-collapse">
                                   {children}
                                 </table>
                               </div>
                             ),
                             thead: ({ children }) => (
-                              <thead className="bg-muted/60 border-b border-border text-foreground font-semibold">
+                              <thead className="bg-muted/60 border-b border-border text-foreground font-bold">
                                 {children}
                               </thead>
                             ),
                             th: ({ children }) => (
-                              <th className="p-2 text-start font-semibold text-foreground border-e border-border last:border-e-0 whitespace-nowrap bg-muted/30">
+                              <th className="p-2.5 text-start font-bold text-foreground border-e border-border last:border-e-0 whitespace-nowrap bg-muted/30">
                                 {children}
                               </th>
                             ),
@@ -374,7 +372,7 @@ export function CentralChatTab() {
                               </tr>
                             ),
                             td: ({ children }) => (
-                              <td className="p-2 border-e border-border/60 last:border-e-0 align-top text-foreground">
+                              <td className="p-2.5 border-e border-border/60 last:border-e-0 align-top text-foreground">
                                 {children}
                               </td>
                             ),
@@ -383,10 +381,10 @@ export function CentralChatTab() {
                                 href={href}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 text-primary hover:underline font-medium"
+                                className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
                               >
                                 {children}
-                                <ExternalLink className="size-2.5 inline-block opacity-70" />
+                                <ExternalLink className="size-3 inline-block opacity-80" />
                               </a>
                             ),
                           }}
@@ -397,24 +395,24 @@ export function CentralChatTab() {
 
                       {/* Grounded Citations / Source Cards */}
                       {m.citations && m.citations.length > 0 && (
-                        <div className="pt-2 border-t border-border/60 space-y-1.5">
-                          <div className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-                            <FileText className="size-3 text-primary" />
+                        <div className="pt-2.5 border-t border-border/60 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                            <FileText className="size-3.5 text-primary" />
                             Verified Sources ({m.citations.length})
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-wrap gap-2">
                             {m.citations.map((c) => (
                               <div
                                 key={`${c.document_id}:${c.location ?? "doc"}`}
-                                className="inline-flex items-center gap-1.5 py-1 px-2 border border-border bg-muted/30 text-[11px] max-w-full"
+                                className="inline-flex items-center gap-2 py-1.5 px-2.5 border border-border bg-muted/30 text-xs max-w-full"
                               >
-                                <span className="font-medium truncate max-w-[200px]" title={c.document_name}>
+                                <span className="font-semibold text-foreground truncate max-w-[220px]" title={c.document_name}>
                                   {c.document_name}
                                 </span>
                                 {c.location && (
                                   <Badge
                                     variant="outline"
-                                    className="text-[9px] py-0 px-1 font-mono rounded-none"
+                                    className="text-xs py-0.5 px-1.5 font-mono rounded-none"
                                   >
                                     {c.location}
                                   </Badge>
@@ -424,11 +422,12 @@ export function CentralChatTab() {
                                     href={c.document_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-primary hover:text-primary/80 shrink-0"
+                                    className="text-primary hover:text-primary/80 shrink-0 inline-flex items-center gap-1 text-xs font-semibold"
                                     title="Open directly in SharePoint"
                                     aria-label={`Open ${c.document_name} in SharePoint`}
                                   >
-                                    <ExternalLink className="size-3" />
+                                    <span>Open</span>
+                                    <ExternalLink className="size-3.5" />
                                   </a>
                                 )}
                               </div>
@@ -443,8 +442,8 @@ export function CentralChatTab() {
             })}
 
             {busy && (
-              <div className="p-3 text-xs bg-muted/20 border border-border me-6 sm:me-12 flex items-center gap-2 text-muted-foreground animate-pulse">
-                <Spinner className="size-3.5" />
+              <div className="p-3 text-xs sm:text-sm bg-muted/20 border border-border me-6 sm:me-12 flex items-center gap-2.5 text-muted-foreground animate-pulse">
+                <Spinner className="size-4" />
                 <span>Luna is querying authorized SharePoint documents and synthesizing an answer…</span>
               </div>
             )}
@@ -457,28 +456,28 @@ export function CentralChatTab() {
             e.preventDefault();
             void send();
           }}
-          className="flex gap-2 pt-1"
+          className="flex gap-2.5 pt-1.5"
         >
           <Input
             placeholder={
               selectedDocId === "all"
-                ? "Ask a question across all accessible SharePoint documents…"
-                : `Ask a question about this selected document…`
+                ? "Ask a question about your documents (e.g., 'Which contracts are expiring soon?')..."
+                : `Ask a question about this selected document...`
             }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
-            className="h-9 text-xs rounded-none flex-1"
+            className="h-11 text-sm sm:text-base rounded-none flex-1 px-3.5"
           />
           <Button
             type="submit"
             disabled={busy || !input.trim()}
-            className="h-9 rounded-none gap-1.5 px-4 text-xs shrink-0"
+            className="h-11 rounded-none gap-2 px-5 text-sm font-semibold shrink-0"
           >
             {busy ? (
-              <RefreshCw data-icon="inline-start" className="size-3 animate-spin" />
+              <RefreshCw data-icon="inline-start" className="size-4 animate-spin" />
             ) : (
-              <Send data-icon="inline-start" className="size-3" />
+              <Send data-icon="inline-start" className="size-4" />
             )}
             <span>Ask</span>
           </Button>

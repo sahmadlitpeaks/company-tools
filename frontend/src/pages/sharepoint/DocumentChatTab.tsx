@@ -129,13 +129,13 @@ export function DocumentChatTab({
             <Bot className="size-4" />
           </div>
           <div>
-            <div className="font-semibold text-foreground flex items-center gap-1.5">
-              Luna Q&A Copilot
-              <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono rounded-none">
+            <div className="font-bold text-sm sm:text-base text-foreground flex items-center gap-2">
+              Luna AI Assistant
+              <Badge variant="outline" className="text-xs py-0.5 px-1.5 font-mono rounded-none">
                 Grounded
               </Badge>
             </div>
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground mt-0.5">
               Directly answers questions using verified document text excerpts
             </div>
           </div>
@@ -144,16 +144,16 @@ export function DocumentChatTab({
 
       {/* Empty State / Suggestions */}
       {messages.length === 0 && (
-        <div className="space-y-4 py-8 text-center border border-dashed border-border p-4">
+        <div className="space-y-4 py-6 text-center border border-dashed border-border p-4">
           <div className="space-y-1.5 max-w-md mx-auto">
-            <Sparkles className="size-6 mx-auto text-primary opacity-80" />
-            <h4 className="text-sm font-semibold">Chat with {documentName}</h4>
-            <p className="text-xs text-muted-foreground">
+            <Sparkles className="size-7 mx-auto text-primary opacity-80" />
+            <h4 className="text-base font-bold">Chat with {documentName}</h4>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Ask anything about terms, deadlines, people, or pricing. Luna verifies each answer against document source text.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg mx-auto pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl mx-auto pt-2">
             {SUGGESTIONS.map((s) => {
               const Icon = s.icon;
               return (
@@ -162,12 +162,12 @@ export function DocumentChatTab({
                   type="button"
                   disabled={busy}
                   onClick={() => void send(s.prompt)}
-                  className="flex items-start gap-2 p-2.5 text-start border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors text-xs group rounded-none disabled:opacity-50"
+                  className="flex items-start gap-2.5 p-3 text-start border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors group rounded-none disabled:opacity-50"
                 >
-                  <Icon className="size-4 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                  <Icon className="size-4.5 text-primary shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
                   <div className="space-y-0.5 min-w-0">
-                    <div className="font-medium text-foreground">{s.label}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">{s.prompt}</div>
+                    <div className="font-semibold text-xs sm:text-sm text-foreground">{s.label}</div>
+                    <div className="text-xs text-muted-foreground line-clamp-2">{s.prompt}</div>
                   </div>
                 </button>
               );
@@ -187,18 +187,18 @@ export function DocumentChatTab({
               <div
                 key={m.id}
                 className={cn(
-                  "p-3 text-xs leading-relaxed border transition-colors",
+                  "p-3.5 text-sm sm:text-base leading-relaxed border transition-colors",
                   isUser
-                    ? "bg-primary/10 border-primary/20 ms-10 text-foreground"
-                    : "bg-card border-border me-10 text-foreground"
+                    ? "bg-primary/10 border-primary/20 ms-6 sm:ms-10 text-foreground"
+                    : "bg-card border-border me-6 sm:me-10 text-foreground"
                 )}
               >
-                <div className="flex items-center justify-between font-semibold text-[11px] text-muted-foreground mb-1.5 pb-1 border-b border-border/50">
+                <div className="flex items-center justify-between font-semibold text-xs text-muted-foreground mb-2 pb-1.5 border-b border-border/50">
                   <div className="flex items-center gap-1.5">
                     {isUser ? (
-                      <UserIcon className="size-3 text-foreground" />
+                      <UserIcon className="size-3.5 text-foreground" />
                     ) : (
-                      <Bot className="size-3 text-primary" />
+                      <Bot className="size-3.5 text-primary" />
                     )}
                     <span>{isUser ? "You" : "Luna Assistant"}</span>
                   </div>
@@ -209,17 +209,17 @@ export function DocumentChatTab({
                       variant="ghost"
                       size="xs"
                       onClick={() => void copyMessage(m.id, m.content)}
-                      className="h-5 px-1.5 text-[10px] gap-1 rounded-none"
+                      className="h-6 px-2 text-xs gap-1 rounded-none"
                       title="Copy response text"
                     >
                       {isCopied ? (
                         <>
-                          <Check className="size-2.5 text-emerald-600" />
-                          <span className="text-emerald-600">Copied</span>
+                          <Check className="size-3 text-emerald-600" />
+                          <span className="text-emerald-600 font-semibold">Copied</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="size-2.5" />
+                          <Copy className="size-3" />
                           <span>Copy</span>
                         </>
                       )}
@@ -230,46 +230,48 @@ export function DocumentChatTab({
                 {isUser ? (
                   <div className="whitespace-pre-wrap break-words">{m.content}</div>
                 ) : (
-                  <div className="space-y-1.5 break-words text-xs leading-relaxed [&_ul]:list-disc [&_ul]:ms-4 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:ms-4 [&_ol]:my-1.5 [&_li]:my-0.5 [&_li_ul]:my-0.5 [&_li_ul]:ms-4 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline [&_p]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:ps-2 [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        table: ({ children }) => (
-                          <div className="overflow-x-auto my-2.5 border border-border bg-card">
-                            <table className="w-full text-xs border-collapse">
+                  <div className="space-y-2">
+                    <div className="space-y-1.5 break-words text-sm sm:text-base leading-relaxed [&_ul]:list-disc [&_ul]:ms-4 [&_ul]:my-1.5 [&_ol]:list-decimal [&_ol]:ms-4 [&_ol]:my-1.5 [&_li]:my-0.5 [&_li_ul]:my-0.5 [&_li_ul]:ms-4 [&_strong]:font-bold [&_strong]:text-foreground [&_a]:text-primary [&_a]:underline [&_p]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:ps-2 [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto my-2.5 border border-border bg-card">
+                              <table className="w-full text-xs sm:text-sm border-collapse">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          thead: ({ children }) => (
+                            <thead className="bg-muted/60 border-b border-border text-foreground font-bold">
                               {children}
-                            </table>
-                          </div>
-                        ),
-                        thead: ({ children }) => (
-                          <thead className="bg-muted/60 border-b border-border text-foreground font-semibold">
-                            {children}
-                          </thead>
-                        ),
-                        th: ({ children }) => (
-                          <th className="p-2 text-start font-semibold text-foreground border-e border-border last:border-e-0 whitespace-nowrap bg-muted/30">
-                            {children}
-                          </th>
-                        ),
-                        tr: ({ children }) => (
-                          <tr className="border-b border-border/60 hover:bg-muted/20 transition-colors last:border-b-0">
-                            {children}
-                          </tr>
-                        ),
-                        td: ({ children }) => (
-                          <td className="p-2 border-e border-border/60 last:border-e-0 align-top text-foreground">
-                            {children}
-                          </td>
-                        ),
-                        a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
+                            </thead>
+                          ),
+                          th: ({ children }) => (
+                            <th className="p-2 text-start font-bold text-foreground border-e border-border last:border-e-0 whitespace-nowrap bg-muted/30">
+                              {children}
+                            </th>
+                          ),
+                          tr: ({ children }) => (
+                            <tr className="border-b border-border/60 hover:bg-muted/20 transition-colors last:border-b-0">
+                              {children}
+                            </tr>
+                          ),
+                          td: ({ children }) => (
+                            <td className="p-2 border-e border-border/60 last:border-e-0 align-top text-foreground">
+                              {children}
+                            </td>
+                          ),
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 )}
               </div>
@@ -277,8 +279,8 @@ export function DocumentChatTab({
           })}
 
           {busy && (
-            <div className="p-3 text-xs bg-muted/20 border border-border me-10 flex items-center gap-2 text-muted-foreground animate-pulse">
-              <Spinner className="size-3.5" />
+            <div className="p-3 text-xs sm:text-sm bg-muted/20 border border-border me-10 flex items-center gap-2.5 text-muted-foreground animate-pulse">
+              <Spinner className="size-4" />
               <span>Luna is reviewing document excerpts and formulating an answer…</span>
             </div>
           )}
@@ -291,21 +293,21 @@ export function DocumentChatTab({
           e.preventDefault();
           void send();
         }}
-        className="flex gap-2 pt-2 border-t border-border"
+        className="flex gap-2.5 pt-2.5 border-t border-border"
       >
         <Input
           placeholder="Ask a question about this document…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={busy}
-          className="h-9 text-xs rounded-none flex-1"
+          className="h-11 text-sm sm:text-base rounded-none flex-1 px-3.5"
         />
         <Button
           type="submit"
           disabled={busy || !input.trim()}
-          className="h-9 rounded-none gap-1.5 px-4 text-xs shrink-0"
+          className="h-11 rounded-none gap-2 px-5 text-sm font-semibold shrink-0"
         >
-          <Send data-icon="inline-start" className="size-3" />
+          <Send data-icon="inline-start" className="size-4" />
           <span>Ask</span>
         </Button>
       </form>

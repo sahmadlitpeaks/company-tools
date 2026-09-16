@@ -277,32 +277,32 @@ export default function DocumentDialog({
           </div>
 
           {/* Quick Metrics Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border border-border p-3 bg-muted/20 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 border border-border p-3.5 bg-muted/20 text-xs">
             <div>
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <FileText className="size-3 text-muted-foreground" /> File Size
+              <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+                <FileText className="size-3.5 text-muted-foreground" /> File Size
               </span>
-              <span className="font-medium">{formatBytes(doc.size)}</span>
+              <span className="font-semibold text-sm text-foreground">{formatBytes(doc.size)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <Cpu className="size-3 text-muted-foreground" /> AI Model
+              <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+                <Cpu className="size-3.5 text-muted-foreground" /> AI Model
               </span>
-              <span className="font-medium truncate block" title={doc.model || "gpt-5.6-luna"}>
+              <span className="font-semibold text-sm text-foreground truncate block" title={doc.model || "gpt-5.6-luna"}>
                 {doc.model || "gpt-5.6-luna"}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <Layers className="size-3 text-muted-foreground" /> Extracted Segments
+              <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+                <Layers className="size-3.5 text-muted-foreground" /> Extracted Segments
               </span>
-              <span className="font-medium">{doc.segments?.length ?? 0}</span>
+              <span className="font-semibold text-sm text-foreground">{doc.segments?.length ?? 0}</span>
             </div>
             <div>
-              <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
-                <Clock className="size-3 text-muted-foreground" /> Modified
+              <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
+                <Clock className="size-3.5 text-muted-foreground" /> Modified
               </span>
-              <span className="font-medium truncate block" title={formatDateTime(doc.modified_at)}>
+              <span className="font-semibold text-sm text-foreground truncate block" title={formatDateTime(doc.modified_at)}>
                 {formatDateTime(doc.modified_at)}
               </span>
             </div>
@@ -310,42 +310,42 @@ export default function DocumentDialog({
 
           {/* Token Usage & Cost */}
           {doc.usage && (
-            <div className="border border-border p-3 bg-muted/10 space-y-2 text-xs">
+            <div className="border border-border p-3.5 bg-muted/10 space-y-2.5 text-xs">
               <div className="flex items-center justify-between font-semibold">
-                <span className="flex items-center gap-1.5 text-foreground">
-                  <Coins className="size-3.5 text-muted-foreground" />
+                <span className="flex items-center gap-1.5 text-foreground text-xs sm:text-sm">
+                  <Coins className="size-4 text-muted-foreground" />
                   AI Execution & Token Cost
                 </span>
                 {costInfo && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground font-mono">
+                    <span className="text-xs text-muted-foreground font-mono">
                       {costInfo.rateSummary}
                     </span>
-                    <Badge variant="outline" className="font-mono text-emerald-700 dark:text-emerald-400 border-emerald-500/30 rounded-none">
+                    <Badge variant="outline" className="font-mono text-emerald-700 dark:text-emerald-400 border-emerald-500/30 rounded-none text-xs font-semibold py-0.5 px-2">
                       Est. {costInfo.formatted} USD
                     </Badge>
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-2 text-muted-foreground">
+              <div className="grid grid-cols-3 gap-2 text-muted-foreground text-xs">
                 <div>
                   <span>Input Tokens: </span>
-                  <strong className="text-foreground">{doc.usage.input_tokens.toLocaleString()}</strong>
+                  <strong className="text-foreground text-sm font-semibold">{doc.usage.input_tokens.toLocaleString()}</strong>
                 </div>
                 <div>
                   <span>Output Tokens: </span>
-                  <strong className="text-foreground">{doc.usage.output_tokens.toLocaleString()}</strong>
+                  <strong className="text-foreground text-sm font-semibold">{doc.usage.output_tokens.toLocaleString()}</strong>
                 </div>
                 <div>
                   <span>Total Tokens: </span>
-                  <strong className="text-foreground">
+                  <strong className="text-foreground text-sm font-semibold">
                     {(doc.usage.input_tokens + doc.usage.output_tokens).toLocaleString()}
                   </strong>
                 </div>
               </div>
               {doc.processed_at && (
-                <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/50 flex items-center gap-1 font-mono">
-                  <Clock className="size-3" />
+                <div className="text-xs text-muted-foreground pt-1.5 border-t border-border/50 flex items-center gap-1.5 font-mono">
+                  <Clock className="size-3.5" />
                   Processed at: {formatDateTime(doc.processed_at)}
                 </div>
               )}
@@ -410,29 +410,29 @@ export default function DocumentDialog({
               {/* Main Content Tabs */}
               {doc.analysis ? (
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                  <TabsList className="w-full justify-start h-auto flex-wrap gap-1 p-1 bg-muted/40 border border-border rounded-none">
-                    <TabsTrigger value="analysis" className="flex items-center gap-1.5 rounded-none text-xs">
-                      <CheckSquare className="size-3.5 text-primary" />
+                  <TabsList className="w-full justify-start h-auto flex-wrap gap-1.5 p-1.5 bg-muted/40 border border-border rounded-none">
+                    <TabsTrigger value="analysis" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                      <CheckSquare className="size-4 text-primary" />
                       Findings
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono rounded-none">
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
                         {findingsCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="expiries" className="flex items-center gap-1.5 rounded-none text-xs">
-                      <Calendar className="size-3.5 text-amber-500" />
+                    <TabsTrigger value="expiries" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                      <Calendar className="size-4 text-amber-500" />
                       Expiries & Pricing
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono rounded-none">
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
                         {expiriesCount + commercialsCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="chat" className="flex items-center gap-1.5 rounded-none text-xs">
-                      <Bot className="size-3.5 text-sky-500" />
+                    <TabsTrigger value="chat" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                      <Bot className="size-4 text-sky-500" />
                       Luna Chat
                     </TabsTrigger>
-                    <TabsTrigger value="segments" className="flex items-center gap-1.5 rounded-none text-xs">
-                      <Layers className="size-3.5 text-muted-foreground" />
+                    <TabsTrigger value="segments" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                      <Layers className="size-4 text-muted-foreground" />
                       Source Excerpts
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono rounded-none">
+                      <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
                         {doc.segments?.length ?? 0}
                       </Badge>
                     </TabsTrigger>

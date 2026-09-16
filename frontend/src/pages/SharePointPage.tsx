@@ -94,12 +94,12 @@ function Documents({
               event.preventDefault();
               setPage({ q: search.trim(), cursor: "" });
             }}
-            className="flex items-center gap-1.5 w-full sm:w-auto"
+            className="flex items-center gap-2 w-full sm:w-auto"
           >
-            <div className="w-full sm:w-72">
+            <div className="w-full sm:w-80">
               <InputGroup>
                 <InputGroupAddon align="inline-start">
-                  <Search className="size-3.5 text-muted-foreground" />
+                  <Search className="size-4 text-muted-foreground" />
                 </InputGroupAddon>
                 <InputGroupInput
                   id="sharepoint-search"
@@ -107,7 +107,7 @@ function Documents({
                   onChange={(event) => setSearch(event.target.value)}
                   maxLength={200}
                   placeholder="Search file, path, or text…"
-                  className="text-xs"
+                  className="text-sm h-10"
                 />
                 {search && (
                   <InputGroupButton
@@ -117,26 +117,26 @@ function Documents({
                     }}
                     title="Clear search"
                   >
-                    <X className="size-3" />
+                    <X className="size-3.5" />
                   </InputGroupButton>
                 )}
               </InputGroup>
             </div>
 
-            <Button type="submit" size="sm" disabled={result.loading} className="rounded-none text-xs h-8">
+            <Button type="submit" size="default" disabled={result.loading} className="rounded-none text-sm font-semibold h-10 px-4">
               Search
             </Button>
 
             <Button
               variant="outline"
-              size="sm"
+              size="default"
               aria-label="Refresh documents"
               onClick={() => void result.reload()}
               disabled={result.loading}
-              className="rounded-none h-8 px-2"
+              className="rounded-none h-10 px-3"
               title="Refresh document list"
             >
-              <RefreshCw data-icon="inline-start" className={result.loading ? "animate-spin" : ""} />
+              <RefreshCw data-icon="inline-start" className={result.loading ? "animate-spin size-4" : "size-4"} />
             </Button>
           </form>
         </div>
@@ -166,22 +166,22 @@ function Documents({
                 return (
                   <Card key={doc.id} className="rounded-none border-border">
                     <CardContent className="space-y-3 pt-4">
-                      <h3 dir="auto" className="break-words font-medium text-sm">{doc.name}</h3>
+                      <h3 dir="auto" className="break-words font-semibold text-base text-foreground">{doc.name}</h3>
                       {doc.path && (
-                        <p className="text-[11px] text-muted-foreground font-mono truncate">{doc.path}</p>
+                        <p className="text-xs text-muted-foreground font-mono truncate">{doc.path}</p>
                       )}
                       <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant={badge.variant} className={cn(badge.className, "rounded-none")}>
+                        <Badge variant={badge.variant} className={cn(badge.className, "rounded-none text-xs font-semibold py-1 px-2")}>
                           {badge.label}
                         </Badge>
                         {doc.requires_attention && (
-                          <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none">
+                          <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none text-xs font-semibold py-1 px-2">
                             Needs attention
                           </Badge>
                         )}
-                        {!!doc.size && <span className="text-muted-foreground">{formatBytes(doc.size)}</span>}
+                        {!!doc.size && <span className="text-muted-foreground text-xs font-medium">{formatBytes(doc.size)}</span>}
                       </div>
-                      <Button variant="outline" size="sm" onClick={() => setSelected(doc.id)} className="rounded-none">
+                      <Button variant="outline" size="sm" onClick={() => setSelected(doc.id)} className="rounded-none h-9 text-xs font-semibold">
                         View document
                       </Button>
                     </CardContent>
@@ -195,11 +195,11 @@ function Documents({
               <Table className="min-w-[850px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Document & Folder Path</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Languages</TableHead>
-                    <TableHead><span className="sr-only">Action</span></TableHead>
+                    <TableHead className="py-3 px-3 text-xs font-bold text-foreground/80 uppercase">Document & Folder Path</TableHead>
+                    <TableHead className="py-3 px-3 text-xs font-bold text-foreground/80 uppercase">Status</TableHead>
+                    <TableHead className="py-3 px-3 text-xs font-bold text-foreground/80 uppercase">Size</TableHead>
+                    <TableHead className="py-3 px-3 text-xs font-bold text-foreground/80 uppercase">Languages</TableHead>
+                    <TableHead className="py-3 px-3"><span className="sr-only">Action</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -207,39 +207,39 @@ function Documents({
                     const badge = getStatusBadgeInfo(doc.status);
                     return (
                       <TableRow key={doc.id}>
-                        <TableCell>
-                          <span dir="auto" className="block max-w-sm break-words whitespace-normal font-medium text-sm">
+                        <TableCell className="py-3.5 px-3">
+                          <span dir="auto" className="block max-w-sm break-words whitespace-normal font-semibold text-sm sm:text-base text-foreground">
                             {doc.name}
                           </span>
                           {doc.path && (
-                            <span className="block text-[11px] text-muted-foreground font-mono truncate max-w-sm">
+                            <span className="block text-xs text-muted-foreground font-mono truncate max-w-sm mt-0.5">
                               {doc.path}
                             </span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-3.5 px-3">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant={badge.variant} className={cn(badge.className, "rounded-none")}>
+                            <Badge variant={badge.variant} className={cn(badge.className, "rounded-none text-xs font-semibold py-1 px-2")}>
                               {badge.label}
                             </Badge>
                             {doc.requires_attention && (
-                              <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none">
+                              <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none text-xs font-semibold py-1 px-2">
                                 Needs attention
                               </Badge>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{formatBytes(doc.size)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono uppercase">
+                        <TableCell className="py-3.5 px-3 text-xs font-medium text-muted-foreground">{formatBytes(doc.size)}</TableCell>
+                        <TableCell className="py-3.5 px-3 text-xs text-muted-foreground font-mono uppercase font-semibold">
                           {doc.languages.join(", ") || "—"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="py-3.5 px-3">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setSelected(doc.id)}
                             aria-label={`View ${doc.name}`}
-                            className="rounded-none"
+                            className="rounded-none h-8 text-xs font-semibold px-3"
                           >
                             View document
                           </Button>
@@ -496,24 +496,24 @@ function ConnectedSource({
       {/* Main Tabs: 4 Pillars layout */}
       {status.connected ? (
         <Tabs defaultValue="documents" className="space-y-4">
-          <TabsList className="w-full justify-start h-auto flex-wrap gap-1 p-1 bg-muted border border-border rounded-none">
+          <TabsList className="w-full justify-start h-auto flex-wrap gap-2 p-1.5 bg-muted/60 border border-border rounded-none">
             <TabsTrigger
               value="documents"
-              className="flex items-center gap-1.5 rounded-none text-xs px-3.5 py-1.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-semibold transition-colors shadow-none"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
             >
-              <FolderOpen className="size-3.5 text-primary" /> Documents
+              <FolderOpen className="size-4 text-primary" /> Documents Library
             </TabsTrigger>
             <TabsTrigger
               value="chat"
-              className="flex items-center gap-1.5 rounded-none text-xs px-3.5 py-1.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-semibold transition-colors shadow-none"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
             >
-              <Bot className="size-3.5 text-primary" /> Central AI Chatbot
+              <Bot className="size-4 text-primary" /> AI Document Assistant
             </TabsTrigger>
             <TabsTrigger
               value="reminders"
-              className="flex items-center gap-1.5 rounded-none text-xs px-3.5 py-1.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-semibold transition-colors shadow-none"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
             >
-              <Calendar className="size-3.5 text-sky-500" /> Tasks & Reminders
+              <Calendar className="size-4 text-sky-500" /> Tasks & Reminders
             </TabsTrigger>
           </TabsList>
 

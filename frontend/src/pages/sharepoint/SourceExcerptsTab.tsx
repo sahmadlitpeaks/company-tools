@@ -89,10 +89,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 select-all align-baseline rounded-none"
             title="Redacted Person"
           >
-            <User className="size-2.5" />
+            <User className="size-3" />
             {part}
           </Badge>
         );
@@ -102,10 +102,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 select-all align-baseline rounded-none"
             title="Redacted Organization"
           >
-            <Building2 className="size-2.5" />
+            <Building2 className="size-3" />
             {part}
           </Badge>
         );
@@ -115,10 +115,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 select-all align-baseline rounded-none"
             title="Redacted Email"
           >
-            <Mail className="size-2.5" />
+            <Mail className="size-3" />
             {part}
           </Badge>
         );
@@ -128,10 +128,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 select-all align-baseline rounded-none"
             title="Redacted Phone Number"
           >
-            <Phone className="size-2.5" />
+            <Phone className="size-3" />
             {part}
           </Badge>
         );
@@ -141,10 +141,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-destructive/10 text-destructive border-destructive/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-destructive/10 text-destructive border-destructive/30 select-all align-baseline rounded-none"
             title="Redacted Secret / Confidential"
           >
-            <Lock className="size-2.5" />
+            <Lock className="size-3" />
             {part}
           </Badge>
         );
@@ -154,10 +154,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
           <Badge
             key={chunk.id}
             variant="outline"
-            className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 select-all align-baseline rounded-none"
+            className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 select-all align-baseline rounded-none"
             title="Redacted Financial Value"
           >
-            <Coins className="size-2.5" />
+            <Coins className="size-3" />
             {part}
           </Badge>
         );
@@ -166,10 +166,10 @@ function renderSegmentContent(segmentId: string, text: string, searchQuery: stri
         <Badge
           key={chunk.id}
           variant="outline"
-          className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0 mx-0.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 select-all align-baseline rounded-none"
+          className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-0.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 select-all align-baseline rounded-none"
           title="Redacted Identifier"
         >
-          <Shield className="size-2.5" />
+          <Shield className="size-3" />
           {part}
         </Badge>
       );
@@ -284,16 +284,16 @@ export function SourceExcerptsTab({
     <div className="space-y-3.5">
       {/* Active Jump Banner */}
       {activeSegmentId && (
-        <div className="flex items-center justify-between p-2.5 bg-primary/10 border border-primary/30 text-xs">
+        <div className="flex items-center justify-between p-3 bg-primary/10 border border-primary/30 text-sm">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-primary">Focused on citation:</span>
-            <Badge variant="outline" className="font-mono bg-background rounded-none">
+            <Badge variant="outline" className="font-mono text-xs bg-background rounded-none font-bold">
               #{activeSegmentId}
             </Badge>
           </div>
           {onClearActiveSegment && (
-            <Button variant="ghost" size="xs" onClick={onClearActiveSegment} className="h-6 text-xs gap-1">
-              <X className="size-3" />
+            <Button variant="ghost" size="xs" onClick={onClearActiveSegment} className="h-7 text-xs gap-1.5 font-medium">
+              <X className="size-3.5" />
               Clear highlight
             </Button>
           )}
@@ -301,36 +301,36 @@ export function SourceExcerptsTab({
       )}
 
       {/* Toolbar: Search, Filters & Actions */}
-      <div className="space-y-2">
-        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center justify-between">
+      <div className="space-y-2.5">
+        <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
           <div className="flex-1 max-w-md">
             <InputGroup>
               <InputGroupAddon align="inline-start">
-                <Search className="size-3.5" />
+                <Search className="size-4 text-muted-foreground" />
               </InputGroupAddon>
               <InputGroupInput
                 placeholder="Search across all excerpts…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="text-xs"
+                className="h-9 text-xs sm:text-sm"
               />
               {search && (
                 <InputGroupButton onClick={() => setSearch("")} title="Clear search">
-                  <X className="size-3" />
+                  <X className="size-3.5" />
                 </InputGroupButton>
               )}
             </InputGroup>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant={onlyRedacted ? "default" : "outline"}
               size="sm"
               onClick={() => setOnlyRedacted(!onlyRedacted)}
-              className="text-xs h-8 gap-1.5"
+              className="text-xs sm:text-sm h-9 gap-2 font-medium"
               title="Show only excerpts containing privacy-redacted placeholders"
             >
-              <Lock data-icon="inline-start" className="size-3" />
+              <Lock data-icon="inline-start" className="size-3.5" />
               Redacted Only
             </Button>
 
@@ -339,17 +339,17 @@ export function SourceExcerptsTab({
               size="sm"
               onClick={copyAll}
               disabled={allCopied}
-              className="text-xs h-8 gap-1.5"
+              className="text-xs sm:text-sm h-9 gap-2 font-medium"
               title="Copy entire document text to clipboard"
             >
               {allCopied ? (
                 <>
-                  <Check data-icon="inline-start" className="size-3 text-emerald-600" />
+                  <Check data-icon="inline-start" className="size-3.5 text-emerald-600" />
                   Copied All!
                 </>
               ) : (
                 <>
-                  <Copy data-icon="inline-start" className="size-3" />
+                  <Copy data-icon="inline-start" className="size-3.5" />
                   Copy All Text
                 </>
               )}
@@ -358,16 +358,16 @@ export function SourceExcerptsTab({
         </div>
 
         {/* Location Chips & Meta Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/60 text-xs">
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-muted-foreground flex items-center gap-1 mr-1 text-[11px]">
-              <Filter className="size-3" /> Section:
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-border/60 text-xs sm:text-sm">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground flex items-center gap-1.5 mr-1 text-xs font-semibold">
+              <Filter className="size-3.5" /> Section:
             </span>
             <Button
               variant={locationFilter === "all" ? "secondary" : "ghost"}
               size="xs"
               onClick={() => setLocationFilter("all")}
-              className="h-6 px-2 text-[11px]"
+              className="h-7 px-2.5 text-xs font-medium"
             >
               All ({segments.length})
             </Button>
@@ -377,14 +377,14 @@ export function SourceExcerptsTab({
                 variant={locationFilter === loc ? "secondary" : "ghost"}
                 size="xs"
                 onClick={() => setLocationFilter(loc)}
-                className="h-6 px-2 text-[11px]"
+                className="h-7 px-2.5 text-xs font-medium"
               >
                 {loc}
               </Button>
             ))}
           </div>
 
-          <div className="text-[11px] text-muted-foreground font-mono">
+          <div className="text-xs text-muted-foreground font-mono">
             Showing {filteredSegments.length} of {segments.length} segments · ~{totalWords.toLocaleString()} words
           </div>
         </div>
@@ -393,9 +393,9 @@ export function SourceExcerptsTab({
       {/* Excerpts List */}
       <div ref={listRef} className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
         {filteredSegments.length === 0 ? (
-          <div className="py-10 text-center border border-dashed border-border p-4 space-y-1">
-            <p className="text-xs font-medium">No matching excerpts found</p>
-            <p className="text-[11px] text-muted-foreground">
+          <div className="py-10 text-center border border-dashed border-border p-5 space-y-1.5">
+            <p className="text-sm font-semibold text-foreground">No matching excerpts found</p>
+            <p className="text-xs text-muted-foreground">
               Try adjusting your search query or clearing the active filters.
             </p>
           </div>
@@ -416,41 +416,41 @@ export function SourceExcerptsTab({
                     : "border-border hover:border-border/80 bg-card"
                 )}
               >
-                <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border/80 text-xs">
+                <div className="flex items-center justify-between px-3.5 py-2 bg-muted/40 border-b border-border/80 text-xs sm:text-sm">
                   <div className="flex items-center gap-2 min-w-0">
                     <Badge
                       variant={isFocused ? "default" : "outline"}
-                      className="font-mono text-[11px] shrink-0 font-semibold rounded-none"
+                      className="font-mono text-xs shrink-0 font-bold rounded-none px-2 py-0.5"
                     >
                       #{segment.id}
                     </Badge>
-                    <span className="text-muted-foreground flex items-center gap-1 truncate text-[11px]">
-                      <FileText className="size-3 shrink-0 text-muted-foreground" />
+                    <span className="text-muted-foreground flex items-center gap-1.5 truncate text-xs font-medium">
+                      <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate" title={segment.location}>
                         {segment.location}
                       </span>
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] text-muted-foreground font-mono">
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <span className="text-xs text-muted-foreground font-mono">
                       {wordCount} words
                     </span>
                     <Button
                       variant="ghost"
                       size="xs"
                       onClick={() => void copyExcerpt(segment.id, segment.text)}
-                      className="h-6 px-1.5 text-[10px] gap-1"
+                      className="h-7 px-2 text-xs gap-1.5 font-medium"
                       title="Copy excerpt text"
                     >
                       {isCopied ? (
                         <>
-                          <Check className="size-3 text-emerald-600" />
-                          <span className="text-emerald-600 font-medium">Copied</span>
+                          <Check className="size-3.5 text-emerald-600" />
+                          <span className="text-emerald-600 font-semibold">Copied</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="size-3" />
+                          <Copy className="size-3.5" />
                           <span>Copy</span>
                         </>
                       )}
@@ -458,10 +458,10 @@ export function SourceExcerptsTab({
                   </div>
                 </div>
 
-                <CardContent className="p-3">
+                <CardContent className="p-3.5">
                   <div
                     dir="auto"
-                    className="whitespace-pre-wrap break-words text-xs leading-relaxed font-normal text-foreground select-text"
+                    className="whitespace-pre-wrap break-words text-sm leading-relaxed font-normal text-foreground select-text"
                   >
                     {renderSegmentContent(segment.id, segment.text, search)}
                   </div>
