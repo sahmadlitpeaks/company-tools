@@ -579,29 +579,29 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                   ↔ Scroll horizontally to view all columns
                 </span>
               </div>
-              <div className="w-full border border-border overflow-x-auto">
-                <Table className="w-full min-w-[1450px]">
+              <div className="w-full [&>div]:border [&>div]:border-border [&>div]:bg-card">
+                <Table className="w-full min-w-[1350px]">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[320px] max-w-[420px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                    <TableRow className="group/row hover:bg-transparent border-b">
+                      <TableHead className="sticky left-0 z-20 bg-muted border-e border-border/70 min-w-[300px] max-w-[380px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Item & Category
                       </TableHead>
-                      <TableHead className="min-w-[280px] max-w-[360px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="min-w-[260px] max-w-[340px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Document & Path
                       </TableHead>
-                      <TableHead className="min-w-[170px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="min-w-[160px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Target Date
                       </TableHead>
-                      <TableHead className="min-w-[140px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="min-w-[130px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Value
                       </TableHead>
-                      <TableHead className="min-w-[240px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="min-w-[220px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Responsible
                       </TableHead>
-                      <TableHead className="min-w-[130px] whitespace-nowrap text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="min-w-[120px] whitespace-nowrap text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">
                         Status
                       </TableHead>
-                      <TableHead className="min-w-[210px] whitespace-nowrap text-end py-3 px-3.5">
+                      <TableHead className="min-w-[200px] whitespace-nowrap text-end py-3 px-3.5">
                         <span className="sr-only">Actions</span>
                       </TableHead>
                     </TableRow>
@@ -615,8 +615,8 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                       const isUrgent = daysLeft <= 30 && daysLeft >= 0 && r.status === "pending";
 
                       return (
-                        <TableRow key={r.id}>
-                          <TableCell className="min-w-[320px] max-w-[420px] align-middle py-3.5 px-3.5">
+                        <TableRow key={r.id} className="group/row hover:bg-muted/40 transition-colors">
+                          <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-muted/40 transition-colors border-e border-border/70 min-w-[300px] max-w-[380px] align-middle py-3.5 px-3.5">
                             <p
                               className={cn(
                                 "text-sm font-semibold leading-snug whitespace-normal break-words text-foreground",

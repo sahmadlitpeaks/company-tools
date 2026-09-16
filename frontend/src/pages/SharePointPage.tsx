@@ -239,11 +239,11 @@ function Documents({
                     ↔ Scroll horizontally to view all columns
                   </span>
                 </div>
-                <div className="w-full max-w-full border border-border overflow-x-auto">
+                <div className="w-full [&>div]:border [&>div]:border-border [&>div]:bg-card">
                   <Table className="w-full min-w-[800px]">
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="min-w-[280px] max-w-[450px] py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
+                      <TableRow className="group/row hover:bg-transparent border-b">
+                        <TableHead className="sticky left-0 z-20 bg-muted border-e border-border/70 min-w-[280px] max-w-[450px] py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
                           Document & Folder Path
                         </TableHead>
                         <TableHead className="min-w-[160px] whitespace-nowrap py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
@@ -264,8 +264,8 @@ function Documents({
                       {docs.map((doc) => {
                         const badge = getStatusBadgeInfo(doc.status);
                         return (
-                          <TableRow key={doc.id}>
-                            <TableCell className="min-w-[280px] max-w-[450px] align-middle py-3.5 px-3.5">
+                          <TableRow key={doc.id} className="group/row hover:bg-muted/40 transition-colors">
+                            <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-muted/40 transition-colors border-e border-border/70 min-w-[280px] max-w-[450px] align-middle py-3.5 px-3.5">
                               <span dir="auto" className="block break-words whitespace-normal font-semibold text-sm sm:text-base text-foreground">
                                 {doc.name}
                               </span>
