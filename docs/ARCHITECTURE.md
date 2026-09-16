@@ -19,6 +19,14 @@
 
 ## Authentication flow
 
+SharePoint Intelligence has a separate delegated Microsoft connection. Its
+module gate does not grant document access: every content response checks live
+delegated Graph metadata/content access and the configured folder scope. An
+app-only read grant powers ingestion only. Private maps/tokens are encrypted,
+sanitized analysis is reviewed by default, and a database lease owns durable
+sync runs. See [SharePoint setup and architecture](SHAREPOINT_INTELLIGENCE.md)
+for the data boundary, failure handling, configuration and operational limits.
+
 1. SPA sends the user to `GET /api/auth/login`.
 2. Backend redirects to Azure Entra ID (Authlib OIDC).
 3. Azure redirects back to `GET /api/auth/callback` with an auth code.

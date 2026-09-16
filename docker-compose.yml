@@ -26,7 +26,10 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        SHAREPOINT_NLP: ${SHAREPOINT_ENABLED:-false}
     # Exposed for local Vite (`npm run dev` on :5173 proxies here). Production
     # still goes through the frontend nginx single-origin setup on APP_PORT.
     ports:
@@ -49,6 +52,27 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
+      SHAREPOINT_ENABLED: ${SHAREPOINT_ENABLED:-false}
+      SHAREPOINT_TENANT_ID: ${SHAREPOINT_TENANT_ID:-}
+      SHAREPOINT_CLIENT_ID: ${SHAREPOINT_CLIENT_ID:-}
+      SHAREPOINT_CLIENT_SECRET: ${SHAREPOINT_CLIENT_SECRET:-}
+      SHAREPOINT_SITE_ID: ${SHAREPOINT_SITE_ID:-}
+      SHAREPOINT_DRIVE_ID: ${SHAREPOINT_DRIVE_ID:-}
+      SHAREPOINT_FOLDER_ID: ${SHAREPOINT_FOLDER_ID:-}
+      SHAREPOINT_REDIRECT_URI: ${SHAREPOINT_REDIRECT_URI:-${PUBLIC_BASE_URL:-http://localhost:8080}/api/sharepoint/callback}
+      SHAREPOINT_ENCRYPTION_KEY: ${SHAREPOINT_ENCRYPTION_KEY:-}
+      SHAREPOINT_PREVIOUS_ENCRYPTION_KEYS: ${SHAREPOINT_PREVIOUS_ENCRYPTION_KEYS:-}
+      SHAREPOINT_OPENAI_API_KEY: ${SHAREPOINT_OPENAI_API_KEY:-}
+      SHAREPOINT_OPENAI_MODEL: ${SHAREPOINT_OPENAI_MODEL:-}
+      SHAREPOINT_REVIEWER_IDS: ${SHAREPOINT_REVIEWER_IDS:-}
+      SHAREPOINT_POLLING_ENABLED: ${SHAREPOINT_POLLING_ENABLED:-false}
+      SHAREPOINT_SYNC_INTERVAL_SECONDS: ${SHAREPOINT_SYNC_INTERVAL_SECONDS:-300}
+      SHAREPOINT_MAX_FILE_BYTES: ${SHAREPOINT_MAX_FILE_BYTES:-26214400}
+      SHAREPOINT_MAX_TEXT_CHARS: ${SHAREPOINT_MAX_TEXT_CHARS:-200000}
+      SHAREPOINT_MAX_ITEMS: ${SHAREPOINT_MAX_ITEMS:-2000}
+      SHAREPOINT_NER_LANGUAGES: ${SHAREPOINT_NER_LANGUAGES:-ar,en}
+      SHAREPOINT_NER_MODEL_DIR: /data/nlp-models
+      SHAREPOINT_PARSER_TIMEOUT_SECONDS: ${SHAREPOINT_PARSER_TIMEOUT_SECONDS:-120}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
@@ -65,6 +89,7 @@ services:
     volumes:
       - media:/data/media
       - backups:/data/backups
+      - sharepoint_nlp:/data/nlp-models
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -85,3 +110,4 @@ volumes:
   pgdata:
   media:
   backups:
+  sharepoint_nlp:

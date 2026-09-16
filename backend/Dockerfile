@@ -12,8 +12,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+COPY requirements-sharepoint-nlp.txt .
+ARG SHAREPOINT_NLP=false
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
     && python -m pip install --no-cache-dir -r requirements.txt
+
+RUN if [ "$SHAREPOINT_NLP" = "true" ]; then python -m pip install --no-cache-dir -r requirements-sharepoint-nlp.txt; fi
 
 COPY . .
 
