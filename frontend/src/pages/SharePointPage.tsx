@@ -44,6 +44,14 @@ import {
 } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { CentralChatTab } from "./sharepoint/CentralChatTab";
 import { TasksAndRemindersTab } from "./sharepoint/TasksAndRemindersTab";
@@ -66,6 +74,7 @@ function Documents({
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState({ q: "", cursor: "" });
+  const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "cards">(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
@@ -76,6 +85,21 @@ function Documents({
   const result = useDocumentSearch(page.q, page.cursor);
   const docs = result.data?.items ?? [];
   const { reload: reloadDocs } = result;
+
+  const handlePrevPage = () => {
+    if (cursorHistory.length > 0) {
+      const prevCursor = cursorHistory[cursorHistory.length - 1];
+      setCursorHistory((prev) => prev.slice(0, -1));
+      setPage((prev) => ({ ...prev, cursor: prevCursor }));
+    }
+  };
+
+  const handleNextPage = () => {
+    if (result.data?.next_cursor) {
+      setCursorHistory((prev) => [...prev, page.cursor]);
+      setPage((prev) => ({ ...prev, cursor: result.data?.next_cursor || "" }));
+    }
+  };
 
   useEffect(() => {
     if (generation !== undefined || syncStatus) {
@@ -101,6 +125,7 @@ function Documents({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
+                setCursorHistory([]);
                 setPage({ q: search.trim(), cursor: "" });
               }}
               className="flex items-center gap-2 w-full sm:w-auto"
@@ -122,6 +147,7 @@ function Documents({
                     <InputGroupButton
                       onClick={() => {
                         setSearch("");
+                        setCursorHistory([]);
                         setPage({ q: "", cursor: "" });
                       }}
                       title="Clear search"
@@ -315,18 +341,32 @@ function Documents({
           </>
         )}
 
-        {!result.loading && !result.error && (page.cursor || result.data?.next_cursor) && (
-          <div className="flex gap-2 pt-2">
-            {page.cursor && (
-              <Button variant="outline" size="sm" onClick={() => setPage({ ...page, cursor: "" })} className="rounded-none">
-                First page
-              </Button>
-            )}
-            {result.data?.next_cursor && (
-              <Button variant="outline" size="sm" onClick={() => setPage({ ...page, cursor: result.data?.next_cursor || "" })} className="rounded-none">
-                Next page
-              </Button>
-            )}
+        {!result.loading && !result.error && docs.length > 0 && (
+          <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Showing <strong>{docs.length}</strong> {docs.length === 1 ? "document" : "documents"} (Max 20 per page)
+            </p>
+            <Pagination className="mx-0 w-auto justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    disabled={cursorHistory.length === 0}
+                    onClick={handlePrevPage}
+                  />
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationLink isActive>
+                    {cursorHistory.length + 1}
+                  </PaginationLink>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext
+                    disabled={!result.data?.next_cursor}
+                    onClick={handleNextPage}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
 

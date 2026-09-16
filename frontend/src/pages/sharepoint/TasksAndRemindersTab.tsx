@@ -41,16 +41,75 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 
 type CategoryFilter = "all" | "expiry" | "task" | "deadline";
 type StatusFilter = "all" | "pending" | "completed" | "dismissed" | "sent";
+
+type PageItem = {
+  type: "page" | "ellipsis";
+  value?: number;
+  key: string;
+};
+
+function getPageItems(current: number, total: number): PageItem[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => ({
+      type: "page",
+      value: i + 1,
+      key: `page-${i + 1}`,
+    }));
+  }
+  if (current <= 4) {
+    return [
+      { type: "page", value: 1, key: "page-1" },
+      { type: "page", value: 2, key: "page-2" },
+      { type: "page", value: 3, key: "page-3" },
+      { type: "page", value: 4, key: "page-4" },
+      { type: "page", value: 5, key: "page-5" },
+      { type: "ellipsis", key: "ellipsis-end" },
+      { type: "page", value: total, key: `page-${total}` },
+    ];
+  }
+  if (current >= total - 3) {
+    return [
+      { type: "page", value: 1, key: "page-1" },
+      { type: "ellipsis", key: "ellipsis-start" },
+      { type: "page", value: total - 4, key: `page-${total - 4}` },
+      { type: "page", value: total - 3, key: `page-${total - 3}` },
+      { type: "page", value: total - 2, key: `page-${total - 2}` },
+      { type: "page", value: total - 1, key: `page-${total - 1}` },
+      { type: "page", value: total, key: `page-${total}` },
+    ];
+  }
+  return [
+    { type: "page", value: 1, key: "page-1" },
+    { type: "ellipsis", key: "ellipsis-start" },
+    { type: "page", value: current - 1, key: `page-${current - 1}` },
+    { type: "page", value: current, key: `page-${current}` },
+    { type: "page", value: current + 1, key: `page-${current + 1}` },
+    { type: "ellipsis", key: "ellipsis-end" },
+    { type: "page", value: total, key: `page-${total}` },
+  ];
+}
+
+const PAGE_SIZE = 20;
 
 export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [currentPage, setCurrentPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
   const { notify } = useToast();
 
@@ -62,6 +121,10 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
       setLocalReminders(remindersApi.data);
     }
   }, [remindersApi.data]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, statusFilter, search]);
 
   const allReminders = localReminders ?? remindersApi.data ?? [];
 
@@ -98,6 +161,13 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
     return true;
   });
+
+  // Pagination computations
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const activePage = Math.min(currentPage, totalPages);
+  const startIndex = (activePage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, filtered.length);
+  const paginatedReminders = filtered.slice(startIndex, startIndex + PAGE_SIZE);
 
   // Metric computations
   const totalCount = allReminders.length;
@@ -403,7 +473,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
             {/* Card View */}
             {viewMode === "cards" && (
               <div className="space-y-3">
-              {filtered.map((r) => {
+              {paginatedReminders.map((r) => {
                 const daysLeft = Math.ceil(
                   (new Date(r.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                 );
@@ -555,7 +625,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                               className="rounded-none h-8 px-2.5 text-xs gap-1.5"
                               title="Send test email & Teams notification"
                             >
-                              <Send data-icon="inline-start" className="size-3.5" />
+                              <Send data-icon="inline-start" />
                               Test
                             </Button>
                           )}
@@ -573,7 +643,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
                 <span>
-                  Showing <strong>{filtered.length}</strong> items
+                  Showing <strong>{filtered.length === 0 ? 0 : startIndex + 1}–{endIndex}</strong> of <strong>{filtered.length}</strong> items
                 </span>
                 <span className="font-mono text-xs text-muted-foreground font-medium">
                   ↔ Scroll horizontally to view all columns
@@ -607,7 +677,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((r) => {
+                    {paginatedReminders.map((r) => {
                       const daysLeft = Math.ceil(
                         (new Date(r.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                       );
@@ -764,7 +834,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                     title="Mark as completed"
                                     className="rounded-none h-8 px-3 text-xs font-semibold gap-1.5 shrink-0 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30"
                                   >
-                                    <Check data-icon="inline-start" className="size-3.5" />
+                                    <Check data-icon="inline-start" />
                                     Done
                                   </Button>
                                   <Button
@@ -790,7 +860,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                   title="Re-open item"
                                   className="rounded-none h-8 px-3 text-xs font-medium gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
                                 >
-                                  <RotateCcw data-icon="inline-start" className="size-3.5" />
+                                  <RotateCcw data-icon="inline-start" />
                                   Re-open
                                 </Button>
                               )}
@@ -804,7 +874,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                                   title="Send test email & Teams notification"
                                   className="rounded-none h-8 px-2.5 text-xs gap-1.5 shrink-0"
                                 >
-                                  <Send data-icon="inline-start" className="size-3.5" />
+                                  <Send data-icon="inline-start" />
                                   Test
                                 </Button>
                               )}
@@ -818,6 +888,44 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               </div>
             </div>
           )}
+
+          {/* Pagination Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border/60">
+            <p className="text-xs text-muted-foreground">
+              Showing <strong>{filtered.length === 0 ? 0 : startIndex + 1}–{endIndex}</strong> of <strong>{filtered.length}</strong> items
+              {totalPages > 1 && <> (Page <strong>{activePage}</strong> of <strong>{totalPages}</strong>)</>}
+            </p>
+            <Pagination className="mx-0 w-auto justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    disabled={activePage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  />
+                </PaginationItem>
+                {getPageItems(activePage, totalPages).map((item) => (
+                  <PaginationItem key={item.key}>
+                    {item.type === "ellipsis" ? (
+                      <PaginationEllipsis />
+                    ) : (
+                      <PaginationLink
+                        isActive={item.value === activePage}
+                        onClick={() => setCurrentPage(item.value!)}
+                      >
+                        {item.value}
+                      </PaginationLink>
+                    )}
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    disabled={activePage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
           </>
         )}
       </CardContent>

@@ -92,3 +92,47 @@ test("disabled setup is clear and private rules can be saved", async ({ page }) 
   await page.getByRole("button", { name: "Save privacy policy" }).click();
   expect((await request).postDataJSON()).toEqual({ policy: "review", terms: [{ kind: "PROJECT", value: "Internal Project" }] });
 });
+
+test("pagination limits items to 20 per page and supports navigation", async ({ page }) => {
+  const documents = Array.from({ length: 25 }, (_, i) => ({
+    id: `doc-${i + 1}`,
+    name: `Document ${i + 1}.txt`,
+    url: "https://example.sharepoint.com/doc",
+    status: "ready",
+    error_code: null,
+    languages: ["en"],
+    modified_at: null,
+    requires_attention: false,
+    segments: [],
+    analysis: null,
+  }));
+
+  await page.route("**/api/sharepoint/search**", async (route) => {
+    const postData = route.request().postDataJSON() as { q?: string; cursor?: string | null } | null;
+    const cursor = postData?.cursor;
+    if (!cursor) {
+      await route.fulfill({
+        json: { items: documents.slice(0, 20), next_cursor: "cursor-page-2" },
+      });
+    } else {
+      await route.fulfill({
+        json: { items: documents.slice(20), next_cursor: null },
+      });
+    }
+  });
+
+  await page.goto("/sharepoint");
+  await expect(page.getByRole("navigation", { name: "pagination" })).toBeVisible();
+  await expect(page.getByText("Showing 20 documents (Max 20 per page)")).toBeVisible();
+
+  const nextBtn = page.getByRole("button", { name: "Go to next page" });
+  await expect(nextBtn).toBeEnabled();
+  await nextBtn.click();
+
+  await expect(page.getByText("Showing 5 documents (Max 20 per page)")).toBeVisible();
+  const prevBtn = page.getByRole("button", { name: "Go to previous page" });
+  await expect(prevBtn).toBeEnabled();
+  await prevBtn.click();
+
+  await expect(page.getByText("Showing 20 documents (Max 20 per page)")).toBeVisible();
+});
