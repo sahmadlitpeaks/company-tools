@@ -178,3 +178,39 @@ test("Tasks & Reminders table scrolls internally without page-level horizontal o
   expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth!);
   expect(metrics.tableContainerScrollWidth!).toBeGreaterThan(metrics.tableContainerClientWidth!);
 });
+
+test("sticky column in Tasks & Reminders retains solid opaque background on hover", async ({ page }) => {
+  const reminders = Array.from({ length: 5 }, (_, i) => ({
+    id: `rem-${i + 1}`,
+    title: `Task item ${i + 1} with a comprehensive deliverable description`,
+    category: "task",
+    status: "pending",
+    target_date: "2026-10-15",
+    lead_days: 7,
+    recipient_email: "responsible.person@example.com",
+    responsible_name: "Responsible Person",
+    document_id: "doc-1",
+    document_name: "Delivery Plan 2026.docx",
+    document_path: "/Shared Documents/General/Delivery Plan 2026.docx",
+    document_url: "https://example.sharepoint.com/doc",
+    amount: 120000,
+    currency: "USD",
+    notes: "Critical milestone",
+  }));
+
+  await page.route("**/api/sharepoint/reminders**", (route) => route.fulfill({ json: reminders }));
+  await page.goto("/sharepoint");
+  await page.getByRole("tab", { name: "Tasks & Reminders" }).click();
+
+  const firstRow = page.locator("tbody tr").first();
+  await firstRow.hover();
+
+  const isOpaque = await page.evaluate(() => {
+    const stickyCell = document.querySelector("tbody tr td.sticky");
+    if (!stickyCell) return false;
+    const bg = window.getComputedStyle(stickyCell).backgroundColor;
+    return !bg.includes("/") || bg.includes("/ 1)");
+  });
+
+  expect(isOpaque).toBe(true);
+});

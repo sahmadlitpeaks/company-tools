@@ -290,8 +290,8 @@ function Documents({
                       {docs.map((doc) => {
                         const badge = getStatusBadgeInfo(doc.status);
                         return (
-                          <TableRow key={doc.id} className="group/row hover:bg-muted/40 transition-colors">
-                            <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-muted/40 transition-colors border-e border-border/70 min-w-[280px] max-w-[450px] align-middle py-3.5 px-3.5">
+                          <TableRow key={doc.id} className="group/row">
+                            <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-table-row-hover transition-colors border-e border-border/70 min-w-[280px] max-w-[450px] align-middle py-3.5 px-3.5">
                               <span dir="auto" className="block break-words whitespace-normal font-semibold text-sm sm:text-base text-foreground">
                                 {doc.name}
                               </span>

@@ -685,8 +685,8 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                       const isUrgent = daysLeft <= 30 && daysLeft >= 0 && r.status === "pending";
 
                       return (
-                        <TableRow key={r.id} className="group/row hover:bg-muted/40 transition-colors">
-                          <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-muted/40 transition-colors border-e border-border/70 min-w-[300px] max-w-[380px] align-middle py-3.5 px-3.5">
+                        <TableRow key={r.id} className="group/row">
+                          <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-table-row-hover transition-colors border-e border-border/70 min-w-[300px] max-w-[380px] align-middle py-3.5 px-3.5">
                             <p
                               className={cn(
                                 "text-sm font-semibold leading-snug whitespace-normal break-words text-foreground",
