@@ -653,7 +653,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                 <Table className="w-full min-w-[1350px]">
                   <TableHeader>
                     <TableRow className="group/row hover:bg-transparent border-b">
-                      <TableHead className="sticky left-0 z-20 bg-muted border-e border-border/70 min-w-[300px] max-w-[380px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                      <TableHead className="sticky left-0 z-20 bg-table-header border-e border-border/70 min-w-[300px] max-w-[380px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
                         Item & Category
                       </TableHead>
                       <TableHead className="min-w-[260px] max-w-[340px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">

@@ -269,7 +269,7 @@ function Documents({
                   <Table className="w-full min-w-[800px]">
                     <TableHeader>
                       <TableRow className="group/row hover:bg-transparent border-b">
-                        <TableHead className="sticky left-0 z-20 bg-muted border-e border-border/70 min-w-[280px] max-w-[450px] py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
+                        <TableHead className="sticky left-0 z-20 bg-table-header border-e border-border/70 min-w-[280px] max-w-[450px] py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
                           Document & Folder Path
                         </TableHead>
                         <TableHead className="min-w-[160px] whitespace-nowrap py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
