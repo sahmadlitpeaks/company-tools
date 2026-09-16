@@ -499,19 +499,19 @@ function ConnectedSource({
           <TabsList className="w-full justify-start h-auto flex-wrap gap-2 p-1.5 bg-muted/60 border border-border rounded-none">
             <TabsTrigger
               value="documents"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
               <FolderOpen className="size-4 text-primary" /> Documents Library
             </TabsTrigger>
             <TabsTrigger
               value="chat"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
               <Bot className="size-4 text-primary" /> AI Document Assistant
             </TabsTrigger>
             <TabsTrigger
               value="reminders"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold data-active:border-b-2 data-active:border-b-primary transition-colors shadow-xs"
+              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
               <Calendar className="size-4 text-sky-500" /> Tasks & Reminders
             </TabsTrigger>
