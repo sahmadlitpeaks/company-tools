@@ -136,3 +136,45 @@ test("pagination limits items to 20 per page and supports navigation", async ({ 
 
   await expect(page.getByText("Showing 20 documents (Max 20 per page)")).toBeVisible();
 });
+
+test("Tasks & Reminders table scrolls internally without page-level horizontal overflow", async ({ page }) => {
+  const reminders = Array.from({ length: 5 }, (_, i) => ({
+    id: `rem-${i + 1}`,
+    title: `Task item ${i + 1} with a comprehensive deliverable description`,
+    category: "task",
+    status: "pending",
+    target_date: "2026-10-15",
+    lead_days: 7,
+    recipient_email: "responsible.person@example.com",
+    responsible_name: "Responsible Person",
+    document_id: "doc-1",
+    document_name: "Delivery Plan 2026.docx",
+    document_path: "/Shared Documents/General/Delivery Plan 2026.docx",
+    document_url: "https://example.sharepoint.com/doc",
+    amount: 120000,
+    currency: "USD",
+    notes: "Critical milestone",
+  }));
+
+  await page.route("**/api/sharepoint/reminders**", (route) => route.fulfill({ json: reminders }));
+  await page.goto("/sharepoint");
+  await page.getByRole("tab", { name: "Tasks & Reminders" }).click();
+
+  const metrics = await page.evaluate(() => {
+    const tableContainer = document.querySelector('[data-slot="table-container"]');
+    return {
+      windowInnerWidth: window.innerWidth,
+      htmlScrollWidth: document.documentElement.scrollWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      mainClientWidth: document.querySelector("main")?.clientWidth,
+      mainScrollWidth: document.querySelector("main")?.scrollWidth,
+      tableContainerClientWidth: tableContainer?.clientWidth,
+      tableContainerScrollWidth: tableContainer?.scrollWidth,
+    };
+  });
+
+  expect(metrics.htmlScrollWidth).toBeLessThanOrEqual(metrics.windowInnerWidth);
+  expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.windowInnerWidth);
+  expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth!);
+  expect(metrics.tableContainerScrollWidth!).toBeGreaterThan(metrics.tableContainerClientWidth!);
+});

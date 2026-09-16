@@ -317,16 +317,16 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4 p-3.5">
+      <CardContent className="space-y-4 p-3.5 min-w-0 max-w-full">
         {/* Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-          <div className="p-3.5 border border-border bg-card space-y-1">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs min-w-0">
+          <div className="p-3.5 border border-border bg-card space-y-1 min-w-0">
             <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
               <Calendar className="size-3.5 text-primary" /> Total Tracked
             </span>
             <span className="text-xl sm:text-2xl font-bold font-mono text-foreground block">{totalCount}</span>
           </div>
-          <div className="p-3.5 border border-border bg-card space-y-1">
+          <div className="p-3.5 border border-border bg-card space-y-1 min-w-0">
             <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
               <Clock className="size-3.5 text-amber-600" /> Due &le; 30 Days
             </span>
@@ -334,7 +334,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               {upcoming30Days}
             </span>
           </div>
-          <div className="p-3.5 border border-border bg-card space-y-1">
+          <div className="p-3.5 border border-border bg-card space-y-1 min-w-0">
             <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
               <ListTodo className="size-3.5 text-sky-600" /> Pending Action
             </span>
@@ -342,7 +342,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               {pendingTasksCount}
             </span>
           </div>
-          <div className="p-3.5 border border-border bg-card space-y-1">
+          <div className="p-3.5 border border-border bg-card space-y-1 min-w-0">
             <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
               <CheckCircle2 className="size-3.5 text-emerald-600" /> Completed
             </span>
@@ -350,7 +350,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
               {completedCount}
             </span>
           </div>
-          <div className="p-3.5 border border-border bg-card space-y-1 col-span-2 sm:col-span-1">
+          <div className="p-3.5 border border-border bg-card space-y-1 col-span-2 sm:col-span-1 min-w-0">
             <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold">
               <DollarSign className="size-3.5 text-emerald-600" /> Tracked Value
             </span>
@@ -361,9 +361,9 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
         </div>
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pt-1 min-w-0">
           {/* Category Filter Buttons */}
-          <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+          <div className="flex flex-wrap gap-2 text-xs sm:text-sm min-w-0">
             {[
               { id: "all" as CategoryFilter, label: "All Items" },
               { id: "expiry" as CategoryFilter, label: "Expiries & Renewals" },
@@ -382,7 +382,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto min-w-0">
             {/* Status Select Filter */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Status:</span>
@@ -408,7 +408,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
             </div>
 
             {/* Keyword Search Input */}
-            <div className="w-full sm:w-64">
+            <div className="w-full sm:w-64 min-w-0 flex-1 sm:flex-initial">
               <InputGroup>
                 <InputGroupAddon align="inline-start">
                   <Search className="size-3.5 text-muted-foreground" />
@@ -640,7 +640,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
           {/* Table View (Horizontally Scrollable) */}
           {viewMode === "table" && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0 max-w-full">
               <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
                 <span>
                   Showing <strong>{filtered.length === 0 ? 0 : startIndex + 1}–{endIndex}</strong> of <strong>{filtered.length}</strong> items
@@ -649,7 +649,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                   ↔ Scroll horizontally to view all columns
                 </span>
               </div>
-              <div className="w-full [&>div]:border [&>div]:border-border [&>div]:bg-card">
+              <div className="w-full min-w-0 max-w-full [&>div]:border [&>div]:border-border [&>div]:bg-card">
                 <Table className="w-full min-w-[1350px]">
                   <TableHeader>
                     <TableRow className="group/row hover:bg-transparent border-b">

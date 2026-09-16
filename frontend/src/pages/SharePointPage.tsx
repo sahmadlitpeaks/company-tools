@@ -451,8 +451,8 @@ function ConnectedSource({
   return (
     <div className="space-y-4 min-w-0 max-w-full">
       {/* Streamlined Executive Controls Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border bg-card min-w-0">
+        <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
           <Badge
             variant={status.connected ? "outline" : "secondary"}
             className={
@@ -487,7 +487,7 @@ function ConnectedSource({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           {/* Primary Action Button: Sync Now */}
           {status.connected && (
             <Button
