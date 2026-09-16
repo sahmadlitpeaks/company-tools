@@ -598,24 +598,24 @@ function ConnectedSource({
       {/* Main Tabs: 4 Pillars layout */}
       {status.connected ? (
         <Tabs defaultValue="documents" className="space-y-4 min-w-0 max-w-full">
-          <TabsList className="w-full justify-start h-auto flex-wrap gap-2 p-1.5 bg-muted/60 border border-border rounded-none">
+          <TabsList className="w-full justify-start h-auto min-h-14 sm:min-h-16 flex-wrap items-center gap-2.5 p-2 sm:p-2.5 bg-muted/60 border border-border rounded-none">
             <TabsTrigger
               value="documents"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
+              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
-              <FolderOpen className="size-4 text-primary" /> Documents Library
+              <FolderOpen className="size-4 sm:size-5 text-primary" /> Documents Library
             </TabsTrigger>
             <TabsTrigger
               value="chat"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
+              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
-              <Bot className="size-4 text-primary" /> AI Document Assistant
+              <Bot className="size-4 sm:size-5 text-primary" /> AI Document Assistant
             </TabsTrigger>
             <TabsTrigger
               value="reminders"
-              className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-4 py-2.5 font-medium text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
+              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
             >
-              <Calendar className="size-4 text-sky-500" /> Tasks & Reminders
+              <Calendar className="size-4 sm:size-5 text-sky-500" /> Tasks & Reminders
             </TabsTrigger>
           </TabsList>
 

@@ -410,26 +410,26 @@ export default function DocumentDialog({
               {/* Main Content Tabs */}
               {doc.analysis ? (
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                  <TabsList className="w-full justify-start h-auto flex-wrap gap-1.5 p-1.5 bg-muted/40 border border-border rounded-none">
-                    <TabsTrigger value="analysis" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                  <TabsList className="w-full justify-start h-auto min-h-12 sm:min-h-14 flex-wrap items-center gap-2 p-2 bg-muted/40 border border-border rounded-none">
+                    <TabsTrigger value="analysis" className="flex items-center gap-2 rounded-none text-xs sm:text-sm h-9 sm:h-10 px-3.5 font-semibold">
                       <CheckSquare className="size-4 text-primary" />
                       Findings
                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
                         {findingsCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="expiries" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                    <TabsTrigger value="expiries" className="flex items-center gap-2 rounded-none text-xs sm:text-sm h-9 sm:h-10 px-3.5 font-semibold">
                       <Calendar className="size-4 text-amber-500" />
                       Expiries & Pricing
                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
                         {expiriesCount + commercialsCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="chat" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                    <TabsTrigger value="chat" className="flex items-center gap-2 rounded-none text-xs sm:text-sm h-9 sm:h-10 px-3.5 font-semibold">
                       <Bot className="size-4 text-sky-500" />
                       Luna Chat
                     </TabsTrigger>
-                    <TabsTrigger value="segments" className="flex items-center gap-2 rounded-none text-xs sm:text-sm px-3.5 py-2 font-medium">
+                    <TabsTrigger value="segments" className="flex items-center gap-2 rounded-none text-xs sm:text-sm h-9 sm:h-10 px-3.5 font-semibold">
                       <Layers className="size-4 text-muted-foreground" />
                       Source Excerpts
                       <Badge variant="secondary" className="px-1.5 py-0.5 text-xs font-mono font-semibold rounded-none">
