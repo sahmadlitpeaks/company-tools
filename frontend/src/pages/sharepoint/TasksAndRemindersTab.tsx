@@ -7,6 +7,8 @@ import {
   Clock,
   DollarSign,
   ExternalLink,
+  LayoutGrid,
+  LayoutList,
   ListTodo,
   RefreshCw,
   RotateCcw,
@@ -48,6 +50,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [busyId, setBusyId] = useState<string | null>(null);
   const { notify } = useToast();
 
@@ -201,7 +204,7 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <Card className="rounded-none border-border">
+    <Card className="rounded-none border-border min-w-0 max-w-full overflow-hidden">
       <CardHeader className="p-3.5 pb-2 border-b border-border/70 bg-muted/20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -353,6 +356,32 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                 )}
               </InputGroup>
             </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center border border-border shrink-0">
+              <Button
+                type="button"
+                variant={viewMode === "table" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("table")}
+                className="h-9 px-2.5 text-xs font-semibold rounded-none gap-1.5"
+                title="Table View (Horizontally Scrollable)"
+              >
+                <LayoutList className="size-3.5" />
+                Table
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === "cards" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("cards")}
+                className="h-9 px-2.5 text-xs font-semibold rounded-none gap-1.5"
+                title="Card View"
+              >
+                <LayoutGrid className="size-3.5" />
+                Cards
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -371,8 +400,9 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
         {/* Results Stream */}
         {filtered.length > 0 && (
           <>
-            {/* Mobile View (Cards) */}
-            <div className="space-y-3 md:hidden">
+            {/* Card View */}
+            {viewMode === "cards" && (
+              <div className="space-y-3">
               {filtered.map((r) => {
                 const daysLeft = Math.ceil(
                   (new Date(r.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -536,231 +566,258 @@ export function TasksAndRemindersTab({ isAdmin }: { isAdmin: boolean }) {
                 );
               })}
             </div>
+          )}
 
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto border border-border">
-              <Table className="table-fixed w-full min-w-[1050px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[28%] min-w-[200px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Item & Category</TableHead>
-                    <TableHead className="w-[20%] min-w-[150px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Document & Path</TableHead>
-                    <TableHead className="w-[14%] min-w-[115px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Target Date</TableHead>
-                    <TableHead className="w-[10%] min-w-[85px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Value</TableHead>
-                    <TableHead className="w-[12%] min-w-[100px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">Responsible</TableHead>
-                    <TableHead className="w-[115px] min-w-[115px] text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">Status</TableHead>
-                    <TableHead className="w-[190px] min-w-[190px] text-end py-3 px-3.5">
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((r) => {
-                    const daysLeft = Math.ceil(
-                      (new Date(r.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-                    );
-                    const isOverdue = daysLeft < 0 && r.status === "pending";
-                    const isUrgent = daysLeft <= 30 && daysLeft >= 0 && r.status === "pending";
+          {/* Table View (Horizontally Scrollable) */}
+          {viewMode === "table" && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                <span>
+                  Showing <strong>{filtered.length}</strong> items
+                </span>
+                <span className="font-mono text-xs text-muted-foreground font-medium">
+                  ↔ Scroll horizontally to view all columns
+                </span>
+              </div>
+              <div className="w-full border border-border overflow-x-auto">
+                <Table className="w-full min-w-[1450px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[320px] max-w-[420px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                        Item & Category
+                      </TableHead>
+                      <TableHead className="min-w-[280px] max-w-[360px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                        Document & Path
+                      </TableHead>
+                      <TableHead className="min-w-[170px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                        Target Date
+                      </TableHead>
+                      <TableHead className="min-w-[140px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                        Value
+                      </TableHead>
+                      <TableHead className="min-w-[240px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
+                        Responsible
+                      </TableHead>
+                      <TableHead className="min-w-[130px] whitespace-nowrap text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">
+                        Status
+                      </TableHead>
+                      <TableHead className="min-w-[210px] whitespace-nowrap text-end py-3 px-3.5">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((r) => {
+                      const daysLeft = Math.ceil(
+                        (new Date(r.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                      );
+                      const isOverdue = daysLeft < 0 && r.status === "pending";
+                      const isUrgent = daysLeft <= 30 && daysLeft >= 0 && r.status === "pending";
 
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell className="whitespace-normal align-middle py-3.5 px-3.5">
-                          <p
-                            className={cn(
-                              "text-sm font-semibold leading-snug break-words line-clamp-2 text-foreground",
-                              r.status === "completed" && "line-through text-muted-foreground"
-                            )}
-                            title={r.title}
-                          >
-                            {r.title}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="min-w-[320px] max-w-[420px] align-middle py-3.5 px-3.5">
+                            <p
+                              className={cn(
+                                "text-sm font-semibold leading-snug whitespace-normal break-words text-foreground",
+                                r.status === "completed" && "line-through text-muted-foreground"
+                              )}
+                              title={r.title}
+                            >
+                              {r.title}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-1">
+                              <span
+                                className={cn(
+                                  "size-2 rounded-full shrink-0",
+                                  r.category === "expiry"
+                                    ? "bg-rose-500"
+                                    : r.category === "renewal"
+                                    ? "bg-blue-500"
+                                    : r.category === "task"
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
+                                )}
+                              />
+                              <span className="capitalize font-medium">{r.category.replace(/_/g, " ")}</span>
+                              {r.notes && (
+                                <span className="text-muted-foreground break-words" title={r.notes}>
+                                  · {r.notes}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="min-w-[280px] max-w-[360px] align-middle py-3.5 px-3.5">
+                            <div className="flex items-center gap-1.5">
+                              <p
+                                className="font-semibold text-xs sm:text-sm leading-snug break-words whitespace-normal text-foreground"
+                                title={r.document_name ?? undefined}
+                              >
+                                {r.document_name}
+                              </p>
+                              {r.document_url && (
+                                <a
+                                  href={r.document_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:text-primary/80 shrink-0 inline-flex items-center p-0.5"
+                                  title="Open in SharePoint"
+                                >
+                                  <ExternalLink className="size-3.5" />
+                                </a>
+                              )}
+                            </div>
+                            <div
+                              className="text-xs text-muted-foreground font-mono break-words mt-1"
+                              title={r.document_path || "SharePoint"}
+                            >
+                              {r.document_path || "SharePoint"}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="min-w-[170px] whitespace-nowrap text-xs sm:text-sm font-mono align-middle py-3.5 px-3.5">
+                            <div className="font-semibold text-foreground">{r.target_date}</div>
                             <span
                               className={cn(
-                                "size-2 rounded-full shrink-0",
-                                r.category === "expiry"
-                                  ? "bg-rose-500"
-                                  : r.category === "renewal"
-                                  ? "bg-blue-500"
-                                  : r.category === "task"
-                                  ? "bg-emerald-500"
-                                  : "bg-amber-500"
+                                "text-xs font-semibold block mt-0.5",
+                                r.status === "completed"
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : isOverdue
+                                  ? "text-destructive font-bold"
+                                  : isUrgent
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-muted-foreground"
                               )}
-                            />
-                            <span className="capitalize font-medium">{r.category.replace(/_/g, " ")}</span>
-                            {r.notes && (
-                              <span
-                                className="text-muted-foreground truncate max-w-[160px]"
-                                title={r.notes}
-                              >
-                                · {r.notes}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="whitespace-normal align-middle py-3.5 px-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <p
-                              className="font-semibold text-xs sm:text-sm line-clamp-2 leading-snug break-words text-foreground"
-                              title={r.document_name ?? undefined}
                             >
-                              {r.document_name}
-                            </p>
-                            {r.document_url && (
-                              <a
-                                href={r.document_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:text-primary/80 shrink-0 inline-flex items-center p-0.5"
-                                title="Open in SharePoint"
-                              >
-                                <ExternalLink className="size-3.5" />
-                              </a>
-                            )}
-                          </div>
-                          <div
-                            className="text-xs text-muted-foreground font-mono truncate mt-1"
-                            title={r.document_path || "SharePoint"}
-                          >
-                            {r.document_path || "SharePoint"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="text-xs sm:text-sm font-mono align-middle py-3.5 px-3.5">
-                          <div className="font-semibold text-foreground">{r.target_date}</div>
-                          <span
-                            className={cn(
-                              "text-xs font-semibold block mt-0.5",
-                              r.status === "completed"
-                                ? "text-emerald-600 dark:text-emerald-400"
+                              {r.status === "completed"
+                                ? "✓ Done"
                                 : isOverdue
-                                ? "text-destructive font-bold"
-                                : isUrgent
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {r.status === "completed"
-                              ? "✓ Done"
-                              : isOverdue
-                              ? `🚨 ${Math.abs(daysLeft)}d overdue`
-                              : `⏳ ${daysLeft}d left`}
-                          </span>
-                          <span className="text-xs text-muted-foreground block font-sans capitalize mt-0.5">
-                            {r.lead_days === 0
-                              ? "Due today"
-                              : [1, 3, 5].includes(r.lead_days)
-                              ? `3x final week (${r.lead_days}d)`
-                              : [7, 14, 21].includes(r.lead_days)
-                              ? `Weekly (${r.lead_days}d)`
-                              : `Monthly (${r.lead_days}d)`}
-                          </span>
-                        </TableCell>
-
-                        <TableCell className="text-sm font-mono truncate align-middle py-3.5 px-3.5">
-                          {r.amount !== null ? (
-                            <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                              {r.amount.toLocaleString()} {r.currency || "USD"}
+                                ? `🚨 ${Math.abs(daysLeft)}d overdue`
+                                : `⏳ ${daysLeft}d left`}
                             </span>
-                          ) : (
-                            <span className="text-muted-foreground/60">—</span>
-                          )}
-                        </TableCell>
+                            <span className="text-xs text-muted-foreground block font-sans capitalize mt-0.5">
+                              {r.lead_days === 0
+                                ? "Due today"
+                                : [1, 3, 5].includes(r.lead_days)
+                                ? `3x final week (${r.lead_days}d)`
+                                : [7, 14, 21].includes(r.lead_days)
+                                ? `Weekly (${r.lead_days}d)`
+                                : `Monthly (${r.lead_days}d)`}
+                            </span>
+                          </TableCell>
 
-                        <TableCell
-                          className="text-xs sm:text-sm text-foreground/80 align-middle py-3.5 px-3.5"
-                          title={r.recipient_email || r.responsible_name || "Unassigned"}
-                        >
-                          <span className="line-clamp-2 leading-snug break-all font-medium">
-                            {r.responsible_name || r.recipient_email || "Unassigned"}
-                          </span>
-                        </TableCell>
-
-                        <TableCell className="w-[115px] min-w-[115px] text-center whitespace-nowrap align-middle py-3.5 px-2">
-                          <Badge
-                            variant={
-                              r.status === "completed"
-                                ? "outline"
-                                : r.status === "sent"
-                                ? "default"
-                                : r.status === "dismissed"
-                                ? "outline"
-                                : "secondary"
-                            }
-                            className={cn(
-                              "capitalize text-xs font-semibold rounded-none py-1 px-2.5",
-                              r.status === "completed" &&
-                                "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
+                          <TableCell className="min-w-[140px] whitespace-nowrap text-sm font-mono align-middle py-3.5 px-3.5">
+                            {r.amount !== null ? (
+                              <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                {r.amount.toLocaleString()} {r.currency || "USD"}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/60">—</span>
                             )}
-                          >
-                            {r.status === "completed" ? "✓ Done" : r.status}
-                          </Badge>
-                        </TableCell>
+                          </TableCell>
 
-                        <TableCell className="w-[190px] min-w-[190px] text-end whitespace-nowrap align-middle py-3.5 px-3.5">
-                          <div className="flex items-center justify-end gap-2 flex-nowrap shrink-0">
-                            {r.status === "pending" && (
-                              <>
+                          <TableCell
+                            className="min-w-[240px] whitespace-nowrap text-xs sm:text-sm text-foreground/80 align-middle py-3.5 px-3.5"
+                            title={r.recipient_email || r.responsible_name || "Unassigned"}
+                          >
+                            <div className="font-semibold text-foreground">
+                              {r.responsible_name || "Unassigned"}
+                            </div>
+                            {r.recipient_email && (
+                              <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                                {r.recipient_email}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="min-w-[130px] whitespace-nowrap text-center align-middle py-3.5 px-2">
+                            <Badge
+                              variant={
+                                r.status === "completed"
+                                  ? "outline"
+                                  : r.status === "sent"
+                                  ? "default"
+                                  : r.status === "dismissed"
+                                  ? "outline"
+                                  : "secondary"
+                              }
+                              className={cn(
+                                "capitalize text-xs font-semibold rounded-none py-1 px-2.5",
+                                r.status === "completed" &&
+                                  "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10"
+                              )}
+                            >
+                              {r.status === "completed" ? "✓ Done" : r.status}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell className="min-w-[210px] whitespace-nowrap text-end align-middle py-3.5 px-3.5">
+                            <div className="flex items-center justify-end gap-2 flex-nowrap shrink-0">
+                              {r.status === "pending" && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={busyId === r.id}
+                                    onClick={() => void completeTask(r.id)}
+                                    title="Mark as completed"
+                                    className="rounded-none h-8 px-3 text-xs font-semibold gap-1.5 shrink-0 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30"
+                                  >
+                                    <Check data-icon="inline-start" className="size-3.5" />
+                                    Done
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    disabled={busyId === r.id}
+                                    onClick={() => void dismissReminder(r.id)}
+                                    title="Dismiss item"
+                                    className="rounded-none size-8 shrink-0 text-destructive/80 hover:text-destructive hover:bg-destructive/15"
+                                  >
+                                    <BellOff className="size-4" />
+                                    <span className="sr-only">Dismiss</span>
+                                  </Button>
+                                </>
+                              )}
+
+                              {(r.status === "completed" || r.status === "dismissed") && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={busyId === r.id}
+                                  onClick={() => void reopenTask(r.id)}
+                                  title="Re-open item"
+                                  className="rounded-none h-8 px-3 text-xs font-medium gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
+                                >
+                                  <RotateCcw data-icon="inline-start" className="size-3.5" />
+                                  Re-open
+                                </Button>
+                              )}
+
+                              {isAdmin && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   disabled={busyId === r.id}
-                                  onClick={() => void completeTask(r.id)}
-                                  title="Mark as completed"
-                                  className="rounded-none h-8 px-3 text-xs font-semibold gap-1.5 shrink-0 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30"
+                                  onClick={() => void testSend(r.id)}
+                                  title="Send test email & Teams notification"
+                                  className="rounded-none h-8 px-2.5 text-xs gap-1.5 shrink-0"
                                 >
-                                  <Check data-icon="inline-start" className="size-3.5" />
-                                  Done
+                                  <Send data-icon="inline-start" className="size-3.5" />
+                                  Test
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  disabled={busyId === r.id}
-                                  onClick={() => void dismissReminder(r.id)}
-                                  title="Dismiss item"
-                                  className="rounded-none size-8 shrink-0 text-destructive/80 hover:text-destructive hover:bg-destructive/15"
-                                >
-                                  <BellOff className="size-4" />
-                                  <span className="sr-only">Dismiss</span>
-                                </Button>
-                              </>
-                            )}
-
-                            {(r.status === "completed" || r.status === "dismissed") && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={busyId === r.id}
-                                onClick={() => void reopenTask(r.id)}
-                                title="Re-open item"
-                                className="rounded-none h-8 px-3 text-xs font-medium gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
-                              >
-                                <RotateCcw data-icon="inline-start" className="size-3.5" />
-                                Re-open
-                              </Button>
-                            )}
-
-                            {isAdmin && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busyId === r.id}
-                                onClick={() => void testSend(r.id)}
-                                title="Send test email & Teams notification"
-                                className="rounded-none h-8 px-2.5 text-xs gap-1.5 shrink-0"
-                              >
-                                <Send data-icon="inline-start" className="size-3.5" />
-                                Test
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
+          )}
           </>
         )}
       </CardContent>

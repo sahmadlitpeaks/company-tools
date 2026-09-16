@@ -100,7 +100,7 @@ function PrivacyForm({
 
         <Field className="space-y-1.5">
           <FieldLabel htmlFor="sharepoint-terms" className="text-sm font-semibold text-foreground">
-            Additional Private Names & Terms to Redact
+            Additional private names and terms
           </FieldLabel>
           <Textarea
             id="sharepoint-terms"

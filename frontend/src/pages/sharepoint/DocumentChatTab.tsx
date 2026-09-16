@@ -237,7 +237,7 @@ export function DocumentChatTab({
                         components={{
                           table: ({ children }) => (
                             <div className="overflow-x-auto my-2.5 border border-border bg-card">
-                              <table className="w-full text-xs sm:text-sm border-collapse">
+                              <table className="w-full min-w-max text-xs sm:text-sm border-collapse">
                                 {children}
                               </table>
                             </div>
