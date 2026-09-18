@@ -14,7 +14,15 @@ from app.services.sharepoint.analysis import analyze, payload_hash
 from app.services.sharepoint.common import SharePointError, decrypt, digest, encrypt, is_reviewer, now
 from app.services.sharepoint.graph import GraphClient, application_token, graph_url, item_path
 from app.services.sharepoint.privacy import PIPELINE_VERSION, preprocess
-from app.services.sharepoint.store import authorize_document, enqueue, in_live_scope, purge, scope_key, source_for
+from app.services.sharepoint.store import (
+    authorize_document,
+    enqueue,
+    in_live_scope,
+    purge,
+    purge_document_reminders,
+    scope_key,
+    source_for,
+)
 
 log = logging.getLogger(__name__)
 LEASE_SECONDS = 180
@@ -155,10 +163,14 @@ async def discover(source_id, owner, graph):
                     doc.deleted = True
                     doc.in_scope = False
                     purge(doc, "deleted")
+                    if doc.id:
+                        await purge_document_reminders(db, doc.id)
                     doc.filename = doc.web_url = doc.path = ""
                     continue
                 if doc.version != item.get("eTag", "") or doc.deleted:
                     purge(doc)
+                    if doc.id:
+                        await purge_document_reminders(db, doc.id)
                 doc.deleted = False
                 doc.version = item.get("eTag", "")
                 doc.parent_id = (item.get("parentReference") or {}).get("id")
@@ -176,14 +188,22 @@ async def discover(source_id, owner, graph):
                         if doc.seen_generation != generation:
                             doc.deleted = True
                             purge(doc, "deleted")
+                            if doc.id:
+                                await purge_document_reminders(db, doc.id)
                 for doc in indexed.values():
                     included = ancestry(doc, indexed, folder) and not doc.is_folder
                     if doc.in_scope and not included:
                         purge(doc, "out_of_scope")
+                        if doc.id:
+                            await purge_document_reminders(db, doc.id)
                     elif included and not doc.in_scope:
                         purge(doc)
+                        if doc.id:
+                            await purge_document_reminders(db, doc.id)
                     elif included and doc.segments and doc.payload_hash != payload_hash(doc.segments):
                         purge(doc)
+                        if doc.id:
+                            await purge_document_reminders(db, doc.id)
                     doc.in_scope = included
                     if not included:
                         doc.filename = doc.web_url = doc.path = ""
@@ -202,6 +222,8 @@ async def process_document(source_id, owner, document_id, graph):
             return
         if source.policy == "skip":
             purge(doc, "ai_skipped")
+            if doc.id:
+                await purge_document_reminders(db, doc.id)
             await db.commit()
             return
         policy, policy_version = source.policy, source.policy_version
@@ -280,6 +302,8 @@ async def process_document(source_id, owner, document_id, graph):
             doc.analysis = None
             if error.code in ("document_changed_sync_required", "document_access_denied"):
                 purge(doc, "failed")
+                if doc.id:
+                    await purge_document_reminders(db, doc.id)
                 doc.error_code = error.code
             run = await db.get(SharePointRun, uuid.UUID(live_source.active_run_id))
             run.failed += 1

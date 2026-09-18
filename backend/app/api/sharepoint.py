@@ -19,8 +19,8 @@ from app.services.sharepoint.chat import ask_central, ask_document
 from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
 from app.services.sharepoint.privacy import restore
-from app.services.sharepoint.reminders import deliver_reminder, run_sharepoint_reminders
-from app.services.sharepoint.store import authorize_document, enqueue, public_document, purge, run_info, scope_key, source_for
+from app.services.sharepoint.reminders import _calculate_reminder_date, deliver_reminder, run_sharepoint_reminders
+from app.services.sharepoint.store import authorize_document, enqueue, public_document, purge, purge_document_reminders, run_info, scope_key, source_for
 
 
 async def same_origin(request: Request):
@@ -145,6 +145,8 @@ async def update_rules(body: RulesIn, user=Depends(get_current_admin), db: Async
     source.policy_version += 1
     for doc in (await db.scalars(select(SharePointDocument).where(SharePointDocument.source_id == source.id, SharePointDocument.in_scope.is_(True)))).all():
         purge(doc, "ai_skipped" if body.policy == "skip" else "queued")
+        if doc.id:
+            await purge_document_reminders(db, doc.id)
     record(db, user=user, action="policy", entity_type="sharepoint", summary="Updated document privacy policy; previous analyses invalidated")
     return {"ok": True}
 
@@ -245,6 +247,8 @@ async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: Asy
         raise SharePointError("retry_not_available", 409)
     # A retry always repeats sanitization and review; old approval is discarded.
     purge(doc)
+    if doc.id:
+        await purge_document_reminders(db, doc.id)
     return run_info(await enqueue(db, source, user.id))
 
 
@@ -265,9 +269,13 @@ async def central_chat(body: CentralChatIn, user=Depends(get_current_user), db: 
 async def list_reminders(category: str | None = None, status: str | None = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     source = await source_for(db)
     stmt = (
-        select(SharePointReminder, SharePointDocument.filename, SharePointDocument.path, SharePointDocument.web_url)
+        select(SharePointReminder, SharePointDocument)
         .join(SharePointDocument, SharePointReminder.document_id == SharePointDocument.id)
-        .where(SharePointReminder.source_id == source.id, SharePointDocument.deleted == False)
+        .where(
+            SharePointReminder.source_id == source.id,
+            SharePointDocument.deleted == False,
+            SharePointDocument.in_scope == True,
+        )
     )
     if status:
         stmt = stmt.where(SharePointReminder.status == status)
@@ -275,27 +283,53 @@ async def list_reminders(category: str | None = None, status: str | None = None,
         stmt = stmt.where(SharePointReminder.category == category)
     stmt = stmt.order_by(SharePointReminder.target_date.asc(), SharePointReminder.created_at.desc()).limit(150)
     rows = (await db.execute(stmt)).all()
+
+    graph = None
+    try:
+        token = await delegated_token(db, user)
+        graph = GraphClient(token)
+    except Exception:
+        return []
+
     results = []
-    for rem, fname, fpath, furl in rows:
-        results.append(ReminderOut(
-            id=str(rem.id),
-            document_id=str(rem.document_id),
-            document_name=fname,
-            document_path=fpath or fname,
-            document_url=furl,
-            title=rem.title,
-            category=rem.category,
-            target_date=rem.target_date,
-            reminder_date=rem.reminder_date,
-            lead_days=rem.lead_days,
-            responsible_name=rem.responsible_name,
-            recipient_email=rem.recipient_email,
-            amount=rem.amount,
-            currency=rem.currency,
-            status=rem.status,
-            notes=rem.notes,
-            sent_at=rem.sent_at.isoformat() if rem.sent_at else None,
-        ))
+    auth_doc_cache: dict[uuid.UUID, dict | None] = {}
+    for rem, doc in rows:
+        if doc.id in auth_doc_cache:
+            meta = auth_doc_cache[doc.id]
+            if not meta:
+                continue
+        else:
+            try:
+                meta = await authorize_document(db, user, source, doc, graph)
+                auth_doc_cache[doc.id] = meta
+            except SharePointError:
+                auth_doc_cache[doc.id] = None
+                continue
+
+        fname = doc.filename or meta.get("name", "Document")
+        furl = meta.get("webUrl") or doc.web_url or ""
+        fpath = doc.path or fname
+        results.append(
+            ReminderOut(
+                id=str(rem.id),
+                document_id=str(rem.document_id),
+                document_name=fname,
+                document_path=fpath,
+                document_url=furl,
+                title=rem.title,
+                category=rem.category,
+                target_date=rem.target_date,
+                reminder_date=rem.reminder_date,
+                lead_days=rem.lead_days,
+                responsible_name=rem.responsible_name,
+                recipient_email=rem.recipient_email,
+                amount=rem.amount,
+                currency=rem.currency,
+                status=rem.status,
+                notes=rem.notes,
+                sent_at=rem.sent_at.isoformat() if rem.sent_at else None,
+            )
+        )
     return results
 
 
@@ -309,6 +343,11 @@ async def test_send_reminder(reminder_id: uuid.UUID, user=Depends(get_current_ad
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
+    source = await source_for(db)
+    doc = await db.get(SharePointDocument, rem.document_id)
+    if not doc or doc.deleted or not doc.in_scope:
+        raise SharePointError("document_not_found", 404)
+    await authorize_document(db, user, source, doc)
     success = await deliver_reminder(db, rem)
     return {"id": str(rem.id), "success": success, "status": rem.status, "last_error": rem.last_error}
 
@@ -318,6 +357,11 @@ async def dismiss_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
+    source = await source_for(db)
+    doc = await db.get(SharePointDocument, rem.document_id)
+    if not doc or doc.deleted or not doc.in_scope:
+        raise SharePointError("document_not_found", 404)
+    await authorize_document(db, user, source, doc)
     rem.status = "dismissed"
     await db.commit()
     return {"id": str(rem.id), "status": "dismissed"}
@@ -328,6 +372,11 @@ async def complete_reminder(reminder_id: uuid.UUID, user=Depends(get_current_use
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
+    source = await source_for(db)
+    doc = await db.get(SharePointDocument, rem.document_id)
+    if not doc or doc.deleted or not doc.in_scope:
+        raise SharePointError("document_not_found", 404)
+    await authorize_document(db, user, source, doc)
     rem.status = "completed"
     await db.commit()
     return {"id": str(rem.id), "status": "completed"}
@@ -338,6 +387,11 @@ async def reopen_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user)
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
+    source = await source_for(db)
+    doc = await db.get(SharePointDocument, rem.document_id)
+    if not doc or doc.deleted or not doc.in_scope:
+        raise SharePointError("document_not_found", 404)
+    await authorize_document(db, user, source, doc)
     rem.status = "pending"
     await db.commit()
     return {"id": str(rem.id), "status": "pending"}
@@ -348,10 +402,16 @@ async def update_reminder(reminder_id: uuid.UUID, body: ReminderUpdateIn, user=D
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
+    source = await source_for(db)
+    doc = await db.get(SharePointDocument, rem.document_id)
+    if not doc or doc.deleted or not doc.in_scope:
+        raise SharePointError("document_not_found", 404)
+    await authorize_document(db, user, source, doc)
     if body.status is not None:
         rem.status = body.status
     if body.target_date is not None:
         rem.target_date = body.target_date
+        rem.reminder_date = _calculate_reminder_date(body.target_date, rem.lead_days)
     if body.responsible_name is not None:
         rem.responsible_name = body.responsible_name
     if body.notes is not None:

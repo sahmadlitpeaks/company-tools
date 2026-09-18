@@ -847,4 +847,320 @@ async def test_trigger_reminders_endpoint(client, auth, indexed, monkeypatch):
     assert "created" in data
 
 
+@pytest.mark.asyncio
+async def test_chat_privacy_outbound_prompt_sanitized_and_reply_restored(client, auth, indexed, monkeypatch):
+    """Issue #15: Outbound prompt contains placeholders [PERSON_1] and no PII; reply is restored."""
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
 
+    captured_prompt = []
+
+    class FakeChoice:
+        message = type("Message", (), {"content": "The reviewer is [PERSON_1]."})()
+
+    class FakeChatResponse:
+        choices = [FakeChoice()]
+        usage = type("Usage", (), {"prompt_tokens": 15, "completion_tokens": 5})()
+
+    async def fake_create(*args, **kwargs):
+        messages = kwargs.get("messages", [])
+        for m in messages:
+            captured_prompt.append(m["content"])
+        return FakeChatResponse()
+
+    monkeypatch.setattr("openai.resources.chat.completions.AsyncCompletions.create", fake_create)
+
+    resp = await client.post(
+        f"/api/sharepoint/documents/{indexed[2]}/chat",
+        headers=auth,
+        json={"messages": [{"role": "user", "content": "Who must review the proposal?"}]},
+    )
+    assert resp.status_code == 200
+    # The response reply must have [PERSON_1] restored to Alice
+    assert resp.json()["reply"] == "The reviewer is Alice."
+    # The outbound prompt sent to OpenAI must contain [PERSON_1] and NOT Alice!
+    full_outbound = " ".join(captured_prompt)
+    assert "[PERSON_1]" in full_outbound
+    assert "Alice" not in full_outbound
+
+
+@pytest.mark.asyncio
+async def test_chat_blocks_unapproved_document_under_review_policy(client, auth, indexed, monkeypatch):
+    """Issue #15: Under policy='review', an unapproved (awaiting_approval) document rejects chat."""
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.status = "awaiting_approval"
+        source = await db.get(SharePointSource, indexed[1])
+        source.policy = "review"
+        await db.commit()
+
+    resp = await client.post(
+        f"/api/sharepoint/documents/{indexed[2]}/chat",
+        headers=auth,
+        json={"messages": [{"role": "user", "content": "Summarize"}]},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "document_review_required"
+
+
+@pytest.mark.asyncio
+async def test_reminders_negative_authorization_filtering_and_mutations(client, auth, indexed, monkeypatch):
+    """Issue #16: Reminders list and mutations reject unauthorized documents."""
+    from app.services.sharepoint.reminders import populate_document_reminders
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.status = "ready"
+        analysis_data = {
+            "summary": "Auth test",
+            "expiries": [
+                {"title": "Secret Contract Expiry", "date": "2026-11-15", "category": "expiry", "responsible": "Admin"}
+            ],
+            "commercials": [], "deadlines": [], "tasks": [],
+        }
+        await populate_document_reminders(db, doc, analysis_data, indexed[1])
+
+    # 1. When permitted, reminders appear
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    resp = await client.get("/api/sharepoint/reminders?category=expiry", headers=auth)
+    assert resp.status_code == 200
+    reminders = [r for r in resp.json() if r["title"] == "Secret Contract Expiry"]
+    assert len(reminders) > 0
+    rem_id = reminders[0]["id"]
+
+    # 2. When denied, list_reminders hides them
+    async def denied(*args): raise SharePointError("document_access_denied", 403)
+    monkeypatch.setattr(graph.GraphClient, "can_read", denied)
+    resp_denied = await client.get("/api/sharepoint/reminders?category=expiry", headers=auth)
+    assert resp_denied.status_code == 200
+    assert not any(r["id"] == rem_id for r in resp_denied.json())
+
+    # 3. Mutations are blocked with 403 when user cannot read source document
+    assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/dismiss", headers=auth)).status_code == 403
+    assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/complete", headers=auth)).status_code == 403
+    assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/reopen", headers=auth)).status_code == 403
+    assert (await client.patch(f"/api/sharepoint/reminders/{rem_id}", headers=auth, json={"notes": "hack"})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reminder_patch_input_validation(client, auth, indexed, monkeypatch):
+    """Issue #16: PATCH /reminders/{id} rejects non-ISO target_date and client-set 'sent' status."""
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    from app.services.sharepoint.reminders import populate_document_reminders
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.status = "ready"
+        analysis_data = {
+            "summary": "Validation test",
+            "tasks": [{"title": "Validation Task", "deadline": "2026-11-20", "status": "pending", "owner": "Admin"}],
+        }
+        await populate_document_reminders(db, doc, analysis_data, indexed[1])
+
+    resp = await client.get("/api/sharepoint/reminders?category=task", headers=auth)
+    rem_id = next(r["id"] for r in resp.json() if r["title"] == "Validation Task")
+
+    # Invalid target_date format
+    bad_date_resp = await client.patch(
+        f"/api/sharepoint/reminders/{rem_id}",
+        headers=auth,
+        json={"target_date": "not-a-date-too-long-string-for-db-column"},
+    )
+    assert bad_date_resp.status_code == 422
+
+    # Client cannot set status="sent"
+    bad_status_resp = await client.patch(
+        f"/api/sharepoint/reminders/{rem_id}",
+        headers=auth,
+        json={"status": "sent"},
+    )
+    assert bad_status_resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_resolve_recipient_no_fuzzy_or_unvalidated_email(indexed):
+    """Issue #17: _resolve_recipient only matches exact active user email; no fuzzy name matching or arbitrary email fallback."""
+    from app.services.sharepoint.reminders import _resolve_recipient
+
+    async with AsyncSessionLocal() as db:
+        # 1. Fuzzy match attempt: "Adm" or "Sam" should NOT match "Administrator" or others
+        assert await _resolve_recipient(db, "Adm") is None
+        assert await _resolve_recipient(db, "Administrator") is None
+        assert await _resolve_recipient(db, "Sam") is None
+
+        # 2. Arbitrary external email from document should NOT be trusted as recipient
+        assert await _resolve_recipient(db, "contractor@external-attacker.com") is None
+
+        # 3. Exact active platform user email matches
+        assert await _resolve_recipient(db, "admin@agholding.net") == "admin@agholding.net"
+
+        # 4. None / empty returns None (no fallback to DEFAULT_ADMIN_EMAIL)
+        assert await _resolve_recipient(db, None) is None
+        assert await _resolve_recipient(db, "") is None
+
+
+@pytest.mark.asyncio
+async def test_reminder_burst_prevention_and_retries(client, auth, indexed, monkeypatch):
+    """Issue #18: Multi-stage pending reminders fire only the single most urgent stage; failures retry up to 3 times."""
+    from datetime import date, timedelta
+    from app.models.sharepoint import SharePointReminder
+    from app.services.sharepoint.reminders import deliver_reminder, populate_document_reminders, run_sharepoint_reminders
+
+    # Create an expiry 5 days out
+    target_date = (date.today() + timedelta(days=5)).isoformat()
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.status = "ready"
+        analysis_data = {
+            "summary": "Burst test",
+            "expiries": [{"title": "Near Expiry Contract", "date": target_date, "category": "expiry", "responsible": "admin@agholding.net"}],
+        }
+        await populate_document_reminders(db, doc, analysis_data, indexed[1])
+
+    delivered_stages = []
+    def fake_send_email(*args, **kwargs):
+        delivered_stages.append(kwargs)
+        return True
+
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_email", fake_send_email)
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_teams", lambda *a, **kw: True)
+
+    async with AsyncSessionLocal() as db:
+        res = await run_sharepoint_reminders(db)
+        assert res["created"] == 1  # Only ONE reminder stage fired!
+
+        # Earlier stages (90, 60, 30, 21, 14, 7) must have been marked 'skipped'
+        all_rems = (await db.scalars(select(SharePointReminder).where(SharePointReminder.title == "Near Expiry Contract"))).all()
+        sent_rems = [r for r in all_rems if r.status == "sent"]
+        skipped_rems = [r for r in all_rems if r.status == "skipped"]
+        pending_rems = [r for r in all_rems if r.status == "pending"]
+
+        assert len(sent_rems) == 1
+        assert sent_rems[0].lead_days == 5  # The most urgent due stage
+        assert len(skipped_rems) > 0        # Earlier past-due stages skipped
+        assert all(r.lead_days in (0, 1, 3) for r in pending_rems)  # Future stages remain pending
+
+    # Test retry mechanism: transient delivery failure leaves status="pending" and increments attempts
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_email", lambda *a, **kw: False)
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_teams", lambda *a, **kw: False)
+
+    async with AsyncSessionLocal() as db:
+        rem = (await db.scalars(select(SharePointReminder).where(SharePointReminder.status == "pending"))).first()
+        if rem:
+            assert rem.attempts == 0
+            # Attempt 1
+            await deliver_reminder(db, rem)
+            assert rem.status == "pending"
+            assert rem.attempts == 1
+
+            # Attempt 2
+            await deliver_reminder(db, rem)
+            assert rem.status == "pending"
+            assert rem.attempts == 2
+
+            # Attempt 3 -> fails permanently
+            await deliver_reminder(db, rem)
+            assert rem.status == "failed"
+            assert rem.attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_stale_reminders_purged_on_analysis_update(indexed):
+    """Issue #18: When document analysis changes or reminders are repopulated, old pending reminders are purged."""
+    from app.models.sharepoint import SharePointReminder
+    from app.services.sharepoint.reminders import populate_document_reminders
+    from app.services.sharepoint.store import purge_document_reminders
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.status = "ready"
+        analysis_data = {
+            "summary": "First Analysis",
+            "expiries": [{"title": "Old Contract To Disappear", "date": "2027-01-01", "category": "expiry", "responsible": "admin@agholding.net"}],
+        }
+        await populate_document_reminders(db, doc, analysis_data, indexed[1])
+        rems = (await db.scalars(select(SharePointReminder).where(SharePointReminder.document_id == doc.id))).all()
+        assert len(rems) > 0
+        assert any(r.title == "Old Contract To Disappear" for r in rems)
+
+        # Repopulate with new analysis where old contract is removed
+        new_analysis = {
+            "summary": "Second Analysis",
+            "expiries": [{"title": "Brand New Contract", "date": "2027-06-01", "category": "expiry", "responsible": "admin@agholding.net"}],
+        }
+        await populate_document_reminders(db, doc, new_analysis, indexed[1])
+        rems_updated = (await db.scalars(select(SharePointReminder).where(SharePointReminder.document_id == doc.id))).all()
+        assert not any(r.title == "Old Contract To Disappear" for r in rems_updated)
+        assert any(r.title == "Brand New Contract" for r in rems_updated)
+
+        # Purge reminders
+        await purge_document_reminders(db, doc.id)
+        rems_purged = (await db.scalars(select(SharePointReminder).where(SharePointReminder.document_id == doc.id))).all()
+        assert len(rems_purged) == 0
+
+
+def test_reminder_email_html_escaping_and_safe_urls():
+    """Issue #21: reminder_email_html escapes document text and drops unsafe links."""
+    from app.models.sharepoint import SharePointDocument, SharePointReminder
+    from app.services.sharepoint.reminders import _escape_teams_markdown, reminder_email_html
+
+    doc = SharePointDocument(
+        filename="Contract<script>alert(1)</script>.pdf",
+        path="/Legal/<script>evil()</script>/file.pdf",
+        web_url="javascript:alert(document.cookie)",
+    )
+    rem = SharePointReminder(
+        title="Payment Due <img src=x onerror=alert(1)>",
+        target_date="2026-10-10",
+        lead_days=14,
+        responsible_name="Attacker <b onmouseover=alert(1)>",
+        amount=50000.0,
+        currency="USD<script>",
+    )
+
+    html = reminder_email_html(rem, doc)
+    # Ensure raw script and payload tags are not present unescaped
+    assert "<script>" not in html
+    assert "<img src=x" not in html
+    assert "<b onmouseover" not in html
+    assert "&lt;script&gt;" in html
+    assert "&lt;img src=x" in html
+    # Ensure javascript: link was rejected and not rendered
+    assert "javascript:" not in html
+    assert "Open Document in SharePoint" not in html
+
+    # Teams markdown escaping
+    unsafe_md = "Project *Bold* `Code` [Link](https://evil.com) #Header"
+    escaped_md = _escape_teams_markdown(unsafe_md)
+    assert "\\*" in escaped_md
+    assert "\\`" in escaped_md
+    assert "\\[" in escaped_md
+    assert "\\#" in escaped_md
+
+
+def test_send_teams_skips_fallback_on_400_or_404(monkeypatch):
+    """Issue #20: send_teams does not attempt legacy fallback on non-retryable 400/404 HTTP errors."""
+    import urllib.error
+    from app.services.dispatch import send_teams
+
+    monkeypatch.setattr(settings, "TEAMS_WEBHOOK_URL", "https://example.webhook.office.com/webhook")
+
+    urlopen_calls = []
+
+    def fake_urlopen(req, timeout=10):
+        urlopen_calls.append(req)
+        # Raise HTTPError 404 (webhook dead)
+        raise urllib.error.HTTPError("https://example.com", 404, "Not Found", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    res = send_teams(title="Test Alert", body="Details", link=None)
+    assert res is False
+    # Only 1 call was made; legacy fallback was skipped!
+    assert len(urlopen_calls) == 1

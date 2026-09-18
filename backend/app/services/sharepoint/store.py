@@ -1,7 +1,7 @@
 import uuid
 from urllib.parse import unquote, urlparse
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -40,6 +40,16 @@ def purge(document, status="queued"):
     document.approved_by = document.approved_at = document.processed_at = None
     document.error_code = None
     document.attempts = 0
+
+
+async def purge_document_reminders(db, document_id: uuid.UUID):
+    from app.models.sharepoint import SharePointReminder
+    await db.execute(
+        delete(SharePointReminder).where(
+            SharePointReminder.document_id == document_id,
+            SharePointReminder.status.in_(["pending", "failed", "skipped"]),
+        )
+    )
 
 
 async def enqueue(db, source, user_id=None):

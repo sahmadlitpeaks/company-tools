@@ -4,6 +4,7 @@ Used to mirror in-app notifications to external channels when configured.
 Every send is wrapped so a transport failure never breaks the request flow.
 """
 import json
+import urllib.error
 import urllib.request
 
 from app.core.config import settings
@@ -88,6 +89,9 @@ def send_teams(title: str, body: str | None, link: str | None) -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
             if 200 <= resp.status < 300:
                 return True
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403, 404, 410):
+            return False
     except Exception:
         pass
 

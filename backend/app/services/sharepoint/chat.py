@@ -115,7 +115,7 @@ def format_analysis_summary(analysis: dict | None) -> str:
     return "\n\n".join(lines) if lines else "None."
 
 
-def build_document_catalog_entry(doc: SharePointDocument, metadata: dict, restored_analysis: dict | None) -> str:
+def build_document_catalog_entry(doc: SharePointDocument, metadata: dict, analysis: dict | None) -> str:
     lines = []
     fname = doc.filename or metadata.get("name", "Document")
     url = metadata.get("webUrl") or doc.web_url or ""
@@ -125,8 +125,8 @@ def build_document_catalog_entry(doc: SharePointDocument, metadata: dict, restor
     lines.append(f"- Direct URL: {url}")
     lines.append(f"- Status: {doc.status}")
 
-    if restored_analysis:
-        sections = restored_analysis.get("sections") or [restored_analysis]
+    if analysis:
+        sections = analysis.get("sections") or [analysis]
         for s in sections:
             if s.get("summary"):
                 lines.append(f"- Summary: {s.get('summary')}")
@@ -196,12 +196,16 @@ async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUI
     if not doc or doc.source_id != source.id or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
 
-    mapping = decrypt(doc.mapping_cipher) if doc.mapping_cipher else {}
-    restored_segments = restore(doc.segments or [], mapping)
-    restored_analysis = restore(doc.analysis, mapping) if doc.analysis else None
+    # Review policy gate (Issue #15)
+    if source.policy == "review" and doc.status != "ready":
+        raise SharePointError("document_review_required", 400)
+    if doc.status not in ("ready", "approved", "analyzed"):
+        raise SharePointError("document_not_ready", 400)
 
-    segments_text = format_segments_context(restored_segments)
-    analysis_text = format_analysis_summary(restored_analysis)
+    # Privacy preservation: DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
+    # The outbound prompt contains sanitized text with placeholders
+    segments_text = format_segments_context(doc.segments or [])
+    analysis_text = format_analysis_summary(doc.analysis)
 
     system_content = CHAT_SYSTEM_PROMPT.format(
         title=doc.filename,
@@ -232,11 +236,15 @@ async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUI
                 messages=api_messages,
                 max_completion_tokens=2500,
             )
-            reply = response.choices[0].message.content or ""
+            raw_reply = response.choices[0].message.content or ""
             usage = {
                 "input_tokens": response.usage.prompt_tokens if response.usage else 0,
                 "output_tokens": response.usage.completion_tokens if response.usage else 0,
             }
+
+            # Restore placeholders only on the model's reply for the authorized caller
+            mapping = decrypt(doc.mapping_cipher) if doc.mapping_cipher else {}
+            reply = restore(raw_reply, mapping) if mapping else raw_reply
             return {"reply": reply, "model": model_name, "usage": usage}
     except OpenAIError as e:
         log.error("OpenAI chat error: %s", e)
@@ -278,19 +286,45 @@ async def ask_central(
 
     docs = list((await db.scalars(query.order_by(SharePointDocument.filename.asc()))).all())
 
+    # Extract user keywords from latest messages for query relevance ranking (Issue #19)
+    user_query = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            user_query = str(m.get("content", ""))
+            break
+    query_kws = extract_query_keywords(user_query)
+
+    def score_doc(d: SharePointDocument) -> int:
+        score = 0
+        text_corpus = f"{d.filename} {d.path or ''}"
+        if d.analysis:
+            summary = d.analysis.get("summary") or ""
+            text_corpus += f" {summary}"
+        lower = text_corpus.lower()
+        for kw in query_kws:
+            if kw in lower:
+                score += 1
+        return score
+
+    if query_kws and not document_ids:
+        docs.sort(key=score_doc, reverse=True)
+
+    # Bounded candidate pool and Graph authorization using TTL cache (Issue #19)
     authorized_docs: list[tuple[SharePointDocument, dict, list[dict], dict | None]] = []
     for doc in docs:
+        if len(authorized_docs) >= 20 and query_kws and score_doc(doc) == 0:
+            break
+        if len(authorized_docs) >= 25:
+            break
         try:
             metadata = await authorize_document(db, user, source, doc, graph)
-            mapping = decrypt(doc.mapping_cipher) if doc.mapping_cipher else {}
-            restored_segs = restore(doc.segments or [], mapping)
-            restored_ana = restore(doc.analysis, mapping) if doc.analysis else None
-            authorized_docs.append((doc, metadata, restored_segs, restored_ana))
+            # DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
+            # Pass sanitized segments and analysis
+            authorized_docs.append((doc, metadata, doc.segments or [], doc.analysis))
         except SharePointError as error:
             if error.code in ("document_access_denied", "document_not_found", "document_changed_sync_required"):
                 continue
             raise
-
 
     if not authorized_docs:
         return {
@@ -300,20 +334,15 @@ async def ask_central(
             "citations": [],
         }
 
-    # Build catalog of all authorized documents
+    # Build catalog of authorized documents with bounded context length (Issue #19)
     catalog_entries = []
     for doc, meta, _segs, ana in authorized_docs:
         catalog_entries.append(build_document_catalog_entry(doc, meta, ana))
     catalog_text = "\n\n".join(catalog_entries)
+    if len(catalog_text) > 40000:
+        catalog_text = catalog_text[:40000] + "\n... [Catalog truncated for context limit]"
 
-    # Extract user keywords from latest messages for targeted segment retrieval
-    user_query = ""
-    for m in reversed(messages):
-        if m.get("role") == "user":
-            user_query = str(m.get("content", ""))
-            break
-
-    query_kws = extract_query_keywords(user_query)
+    # Extract targeted segment excerpts
     scored_segments = []
     if query_kws:
         for doc, meta, segs, _ana in authorized_docs:
@@ -375,13 +404,27 @@ async def ask_central(
                 messages=api_messages,
                 max_completion_tokens=3000,
             )
-            reply = response.choices[0].message.content or ""
+            raw_reply = response.choices[0].message.content or ""
             usage = {
                 "input_tokens": response.usage.prompt_tokens if response.usage else 0,
                 "output_tokens": response.usage.completion_tokens if response.usage else 0,
             }
 
-            # Build structured citations from authorized documents mentioned or cited
+            # Combine mappings from all authorized documents to restore the reply
+            combined_mapping = {}
+            for doc, _meta, _segs, _ana in authorized_docs:
+                if doc.mapping_cipher:
+                    try:
+                        m = decrypt(doc.mapping_cipher)
+                        if isinstance(m, dict):
+                            combined_mapping.update(m)
+                    except Exception:
+                        pass
+
+            reply = restore(raw_reply, combined_mapping) if combined_mapping else raw_reply
+
+            # Build structured citations from retrieved segments and model mentions (Issue #19)
+            retrieved_doc_ids = {s["doc_id"] for s in top_segments}
             citations = []
             seen_ids = set()
             for doc, meta, _segs, _ana in authorized_docs:
@@ -389,14 +432,13 @@ async def ask_central(
                 fname = doc.filename or meta.get("name", "")
                 url = meta.get("webUrl") or doc.web_url or ""
                 path = doc.path or fname
-                if fname.lower() in reply.lower() or (url and url in reply):
+                if doc_id_str in retrieved_doc_ids or (fname and fname.lower() in reply.lower()) or (url and url in reply):
                     if doc_id_str not in seen_ids:
                         seen_ids.add(doc_id_str)
-                        # Find if a specific segment location was referenced
                         loc = None
                         for s in top_segments:
-                            if s["doc_id"] == doc_id_str and (s["location"].lower() in reply.lower() or s["id"].lower() in reply.lower()):
-                                loc = s["location"]
+                            if s["doc_id"] == doc_id_str:
+                                loc = s.get("location")
                                 break
                         citations.append({
                             "document_id": doc_id_str,
