@@ -1,0 +1,200 @@
+export type SharePointRun = {
+  id: string; status: string; discovered: number; processed: number; failed: number; error_code: string | null;
+};
+
+export type SharePointStatus = {
+  enabled: boolean; configured: boolean; missing: string[]; connected: boolean;
+  microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
+  openai_configured: boolean; policy: "auto" | "review" | "test" | "skip"; active_run: boolean;
+  run: SharePointRun | null; languages: string[];
+};
+
+export type Evidence = { segment_id: string; quote: string };
+export type Finding = {
+  title: string; owner: string | null; deadline: string | null; status: string; priority: string; evidence: Evidence[];
+};
+
+export type ExpiryFinding = {
+  title: string;
+  date: string;
+  category: "expiry" | "renewal" | "effective" | "warranty" | "milestone" | "deadline" | "other";
+  responsible: string | null;
+  evidence: Evidence[];
+};
+
+export type CommercialFinding = {
+  description: string;
+  amount: number | null;
+  currency: string | null;
+  payment_terms: string | null;
+  billing_frequency: "one_time" | "monthly" | "quarterly" | "annual" | "milestone" | "unknown";
+  evidence: Evidence[];
+};
+
+export type AnalysisSection = {
+  summary: string; summary_evidence: Evidence[]; tasks: Finding[]; deadlines: Finding[];
+  risks: Finding[]; blockers: Finding[]; contacts: Finding[];
+  expiries?: ExpiryFinding[]; commercials?: CommercialFinding[];
+  project_status: string | null; requires_attention: boolean;
+};
+export type Segment = { id: string; location: string; text: string };
+export type SharePointDocument = {
+  id: string; name: string; path?: string; url: string; status: string; error_code: string | null;
+  languages: string[]; size?: number; modified_at: string | null; processed_at?: string | null;
+  requires_attention: boolean; model?: string; attempts?: number;
+  analysis?: { sections: AnalysisSection[]; requires_attention: boolean } | null;
+  segments?: Segment[]; usage?: { input_tokens: number; output_tokens: number } | null;
+};
+export type DocumentPage = { items: SharePointDocument[]; next_cursor: string | null };
+export type PayloadPreview = {
+  payload_hash: string;
+  payload: { model: string; system: string; schema: unknown; batches: Segment[][] };
+};
+export type PrivacyRules = { policy: "auto" | "review" | "test" | "skip"; terms: { kind: string; value: string }[] };
+
+export type SharePointReminder = {
+  id: string;
+  document_id: string;
+  document_name?: string | null;
+  document_path?: string | null;
+  document_url?: string | null;
+  title: string;
+  category: string;
+  target_date: string;
+  reminder_date: string;
+  lead_days: number;
+  responsible_name: string | null;
+  recipient_email: string | null;
+  amount: number | null;
+  currency: string | null;
+  status: "pending" | "sent" | "completed" | "dismissed" | "overdue" | "failed";
+  notes?: string | null;
+  sent_at?: string | null;
+};
+
+export type ChatCitation = {
+  document_id: string;
+  document_name: string;
+  document_path?: string | null;
+  document_url?: string | null;
+  location?: string | null;
+  quote?: string | null;
+};
+
+export type ChatMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
+export type ChatResponse = {
+  reply: string;
+  model: string;
+  usage?: { input_tokens: number; output_tokens: number };
+  citations?: ChatCitation[];
+};
+
+export type CentralChatIn = {
+  messages: ChatMessage[];
+  document_ids?: string[] | null;
+};
+
+export function readableStatus(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+export function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function getStatusBadgeInfo(status: string): {
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+  className?: string;
+} {
+  switch (status) {
+    case "ready":
+      return { label: "Ready", variant: "default", className: "bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 border-emerald-600/30 font-medium" };
+    case "awaiting_approval":
+      return { label: "Review Needed", variant: "secondary", className: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 font-medium" };
+    case "approved":
+      return { label: "Approved · Queued for AI", variant: "secondary", className: "bg-sky-500/15 text-sky-800 dark:text-sky-300 border-sky-500/30" };
+    case "processing":
+      return { label: "AI Processing…", variant: "outline", className: "bg-primary/10 text-primary border-primary/30 animate-pulse font-medium" };
+    case "queued":
+      return { label: "Queued", variant: "outline" };
+    case "failed":
+      return { label: "Failed", variant: "destructive" };
+    case "ai_skipped":
+      return { label: "AI Prohibited", variant: "outline" };
+    default:
+      return { label: readableStatus(status), variant: "outline" };
+  }
+}
+
+export function calculateEstimatedCost(
+  usage?: { input_tokens: number; output_tokens: number } | null,
+  modelName?: string | null
+): { costUsd: number; formatted: string; rateSummary: string } | null {
+  if (!usage) return null;
+  const model = (modelName || "gpt-5.6-luna").toLowerCase();
+  let inRate = 0.20 / 1_000_000;
+  let outRate = 1.20 / 1_000_000;
+  let rateSummary = "$0.20/M in · $1.20/M out";
+
+  if (model.includes("gpt-5.6-luna")) {
+    inRate = 0.20 / 1_000_000;
+    outRate = 1.20 / 1_000_000;
+    rateSummary = "$0.20/M in · $1.20/M out";
+  } else if (model.includes("gpt-5.6-sol")) {
+    inRate = 4.00 / 1_000_000;
+    outRate = 20.00 / 1_000_000;
+    rateSummary = "$4.00/M in · $20.00/M out";
+  } else if (model.includes("gpt-5.6-terra")) {
+    inRate = 2.00 / 1_000_000;
+    outRate = 12.00 / 1_000_000;
+    rateSummary = "$2.00/M in · $12.00/M out";
+  } else if (model.includes("gpt-4o-mini")) {
+    inRate = 0.15 / 1_000_000;
+    outRate = 0.60 / 1_000_000;
+    rateSummary = "$0.15/M in · $0.60/M out";
+  } else if (model.includes("gpt-4o")) {
+    inRate = 2.50 / 1_000_000;
+    outRate = 10.00 / 1_000_000;
+    rateSummary = "$2.50/M in · $10.00/M out";
+  } else if (model.includes("o3-mini") || model.includes("o4-mini")) {
+    inRate = 1.10 / 1_000_000;
+    outRate = 4.40 / 1_000_000;
+    rateSummary = "$1.10/M in · $4.40/M out";
+  } else if (model.includes("o1")) {
+    inRate = 15.00 / 1_000_000;
+    outRate = 60.00 / 1_000_000;
+    rateSummary = "$15.00/M in · $60.00/M out";
+  }
+
+  const cost = (usage.input_tokens * inRate) + (usage.output_tokens * outRate);
+  const formatted = cost < 0.0001
+    ? "< $0.0001"
+    : `$${cost.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 5 })}`;
+  return { costUsd: cost, formatted, rateSummary };
+}
+
+export function formatDateTime(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+

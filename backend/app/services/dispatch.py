@@ -4,6 +4,7 @@ Used to mirror in-app notifications to external channels when configured.
 Every send is wrapped so a transport failure never breaks the request flow.
 """
 import json
+import urllib.error
 import urllib.request
 
 from app.core.config import settings
@@ -35,9 +36,66 @@ def send_slack(text: str) -> bool:
 
 
 def send_teams(title: str, body: str | None, link: str | None) -> bool:
-    """Post an Office 365 MessageCard to the configured Teams incoming webhook."""
+    """Post an Adaptive Card or MessageCard to the configured Teams incoming webhook."""
     if not teams_enabled():
         return False
+    abs_link = _absolute(link)
+
+    # 1. Modern Adaptive Card (supported by Power Automate "Send webhook alerts to a channel")
+    adaptive_card = {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "contentUrl": None,
+                "content": {
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "size": "Medium",
+                            "weight": "Bolder",
+                            "text": title,
+                        },
+                        *(
+                            [{"type": "TextBlock", "text": body, "wrap": True}]
+                            if body
+                            else []
+                        ),
+                    ],
+                    "actions": (
+                        [
+                            {
+                                "type": "Action.OpenUrl",
+                                "title": "Open",
+                                "url": abs_link,
+                            }
+                        ]
+                        if abs_link
+                        else []
+                    ),
+                },
+            }
+        ],
+    }
+
+    try:
+        data = json.dumps(adaptive_card).encode()
+        req = urllib.request.Request(
+            settings.TEAMS_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
+            if 200 <= resp.status < 300:
+                return True
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401, 403, 404, 410):
+            return False
+    except Exception:
+        pass
+
+    # 2. Legacy MessageCard fallback (for classic Office 365 connectors)
     card: dict = {
         "@type": "MessageCard",
         "@context": "http://schema.org/extensions",
@@ -46,18 +104,21 @@ def send_teams(title: str, body: str | None, link: str | None) -> bool:
         "title": title,
         "text": body or "",
     }
-    if link:
+    if abs_link:
         card["potentialAction"] = [{
             "@type": "OpenUri",
             "name": "Open",
-            "targets": [{"os": "default", "uri": _absolute(link)}],
+            "targets": [{"os": "default", "uri": abs_link}],
         }]
-    data = json.dumps(card).encode()
-    req = urllib.request.Request(
-        settings.TEAMS_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
-        return 200 <= resp.status < 300
+    try:
+        data = json.dumps(card).encode()
+        req = urllib.request.Request(
+            settings.TEAMS_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
+            return 200 <= resp.status < 300
+    except Exception:
+        return False
 
 
 def deliver_notification(

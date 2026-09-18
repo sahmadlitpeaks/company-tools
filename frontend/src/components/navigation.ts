@@ -137,6 +137,7 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Knowledge & Communication",
     items: [
       { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge", keywords: ["articles", "guides", "help"] },
+      { to: "/sharepoint", label: "SharePoint Intelligence", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["documents", "evidence", "deadlines"] },
       { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements", keywords: ["news", "updates"] },
       { to: "/ai-help", label: "AI Help", icon: Bot, module: "ai_help", keywords: ["assistant", "ask", "chat"] },
       { to: "/ideas", label: "Feedback & Ideas", icon: Lightbulb, module: "ideas", keywords: ["suggestions", "issues", "voting"] },

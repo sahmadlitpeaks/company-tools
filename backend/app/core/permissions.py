@@ -30,6 +30,7 @@ MODULES: list[tuple[str, str]] = [
     ("approvals", "Approvals"),
     ("service_desk", "Service Desk"),
     ("knowledge", "Knowledge Base"),
+    ("sharepoint_intelligence", "SharePoint Intelligence"),
     ("announcements", "Announcements"),
     ("people_ops", "Onboarding & Offboarding"),
     ("hr", "People / HR"),
@@ -90,7 +91,7 @@ MEMBER_DEFAULTS: list[str] = [
 # HR department or per person — rather than by role. Without this exclusion a
 # plain manager could read every employee's compensation and HR files, which
 # the compensation/payroll/hr_documents modules explicitly intend to forbid.
-MANAGER_EXCLUDED: set[str] = {"hr", "recruiting", "people_ops"}
+MANAGER_EXCLUDED: set[str] = {"hr", "recruiting", "people_ops", "sharepoint_intelligence"}
 MANAGER_DEFAULTS: list[str] = [m for m in ALL_MODULES if m not in MANAGER_EXCLUDED]
 
 ROLE_DEFAULTS: dict[str, list[str]] = {

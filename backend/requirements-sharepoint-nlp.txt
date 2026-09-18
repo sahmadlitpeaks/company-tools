@@ -1,0 +1,3 @@
+# In-process privacy recognizers; no local AI endpoint or generative model.
+-r requirements.txt
+stanza>=1.10,<2

@@ -58,6 +58,29 @@ class Settings(BaseSettings):
     AI_MAX_INPUT_CHARS: int = 2000
     AI_MAX_CONTEXT_CHARS: int = 12000
 
+    # SharePoint Intelligence: independent of the existing AI Help endpoint.
+    SHAREPOINT_ENABLED: bool = False
+    SHAREPOINT_TENANT_ID: str = ""
+    SHAREPOINT_CLIENT_ID: str = ""
+    SHAREPOINT_CLIENT_SECRET: str = ""
+    SHAREPOINT_SITE_ID: str = ""
+    SHAREPOINT_DRIVE_ID: str = ""
+    SHAREPOINT_FOLDER_ID: str = ""
+    SHAREPOINT_REDIRECT_URI: str = "http://localhost:5173/api/sharepoint/callback"
+    SHAREPOINT_ENCRYPTION_KEY: str = ""
+    SHAREPOINT_PREVIOUS_ENCRYPTION_KEYS: str = ""
+    SHAREPOINT_OPENAI_API_KEY: str = ""
+    SHAREPOINT_OPENAI_MODEL: str = ""
+    SHAREPOINT_REVIEWER_IDS: str = ""
+    SHAREPOINT_POLLING_ENABLED: bool = False
+    SHAREPOINT_SYNC_INTERVAL_SECONDS: int = 300
+    SHAREPOINT_MAX_FILE_BYTES: int = 25 * 1024 * 1024
+    SHAREPOINT_MAX_TEXT_CHARS: int = 200000
+    SHAREPOINT_MAX_ITEMS: int = 2000
+    SHAREPOINT_NER_LANGUAGES: str = "all"
+    SHAREPOINT_NER_MODEL_DIR: str = "./nlp-models"
+    SHAREPOINT_PARSER_TIMEOUT_SECONDS: int = 120
+
     # SMTP (optional — used to email secure-transfer links)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
