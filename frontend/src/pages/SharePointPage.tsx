@@ -1,90 +1,134 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Bot,
-  Calendar,
-  ChevronDown,
-  FolderOpen,
-  LayoutGrid,
-  LayoutList,
   Link2,
-  RefreshCw,
-  Search,
-  Settings2,
-  ShieldCheck,
-  Unplug,
-  X,
-  Zap,
 } from "lucide-react";
 import { api } from "@/api/client";
 import {
+  type SharePointDocument,
+  type SharePointReminder,
   type SharePointStatus,
-  formatBytes,
-  getStatusBadgeInfo,
   readableStatus,
 } from "@/api/sharepoint";
 import { useAuth } from "@/auth/AuthContext";
 import { useFetch } from "@/hooks/useApi";
-import { Empty, Loading, PageHead, useToast } from "@/components/ui";
+import { Loading, PageHead, useToast } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { cn } from "@/lib/utils";
+import { DocumentsHomeTab } from "./sharepoint/DocumentsHomeTab";
+import { MyDocumentsTab } from "./sharepoint/MyDocumentsTab";
 import { CentralChatTab } from "./sharepoint/CentralChatTab";
-import { TasksAndRemindersTab } from "./sharepoint/TasksAndRemindersTab";
+import { AlertsRemindersTab } from "./sharepoint/AlertsRemindersTab";
+import { AdminSourcesTab } from "./sharepoint/AdminSourcesTab";
 import DocumentDialog from "./sharepoint/DocumentDialog";
 import PrivacyDialog from "./sharepoint/PrivacyDialog";
 import { useDocumentSearch } from "./sharepoint/useDocumentSearch";
 
-function Documents({
-  canReview,
+function ConnectedSource({
+  status,
   isAdmin,
-  generation,
-  syncStatus,
-  onChanged,
+  reload,
+  tab: propTab,
 }: {
-  canReview: boolean;
+  status: SharePointStatus;
   isAdmin: boolean;
-  generation?: number;
-  syncStatus?: string;
-  onChanged: () => void;
+  reload: () => Promise<unknown>;
+  tab?: "home" | "documents" | "assistant" | "alerts" | "admin";
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const activeTab = useMemo(() => {
+    if (rawTab) {
+      if (rawTab === "admin" && isAdmin) return "admin";
+      if (rawTab === "chat" || rawTab === "assistant") return "assistant";
+      if (rawTab === "reminders" || rawTab === "alerts") return "alerts";
+      if (rawTab === "documents") return "documents";
+      return "home";
+    }
+    if (propTab) return propTab;
+    const path = location.pathname;
+    if (path.endsWith("/documents")) return "documents";
+    if (path.endsWith("/assistant")) return "assistant";
+    if (path.endsWith("/alerts")) return "alerts";
+    if (path.endsWith("/admin") && isAdmin) return "admin";
+    return "home";
+  }, [rawTab, propTab, location.pathname, isAdmin]);
+
+  // Synchronize legacy ?tab= query parameter to corresponding clean path
+  useEffect(() => {
+    if (rawTab) {
+      const remainingParams = new URLSearchParams(searchParams);
+      remainingParams.delete("tab");
+      const qs = remainingParams.toString() ? `?${remainingParams.toString()}` : "";
+      if (rawTab === "documents" && location.pathname !== "/sharepoint/documents") {
+        navigate(`/sharepoint/documents${qs}`, { replace: true });
+      } else if ((rawTab === "chat" || rawTab === "assistant") && location.pathname !== "/sharepoint/assistant") {
+        navigate(`/sharepoint/assistant${qs}`, { replace: true });
+      } else if ((rawTab === "reminders" || rawTab === "alerts") && location.pathname !== "/sharepoint/alerts") {
+        navigate(`/sharepoint/alerts${qs}`, { replace: true });
+      } else if (rawTab === "admin" && isAdmin && location.pathname !== "/sharepoint/admin") {
+        navigate(`/sharepoint/admin${qs}`, { replace: true });
+      }
+    }
+  }, [rawTab, searchParams, location.pathname, isAdmin, navigate]);
+
   const [search, setSearch] = useState("");
   const [page, setPage] = useState({ q: "", cursor: "" });
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"table" | "cards">(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
-      return "cards";
-    }
-    return "table";
-  });
-  const result = useDocumentSearch(page.q, page.cursor);
-  const docs = result.data?.items ?? [];
-  const { reload: reloadDocs } = result;
+  const [categoryFilter, setCategoryFilter] = useState("All types");
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [assistantQuery, setAssistantQuery] = useState<string | undefined>();
+  const [assistantDocId, setAssistantDocId] = useState<string | undefined>();
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { notify } = useToast();
+
+  const locationState = location.state as { query?: string; docId?: string } | null;
+  const currentAssistantQuery =
+    searchParams.get("q") || locationState?.query || assistantQuery;
+  const currentAssistantDocId =
+    searchParams.get("docId") || locationState?.docId || assistantDocId;
+
+  const searchResult = useDocumentSearch(page.q, page.cursor);
+  const docs = searchResult.data?.items ?? [];
+  const { reload: reloadDocs } = searchResult;
+
+  const remindersFetch = useFetch<SharePointReminder[]>("/api/sharepoint/reminders");
+  const remindersData = remindersFetch.data;
+  const reminders = useMemo(
+    () => (Array.isArray(remindersData) ? remindersData : []),
+    [remindersData]
+  );
+  const { reload: reloadReminders } = remindersFetch;
+
+
+
+  const handleNavigateTab = (
+    tab: "home" | "documents" | "assistant" | "alerts" | "admin",
+    query?: string,
+    docId?: string
+  ) => {
+    const targetPath = tab === "home" ? "/sharepoint" : `/sharepoint/${tab}`;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (docId) params.set("docId", docId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
+    if (query !== undefined) setAssistantQuery(query);
+    if (docId !== undefined) setAssistantDocId(docId);
+    navigate(`${targetPath}${qs}`, { state: { query, docId } });
+  };
+
+  const handleAskAboutDoc = (doc: SharePointDocument) => {
+    handleNavigateTab(
+      "assistant",
+      `What are the key terms, deadlines, and responsibilities in ${doc.name}?`,
+      doc.id
+    );
+  };
 
   const handlePrevPage = () => {
     if (cursorHistory.length > 0) {
@@ -95,324 +139,68 @@ function Documents({
   };
 
   const handleNextPage = () => {
-    if (result.data?.next_cursor) {
+    if (searchResult.data?.next_cursor) {
       setCursorHistory((prev) => [...prev, page.cursor]);
-      setPage((prev) => ({ ...prev, cursor: result.data?.next_cursor || "" }));
+      setPage((prev) => ({ ...prev, cursor: searchResult.data?.next_cursor || "" }));
     }
   };
 
-  useEffect(() => {
-    if (generation !== undefined || syncStatus) {
-      void reloadDocs();
+  const handleSearchSubmit = () => {
+    setCursorHistory([]);
+    setPage({ q: search.trim(), cursor: "" });
+  };
+
+  async function handleCompleteReminder(reminderId: string) {
+    try {
+      await api(`/api/sharepoint/reminders/${reminderId}/complete`, { method: "POST" });
+      notify("Reminder marked as completed!");
+      window.dispatchEvent(new CustomEvent("sharepoint-reminders-updated"));
+      void reloadReminders();
+    } catch (err) {
+      notify(readableStatus(err instanceof Error ? err.message : "Completion failed"), "error");
     }
-  }, [generation, syncStatus, reloadDocs]);
+  }
 
-  return (
-    <Card className="rounded-none border-border min-w-0 max-w-full overflow-hidden">
-      <CardHeader className="p-3.5 pb-2 border-b border-border/70 bg-muted/20">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <FolderOpen className="size-4 text-primary" />
-              SharePoint Documents
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {result.data?.items ? `Indexed ${docs.length} accessible documents` : "Loading accessible files…"}
-            </p>
-          </div>
+  async function handleDismissReminder(reminderId: string) {
+    try {
+      await api(`/api/sharepoint/reminders/${reminderId}/dismiss`, { method: "POST" });
+      notify("Reminder dismissed!");
+      window.dispatchEvent(new CustomEvent("sharepoint-reminders-updated"));
+      void reloadReminders();
+    } catch (err) {
+      notify(readableStatus(err instanceof Error ? err.message : "Dismissal failed"), "error");
+    }
+  }
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                setCursorHistory([]);
-                setPage({ q: search.trim(), cursor: "" });
-              }}
-              className="flex items-center gap-2 w-full sm:w-auto"
-            >
-              <div className="w-full sm:w-80">
-                <InputGroup>
-                  <InputGroupAddon align="inline-start">
-                    <Search className="size-4 text-muted-foreground" />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="sharepoint-search"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    maxLength={200}
-                    placeholder="Search file, path, or text…"
-                    className="text-sm h-10"
-                  />
-                  {search && (
-                    <InputGroupButton
-                      onClick={() => {
-                        setSearch("");
-                        setCursorHistory([]);
-                        setPage({ q: "", cursor: "" });
-                      }}
-                      title="Clear search"
-                    >
-                      <X className="size-3.5" />
-                    </InputGroupButton>
-                  )}
-                </InputGroup>
-              </div>
+  async function handleSnoozeReminder(reminderId: string, days: number) {
+    try {
+      const existing = reminders.find((r) => r.id === reminderId);
+      const baseDate = existing ? new Date(existing.target_date) : new Date();
+      baseDate.setDate(baseDate.getDate() + days);
+      const nextTarget = baseDate.toISOString().split("T")[0];
 
-              <Button type="submit" size="default" disabled={result.loading} className="rounded-none text-sm font-semibold h-10 px-4">
-                Search
-              </Button>
+      await api(`/api/sharepoint/reminders/${reminderId}`, {
+        method: "PATCH",
+        body: { target_date: nextTarget },
+      });
+      notify(`Reminder snoozed for ${days} days!`);
+      window.dispatchEvent(new CustomEvent("sharepoint-reminders-updated"));
+      void reloadReminders();
+    } catch (err) {
+      notify(readableStatus(err instanceof Error ? err.message : "Snooze failed"), "error");
+    }
+  }
 
-              <Button
-                variant="outline"
-                size="default"
-                aria-label="Refresh documents"
-                onClick={() => void result.reload()}
-                disabled={result.loading}
-                className="rounded-none h-10 px-3"
-                title="Refresh document list"
-              >
-                <RefreshCw data-icon="inline-start" className={result.loading ? "animate-spin size-4" : "size-4"} />
-              </Button>
-            </form>
-
-            {/* View Mode Switcher */}
-            <div className="flex items-center border border-border shrink-0">
-              <Button
-                type="button"
-                variant={viewMode === "table" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="h-10 px-3 text-xs font-semibold rounded-none gap-1.5"
-                title="Table View (Horizontally Scrollable)"
-              >
-                <LayoutList className="size-3.5" />
-                Table
-              </Button>
-              <Button
-                type="button"
-                variant={viewMode === "cards" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("cards")}
-                className="h-10 px-3 text-xs font-semibold rounded-none gap-1.5"
-                title="Card View"
-              >
-                <LayoutGrid className="size-3.5" />
-                Cards
-              </Button>
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4 p-3.5">
-        {result.loading && !result.data && <Loading />}
-        {result.error && (
-          <Alert variant="destructive">
-            <AlertDescription>{readableStatus(result.error)}. Reconnect Microsoft if your session has expired.</AlertDescription>
-          </Alert>
-        )}
-        {!result.loading && !result.error && docs.length === 0 && (
-          <Empty
-            icon={<FolderOpen />}
-            message="No accessible documents found"
-            hint="Click 'Sync Now' above to discover files in your configured SharePoint folder."
-          />
-        )}
-
-        {docs.length > 0 && (
-          <>
-            {/* Card View */}
-            {viewMode === "cards" && (
-              <div className="space-y-3">
-                {docs.map((doc) => {
-                  const badge = getStatusBadgeInfo(doc.status);
-                  return (
-                    <Card key={doc.id} className="rounded-none border-border">
-                      <CardContent className="space-y-3 pt-4">
-                        <h3 dir="auto" className="break-words font-semibold text-base text-foreground">{doc.name}</h3>
-                        {doc.path && (
-                          <p className="text-xs text-muted-foreground font-mono break-all">{doc.path}</p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge variant={badge.variant} className={cn(badge.className, "rounded-none text-xs font-semibold py-1 px-2")}>
-                            {badge.label}
-                          </Badge>
-                          {doc.requires_attention && (
-                            <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none text-xs font-semibold py-1 px-2">
-                              Needs attention
-                            </Badge>
-                          )}
-                          {!!doc.size && <span className="text-muted-foreground text-xs font-medium">{formatBytes(doc.size)}</span>}
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => setSelected(doc.id)} className="rounded-none h-9 text-xs font-semibold">
-                          View document
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Horizontally Scrollable Table View */}
-            {viewMode === "table" && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                  <span>
-                    Showing <strong>{docs.length}</strong> documents
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground font-medium">
-                    ↔ Scroll horizontally to view all columns
-                  </span>
-                </div>
-                <div className="w-full [&>div]:border [&>div]:border-border [&>div]:bg-card">
-                  <Table className="w-full min-w-[800px]">
-                    <TableHeader>
-                      <TableRow className="group/row hover:bg-transparent border-b">
-                        <TableHead className="sticky left-0 z-20 bg-table-header border-e border-border/70 min-w-[280px] max-w-[450px] py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
-                          Document & Folder Path
-                        </TableHead>
-                        <TableHead className="min-w-[160px] whitespace-nowrap py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
-                          Status
-                        </TableHead>
-                        <TableHead className="min-w-[100px] whitespace-nowrap py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
-                          Size
-                        </TableHead>
-                        <TableHead className="min-w-[110px] whitespace-nowrap py-3 px-3.5 text-xs font-bold text-foreground/80 uppercase">
-                          Languages
-                        </TableHead>
-                        <TableHead className="min-w-[140px] whitespace-nowrap text-end py-3 px-3.5">
-                          <span className="sr-only">Action</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {docs.map((doc) => {
-                        const badge = getStatusBadgeInfo(doc.status);
-                        return (
-                          <TableRow key={doc.id} className="group/row">
-                            <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-table-row-hover transition-colors border-e border-border/70 min-w-[280px] max-w-[450px] align-middle py-3.5 px-3.5">
-                              <span dir="auto" className="block break-words whitespace-normal font-semibold text-sm sm:text-base text-foreground">
-                                {doc.name}
-                              </span>
-                              {doc.path && (
-                                <span className="block text-xs text-muted-foreground font-mono break-words whitespace-normal mt-1">
-                                  {doc.path}
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell className="min-w-[160px] whitespace-nowrap align-middle py-3.5 px-3.5">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant={badge.variant} className={cn(badge.className, "rounded-none text-xs font-semibold py-1 px-2")}>
-                                  {badge.label}
-                                </Badge>
-                                {doc.requires_attention && (
-                                  <Badge variant="secondary" className="border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-none text-xs font-semibold py-1 px-2">
-                                    Needs attention
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="min-w-[100px] whitespace-nowrap align-middle py-3.5 px-3.5 text-xs font-medium text-muted-foreground">
-                              {formatBytes(doc.size)}
-                            </TableCell>
-                            <TableCell className="min-w-[110px] whitespace-nowrap align-middle py-3.5 px-3.5 text-xs text-muted-foreground font-mono uppercase font-semibold">
-                              {doc.languages.join(", ") || "—"}
-                            </TableCell>
-                            <TableCell className="min-w-[140px] whitespace-nowrap align-middle py-3.5 px-3.5 text-end">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelected(doc.id)}
-                                aria-label={`View ${doc.name}`}
-                                className="rounded-none h-8 text-xs font-semibold px-3"
-                              >
-                                View document
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {!result.loading && !result.error && docs.length > 0 && (
-          <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              Showing <strong>{docs.length}</strong> {docs.length === 1 ? "document" : "documents"} (Max 20 per page)
-            </p>
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    disabled={cursorHistory.length === 0}
-                    onClick={handlePrevPage}
-                  />
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationLink isActive>
-                    {cursorHistory.length + 1}
-                  </PaginationLink>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext
-                    disabled={!result.data?.next_cursor}
-                    onClick={handleNextPage}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        )}
-
-        {selected && (
-          <DocumentDialog
-            key={selected}
-            id={selected}
-            canReview={canReview}
-            isAdmin={isAdmin}
-            onClose={() => setSelected(null)}
-            onChanged={() => {
-              void result.reload();
-              onChanged();
-            }}
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-
-
-function ConnectedSource({
-  status,
-  isAdmin,
-  reload,
-}: {
-  status: SharePointStatus;
-  isAdmin: boolean;
-  reload: () => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
-  const [generation, setGeneration] = useState(0);
-  const { notify } = useToast();
-
-  async function action(path: string, message: string, method: "POST" | "DELETE" = "POST") {
+  async function action(subpath: string, message: string, method: "POST" | "DELETE" = "POST") {
     setBusy(true);
     try {
-      await api(`/api/sharepoint/${path}`, { method });
+      await api(`/api/sharepoint/${subpath}`, { method });
       notify(message);
-      setGeneration((value) => value + 1);
       await reload();
+      void reloadDocs();
+      void reloadReminders();
     } catch (error) {
-      notify(readableStatus(error instanceof Error ? error.message : "Request failed"), "error");
+      notify(readableStatus(error instanceof Error ? error.message : "action_failed"), "error");
     } finally {
       setBusy(false);
     }
@@ -420,21 +208,23 @@ function ConnectedSource({
 
   async function toggleAutoPolicy() {
     setBusy(true);
-    const nextPolicy = status.policy === "auto" ? "review" : "auto";
     try {
+      const current = await api<{ policy: string; terms: unknown[] }>("/api/sharepoint/rules");
+      const nextPolicy = current.policy === "auto" ? "review" : "auto";
       await api("/api/sharepoint/rules", {
         method: "PUT",
-        body: { policy: nextPolicy, terms: [] },
+        body: { policy: nextPolicy, terms: current.terms },
       });
       notify(
-        `Compliance mode switched to ${
-          nextPolicy === "auto" ? "Automatic (Instant AI)" : "Manual Review"
-        }.`
+        nextPolicy === "auto"
+          ? "Switched to Auto-AI Processing policy."
+          : "Switched to Manual Review policy."
       );
-      setGeneration((v) => v + 1);
       await reload();
+      void reloadDocs();
+      void reloadReminders();
     } catch (err) {
-      notify(readableStatus(err instanceof Error ? err.message : "Failed to switch policy"), "error");
+      notify(readableStatus(err instanceof Error ? err.message : "toggle_failed"), "error");
     } finally {
       setBusy(false);
     }
@@ -444,203 +234,94 @@ function ConnectedSource({
     if (!status.active_run) return;
     const timer = window.setInterval(() => {
       void reload();
+      void reloadDocs();
+      void reloadReminders();
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [status.active_run, reload]);
+  }, [status.active_run, reload, reloadDocs, reloadReminders]);
 
   return (
-    <div className="space-y-4 min-w-0 max-w-full">
-      {/* Streamlined Executive Controls Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 border border-border bg-card min-w-0">
-        <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
-          <Badge
-            variant={status.connected ? "outline" : "secondary"}
-            className={
-              status.connected
-                ? "border-emerald-500/30 text-emerald-700 dark:text-emerald-400 gap-1.5 py-0.5 rounded-none"
-                : "rounded-none"
-            }
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                status.connected ? "bg-emerald-500" : "bg-muted-foreground"
-              )}
-            />
-            {status.connected ? "SharePoint Connected" : "Disconnected"}
-          </Badge>
-
-          <Badge variant="outline" className="gap-1 py-0.5 rounded-none text-xs">
-            <Zap
-              className={cn(
-                "size-3",
-                status.policy === "auto" ? "text-amber-500" : "text-muted-foreground"
-              )}
-            />
-            {status.policy === "auto" ? "Auto-AI Enabled" : "Manual Review Mode"}
-          </Badge>
-
-          {status.run && (
-            <span className="text-muted-foreground font-mono text-[11px] hidden sm:inline">
-              Last sync: {readableStatus(status.run.status)} ({status.run.processed} indexed)
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          {/* Primary Action Button: Sync Now */}
-          {status.connected && (
-            <Button
-              size="sm"
-              disabled={busy || status.active_run}
-              onClick={() => void action("sync", "Document sync queued.")}
-              className="rounded-none gap-1.5 text-xs font-medium h-8"
-            >
-              <RefreshCw
-                data-icon="inline-start"
-                className={status.active_run ? "animate-spin" : ""}
-              />
-              {status.active_run ? "Syncing…" : "Sync Now"}
-            </Button>
-          )}
-
-          {status.configured && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPrivacyOpen(true)}
-              className="rounded-none gap-1.5 text-xs h-8"
-            >
-              <ShieldCheck data-icon="inline-start" className="size-3.5" />
-              Privacy policy
-            </Button>
-          )}
-
-          {/* Unified Options Dropdown Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  className="rounded-none gap-1 text-xs h-8"
-                >
-                  <Settings2 data-icon="inline-start" className="size-3.5" />
-                  Source Options
-                  <ChevronDown className="size-3 text-muted-foreground" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-56 rounded-none">
-              <DropdownMenuItem
-                onClick={() => void toggleAutoPolicy()}
-                className="gap-2 cursor-pointer text-xs"
-              >
-                <Zap className="size-3.5 text-amber-500" />
-                <span>
-                  {status.policy === "auto"
-                    ? "Switch to Manual Review"
-                    : "Enable Auto-AI Processing"}
-                </span>
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onClick={() => setPrivacyOpen(true)}
-                className="gap-2 cursor-pointer text-xs"
-              >
-                <ShieldCheck className="size-3.5 text-primary" />
-                <span>Privacy & Redaction Rules</span>
-              </DropdownMenuItem>
-
-              {isAdmin && (
-                <DropdownMenuItem
-                  onClick={() =>
-                    void action("test-connection", "SharePoint read access verified.")
-                  }
-                  className="gap-2 cursor-pointer text-xs"
-                >
-                  <FolderOpen className="size-3.5 text-muted-foreground" />
-                  <span>Test SharePoint Access</span>
-                </DropdownMenuItem>
-              )}
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem
-                render={
-                  <a
-                    href="/api/sharepoint/connect"
-                    className="flex items-center gap-2 cursor-pointer text-xs w-full text-foreground"
-                  >
-                    <Link2 className="size-3.5 text-muted-foreground" />
-                    <span>{status.connected ? "Reconnect Microsoft" : "Connect Microsoft"}</span>
-                  </a>
-                }
-              />
-
-              {status.connected && (
-                <DropdownMenuItem
-                  onClick={() =>
-                    void action("connection", "Microsoft access disconnected.", "DELETE")
-                  }
-                  className="gap-2 cursor-pointer text-xs text-destructive focus:text-destructive"
-                >
-                  <Unplug className="size-3.5 text-destructive" />
-                  <span>Disconnect SharePoint</span>
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Main Tabs: 4 Pillars layout */}
+    <div className="space-y-6 min-w-0 max-w-full">
       {status.connected ? (
-        <Tabs defaultValue="documents" className="space-y-4 min-w-0 max-w-full">
-          <TabsList className="w-full justify-start h-auto min-h-14 sm:min-h-16 flex-wrap items-center gap-2.5 p-2 sm:p-2.5 bg-muted/60 border border-border rounded-none">
-            <TabsTrigger
-              value="documents"
-              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
-            >
-              <FolderOpen className="size-4 sm:size-5 text-primary" /> Documents Library
-            </TabsTrigger>
-            <TabsTrigger
-              value="chat"
-              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
-            >
-              <Bot className="size-4 sm:size-5 text-primary" /> AI Document Assistant
-            </TabsTrigger>
-            <TabsTrigger
-              value="reminders"
-              className="flex items-center gap-2.5 rounded-none text-sm sm:text-base h-10 sm:h-11 px-4 sm:px-5 font-semibold text-foreground/80 hover:text-foreground border border-transparent data-active:border-border data-active:bg-background dark:data-active:bg-card data-active:text-foreground data-active:font-bold transition-colors shadow-xs"
-            >
-              <Calendar className="size-4 sm:size-5 text-sky-500" /> Tasks & Reminders
-            </TabsTrigger>
-          </TabsList>
+        <div className="min-w-0 max-w-full">
+          {activeTab === "home" && (
+            <DocumentsHomeTab
+              documents={docs}
+              reminders={reminders}
+              status={status}
+              isLoadingDocs={searchResult.loading}
+              isLoadingReminders={remindersFetch.loading}
+              onNavigateTab={handleNavigateTab}
+              onOpenDoc={(id) => setSelectedDocId(id)}
+              onCompleteReminder={handleCompleteReminder}
+              onSnoozeReminder={handleSnoozeReminder}
+            />
+          )}
 
-          <TabsContent value="documents" className="min-w-0 max-w-full">
-            {!busy && (
-              <Documents
-                canReview={status.can_review}
-                isAdmin={isAdmin}
-                generation={generation}
-                syncStatus={status.run?.status}
-                onChanged={() => void reload()}
-              />
-            )}
-          </TabsContent>
+          {activeTab === "documents" && (
+            <MyDocumentsTab
+              documents={docs}
+              totalCount={searchResult.data?.items?.length}
+              nextCursor={searchResult.data?.next_cursor}
+              isLoading={searchResult.loading}
+              error={searchResult.error}
+              search={search}
+              onSearchChange={setSearch}
+              onSearchSubmit={handleSearchSubmit}
+              categoryFilter={categoryFilter}
+              onCategoryFilterChange={setCategoryFilter}
+              onPrevPage={handlePrevPage}
+              onNextPage={handleNextPage}
+              hasPrevPage={cursorHistory.length > 0}
+              hasNextPage={Boolean(searchResult.data?.next_cursor)}
+              onOpenDoc={(id) => setSelectedDocId(id)}
+              onAskAboutDoc={handleAskAboutDoc}
+              onRefresh={() => void reloadDocs()}
+            />
+          )}
 
-          <TabsContent value="chat" className="min-w-0 max-w-full">
-            <CentralChatTab />
-          </TabsContent>
+          {activeTab === "assistant" && (
+            <CentralChatTab
+              initialQuery={currentAssistantQuery}
+              initialDocId={currentAssistantDocId}
+              onOpenDoc={(id) => setSelectedDocId(id)}
+              onNavigateTab={handleNavigateTab}
+            />
+          )}
 
-          <TabsContent value="reminders" className="min-w-0 max-w-full">
-            <TasksAndRemindersTab isAdmin={isAdmin} />
-          </TabsContent>
-        </Tabs>
+          {activeTab === "alerts" && (
+            <AlertsRemindersTab
+              reminders={reminders}
+              isLoading={remindersFetch.loading}
+              isAdmin={isAdmin}
+              onComplete={handleCompleteReminder}
+              onDismiss={handleDismissReminder}
+              onSnooze={handleSnoozeReminder}
+              onOpenDoc={(id) => setSelectedDocId(id)}
+              onRefresh={() => void reloadReminders()}
+            />
+          )}
+
+          {activeTab === "admin" && isAdmin && (
+            <AdminSourcesTab
+              status={status}
+              documents={docs}
+              onTestAccess={() =>
+                action("test-connection", "SharePoint read access verified.")
+              }
+              onSyncNow={() => action("sync", "Document sync queued.")}
+              onToggleAutoPolicy={toggleAutoPolicy}
+              onOpenPrivacy={() => setPrivacyOpen(true)}
+              onOpenReviewQueue={() => {
+                setCategoryFilter("All types");
+                handleNavigateTab("documents");
+              }}
+              isBusy={busy}
+            />
+          )}
+        </div>
       ) : (
-        <Card className="rounded-none border-border">
+        <Card className="rounded-none border-border shadow-xs">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
               <Link2 className="size-4 text-primary" />
@@ -664,13 +345,28 @@ function ConnectedSource({
         </Card>
       )}
 
+      {selectedDocId && (
+        <DocumentDialog
+          id={selectedDocId}
+          canReview={status.can_review}
+          isAdmin={isAdmin}
+          onClose={() => setSelectedDocId(null)}
+          onChanged={() => {
+            void reload();
+            void reloadDocs();
+            void reloadReminders();
+          }}
+        />
+      )}
+
       {privacyOpen && (
         <PrivacyDialog
           onClose={() => setPrivacyOpen(false)}
           onSaved={() => {
             setPrivacyOpen(false);
-            setGeneration((value) => value + 1);
             void reload();
+            void reloadDocs();
+            void reloadReminders();
           }}
         />
       )}
@@ -678,25 +374,31 @@ function ConnectedSource({
   );
 }
 
-export default function SharePointPage() {
+export default function SharePointPage({
+  tab,
+}: {
+  tab?: "home" | "documents" | "assistant" | "alerts" | "admin";
+}) {
   const status = useFetch<SharePointStatus>("/api/sharepoint/status");
   const { user } = useAuth();
-  const value = !status.loading && !status.error ? status.data : null;
+  const value = !status.error ? (status.data ?? null) : null;
 
   return (
     <div className="space-y-5">
-      <PageHead
-        title="SharePoint Intelligence"
-        subtitle="Automated document analysis, deadline expirations, commercial pricing, and Luna Q&A."
-      />
-      {status.loading && <Loading />}
+      {(!value || !value.enabled || !value.configured) && (
+        <PageHead
+          title="SharePoint Intelligence"
+          subtitle="Automated document analysis, deadline expirations, commercial pricing, and Luna Q&A."
+        />
+      )}
+      {status.loading && !status.data && <Loading />}
       {status.error && (
         <Alert variant="destructive">
           <AlertDescription>{readableStatus(status.error)}</AlertDescription>
         </Alert>
       )}
       {value && (!value.enabled || !value.configured) && (
-        <Card className="rounded-none border-border">
+        <Card className="rounded-none border-border shadow-xs">
           <CardHeader>
             <CardTitle>SharePoint setup required</CardTitle>
           </CardHeader>
@@ -715,7 +417,12 @@ export default function SharePointPage() {
         </Card>
       )}
       {value?.enabled && value.configured && (
-        <ConnectedSource status={value} isAdmin={Boolean(user?.is_admin)} reload={status.reload} />
+        <ConnectedSource
+          status={value}
+          isAdmin={Boolean(user?.is_admin)}
+          reload={status.reload}
+          tab={tab}
+        />
       )}
     </div>
   );

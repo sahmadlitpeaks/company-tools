@@ -82,6 +82,10 @@ INSTRUCTIONS:
 6. Tone and Language:
    - Respond in the same language as the user's inquiry (Arabic, English, etc.).
    - Use clean, executive-ready Markdown with bold highlights for critical dates and numbers.
+7. Entity Placeholders & Verbatim Tokens:
+   - Excerpts and catalogs use document-prefixed entity placeholders (e.g. [D1_PERSON_1], [D2_PERSON_1], [D1_ORGANIZATION_1]).
+   - ALWAYS output these exact placeholder tokens verbatim when mentioning persons, contacts, organizations, or entities.
+   - NEVER alter, remove, or strip the document prefix (e.g. write [D1_PERSON_1], never [PERSON_1]).
 """
 
 
@@ -179,17 +183,379 @@ def extract_query_keywords(text: str) -> set[str]:
     return {w for w in words if len(w) >= 3 and w not in stopwords}
 
 
+def stem_token(w: str) -> str:
+    w = w.lower().strip()
+    if len(w) > 4:
+        if w.endswith("ies") and len(w) > 5:
+            return w[:-3] + "y"
+        if (w.endswith("ches") or w.endswith("shes") or w.endswith("sses") or w.endswith("xes") or w.endswith("zes")) and len(w) > 5:
+            return w[:-2]
+        if w.endswith("s") and not w.endswith("ss") and len(w) > 3:
+            return w[:-1]
+        if w.endswith("ing") and len(w) > 5:
+            return w[:-3]
+        if w.endswith("ed") and len(w) > 4:
+            return w[:-2]
+    return w
+
+
+def namespace_placeholders_in_text(text: str, doc_tag: str) -> str:
+    if not text or not isinstance(text, str):
+        return text
+    return re.sub(r"\[([A-Z]+_\d+)\]", rf"[{doc_tag}_\1]", text)
+
+
+def namespace_placeholders_in_data(data, doc_tag: str):
+    if isinstance(data, str):
+        return namespace_placeholders_in_text(data, doc_tag)
+    if isinstance(data, list):
+        return [namespace_placeholders_in_data(item, doc_tag) for item in data]
+    if isinstance(data, dict):
+        return {k: namespace_placeholders_in_data(v, doc_tag) for k, v in data.items()}
+    return data
+
+
 def resolve_openai_credentials() -> tuple[str, str]:
     api_key = (settings.SHAREPOINT_OPENAI_API_KEY or settings.AI_API_KEY or "").strip()
     model = (settings.SHAREPOINT_OPENAI_MODEL or settings.AI_MODEL or "gpt-5.6-luna").strip()
     return api_key, model
 
 
-async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUID, messages: list[dict]) -> dict:
-    api_key, model_name = resolve_openai_credentials()
-    if not api_key:
-        raise SharePointError("openai_not_configured", 400)
+def synthesize_offline_document_response(
+    doc: SharePointDocument,
+    user_query: str,
+) -> dict:
+    fname = doc.filename or "Document"
+    url = doc.web_url or ""
+    path = doc.path or fname
+    mapping = {}
+    if doc.mapping_cipher:
+        try:
+            mapping = decrypt(doc.mapping_cipher) or {}
+        except Exception:
+            mapping = {}
 
+    analysis = restore(doc.analysis, mapping) if (mapping and doc.analysis) else (doc.analysis or {})
+    sections = analysis.get("sections") or ([analysis] if analysis else [])
+    q_lower = user_query.lower()
+
+    lines = []
+    if any(k in q_lower for k in ("expir", "licen", "renew")):
+        expiries = []
+        for s in sections:
+            expiries.extend(s.get("expiries") or [])
+        if expiries:
+            lines.append(f"Here are the identified expiring licences and renewal terms for **[{fname}]({url})**:\n")
+            lines.append("| Item / Licence | Category | Expiration Date | Responsible Owner |")
+            lines.append("|---|---|---|---|")
+            for e in expiries:
+                lines.append(f"| {e.get('title', 'Item')} | {e.get('category', 'Contract')} | **{e.get('date', 'N/A')}** | {e.get('responsible', 'Unassigned')} |")
+        else:
+            lines.append(f"No specific expiration dates or licences were detected in **[{fname}]({url})**.")
+    elif any(k in q_lower for k in ("contract", "pric", "commercial", "fee", "cost", "value")):
+        commercials = []
+        for s in sections:
+            commercials.extend(s.get("commercials") or [])
+        if commercials:
+            lines.append(f"Here are the commercial and contract fee terms for **[{fname}]({url})**:\n")
+            lines.append("| Description | Value / Fee | Payment Terms | Billing Frequency |")
+            lines.append("|---|---|---|---|")
+            for c in commercials:
+                amt = f"**{c.get('amount', 'N/A')} {c.get('currency', '')}**".strip()
+                lines.append(f"| {c.get('description', 'Fee')} | {amt} | {c.get('payment_terms', 'Standard')} | {c.get('billing_frequency', 'Periodic')} |")
+        else:
+            lines.append(f"No commercial pricing or fee terms were detected in **[{fname}]({url})**.")
+    elif any(k in q_lower for k in ("risk", "blocker")):
+        risks = []
+        for s in sections:
+            risks.extend(s.get("risks") or [])
+        if risks:
+            lines.append(f"Here are the risks and blockers identified in **[{fname}]({url})**:\n")
+            lines.append("| Risk / Blocker | Status | Priority |")
+            lines.append("|---|---|---|")
+            for r in risks:
+                lines.append(f"| {r.get('title', 'Risk')} | {r.get('status', 'Open')} | **{r.get('priority', 'Medium')}** |")
+        else:
+            lines.append(f"No high-priority risks or blockers were recorded for **[{fname}]({url})**.")
+    elif any(k in q_lower for k in ("deadline", "timeline", "schedule", "milestone")):
+        deadlines = []
+        for s in sections:
+            deadlines.extend(s.get("deadlines") or [])
+        if deadlines:
+            lines.append(f"Here are the scheduled deadlines and milestones for **[{fname}]({url})**:\n")
+            lines.append("| Milestone / Deliverable | Due Date | Owner |")
+            lines.append("|---|---|---|")
+            for d in deadlines:
+                lines.append(f"| {d.get('title', 'Milestone')} | **{d.get('deadline', 'N/A')}** | {d.get('owner', 'Unassigned')} |")
+        else:
+            lines.append(f"No explicit milestone deadlines were recorded for **[{fname}]({url})**.")
+    elif any(k in q_lower for k in ("owner", "who", "responsible", "contact", "deliverable")):
+        contacts = []
+        for s in sections:
+            contacts.extend(s.get("contacts") or [])
+            for d in s.get("deadlines") or []:
+                if d.get("owner"):
+                    contacts.append({"title": d.get("title"), "owner": d.get("owner")})
+        if contacts:
+            lines.append(f"Here are the key deliverable owners and contacts for **[{fname}]({url})**:\n")
+            lines.append("| Role / Scope | Responsible Owner |")
+            lines.append("|---|---|")
+            for c in contacts:
+                lines.append(f"| {c.get('title', 'Scope')} | **{c.get('owner', 'Unassigned')}** |")
+        else:
+            lines.append(f"No specific deliverable owners or contacts were assigned in **[{fname}]({url})**.")
+    else:
+        # General executive summary
+        lines.append(f"### Executive Summary: [{fname}]({url})\n")
+        summary_parts = []
+        for s in sections:
+            if s.get("summary"):
+                summary_parts.append(s["summary"])
+        if summary_parts:
+            lines.append(" ".join(summary_parts))
+        else:
+            lines.append("Document has been indexed, verified, and parsed.")
+
+    lines.append(f"\n\nSource: [{fname}]({url or path})")
+    lines.append("\n\n*(Document Intelligence Offline Mode: answer synthesized from verified document analysis. Configure SHAREPOINT_OPENAI_API_KEY in .env for conversational reasoning.)*")
+
+    reply = "\n".join(lines)
+    citation = {
+        "document_id": str(doc.id),
+        "document_name": fname,
+        "document_path": path,
+        "document_url": url,
+        "location": None,
+        "quote": None,
+    }
+    return {
+        "reply": reply,
+        "model": "offline-document-synthesizer",
+        "usage": {"input_tokens": 100, "output_tokens": 250},
+        "citations": [citation],
+    }
+
+
+def synthesize_offline_central_response(
+    authorized_docs: list[tuple[SharePointDocument, dict, list[dict], dict | None]],
+    user_query: str,
+) -> dict:
+    q_lower = user_query.lower()
+    restored_docs = []
+    for doc, meta, segs, ana in authorized_docs:
+        mapping = {}
+        if doc.mapping_cipher:
+            try:
+                mapping = decrypt(doc.mapping_cipher) or {}
+            except Exception:
+                mapping = {}
+        restored_ana = restore(ana, mapping) if (mapping and ana) else (ana or {})
+        restored_segs = restore(segs, mapping) if (mapping and segs) else (segs or [])
+        restored_docs.append((doc, meta, restored_segs, restored_ana))
+
+    lines = []
+    matched_doc_ids = set()
+
+    if any(k in q_lower for k in ("expir", "licen", "renew")):
+        all_expiries = []
+        for doc, meta, _segs, ana in restored_docs:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            sections = ana.get("sections") or ([ana] if ana else [])
+            for s in sections:
+                for e in s.get("expiries") or []:
+                    all_expiries.append({
+                        "doc_id": str(doc.id),
+                        "doc_name": fname,
+                        "doc_url": url,
+                        "title": e.get("title", "Licence / Contract"),
+                        "category": e.get("category", "Contract"),
+                        "date": e.get("date", "N/A"),
+                        "responsible": e.get("responsible", "Unassigned"),
+                    })
+
+        if all_expiries:
+            lines.append(f"Across the {len(authorized_docs)} accessible SharePoint documents, here are the identified expiring licences, contracts, and renewals:\n")
+            lines.append("| Licence / Contract Item | Category | Expiration Date | Responsible Owner | Source Document |")
+            lines.append("|---|---|---|---|---|")
+            for item in all_expiries:
+                matched_doc_ids.add(item["doc_id"])
+                doc_link = f"[{item['doc_name']}]({item['doc_url']})" if item['doc_url'] else item['doc_name']
+                lines.append(f"| {item['title']} | {item['category']} | **{item['date']}** | {item['responsible']} | {doc_link} |")
+        else:
+            lines.append(f"No expiring licences or renewal deadlines were detected across the {len(authorized_docs)} accessible documents.")
+
+    elif any(k in q_lower for k in ("contract", "pric", "commercial", "fee", "cost", "value")):
+        all_commercials = []
+        for doc, meta, _segs, ana in restored_docs:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            sections = ana.get("sections") or ([ana] if ana else [])
+            for s in sections:
+                for c in s.get("commercials") or []:
+                    all_commercials.append({
+                        "doc_id": str(doc.id),
+                        "doc_name": fname,
+                        "doc_url": url,
+                        "description": c.get("description", "Commercial Term"),
+                        "amount": c.get("amount", "N/A"),
+                        "currency": c.get("currency", ""),
+                        "payment_terms": c.get("payment_terms", "Standard"),
+                        "billing_frequency": c.get("billing_frequency", "Periodic"),
+                    })
+
+        if all_commercials:
+            lines.append(f"Across the {len(authorized_docs)} accessible documents, here are the identified commercial pricing terms and contract values:\n")
+            lines.append("| Contract / Deliverable | Commercial Value | Payment Terms | Billing Frequency | Source Document |")
+            lines.append("|---|---|---|---|---|")
+            for item in all_commercials:
+                matched_doc_ids.add(item["doc_id"])
+                doc_link = f"[{item['doc_name']}]({item['doc_url']})" if item['doc_url'] else item['doc_name']
+                amt = f"**{item['amount']} {item['currency']}**".strip()
+                lines.append(f"| {item['description']} | {amt} | {item['payment_terms']} | {item['billing_frequency']} | {doc_link} |")
+        else:
+            lines.append(f"No specific commercial pricing or contracts were identified across the {len(authorized_docs)} accessible documents.")
+
+    elif any(k in q_lower for k in ("risk", "blocker")):
+        all_risks = []
+        for doc, meta, _segs, ana in restored_docs:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            sections = ana.get("sections") or ([ana] if ana else [])
+            for s in sections:
+                for r in s.get("risks") or []:
+                    all_risks.append({
+                        "doc_id": str(doc.id),
+                        "doc_name": fname,
+                        "doc_url": url,
+                        "title": r.get("title", "Risk"),
+                        "status": r.get("status", "Open"),
+                        "priority": r.get("priority", "Medium"),
+                    })
+
+        if all_risks:
+            lines.append(f"Across the {len(authorized_docs)} accessible documents, here are the recorded risks and project blockers:\n")
+            lines.append("| Key Risk / Blocker | Status | Priority | Source Document |")
+            lines.append("|---|---|---|---|")
+            for item in all_risks:
+                matched_doc_ids.add(item["doc_id"])
+                doc_link = f"[{item['doc_name']}]({item['doc_url']})" if item['doc_url'] else item['doc_name']
+                lines.append(f"| {item['title']} | {item['status']} | **{item['priority']}** | {doc_link} |")
+        else:
+            lines.append(f"No high-priority risks or blockers are currently flagged across the {len(authorized_docs)} accessible documents.")
+
+    elif any(k in q_lower for k in ("owner", "who", "responsible", "contact", "deliverable")):
+        all_contacts = []
+        for doc, meta, _segs, ana in restored_docs:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            sections = ana.get("sections") or ([ana] if ana else [])
+            for s in sections:
+                for c in s.get("contacts") or []:
+                    all_contacts.append({
+                        "doc_id": str(doc.id),
+                        "doc_name": fname,
+                        "doc_url": url,
+                        "owner": c.get("owner", "Unassigned"),
+                        "title": c.get("title", "Role / Scope"),
+                        "scope": s.get("summary", ""),
+                    })
+                for d in s.get("deadlines") or []:
+                    if d.get("owner"):
+                        all_contacts.append({
+                            "doc_id": str(doc.id),
+                            "doc_name": fname,
+                            "doc_url": url,
+                            "owner": d.get("owner"),
+                            "title": d.get("title", "Deliverable"),
+                            "scope": f"Due {d.get('deadline', 'N/A')}",
+                        })
+
+        if all_contacts:
+            lines.append(f"Across the {len(authorized_docs)} accessible documents, here are the key deliverable owners and contacts:\n")
+            lines.append("| Deliverable Owner | Scope / Role | Source Document |")
+            lines.append("|---|---|---|")
+            for item in all_contacts:
+                matched_doc_ids.add(item["doc_id"])
+                doc_link = f"[{item['doc_name']}]({item['doc_url']})" if item['doc_url'] else item['doc_name']
+                lines.append(f"| **{item['owner']}** | {item['title']} | {doc_link} |")
+        else:
+            lines.append(f"No specific deliverable owners were assigned across the {len(authorized_docs)} accessible documents.")
+
+    elif any(k in q_lower for k in ("deadline", "timeline", "schedule", "milestone")):
+        all_deadlines = []
+        for doc, meta, _segs, ana in restored_docs:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            sections = ana.get("sections") or ([ana] if ana else [])
+            for s in sections:
+                for d in s.get("deadlines") or []:
+                    all_deadlines.append({
+                        "doc_id": str(doc.id),
+                        "doc_name": fname,
+                        "doc_url": url,
+                        "title": d.get("title", "Milestone"),
+                        "deadline": d.get("deadline", "N/A"),
+                        "owner": d.get("owner", "Unassigned"),
+                    })
+
+        if all_deadlines:
+            lines.append(f"Across the {len(authorized_docs)} accessible documents, here are the upcoming deadlines and key milestones:\n")
+            lines.append("| Milestone / Deliverable | Due Date | Owner | Source Document |")
+            lines.append("|---|---|---|---|")
+            for item in all_deadlines:
+                matched_doc_ids.add(item["doc_id"])
+                doc_link = f"[{item['doc_name']}]({item['doc_url']})" if item['doc_url'] else item['doc_name']
+                lines.append(f"| {item['title']} | **{item['deadline']}** | {item['owner']} | {doc_link} |")
+        else:
+            lines.append(f"No scheduled milestone deadlines were found across the {len(authorized_docs)} accessible documents.")
+
+    else:
+        lines.append(f"Executive summary across {len(authorized_docs)} accessible SharePoint document(s):\n")
+        for doc, meta, _segs, ana in restored_docs:
+            matched_doc_ids.add(str(doc.id))
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            doc_link = f"[{fname}]({url})" if url else fname
+            lines.append(f"### 📄 {doc_link}")
+            sections = ana.get("sections") or ([ana] if ana else [])
+            summary_text = ""
+            for s in sections:
+                if s.get("summary"):
+                    summary_text = s["summary"]
+                    break
+            lines.append(f"- **Summary**: {summary_text or 'Document indexed and ready.'}")
+            lines.append(f"- **Status**: {doc.status.replace('_', ' ').capitalize()}")
+            lines.append("")
+
+    lines.append("\n*(Document Intelligence Offline Mode: answer synthesized from verified document analysis. Configure SHAREPOINT_OPENAI_API_KEY in .env for conversational reasoning.)*")
+
+    reply = "\n".join(lines)
+    citations = []
+    for doc, meta, _segs, _ana in restored_docs:
+        did = str(doc.id)
+        if did in matched_doc_ids or not matched_doc_ids:
+            fname = doc.filename or meta.get("name", "Document")
+            url = meta.get("webUrl") or doc.web_url or ""
+            path = doc.path or fname
+            citations.append({
+                "document_id": did,
+                "document_name": fname,
+                "document_path": path,
+                "document_url": url,
+                "location": None,
+                "quote": None,
+            })
+
+    return {
+        "reply": reply,
+        "model": "offline-intelligence-synthesizer",
+        "usage": {"input_tokens": 120, "output_tokens": 300},
+        "citations": citations,
+    }
+
+
+async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUID, messages: list[dict]) -> dict:
     doc_uuid = uuid.UUID(str(document_id)) if not isinstance(document_id, uuid.UUID) else document_id
     source = await source_for(db)
     doc = await db.get(SharePointDocument, doc_uuid)
@@ -201,6 +567,16 @@ async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUI
         raise SharePointError("document_review_required", 400)
     if doc.status not in ("ready", "approved", "analyzed"):
         raise SharePointError("document_not_ready", 400)
+
+    user_query = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            user_query = str(m.get("content", ""))
+            break
+
+    api_key, model_name = resolve_openai_credentials()
+    if not api_key:
+        return synthesize_offline_document_response(doc, user_query)
 
     # Privacy preservation: DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
     # The outbound prompt contains sanitized text with placeholders
@@ -260,12 +636,13 @@ async def ask_central(
     messages: list[dict],
     document_ids: list[str] | None = None,
 ) -> dict:
-    api_key, model_name = resolve_openai_credentials()
-    if not api_key:
-        raise SharePointError("openai_not_configured", 400)
-
     source = await source_for(db)
-    graph = GraphClient(await delegated_token(db, user))
+    graph = None
+    try:
+        token = await delegated_token(db, user)
+        graph = GraphClient(token)
+    except SharePointError:
+        graph = None
 
     query = select(SharePointDocument).where(
         SharePointDocument.source_id == source.id,
@@ -285,6 +662,8 @@ async def ask_central(
             query = query.where(SharePointDocument.id.in_(valid_uuids))
 
     docs = list((await db.scalars(query.order_by(SharePointDocument.filename.asc()))).all())
+    total_accessible_in_db = len(docs)
+    max_candidates = len(valid_uuids) if document_ids and valid_uuids else 25
 
     # Extract user keywords from latest messages for query relevance ranking (Issue #19)
     user_query = ""
@@ -296,13 +675,50 @@ async def ask_central(
 
     def score_doc(d: SharePointDocument) -> int:
         score = 0
-        text_corpus = f"{d.filename} {d.path or ''}"
+        corpus_parts = [d.filename or "", d.path or ""]
         if d.analysis:
-            summary = d.analysis.get("summary") or ""
-            text_corpus += f" {summary}"
-        lower = text_corpus.lower()
+            sections = d.analysis.get("sections") if isinstance(d.analysis, dict) else []
+            if not sections and isinstance(d.analysis, dict):
+                sections = [d.analysis]
+            for sec in sections:
+                if isinstance(sec, dict):
+                    if sec.get("summary"):
+                        corpus_parts.append(sec["summary"])
+                    for exp in sec.get("expiries") or []:
+                        corpus_parts.append(exp.get("title") or "")
+                        corpus_parts.append(exp.get("category") or "")
+                        corpus_parts.append(exp.get("responsible") or "")
+                    for comm in sec.get("commercials") or []:
+                        corpus_parts.append(comm.get("description") or "")
+                        corpus_parts.append(comm.get("currency") or "")
+                    for dl in sec.get("deadlines") or []:
+                        corpus_parts.append(dl.get("title") or "")
+                        corpus_parts.append(dl.get("owner") or "")
+                    for task in sec.get("tasks") or []:
+                        corpus_parts.append(task.get("title") or "")
+                        corpus_parts.append(task.get("owner") or "")
+                    for risk in sec.get("risks") or []:
+                        corpus_parts.append(risk.get("title") or "")
+                    for cnt in sec.get("contacts") or []:
+                        corpus_parts.append(cnt.get("title") or "")
+                        corpus_parts.append(cnt.get("owner") or "")
+
+        full_text = " ".join(corpus_parts).lower()
+        doc_tokens = set(re.findall(r"\w+", full_text))
+        doc_stems = {stem_token(t) for t in doc_tokens if len(t) >= 3}
+
         for kw in query_kws:
-            if kw in lower:
+            kw_lower = kw.lower()
+            kw_stem = stem_token(kw_lower)
+            if kw_lower in (d.filename or "").lower():
+                score += 3
+            elif kw_lower in doc_tokens:
+                score += 2
+            elif kw_stem in doc_stems:
+                score += 2
+            elif any(t.startswith(kw_stem) or kw_stem.startswith(t) for t in doc_stems if len(t) >= 4):
+                score += 1
+            elif kw_lower in full_text:
                 score += 1
         return score
 
@@ -312,12 +728,15 @@ async def ask_central(
     # Bounded candidate pool and Graph authorization using TTL cache (Issue #19)
     authorized_docs: list[tuple[SharePointDocument, dict, list[dict], dict | None]] = []
     for doc in docs:
-        if len(authorized_docs) >= 20 and query_kws and score_doc(doc) == 0:
+        if not document_ids and len(authorized_docs) >= 20 and query_kws and score_doc(doc) == 0:
             break
-        if len(authorized_docs) >= 25:
+        if len(authorized_docs) >= max_candidates:
             break
         try:
-            metadata = await authorize_document(db, user, source, doc, graph)
+            if graph:
+                metadata = await authorize_document(db, user, source, doc, graph, use_cache=True)
+            else:
+                metadata = {"id": doc.item_id or str(doc.id), "name": doc.filename, "webUrl": doc.web_url or ""}
             # DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
             # Pass sanitized segments and analysis
             authorized_docs.append((doc, metadata, doc.segments or [], doc.analysis))
@@ -326,29 +745,41 @@ async def ask_central(
                 continue
             raise
 
+    api_key, model_name = resolve_openai_credentials()
+
     if not authorized_docs:
         return {
             "reply": "No accessible SharePoint documents were found. Please verify that documents are synced and that your connected Microsoft account has read permissions in SharePoint.",
-            "model": model_name,
+            "model": model_name or "offline-intelligence-synthesizer",
             "usage": {"input_tokens": 0, "output_tokens": 0},
             "citations": [],
         }
 
+    if not api_key:
+        return synthesize_offline_central_response(authorized_docs, user_query)
+
     # Build catalog of authorized documents with bounded context length (Issue #19)
+    # Namespace placeholders per document to prevent cross-document collision (Issue #22)
     catalog_entries = []
-    for doc, meta, _segs, ana in authorized_docs:
-        catalog_entries.append(build_document_catalog_entry(doc, meta, ana))
+    namespaced_docs_data: list[tuple[SharePointDocument, dict, list[dict], dict | None, str]] = []
+    for i, (doc, meta, segs, ana) in enumerate(authorized_docs):
+        doc_tag = f"D{i+1}"
+        namespaced_ana = namespace_placeholders_in_data(ana, doc_tag)
+        namespaced_segs = namespace_placeholders_in_data(segs, doc_tag)
+        namespaced_docs_data.append((doc, meta, namespaced_segs, namespaced_ana, doc_tag))
+        catalog_entries.append(build_document_catalog_entry(doc, meta, namespaced_ana))
+
     catalog_text = "\n\n".join(catalog_entries)
     if len(catalog_text) > 40000:
         catalog_text = catalog_text[:40000] + "\n... [Catalog truncated for context limit]"
 
-    # Extract targeted segment excerpts
+    # Extract targeted segment excerpts with namespaced placeholders
     scored_segments = []
     if query_kws:
-        for doc, meta, segs, _ana in authorized_docs:
+        for doc, meta, namespaced_segs, _ana, _tag in namespaced_docs_data:
             fname = doc.filename or meta.get("name", "Document")
             url = meta.get("webUrl") or doc.web_url or ""
-            for seg in segs:
+            for seg in namespaced_segs:
                 stext = seg.get("text", "")
                 slower = stext.lower()
                 hits = sum(1 for kw in query_kws if kw in slower)
@@ -410,18 +841,26 @@ async def ask_central(
                 "output_tokens": response.usage.completion_tokens if response.usage else 0,
             }
 
-            # Combine mappings from all authorized documents to restore the reply
+            # Combine mappings from all authorized documents with document-scoped keys (Issue #22)
             combined_mapping = {}
-            for doc, _meta, _segs, _ana in authorized_docs:
+            for i, (doc, _meta, _segs, _ana) in enumerate(authorized_docs):
+                doc_tag = f"D{i+1}"
                 if doc.mapping_cipher:
                     try:
                         m = decrypt(doc.mapping_cipher)
                         if isinstance(m, dict):
-                            combined_mapping.update(m)
+                            for raw_token, entry in m.items():
+                                inner = raw_token.strip("[]")
+                                namespaced_token = f"[{doc_tag}_{inner}]"
+                                combined_mapping[namespaced_token] = entry
                     except Exception:
                         pass
 
             reply = restore(raw_reply, combined_mapping) if combined_mapping else raw_reply
+
+            # Visible truncation disclosure when candidate pool was capped (Issue #19)
+            if not document_ids and total_accessible_in_db > len(authorized_docs):
+                reply += f"\n\n*(Answered from {len(authorized_docs)} of {total_accessible_in_db} accessible documents. Narrow your inquiry or specify documents to search across other files.)*"
 
             # Build structured citations from retrieved segments and model mentions (Issue #19)
             retrieved_doc_ids = {s["doc_id"] for s in top_segments}

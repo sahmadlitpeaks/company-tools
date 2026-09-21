@@ -1028,6 +1028,8 @@ async def test_reminder_burst_prevention_and_retries(client, auth, indexed, monk
         delivered_stages.append(kwargs)
         return True
 
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
     monkeypatch.setattr("app.services.sharepoint.reminders.send_email", fake_send_email)
     monkeypatch.setattr("app.services.sharepoint.reminders.send_teams", lambda *a, **kw: True)
 
@@ -1164,3 +1166,495 @@ def test_send_teams_skips_fallback_on_400_or_404(monkeypatch):
     assert res is False
     # Only 1 call was made; legacy fallback was skipped!
     assert len(urlopen_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_reminders_list_filters_authorized_before_150_limit(client, auth, indexed, monkeypatch):
+    """Issue #24: list_reminders applies authorization filter before the 150-row limit so user's reminders are not lost."""
+    from app.models.sharepoint import SharePointDocument, SharePointReminder
+
+    user_id, source_id, doc1_id = indexed
+
+    async with AsyncSessionLocal() as db:
+        # Create Doc 2
+        doc2 = SharePointDocument(
+            source_id=source_id,
+            item_id="two",
+            parent_id="folder",
+            in_scope=True,
+            version="v1",
+            filename="Doc2 Authorized.txt",
+            status="ready",
+        )
+        db.add(doc2)
+        await db.flush()
+        doc2_id = doc2.id
+
+        # Insert 155 reminders for Doc 1 (earlier target_date: 2026-10-01)
+        # and 5 reminders for Doc 2 (later target_date: 2026-12-01)
+        for i in range(155):
+            rem = SharePointReminder(
+                id=uuid.uuid4(),
+                source_id=source_id,
+                document_id=doc1_id,
+                title=f"Doc1 Reminder {i}",
+                category="task",
+                target_date="2026-10-01",
+                reminder_date="2026-09-20",
+                lead_days=10,
+                status="pending",
+                dedup_key=f"d1_{i}",
+            )
+            db.add(rem)
+
+        for i in range(5):
+            rem = SharePointReminder(
+                id=uuid.uuid4(),
+                source_id=source_id,
+                document_id=doc2_id,
+                title=f"Doc2 Authorized Reminder {i}",
+                category="task",
+                target_date="2026-12-01",
+                reminder_date="2026-11-20",
+                lead_days=10,
+                status="pending",
+                dedup_key=f"d2_{i}",
+            )
+            db.add(rem)
+        await db.commit()
+
+    # User is DENIED for Doc 1, but PERMITTED for Doc 2
+    async def selective_can_read(self, drive, item):
+        if item == "two":
+            return metadata(item="two", name="Doc2 Authorized.txt")
+        raise SharePointError("document_access_denied", 403)
+
+    monkeypatch.setattr(graph.GraphClient, "can_read", selective_can_read)
+
+    resp = await client.get("/api/sharepoint/reminders?category=task", headers=auth)
+    assert resp.status_code == 200
+    returned = resp.json()
+    # If limit(150) were applied before authorization, Doc2 reminders would have been dropped!
+    # Because authorization is filtered before limit, all 5 Doc2 reminders are returned:
+    assert len(returned) == 5
+    assert all("Doc2 Authorized Reminder" in r["title"] for r in returned)
+
+
+@pytest.mark.asyncio
+async def test_reminders_missing_connection_returns_403(client, configured):
+    """Issue #24: When user has no SharePoint connection, GET /reminders returns 403 microsoft_connection_required."""
+    from app.core.security import create_access_token
+    from app.models.user import User
+
+    async with AsyncSessionLocal() as db:
+        user2 = User(
+            id=uuid.uuid4(),
+            email="unconnected@agholding.net",
+            display_name="Unconnected User",
+            role="admin",
+            is_active=True,
+            status="active",
+        )
+        db.add(user2)
+        await db.commit()
+        user2_id = str(user2.id)
+
+    token = create_access_token(user2_id, extra={"role": "admin"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.get("/api/sharepoint/reminders", headers=headers)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "microsoft_connection_required"
+
+
+def test_score_doc_reads_section_summaries_and_stems_plurals():
+    """Issue #23: score_doc extracts summaries from analysis sections, commercial & expiry titles, and stems keywords."""
+    import re
+    from app.models.sharepoint import SharePointDocument
+    from app.services.sharepoint import chat
+
+    assert chat.stem_token("licences") == "licence"
+    assert chat.stem_token("contracts") == "contract"
+    assert chat.stem_token("renewals") == "renewal"
+
+    doc1 = SharePointDocument(
+        filename="AGH-2026-114.pdf",
+        path="/Archives/AGH-2026-114.pdf",
+        analysis={
+            "sections": [
+                {
+                    "summary": "This is a supplier contract renewal agreement for IT infrastructure services.",
+                    "expiries": [{"title": "Dubai Trade Licence Renewal", "date": "2026-12-31", "category": "renewal"}],
+                    "commercials": [{"description": "Annual subscription licensing fee", "amount": 45000.0, "currency": "USD"}],
+                }
+            ],
+            "requires_attention": True,
+        },
+    )
+
+    doc2 = SharePointDocument(
+        filename="Employee_Handbook_2026.pdf",
+        path="/HR/Employee_Handbook_2026.pdf",
+        analysis={"sections": [{"summary": "Standard office safety and conduct guidelines.", "expiries": [], "commercials": []}]},
+    )
+
+    query_kws = chat.extract_query_keywords("which supplier contracts need renewal?")
+    assert "contracts" in query_kws
+    assert "supplier" in query_kws
+    assert "renewal" in query_kws
+
+    def score_doc(d):
+        corpus_parts = [d.filename or "", d.path or ""]
+        if d.analysis:
+            sections = d.analysis.get("sections") if isinstance(d.analysis, dict) else []
+            if not sections and isinstance(d.analysis, dict):
+                sections = [d.analysis]
+            for sec in sections:
+                if isinstance(sec, dict):
+                    if sec.get("summary"):
+                        corpus_parts.append(sec["summary"])
+                    for exp in sec.get("expiries") or []:
+                        corpus_parts.append(exp.get("title") or "")
+                    for comm in sec.get("commercials") or []:
+                        corpus_parts.append(comm.get("description") or "")
+        full_text = " ".join(corpus_parts).lower()
+        doc_tokens = set(re.findall(r"\w+", full_text))
+        doc_stems = {chat.stem_token(t) for t in doc_tokens if len(t) >= 3}
+        score = 0
+        for kw in query_kws:
+            kw_lower = kw.lower()
+            kw_stem = chat.stem_token(kw_lower)
+            if kw_lower in (d.filename or "").lower():
+                score += 3
+            elif kw_lower in doc_tokens:
+                score += 2
+            elif kw_stem in doc_stems:
+                score += 2
+            elif any(t.startswith(kw_stem) or kw_stem.startswith(t) for t in doc_stems if len(t) >= 4):
+                score += 1
+            elif kw_lower in full_text:
+                score += 1
+        return score
+
+    score1 = score_doc(doc1)
+    score2 = score_doc(doc2)
+    assert score1 > 0
+    assert score2 == 0
+    assert score1 > score2
+
+
+@pytest.mark.asyncio
+async def test_central_chat_namespaced_placeholders_prevent_cross_document_collision(client, auth, indexed, monkeypatch):
+    """Issue #22: Central chat namespaces placeholders per document so [PERSON_1] across different documents do not collide."""
+    from app.models.sharepoint import SharePointDocument
+    from app.services.sharepoint.common import encrypt
+
+    user_id, source_id, doc_a_id = indexed
+
+    async with AsyncSessionLocal() as db:
+        # Doc A: [PERSON_1] is Alice
+        doc_a = await db.get(SharePointDocument, doc_a_id)
+        doc_a.filename = "Trade_Licence.pdf"
+        doc_a.mapping_cipher = encrypt({"[PERSON_1]": {"value": "Alice", "restore": True}})
+        doc_a.segments = [{"id": "s1", "location": "Page 1", "text": "Trade licence holder is [PERSON_1]."}]
+        doc_a.payload_hash = analysis.payload_hash(doc_a.segments)
+        doc_a.analysis = analyzed(doc_a.segments)
+
+        # Doc B: [PERSON_1] is Bob
+        segments_b = [{"id": "s1", "location": "Page 1", "text": "Insurance policy contact is [PERSON_1]."}]
+        doc_b = SharePointDocument(
+            source_id=source_id,
+            item_id="two",
+            parent_id="folder",
+            in_scope=True,
+            version="v1",
+            filename="Insurance_Policy.pdf",
+            status="ready",
+            segments=segments_b,
+            languages=["en"],
+            mapping_cipher=encrypt({"[PERSON_1]": {"value": "Bob", "restore": True}}),
+            analysis=analyzed(segments_b),
+            payload_hash=analysis.payload_hash(segments_b),
+        )
+        db.add(doc_b)
+        await db.commit()
+
+    async def permitted(self, drive, item):
+        return metadata(item=item, name=f"Doc {item}")
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+
+    class FakeChoice:
+        message = type("Message", (), {
+            "content": "The trade licence holder is [D2_PERSON_1], and the insurance contact is [D1_PERSON_1]."
+        })()
+
+    class FakeChatResponse:
+        choices = [FakeChoice()]
+        usage = type("Usage", (), {"prompt_tokens": 50, "completion_tokens": 20})()
+
+    async def fake_create(*args, **kwargs):
+        return FakeChatResponse()
+
+    monkeypatch.setattr("openai.resources.chat.completions.AsyncCompletions.create", fake_create)
+
+    resp = await client.post(
+        "/api/sharepoint/chat",
+        headers=auth,
+        json={"messages": [{"role": "user", "content": "Who is responsible for the licence and insurance?"}]},
+    )
+    assert resp.status_code == 200
+    reply = resp.json()["reply"]
+
+    # In the reply:
+    # [D1_PERSON_1] must restore to Alice, and [D2_PERSON_1] must restore to Bob!
+    assert "The trade licence holder is Alice" in reply
+    assert "and the insurance contact is Bob" in reply
+    assert "[D1_PERSON_1]" not in reply
+    assert "[D2_PERSON_1]" not in reply
+
+
+@pytest.mark.asyncio
+async def test_central_chat_candidate_truncation_disclosed_and_scoped_ids(client, auth, indexed, monkeypatch):
+    """Issue #19: Central chat discloses candidate pool truncation when library exceeds cap, and scopes document_ids."""
+    from app.models.sharepoint import SharePointDocument
+
+    user_id, source_id, doc_id = indexed
+
+    async with AsyncSessionLocal() as db:
+        # Insert 30 dummy ready documents to exceed the 25 candidate cap
+        for i in range(30):
+            segs = [{"id": "s1", "location": "Text", "text": f"Content for extra document {i}"}]
+            doc = SharePointDocument(
+                source_id=source_id,
+                item_id=f"extra_{i}",
+                parent_id="folder",
+                in_scope=True,
+                version="v1",
+                filename=f"Catalog_Doc_{i:02d}.txt",
+                status="ready",
+                segments=segs,
+                payload_hash=analysis.payload_hash(segs),
+                analysis={"sections": [{"summary": f"Summary {i}"}]},
+            )
+            db.add(doc)
+        await db.commit()
+
+    async def permitted(self, drive, item):
+        return metadata(item=item, name=f"Doc {item}")
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+
+    class FakeChoice:
+        message = type("Message", (), {"content": "Here is the summary of documents."})()
+
+    class FakeChatResponse:
+        choices = [FakeChoice()]
+        usage = type("Usage", (), {"prompt_tokens": 20, "completion_tokens": 10})()
+
+    async def fake_create(*args, **kwargs):
+        return FakeChatResponse()
+
+    monkeypatch.setattr("openai.resources.chat.completions.AsyncCompletions.create", fake_create)
+
+    # 1. Unscoped inquiry against 31 documents hits 25 cap and discloses truncation
+    resp = await client.post(
+        "/api/sharepoint/chat",
+        headers=auth,
+        json={"messages": [{"role": "user", "content": "List all catalog documents"}]},
+    )
+    assert resp.status_code == 200
+    reply = resp.json()["reply"]
+    assert "Answered from 25 of 31 accessible documents" in reply
+
+    # 2. Scoped query with explicit document_ids bypasses 25 cap
+    async with AsyncSessionLocal() as db:
+        all_docs = (await db.scalars(select(SharePointDocument).limit(28))).all()
+        selected_ids = [str(d.id) for d in all_docs]
+
+    resp_scoped = await client.post(
+        "/api/sharepoint/chat",
+        headers=auth,
+        json={
+            "messages": [{"role": "user", "content": "Analyze these specific documents"}],
+            "document_ids": selected_ids,
+        },
+    )
+    assert resp_scoped.status_code == 200
+    assert "Answered from 25 of" not in resp_scoped.json()["reply"]
+
+
+@pytest.mark.asyncio
+async def test_reminder_delivery_blocked_without_recipient_or_unauthorized(client, auth, indexed, monkeypatch):
+    """Issue #17: Reminders without an assigned recipient or where recipient lacks SharePoint permission are not delivered."""
+    from app.models.sharepoint import SharePointReminder
+    from app.services.sharepoint.reminders import deliver_reminder
+
+    user_id, source_id, doc_id = indexed
+
+    async with AsyncSessionLocal() as db:
+        # Case 1: No recipient
+        rem_no_recipient = SharePointReminder(
+            id=uuid.uuid4(),
+            source_id=source_id,
+            document_id=doc_id,
+            title="Unassigned Expiry",
+            category="expiry",
+            target_date="2026-10-10",
+            reminder_date="2026-10-01",
+            lead_days=9,
+            responsible_name="Unknown Person",
+            recipient_email=None,
+            status="pending",
+            dedup_key="unassigned_1",
+        )
+        db.add(rem_no_recipient)
+
+        # Case 2: Recipient has no SharePoint access
+        rem_unauthorized = SharePointReminder(
+            id=uuid.uuid4(),
+            source_id=source_id,
+            document_id=doc_id,
+            title="Unauthorized Expiry",
+            category="expiry",
+            target_date="2026-10-10",
+            reminder_date="2026-10-01",
+            lead_days=9,
+            responsible_name="Admin",
+            recipient_email="admin@agholding.net",
+            status="pending",
+            dedup_key="unauthorized_1",
+        )
+        db.add(rem_unauthorized)
+        await db.commit()
+        rem1_id = rem_no_recipient.id
+        rem2_id = rem_unauthorized.id
+
+    emails_sent = []
+    teams_sent = []
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_email", lambda *a, **kw: emails_sent.append(kw) or True)
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_teams", lambda *a, **kw: teams_sent.append(kw) or True)
+
+    # 1. Without recipient: deliver_reminder returns False, does NOT send email, does NOT mark sent
+    async with AsyncSessionLocal() as db:
+        r1 = await db.get(SharePointReminder, rem1_id)
+        assert await deliver_reminder(db, r1) is False
+        assert r1.status != "sent"
+        assert len(emails_sent) == 0
+        assert len(teams_sent) == 0
+
+    # 2. Recipient denied access in SharePoint
+    async def denied(*args, **kwargs):
+        raise SharePointError("document_access_denied", 403)
+    monkeypatch.setattr(graph.GraphClient, "can_read", denied)
+
+    async with AsyncSessionLocal() as db:
+        r2 = await db.get(SharePointReminder, rem2_id)
+        assert await deliver_reminder(db, r2) is False
+        assert r2.status != "sent"
+        assert len(emails_sent) == 0
+        assert len(teams_sent) == 0
+
+
+@pytest.mark.asyncio
+async def test_reminder_teams_webhook_does_not_leak_sensitive_details(client, auth, indexed, monkeypatch):
+    """Issue #17: Teams card is a non-sensitive notification pointer and cannot mark reminder sent alone."""
+    from app.models.sharepoint import SharePointReminder
+    from app.services.sharepoint.reminders import deliver_reminder
+
+    user_id, source_id, doc_id = indexed
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, doc_id)
+        doc.filename = "Confidential_Salary_Review.pdf"
+        doc.path = "/HR/Confidential/Salaries/Confidential_Salary_Review.pdf"
+
+        rem = SharePointReminder(
+            id=uuid.uuid4(),
+            source_id=source_id,
+            document_id=doc_id,
+            title="Executive Salary Milestone",
+            category="deadline",
+            target_date="2026-10-10",
+            reminder_date="2026-10-01",
+            lead_days=9,
+            responsible_name="Executive John Doe",
+            recipient_email="admin@agholding.net",
+            amount=250000.0,
+            currency="USD",
+            status="pending",
+            dedup_key="salary_rem_1",
+        )
+        db.add(rem)
+        await db.commit()
+        rem_id = rem.id
+
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+
+    teams_payloads = []
+    def fake_send_teams(title, body, link=None):
+        teams_payloads.append({"title": title, "body": body, "link": link})
+        return True
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_teams", fake_send_teams)
+
+    # When email delivery fails, reminder MUST NOT be marked sent even if Teams succeeded
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_email", lambda *a, **kw: False)
+
+    async with AsyncSessionLocal() as db:
+        r = await db.get(SharePointReminder, rem_id)
+        success = await deliver_reminder(db, r)
+        assert success is False
+        assert r.status != "sent"  # Teams delivery alone DOES NOT mark sent!
+
+    assert len(teams_payloads) == 1
+    t = teams_payloads[0]
+    # Verify non-sensitive pointer: NO path, NO amount, NO responsible person leaked
+    assert "250000" not in t["body"]
+    assert "Confidential/Salaries" not in t["body"]
+    assert "John Doe" not in t["body"]
+    assert "compliance reminder has been dispatched" in t["body"]
+
+
+@pytest.mark.asyncio
+async def test_reminder_update_recipient_email(client, auth, indexed, monkeypatch):
+    """Issue #17: PATCH /reminders/{id} allows assigning recipient_email to a verified active user."""
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    from app.models.sharepoint import SharePointReminder
+
+    async with AsyncSessionLocal() as db:
+        rem = SharePointReminder(
+            id=uuid.uuid4(),
+            source_id=indexed[1],
+            document_id=indexed[2],
+            title="Unassigned Task",
+            category="task",
+            target_date="2026-11-01",
+            reminder_date="2026-10-25",
+            lead_days=7,
+            status="pending",
+            recipient_email=None,
+            dedup_key="patch_test_1",
+        )
+        db.add(rem)
+        await db.commit()
+        rem_id = str(rem.id)
+
+    # 1. Invalid recipient rejected
+    bad_resp = await client.patch(
+        f"/api/sharepoint/reminders/{rem_id}",
+        headers=auth,
+        json={"recipient_email": "nonexistent@external.com"},
+    )
+    assert bad_resp.status_code == 400
+
+    # 2. Valid active platform user accepted
+    good_resp = await client.patch(
+        f"/api/sharepoint/reminders/{rem_id}",
+        headers=auth,
+        json={"recipient_email": "admin@agholding.net"},
+    )
+    assert good_resp.status_code == 200
+
+    async with AsyncSessionLocal() as db:
+        updated = await db.get(SharePointReminder, uuid.UUID(rem_id))
+        assert updated.recipient_email == "admin@agholding.net"

@@ -7,6 +7,7 @@ import {
   Boxes,
   Briefcase,
   Building2,
+  Calendar,
   CalendarDays,
   CheckSquare,
   Clock,
@@ -40,6 +41,7 @@ import {
   ScrollText,
   SearchX,
   Settings as SettingsIcon,
+  Settings2,
   Share2,
   ShieldCheck,
   ShoppingCart,
@@ -70,6 +72,7 @@ export type NavItem = {
 
 export type NavGroup = {
   section: string;
+  icon?: LucideIcon;
   items: NavItem[];
   adminOnly?: boolean;
 };
@@ -95,6 +98,17 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks", keywords: ["projects", "assignments", "to do"] },
       { to: "/work-log", label: "Work Log", icon: ScrollText, module: "worklog", keywords: ["effort", "activity"] },
       { to: "/my-docs", label: "My Documents", icon: FileText, module: "workspace", keywords: ["notes", "files", "workspace"] },
+    ],
+  },
+  {
+    section: "Documents",
+    icon: FolderOpen,
+    items: [
+      { to: "/sharepoint", label: "Home", icon: LayoutDashboard, end: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "home", "recent", "greeting"] },
+      { to: "/sharepoint/documents", label: "My documents", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "files", "library", "contracts", "licences"] },
+      { to: "/sharepoint/assistant", label: "Assistant", icon: Bot, module: "sharepoint_intelligence", keywords: ["sharepoint", "assistant", "ai", "ask", "chat", "questions"] },
+      { to: "/sharepoint/alerts", label: "Alerts", icon: Calendar, module: "sharepoint_intelligence", keywords: ["sharepoint", "alerts", "reminders", "deadlines", "tasks", "overdue"] },
+      { to: "/sharepoint/admin", label: "Document sources", icon: Settings2, adminOnly: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "admin", "sources", "sync", "health", "privacy", "settings"] },
     ],
   },
   {
@@ -137,7 +151,6 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Knowledge & Communication",
     items: [
       { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge", keywords: ["articles", "guides", "help"] },
-      { to: "/sharepoint", label: "SharePoint Intelligence", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["documents", "evidence", "deadlines"] },
       { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements", keywords: ["news", "updates"] },
       { to: "/ai-help", label: "AI Help", icon: Bot, module: "ai_help", keywords: ["assistant", "ask", "chat"] },
       { to: "/ideas", label: "Feedback & Ideas", icon: Lightbulb, module: "ideas", keywords: ["suggestions", "issues", "voting"] },

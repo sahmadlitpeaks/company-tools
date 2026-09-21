@@ -266,13 +266,59 @@ async def central_chat(body: CentralChatIn, user=Depends(get_current_user), db: 
 
 
 @router.get("/reminders", response_model=list[ReminderOut])
-async def list_reminders(category: str | None = None, status: str | None = None, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_reminders(
+    category: str | None = None,
+    status: str | None = None,
+    unassigned: bool | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     source = await source_for(db)
+    token = await delegated_token(db, user)
+    graph = GraphClient(token)
+
+    # 1. Identify distinct candidate documents that have matching reminders
+    doc_stmt = (
+        select(SharePointDocument)
+        .join(SharePointReminder, SharePointReminder.document_id == SharePointDocument.id)
+        .where(
+            SharePointReminder.source_id == source.id,
+            SharePointDocument.deleted == False,
+            SharePointDocument.in_scope == True,
+        )
+    )
+    if status:
+        doc_stmt = doc_stmt.where(SharePointReminder.status == status)
+    if category:
+        doc_stmt = doc_stmt.where(SharePointReminder.category == category)
+    if unassigned is True:
+        doc_stmt = doc_stmt.where(SharePointReminder.recipient_email.is_(None))
+    elif unassigned is False:
+        doc_stmt = doc_stmt.where(SharePointReminder.recipient_email.is_not(None))
+
+    candidate_docs = list((await db.scalars(doc_stmt.distinct())).all())
+    if not candidate_docs:
+        return []
+
+    # 2. Authorize candidate documents first before applying limit
+    auth_doc_cache: dict[uuid.UUID, dict] = {}
+    for doc in candidate_docs:
+        try:
+            meta = await authorize_document(db, user, source, doc, graph)
+            auth_doc_cache[doc.id] = meta
+        except SharePointError:
+            continue
+
+    if not auth_doc_cache:
+        return []
+
+    # 3. Query reminders constrained strictly to authorized documents, ordered and limited to 150
     stmt = (
         select(SharePointReminder, SharePointDocument)
         .join(SharePointDocument, SharePointReminder.document_id == SharePointDocument.id)
         .where(
             SharePointReminder.source_id == source.id,
+            SharePointReminder.document_id.in_(auth_doc_cache.keys()),
             SharePointDocument.deleted == False,
             SharePointDocument.in_scope == True,
         )
@@ -281,31 +327,17 @@ async def list_reminders(category: str | None = None, status: str | None = None,
         stmt = stmt.where(SharePointReminder.status == status)
     if category:
         stmt = stmt.where(SharePointReminder.category == category)
+    if unassigned is True:
+        stmt = stmt.where(SharePointReminder.recipient_email.is_(None))
+    elif unassigned is False:
+        stmt = stmt.where(SharePointReminder.recipient_email.is_not(None))
+
     stmt = stmt.order_by(SharePointReminder.target_date.asc(), SharePointReminder.created_at.desc()).limit(150)
     rows = (await db.execute(stmt)).all()
 
-    graph = None
-    try:
-        token = await delegated_token(db, user)
-        graph = GraphClient(token)
-    except Exception:
-        return []
-
     results = []
-    auth_doc_cache: dict[uuid.UUID, dict | None] = {}
     for rem, doc in rows:
-        if doc.id in auth_doc_cache:
-            meta = auth_doc_cache[doc.id]
-            if not meta:
-                continue
-        else:
-            try:
-                meta = await authorize_document(db, user, source, doc, graph)
-                auth_doc_cache[doc.id] = meta
-            except SharePointError:
-                auth_doc_cache[doc.id] = None
-                continue
-
+        meta = auth_doc_cache.get(doc.id, {})
         fname = doc.filename or meta.get("name", "Document")
         furl = meta.get("webUrl") or doc.web_url or ""
         fpath = doc.path or fname
@@ -414,6 +446,23 @@ async def update_reminder(reminder_id: uuid.UUID, body: ReminderUpdateIn, user=D
         rem.reminder_date = _calculate_reminder_date(body.target_date, rem.lead_days)
     if body.responsible_name is not None:
         rem.responsible_name = body.responsible_name
+    if body.recipient_email is not None:
+        if body.recipient_email.strip():
+            from app.models.user import User
+            from sqlalchemy import func
+            assignee = (
+                await db.execute(
+                    select(User).where(
+                        func.lower(User.email) == body.recipient_email.strip().lower(),
+                        User.is_active == True,
+                    )
+                )
+            ).scalars().first()
+            if not assignee:
+                raise SharePointError("invalid_recipient", 400)
+            rem.recipient_email = assignee.email.lower()
+        else:
+            rem.recipient_email = None
     if body.notes is not None:
         rem.notes = body.notes
     await db.commit()

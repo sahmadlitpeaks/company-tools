@@ -10,7 +10,7 @@ import zipfile
 
 from app.services.sharepoint.common import SharePointError
 
-PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
+PLACEHOLDER = re.compile(r"\[(?:[A-Z0-9]+_)?[A-Z]+_\d+\]")
 PIPELINE_VERSION = "privacy-v1"
 
 

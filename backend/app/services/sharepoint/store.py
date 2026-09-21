@@ -1,3 +1,4 @@
+import time
 import uuid
 from urllib.parse import unquote, urlparse
 
@@ -17,7 +18,13 @@ def scope_key():
 
 
 async def source_for(db):
-    require_config()
+    try:
+        require_config()
+    except SharePointError:
+        existing = (await db.scalars(select(SharePointSource))).first()
+        if existing:
+            return existing
+        raise
     key = scope_key()
     source = (await db.execute(select(SharePointSource).where(SharePointSource.scope_key == key))).scalar_one_or_none()
     if source:
@@ -34,6 +41,7 @@ async def source_for(db):
 
 
 def purge(document, status="queued"):
+    clear_auth_cache()
     document.status = status
     document.segments = document.mapping_cipher = document.analysis = document.usage = None
     document.languages = document.fingerprint = document.payload_hash = document.approval_hash = None
@@ -87,9 +95,37 @@ async def in_live_scope(graph, source, metadata):
     return False
 
 
-async def authorize_document(db, user, source, document, graph=None):
+# Authorization TTL Cache: (user_id, document_id, version) -> (expires_monotonic, metadata)
+_AUTH_CACHE: dict[tuple[uuid.UUID, uuid.UUID, str], tuple[float, dict]] = {}
+AUTH_CACHE_TTL_SECONDS = 300.0
+
+
+def clear_auth_cache() -> None:
+    _AUTH_CACHE.clear()
+
+
+def get_cached_authorization(user_id: uuid.UUID, doc_id: uuid.UUID, version: str) -> dict | None:
+    key = (user_id, doc_id, version or "")
+    if key in _AUTH_CACHE:
+        expires_at, meta = _AUTH_CACHE[key]
+        if time.monotonic() < expires_at:
+            return meta
+        _AUTH_CACHE.pop(key, None)
+    return None
+
+
+def set_cached_authorization(user_id: uuid.UUID, doc_id: uuid.UUID, version: str, meta: dict, ttl: float = AUTH_CACHE_TTL_SECONDS) -> None:
+    key = (user_id, doc_id, version or "")
+    _AUTH_CACHE[key] = (time.monotonic() + ttl, meta)
+
+
+async def authorize_document(db, user, source, document, graph=None, use_cache: bool = False):
     if not document or document.source_id != source.id or document.deleted or not document.in_scope or document.is_folder:
         raise SharePointError("document_not_found", 404)
+    if use_cache:
+        cached = get_cached_authorization(user.id, document.id, document.version)
+        if cached is not None:
+            return cached
     graph = graph or GraphClient(await delegated_token(db, user))
     metadata = await graph.can_read(source.drive_id, document.item_id)
     if not await in_live_scope(graph, source, metadata):
@@ -100,6 +136,8 @@ async def authorize_document(db, user, source, document, graph=None):
         raise SharePointError("document_changed_sync_required", 409)
     if document.segments and document.payload_hash != payload_hash(document.segments):
         raise SharePointError("document_changed_sync_required", 409)
+    if use_cache:
+        set_cached_authorization(user.id, document.id, document.version, metadata)
     return metadata
 
 

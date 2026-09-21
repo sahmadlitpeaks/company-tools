@@ -142,4 +142,5 @@ class ReminderUpdateIn(StrictModel):
     status: Literal["pending", "completed", "dismissed"] | None = None
     target_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     responsible_name: str | None = None
+    recipient_email: str | None = None
     notes: str | None = None

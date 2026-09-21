@@ -22,7 +22,7 @@ export function useDocumentSearch(q: string, cursor: string) {
     // Keep existing data if the search query & cursor are unchanged (stale-while-revalidate)
     setState((prev) => ({
       key: requestKey,
-      loading: true,
+      loading: prev.key !== requestKey || !prev.data,
       error: null,
       data: prev.key === requestKey ? prev.data : null,
     }));

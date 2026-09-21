@@ -209,7 +209,11 @@ export default function App() {
           <Route path="/calendar" element={<Protected module="calendar"><CalendarPage /></Protected>} />
           <Route path="/ideas" element={<Protected module="ideas"><IdeasPage /></Protected>} />
           <Route path="/ai-help" element={<Protected module="ai_help"><AiHelpPage /></Protected>} />
-          <Route path="/sharepoint" element={<Protected module="sharepoint_intelligence"><SharePointPage /></Protected>} />
+          <Route path="/sharepoint" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="home" /></Protected>} />
+          <Route path="/sharepoint/documents" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="documents" /></Protected>} />
+          <Route path="/sharepoint/assistant" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="assistant" /></Protected>} />
+          <Route path="/sharepoint/alerts" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="alerts" /></Protected>} />
+          <Route path="/sharepoint/admin" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="admin" /></Protected>} />
           <Route path="/lost-found" element={<Protected module="lost_found"><LostFoundPage /></Protected>} />
           <Route
             path="/knowledge"

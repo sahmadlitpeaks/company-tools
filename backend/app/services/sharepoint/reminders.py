@@ -7,16 +7,18 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.sharepoint import SharePointDocument, SharePointReminder
+from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
 from app.models.user import User
 from app.services.dispatch import send_teams
 from app.services.email import send_email
-from app.services.sharepoint.common import digest, now
+from app.services.sharepoint.common import SharePointError, decrypt, digest, now
+from app.services.sharepoint.privacy import restore
+from app.services.sharepoint.store import authorize_document
 
 log = logging.getLogger("sharepoint_reminders")
 
@@ -91,6 +93,7 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
     )
 
     sections = analysis.get("sections") or [analysis]
+    mapping = decrypt(document.mapping_cipher) if document.mapping_cipher else {}
     primary_commercial = None
 
     # Collect commercial values
@@ -114,7 +117,8 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
             title = exp.get("title") or "Document Expiration"
             responsible = exp.get("responsible")
             category = exp.get("category") or "expiry"
-            recipient = await _resolve_recipient(db, responsible)
+            clean_responsible = restore(responsible, mapping) if (responsible and mapping) else responsible
+            recipient = await _resolve_recipient(db, clean_responsible)
             unassigned_note = f" [Unassigned recipient for '{responsible}']" if responsible and not recipient else ""
 
             for lead in EXPIRY_ESCALATION_LEADS:
@@ -150,7 +154,8 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
                 continue
             title = finding.get("title") or "Document Deadline"
             owner = finding.get("owner")
-            recipient = await _resolve_recipient(db, owner)
+            clean_owner = restore(owner, mapping) if (owner and mapping) else owner
+            recipient = await _resolve_recipient(db, clean_owner)
             unassigned_note = f" [Unassigned recipient for '{owner}']" if owner and not recipient else ""
 
             for lead in TASK_DEADLINE_ESCALATION_LEADS:
@@ -186,7 +191,8 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
             if not t_date or not re.match(r"^\d{4}-\d{2}-\d{2}$", t_date):
                 t_date = _calculate_reminder_date(date.today().isoformat(), -30)
             owner = task.get("owner")
-            recipient = await _resolve_recipient(db, owner)
+            clean_owner = restore(owner, mapping) if (owner and mapping) else owner
+            recipient = await _resolve_recipient(db, clean_owner)
             priority = task.get("priority") or "medium"
             task_status = task.get("status") or "pending"
             initial_status = "completed" if task_status == "completed" else "pending"
@@ -302,68 +308,100 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
         await db.commit()
         return False
 
-    success = False
     recipient = reminder.recipient_email
+    if not recipient:
+        log.info("Skipping reminder %s: no verified platform user recipient", reminder.id)
+        reminder.last_error = "Unassigned recipient"
+        await db.commit()
+        return False
+
+    # Verify recipient is an active platform user
+    recipient_user = (
+        await db.execute(
+            select(User).where(
+                func.lower(User.email) == recipient.strip().lower(),
+                User.is_active.is_(True),
+            )
+        )
+    ).scalars().first()
+
+    if not recipient_user:
+        log.warning("Recipient %s is not an active platform user; skipping delivery", recipient)
+        reminder.last_error = "Recipient is not an active platform user"
+        reminder.attempts = (reminder.attempts or 0) + 1
+        if reminder.attempts >= 3:
+            reminder.status = "failed"
+        await db.commit()
+        return False
+
+    # Cross-check recipient's SharePoint authorization to this document
+    source = await db.get(SharePointSource, reminder.source_id)
+    if source:
+        conn = await db.get(SharePointConnection, recipient_user.id)
+        if not conn:
+            log.warning("Recipient %s has no active Microsoft SharePoint connection; skipping delivery", recipient)
+            reminder.last_error = "Recipient Microsoft connection required"
+            reminder.attempts = (reminder.attempts or 0) + 1
+            if reminder.attempts >= 3:
+                reminder.status = "failed"
+            await db.commit()
+            return False
+        try:
+            await authorize_document(db, recipient_user, source, document, use_cache=True)
+        except SharePointError as e:
+            if e.code in ("document_access_denied", "document_not_found"):
+                log.warning("Recipient %s denied access to document %s in SharePoint; skipping delivery", recipient, document.id)
+                reminder.last_error = f"Recipient not authorized: {e.code}"
+                reminder.attempts = (reminder.attempts or 0) + 1
+                if reminder.attempts >= 3:
+                    reminder.status = "failed"
+                await db.commit()
+                return False
+            elif e.code == "microsoft_connection_required":
+                log.warning("Recipient %s Microsoft connection required", recipient)
+                reminder.last_error = "Recipient Microsoft connection required"
+                reminder.attempts = (reminder.attempts or 0) + 1
+                if reminder.attempts >= 3:
+                    reminder.status = "failed"
+                await db.commit()
+                return False
+
     stage_label, _, _ = reminder_stage_label(reminder.lead_days)
     subject = f"{stage_label.split()[0]} {reminder.title} — {document.filename} ({reminder.target_date})"
     html_body = reminder_email_html(reminder, document)
 
     # 1. Email delivery via threadpool (non-blocking, Issue #20)
-    if recipient:
-        try:
-            email_sent = await asyncio.to_thread(
-                send_email,
-                to=recipient,
-                subject=subject,
-                html=html_body,
-            )
-            if email_sent:
-                success = True
-        except Exception as e:
-            log.warning("Failed to send reminder email to %s: %s", recipient, e)
-            reminder.last_error = str(e)[:255]
-    else:
-        log.info("Skipping email for reminder %s: no verified platform user recipient", reminder.id)
+    email_sent = False
+    try:
+        email_sent = await asyncio.to_thread(
+            send_email,
+            to=recipient,
+            subject=subject,
+            html=html_body,
+        )
+    except Exception as e:
+        log.warning("Failed to send reminder email to %s: %s", recipient, e)
+        reminder.last_error = str(e)[:255]
 
-    # 2. Microsoft Teams card delivery via threadpool (non-blocking, Issue #20)
+    # 2. Microsoft Teams card delivery via threadpool (non-sensitive notification pointer only, Issue #17)
     try:
         teams_body = (
-            f"**Notification Stage:** {_escape_teams_markdown(stage_label)}  \n"
-            f"**Target Date:** {_escape_teams_markdown(reminder.target_date)}  \n"
-            f"**Document:** {_escape_teams_markdown(document.filename)}  \n"
-            f"**Path:** {_escape_teams_markdown(document.path or 'SharePoint')}  \n"
-            f"**Responsible:** {_escape_teams_markdown(reminder.responsible_name or 'Unassigned')}"
+            "A document compliance reminder has been dispatched to the assigned owner. "
+            "Authorized team members can view details and take action in Company Tools."
         )
-        if reminder.amount:
-            curr = _escape_teams_markdown(reminder.currency or "USD")
-            teams_body += f"  \n**Tracked Value:** {reminder.amount:,.2f} {curr}"
-
-        safe_link = None
-        if document.web_url:
-            parsed = urlparse(document.web_url)
-            if parsed.scheme == "https" and parsed.netloc and (
-                parsed.netloc.endswith(".sharepoint.com")
-                or parsed.netloc.endswith(".microsoft.com")
-                or parsed.netloc == "sharepoint.com"
-            ):
-                safe_link = document.web_url
-
-        teams_sent = await asyncio.to_thread(
+        safe_link = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/sharepoint" if settings.PUBLIC_BASE_URL else None
+        await asyncio.to_thread(
             send_teams,
-            title=f"Document Alert: {reminder.title}",
+            title=f"Document Alert: {_escape_teams_markdown(reminder.title)}",
             body=teams_body,
             link=safe_link,
         )
-        if teams_sent:
-            success = True
     except Exception as e:
         log.warning("Failed to dispatch Teams reminder: %s", e)
-        if not reminder.last_error:
-            reminder.last_error = str(e)[:255]
 
     reminder.attempts = (reminder.attempts or 0) + 1
 
-    if success:
+    if email_sent:
         reminder.status = "sent"
         reminder.sent_at = now()
         reminder.last_error = None
@@ -375,7 +413,7 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
             reminder.status = "pending"
 
     await db.commit()
-    return success
+    return email_sent
 
 
 async def run_sharepoint_reminders(db: AsyncSession) -> dict:
