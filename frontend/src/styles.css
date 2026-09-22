@@ -28,6 +28,8 @@
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
   --muted-foreground: oklch(0.552 0.016 285.938);
+  --table-header: color-mix(in srgb, var(--muted) 50%, var(--card));
+  --table-row-hover: color-mix(in srgb, var(--muted) 60%, var(--card));
   --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
@@ -79,6 +81,8 @@ svg.lucide {
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.274 0.006 286.033);
   --muted-foreground: oklch(0.705 0.015 286.067);
+  --table-header: color-mix(in srgb, var(--muted) 50%, var(--card));
+  --table-row-hover: color-mix(in srgb, var(--muted) 60%, var(--card));
   --accent: oklch(0.274 0.006 286.033);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -126,6 +130,8 @@ svg.lucide {
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-table-header: var(--table-header);
+  --color-table-row-hover: var(--table-row-hover);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);

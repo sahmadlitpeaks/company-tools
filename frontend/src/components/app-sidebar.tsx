@@ -17,10 +17,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { api } from "@/api/client";
 import { currentNavSection, isNavItemActive, visibleNavGroups } from "./navigation";
 
 export function AppSidebar({
@@ -40,6 +42,38 @@ export function AppSidebar({
   const [openSections, setOpenSections] = React.useState<Set<string>>(
     () => new Set(groups.map((group) => group.section)),
   );
+  const [urgentAlertsCount, setUrgentAlertsCount] = React.useState<number>(0);
+
+  const fetchAlertsCount = React.useCallback(() => {
+    if (!can("sharepoint_intelligence")) return;
+    api<Array<{ status: string; target_date: string }>>("/api/sharepoint/reminders")
+      .then((reminders) => {
+        if (!Array.isArray(reminders)) return;
+        const now = new Date();
+        const count = reminders.filter((r) => {
+          if (r.status !== "pending") return false;
+          try {
+            const target = new Date(r.target_date);
+            const diff = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            return diff <= 30;
+          } catch {
+            return false;
+          }
+        }).length;
+        setUrgentAlertsCount(count);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, [can]);
+
+  React.useEffect(() => {
+    fetchAlertsCount();
+    window.addEventListener("sharepoint-reminders-updated", fetchAlertsCount);
+    return () => {
+      window.removeEventListener("sharepoint-reminders-updated", fetchAlertsCount);
+    };
+  }, [fetchAlertsCount]);
 
   React.useEffect(() => {
     if (!activeSection) return;
@@ -77,6 +111,9 @@ export function AppSidebar({
                   className="group/label h-9 cursor-pointer gap-2 px-2.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   render={<CollapsibleTrigger />}
                 >
+                  {group.icon && (
+                    <group.icon className="size-4 shrink-0" strokeWidth={1.5} />
+                  )}
                   <span className="truncate group-data-[collapsible=icon]:hidden">{group.section}</span>
                   <ChevronRightIcon className="ml-auto transition-transform group-data-open/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
                 </SidebarGroupLabel>
@@ -85,6 +122,7 @@ export function AppSidebar({
                     <SidebarMenu>
                       {group.items.map((item) => {
                         const active = isNavItemActive(location.pathname, item);
+                        const isAlertsItem = item.to === "/sharepoint/alerts";
                         return (
                           <SidebarMenuItem key={item.to}>
                             <SidebarMenuButton
@@ -101,6 +139,11 @@ export function AppSidebar({
                               <item.icon strokeWidth={1.5} />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
+                            {isAlertsItem && urgentAlertsCount > 0 && (
+                              <SidebarMenuBadge className="bg-destructive text-destructive-foreground font-bold text-[10px] px-1 h-4 min-w-4 rounded-none flex items-center justify-center">
+                                {urgentAlertsCount}
+                              </SidebarMenuBadge>
+                            )}
                           </SidebarMenuItem>
                         );
                       })}

@@ -9,6 +9,8 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["RUN_SCHEDULER"] = "false"
+os.environ["TEAMS_WEBHOOK_URL"] = ""
+os.environ["SLACK_WEBHOOK_URL"] = ""
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
