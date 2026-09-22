@@ -153,7 +153,7 @@ export default function App() {
           />
           <Route
             path="/phone-lines"
-            element={<Protected module="asset_tracker"><PhoneLinesPage /></Protected>}
+            element={<Protected feature="asset_tracker.phone_lines"><PhoneLinesPage /></Protected>}
           />
           <Route
             path="/subscriptions"
@@ -168,10 +168,10 @@ export default function App() {
           <Route path="/performance" element={<Protected><PerformancePage /></Protected>} />
           <Route path="/hr" element={<Protected module="hr"><HrDashboardPage /></Protected>} />
           <Route path="/hr/custom-fields" element={<Protected module="hr"><CustomFieldsAdminPage /></Protected>} />
-          <Route path="/hr/automations" element={<Protected module="hr"><AutomationsPage /></Protected>} />
-          <Route path="/reports" element={<Protected module="hr"><ReportsPage /></Protected>} />
-          <Route path="/payroll" element={<Protected module="hr"><PayrollPage /></Protected>} />
-          <Route path="/benefits" element={<Protected module="hr"><BenefitsPage /></Protected>} />
+          <Route path="/hr/automations" element={<Protected feature="hr.automations"><AutomationsPage /></Protected>} />
+          <Route path="/reports" element={<Protected feature="hr.reports"><ReportsPage /></Protected>} />
+          <Route path="/payroll" element={<Protected feature="hr.payroll"><PayrollPage /></Protected>} />
+          <Route path="/benefits" element={<Protected feature="hr.benefits"><BenefitsPage /></Protected>} />
           <Route path="/engagement" element={<EngagementPage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/training" element={<TrainingPage />} />
@@ -188,7 +188,7 @@ export default function App() {
           />
           <Route
             path="/checklists"
-            element={<Protected module="routine_checks"><ChecklistTemplatesPage /></Protected>}
+            element={<Protected feature="routine_checks.templates"><ChecklistTemplatesPage /></Protected>}
           />
           <Route
             path="/approvals"
@@ -196,7 +196,7 @@ export default function App() {
           />
           <Route
             path="/leave"
-            element={<Protected module="approvals"><LeavePage /></Protected>}
+            element={<Protected feature="approvals.leave"><LeavePage /></Protected>}
           />
           <Route
             path="/service-desk"
@@ -240,14 +240,14 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
-          <Route path="/inbox" element={<Protected module="crm"><InboxPage /></Protected>} />
+          <Route path="/inbox" element={<Protected feature="crm.web_inbox"><InboxPage /></Protected>} />
           <Route
             path="/inbox/forms/:id"
             element={<Protected module="crm"><IntakeFormPage /></Protected>}
           />
           <Route
             path="/inbox/rules"
-            element={<Protected module="crm"><IntakeRulesPage /></Protected>}
+            element={<Protected feature="crm.web_inbox"><IntakeRulesPage /></Protected>}
           />
           <Route
             path="/campaigns"

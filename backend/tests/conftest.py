@@ -31,6 +31,11 @@ async def client():
         ensure_default_leave_types,
     )
 
+    from app.services import feature_flags
+
+    # The org-wide module switches are cached in-process; drop the cache with
+    # the database so one test's toggles cannot leak into the next.
+    feature_flags.invalidate()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)

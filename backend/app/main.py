@@ -81,7 +81,7 @@ from app.api.shortener import redirect_short_link
 from app.auth.router import router as auth_router
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.permissions import require_module
+from app.core.permissions import require_enabled, require_feature, require_module
 from app.services.storage import ensure_media_root
 
 
@@ -214,6 +214,18 @@ def _mod(key: str):
     return [Depends(require_module(key))]
 
 
+def _feat(key: str):
+    """Gate a named part of a module: the user needs the module, and both the
+    module and the feature must be switched on org-wide."""
+    return [Depends(require_feature(key))]
+
+
+def _on(key: str):
+    """Gate only on the org-wide switch, leaving the router's own in-handler
+    authorization untouched (used where employees reach their own records)."""
+    return [Depends(require_enabled(key))]
+
+
 # Open to any active, authenticated user (foundational/shared surfaces).
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
@@ -231,8 +243,8 @@ app.include_router(profiles.router, prefix=api_prefix)
 app.include_router(hr_documents.router, prefix=api_prefix)
 app.include_router(compensation.router, prefix=api_prefix)
 app.include_router(performance.router, prefix=api_prefix)
-app.include_router(payroll.router, prefix=api_prefix)
-app.include_router(benefits.router, prefix=api_prefix)
+app.include_router(payroll.router, prefix=api_prefix, dependencies=_on("hr.payroll"))
+app.include_router(benefits.router, prefix=api_prefix, dependencies=_on("hr.benefits"))
 app.include_router(expenses.router, prefix=api_prefix)
 app.include_router(training.router, prefix=api_prefix)
 app.include_router(engagement.router, prefix=api_prefix)
@@ -243,7 +255,7 @@ app.include_router(api_tokens.router, prefix=api_prefix)
 app.include_router(api_tokens.public_router, prefix=api_prefix)
 app.include_router(backups.router, prefix=api_prefix)
 app.include_router(hr.router, prefix=api_prefix, dependencies=_mod("hr"))
-app.include_router(reports.router, prefix=api_prefix, dependencies=_mod("hr"))
+app.include_router(reports.router, prefix=api_prefix, dependencies=_feat("hr.reports"))
 app.include_router(recruiting.router, prefix=api_prefix, dependencies=_mod("recruiting"))
 app.include_router(custom_fields.router, prefix=api_prefix)
 app.include_router(attachments.router, prefix=api_prefix)
@@ -270,11 +282,13 @@ app.include_router(signatures.router, prefix=api_prefix, dependencies=_mod("sign
 app.include_router(shortener.router, prefix=api_prefix, dependencies=_mod("shortener"))
 app.include_router(transfers.router, prefix=api_prefix, dependencies=_mod("transfers"))
 app.include_router(tracker.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
-app.include_router(phones.router, prefix=api_prefix, dependencies=_mod("asset_tracker"))
+app.include_router(
+    phones.router, prefix=api_prefix, dependencies=_feat("asset_tracker.phone_lines")
+)
 app.include_router(subscriptions.router, prefix=api_prefix, dependencies=_mod("subscriptions"))
 app.include_router(timekeeping.router, prefix=api_prefix, dependencies=_mod("attendance"))
 app.include_router(crm.router, prefix=api_prefix, dependencies=_mod("crm"))
-app.include_router(intake.router, prefix=api_prefix, dependencies=_mod("crm"))
+app.include_router(intake.router, prefix=api_prefix, dependencies=_feat("crm.web_inbox"))
 app.include_router(campaigns.router, prefix=api_prefix, dependencies=_mod("campaigns"))
 app.include_router(shares.router, prefix=api_prefix, dependencies=_mod("shared"))
 app.include_router(tasks.router, prefix=api_prefix, dependencies=_mod("tasks"))
@@ -286,7 +300,7 @@ app.include_router(
 )
 app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
-app.include_router(leave.router, prefix=api_prefix, dependencies=_mod("approvals"))
+app.include_router(leave.router, prefix=api_prefix, dependencies=_feat("approvals.leave"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
 app.include_router(sharepoint.router, prefix=api_prefix, dependencies=_mod("sharepoint_intelligence"))

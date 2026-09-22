@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.core.permissions import active_permissions
 from app.models.operations import Idea, LostFoundReport
 from app.models.user import User
 from app.models.workplace import ApprovalRequest, Attachment, Task, TaskItem, Ticket
@@ -33,15 +34,16 @@ ENTITY: dict[str, tuple[type, tuple[str, ...]]] = {
 }
 
 
-def _require(user: User, entity_type: str) -> str:
+async def _require(db: AsyncSession, user: User, entity_type: str) -> str:
     info = ENTITY.get(entity_type)
     if not info:
         raise HTTPException(status_code=404, detail="Unknown entity type")
     modules = info[1]
-    # ``effective_permissions`` (unlike a bare resolve_permissions call) folds in
+    # ``active_permissions`` (unlike a bare resolve_permissions call) folds in
     # the user's access department, which is how the routine-checks module is
-    # granted to the IT / Facilities teams.
-    allowed = user.effective_permissions
+    # granted to the IT / Facilities teams, and drops modules switched off
+    # org-wide so their attachments stop being reachable from here.
+    allowed = await active_permissions(user, db)
     granted = next((m for m in modules if m in allowed), None)
     if granted is None:
         raise HTTPException(status_code=403, detail="You don't have access")
@@ -112,7 +114,7 @@ async def list_attachments(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require(user, entity_type)
+    await _require(db, user, entity_type)
     obj = await _ensure_entity(db, entity_type, entity_id)
     await _authorize_entity(db, user, entity_type, obj)
     return (
@@ -135,7 +137,7 @@ async def upload_attachment(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require(user, entity_type)
+    await _require(db, user, entity_type)
     obj = await _ensure_entity(db, entity_type, entity_id)
     await _authorize_entity(db, user, entity_type, obj)
     rel_path, size = await save_upload(file, subdir="attachments")
@@ -163,7 +165,7 @@ async def download_attachment(
     att = await db.get(Attachment, att_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    _require(user, att.entity_type)
+    await _require(db, user, att.entity_type)
     obj = await _ensure_entity(db, att.entity_type, att.entity_id)
     await _authorize_entity(db, user, att.entity_type, obj)
     return FileResponse(
@@ -182,7 +184,7 @@ async def delete_attachment(
     att = await db.get(Attachment, att_id)
     if not att:
         return
-    _require(user, att.entity_type)
+    await _require(db, user, att.entity_type)
     if att.uploaded_by_id != user.id and not (
         user.is_admin or user.role == "manager"
     ):

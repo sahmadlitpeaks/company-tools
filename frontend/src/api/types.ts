@@ -35,6 +35,14 @@ export interface User {
   extra_permissions?: string[] | null;
   revoked_permissions?: string[] | null;
   effective_permissions: string[];
+  /**
+   * Modules switched off org-wide by an administrator. Present only on the
+   * signed-in user's own record (`/api/auth/me`); the API subtracts nothing
+   * from `effective_permissions`, so the SPA subtracts these itself.
+   */
+  disabled_modules?: string[];
+  /** Feature keys ("module.feature") switched off, or whose module is. */
+  disabled_features?: string[];
   managed_company_ids: string[];
   created_at: string;
 }

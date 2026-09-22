@@ -74,6 +74,49 @@ ownership checks in their handlers. The frontend uses matching module keys for
 module-scoped route and navigation visibility, but hidden UI is never the
 authorization boundary.
 
+### Two independent layers
+
+Access answers two separate questions, and they are deliberately kept apart:
+
+1. **May this person use it?** Role, access department and per-user grants,
+   resolved by `resolve_permissions` into `User.effective_permissions`.
+   Administered in Departments & Access, per team.
+2. **Is it switched on at all?** An org-wide set of disabled module and feature
+   keys, stored as one JSON list under the `disabled_features` key in the
+   `app_settings` table — so adding a switch needs no migration. Administered in
+   Settings -> Modules & features, for the whole company at once.
+
+A disabled key is closed to **everybody, administrators included**; only the
+settings routes, which are admin-gated rather than module-gated, stay reachable
+so it can be switched back on. `dashboard` cannot be switched off. Nothing is
+deleted, so re-enabling restores the module untouched.
+
+`FEATURES` in `backend/app/core/permissions.py` names the parts of a module that
+can be switched off on their own, keyed `module.feature`. A feature is listed
+there only when it maps to a whole router or a small explicit set of routes plus
+a page, so the switch is enforced on both ends. A feature is also unreachable
+whenever its module is off.
+
+Three dependencies apply the layers, all in `permissions.py`:
+
+- `require_module("tasks")` — module switched on **and** held by the user.
+- `require_feature("hr.payroll")` — module and feature switched on, module held.
+  Features are never granted separately; they narrow what a module offers.
+- `require_enabled("hr.benefits")` — the switch only, leaving the router's own
+  in-handler authorization alone. Used where employees reach their own records
+  (payslips, benefit enrolments) and a module gate would take that away.
+
+Handlers that fan out across modules — global search, the calendar feed,
+attachments — use `active_permissions(user, db)` rather than
+`effective_permissions`, so a switched-off module cannot leak content through a
+surface belonging to a different module.
+
+The SPA learns the state from `/api/auth/me`, which adds `disabled_modules` and
+`disabled_features` alongside the unchanged `effective_permissions`; `can()` in
+`AuthContext` subtracts them for navigation and route guards. Reads are cached
+in-process for 30 seconds and invalidated on write, so a single-process
+deployment sees a change at once and additional replicas within the TTL.
+
 ## Modules & key endpoints
 
 | Feature | Module | Auth endpoints | Public endpoints |

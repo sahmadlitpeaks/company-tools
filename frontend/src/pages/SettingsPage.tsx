@@ -13,6 +13,7 @@ import { api, downloadFile } from "../api/client";
 import { ListSkeleton, PageHead, useToast } from "../components/ui";
 import IntegrationsSettings from "../components/IntegrationsSettings";
 import DemoDataCard from "../components/DemoDataCard";
+import ModuleToggles from "../components/ModuleToggles";
 import { Button } from "../components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -161,6 +162,12 @@ export default function SettingsPage() {
         title="Settings"
         subtitle="Configure platform integrations. No code or environment changes needed."
       />
+
+      {/* Full width rather than inside the two-column masonry below: the list
+          covers every module, so a narrow column would make it unreadable. */}
+      <div className="mb-5">
+        <ModuleToggles />
+      </div>
 
       {!status ? (
         <ListSkeleton rows={5} />

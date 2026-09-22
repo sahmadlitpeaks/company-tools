@@ -47,6 +47,22 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class MeOut(UserOut):
+    """The signed-in user's own record, with the org-wide switches attached.
+
+    Kept separate from ``UserOut`` because that schema is serialized in many
+    places (the directory, admin screens, profiles) where these lists would be
+    noise. Only the SPA's own session needs them.
+    """
+
+    # Modules switched off org-wide; the SPA hides them for everyone, admins
+    # included, so a disabled module cannot be reached from the UI at all.
+    disabled_modules: list[str] = []
+    # Feature keys ("module.feature") switched off, either on their own or
+    # because their module is.
+    disabled_features: list[str] = []
+
+
 class UserUpdate(BaseModel):
     display_name: str | None = None
     given_name: str | None = None

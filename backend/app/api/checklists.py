@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.core.permissions import require_enabled
 from app.models.checklist import (
     RESPONSE_TYPES,
     SCHEDULES,
@@ -175,7 +176,12 @@ async def list_templates(
     return [await _serialize_template(db, t, with_items=False) for t in rows]
 
 
-@router.post("", response_model=ChecklistTemplateOut, status_code=201)
+@router.post(
+    "",
+    response_model=ChecklistTemplateOut,
+    status_code=201,
+    dependencies=[Depends(require_enabled("routine_checks.templates"))],
+)
 async def create_template(
     payload: ChecklistTemplateCreate,
     db: AsyncSession = Depends(get_db),
@@ -206,7 +212,12 @@ async def create_template(
     return await _serialize_template(db, await _load_template(db, tpl.id))
 
 
-@router.post("/samples", response_model=list[ChecklistTemplateOut], status_code=201)
+@router.post(
+    "/samples",
+    response_model=list[ChecklistTemplateOut],
+    status_code=201,
+    dependencies=[Depends(require_enabled("routine_checks.templates"))],
+)
 async def seed_sample_templates(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -275,7 +286,11 @@ async def get_template(
     return await _serialize_template(db, await _load_template(db, template_id))
 
 
-@router.patch("/{template_id}", response_model=ChecklistTemplateOut)
+@router.patch(
+    "/{template_id}",
+    response_model=ChecklistTemplateOut,
+    dependencies=[Depends(require_enabled("routine_checks.templates"))],
+)
 async def update_template(
     template_id: uuid.UUID,
     payload: ChecklistTemplateUpdate,
@@ -326,7 +341,11 @@ async def update_template(
     return await _serialize_template(db, await _load_template(db, template_id))
 
 
-@router.delete("/{template_id}", status_code=204)
+@router.delete(
+    "/{template_id}",
+    status_code=204,
+    dependencies=[Depends(require_enabled("routine_checks.templates"))],
+)
 async def delete_template(
     template_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

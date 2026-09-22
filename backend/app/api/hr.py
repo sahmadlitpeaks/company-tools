@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import require_enabled
 from app.models.department import Department
 from app.models.hr import HrDocument, ReviewCycle
 from app.models.people import OnboardingJourney
@@ -107,7 +108,7 @@ async def overview(
 # --------------------------------------------------------------------------
 # Automation engine — scheduled HR reminders (admin only)
 # --------------------------------------------------------------------------
-@router.get("/automations")
+@router.get("/automations", dependencies=[Depends(require_enabled("hr.automations"))])
 async def automations_status(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
 ):
@@ -120,7 +121,7 @@ async def automations_status(
     return status
 
 
-@router.put("/automations")
+@router.put("/automations", dependencies=[Depends(require_enabled("hr.automations"))])
 async def automations_update(
     config: dict = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
@@ -131,7 +132,9 @@ async def automations_update(
     return {"config": cfg}
 
 
-@router.post("/automations/run")
+@router.post(
+    "/automations/run", dependencies=[Depends(require_enabled("hr.automations"))]
+)
 async def automations_run(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
 ):

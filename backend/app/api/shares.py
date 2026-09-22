@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.core.permissions import active_permissions
 from app.models.asset import Asset
 from app.models.product import Brochure, Product
 from app.models.shortlink import LinkClick
@@ -123,7 +124,7 @@ async def global_search(
     """Permission-aware search across people, work and company content."""
     like = f"%{q.strip()}%"
     hits: list[SearchHit] = []
-    permissions = set(user.effective_permissions)
+    permissions = await active_permissions(user, db)
 
     if "directory" in permissions:
         people = (

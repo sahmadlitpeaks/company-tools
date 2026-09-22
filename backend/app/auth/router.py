@@ -15,9 +15,15 @@ from app.core.security import (
     password_policy_error,
     verify_password,
 )
+from app.core.permissions import (
+    ALL_FEATURES,
+    ALL_MODULES,
+    disabled_keys,
+    is_enabled,
+)
 from app.core.urls import frontend_base_url
 from app.models.user import User
-from app.schemas.user import UserOut
+from app.schemas.user import MeOut, UserOut
 from app.services.activity import record
 from app.services.app_settings import (
     email_domain_allowed,
@@ -315,6 +321,21 @@ async def logout(response: Response):
     )
 
 
-@router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
-    return user
+@router.get("/me", response_model=MeOut)
+async def me(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    """The signed-in user, plus what the organisation currently has switched off.
+
+    ``effective_permissions`` stays what the user is *granted* — it is the same
+    field the admin screens read for other people. The disabled lists are the
+    org-wide layer on top, and the SPA subtracts them so a switched-off module
+    disappears from navigation and routing for everyone, admins included.
+    """
+    disabled = await disabled_keys(db)
+    payload = MeOut.model_validate(user)
+    payload.disabled_modules = [m for m in ALL_MODULES if m in disabled]
+    payload.disabled_features = [
+        f for f in ALL_FEATURES if not is_enabled(f, disabled)
+    ]
+    return payload
