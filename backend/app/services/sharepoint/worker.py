@@ -26,6 +26,13 @@ from app.services.sharepoint.store import (
 
 log = logging.getLogger(__name__)
 LEASE_SECONDS = 180
+OCR_FAILURES = frozenset({"incomplete_visual_content", "needs_ocr", "ocr_unavailable"})
+OCR_RECOVERY_VERSION = "ocr-recovery-v1"
+
+
+def ocr_failure_fingerprint(version, policy_version):
+    """Mark failed extraction attempts without invalidating ready documents."""
+    return digest([OCR_RECOVERY_VERSION, PIPELINE_VERSION, version, policy_version])
 
 
 async def owned(db, source_id, owner):
@@ -204,6 +211,14 @@ async def discover(source_id, owner, graph):
                         purge(doc)
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
+                    elif included and doc.status == "failed" and doc.error_code in OCR_FAILURES and (
+                        doc.fingerprint != ocr_failure_fingerprint(doc.version, source.policy_version)
+                    ):
+                        # Older OCR failures need one fresh attempt after a parser
+                        # deployment, even when SharePoint's eTag is unchanged.
+                        purge(doc)
+                        if doc.id:
+                            await purge_document_reminders(db, doc.id)
                     doc.in_scope = included
                     if not included:
                         doc.filename = doc.web_url = doc.path = ""
@@ -296,6 +311,8 @@ async def process_document(source_id, owner, document_id, graph):
             doc.error_code = error.code
             doc.status = "failed"
             doc.analysis = None
+            if error.code in OCR_FAILURES:
+                doc.fingerprint = ocr_failure_fingerprint(version, policy_version)
             if error.code in ("document_changed_sync_required", "document_access_denied"):
                 purge(doc, "failed")
                 if doc.id:

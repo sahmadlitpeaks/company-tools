@@ -439,6 +439,89 @@ async def run_sync(source_id):
 
 
 @pytest.mark.asyncio
+async def test_ocr_recovery_retries_old_failure_without_reprocessing_ready_files(indexed, monkeypatch):
+    fake = FakeGraph()
+    fake.values = [metadata(), metadata(item="two", name="Already ready.txt")]
+    calls = []
+
+    async def token():
+        return "app-token"
+
+    async def preprocess(data, extension, terms):
+        calls.append("extract")
+        return [{"id": "s1", "location": "Page 1", "text": "Expiry Date 31 Jul 2027"}], {}, ["en"]
+
+    async def analyze(segments):
+        calls.append("analyze")
+        return analyzed(segments), {"input_tokens": 10, "output_tokens": 10}
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "preprocess", preprocess)
+    monkeypatch.setattr(worker, "analyze", analyze)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.policy = "test"
+        failed = await db.get(SharePointDocument, indexed[2])
+        failed.status = "failed"
+        failed.error_code = "incomplete_visual_content"
+        failed.segments = None
+        failed.fingerprint = None  # Failure persisted by the previous parser.
+        failed.attempts = 3
+        ready_segments = [{"id": "s1", "location": "Text", "text": "Already processed"}]
+        db.add(SharePointDocument(source_id=source.id, item_id="two", parent_id="folder", in_scope=True,
+            version="v1", filename="Already ready.txt", status="ready", segments=ready_segments,
+            analysis=analyzed(ready_segments), payload_hash=analysis.payload_hash(ready_segments)))
+        await db.commit()
+
+    await run_sync(indexed[1])
+    assert calls == ["extract", "analyze"]
+    async with AsyncSessionLocal() as db:
+        failed = await db.get(SharePointDocument, indexed[2])
+        ready = (await db.scalars(select(SharePointDocument).where(SharePointDocument.item_id == "two"))).one()
+        assert failed.status == ready.status == "ready"
+        assert failed.attempts == 1 and ready.attempts == 0
+
+    await run_sync(indexed[1])
+    assert calls == ["extract", "analyze"]
+
+
+@pytest.mark.asyncio
+async def test_ocr_recovery_respects_failed_attempt_budget(indexed, monkeypatch):
+    fake = FakeGraph()
+    calls = []
+
+    async def token():
+        return "app-token"
+
+    async def preprocess(*args):
+        calls.append("extract")
+        raise SharePointError("incomplete_visual_content", 422)
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "preprocess", preprocess)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.policy = "test"
+        failed = await db.get(SharePointDocument, indexed[2])
+        failed.status = "failed"
+        failed.error_code = "incomplete_visual_content"
+        failed.segments = None
+        failed.attempts = 3
+        await db.commit()
+
+    for _ in range(4):
+        await run_sync(indexed[1])
+    assert calls == ["extract", "extract", "extract"]
+    async with AsyncSessionLocal() as db:
+        failed = await db.get(SharePointDocument, indexed[2])
+        source = await db.get(SharePointSource, indexed[1])
+        assert failed.status == "failed" and failed.attempts == 3
+        assert failed.fingerprint == worker.ocr_failure_fingerprint(failed.version, source.policy_version)
+
+
+@pytest.mark.asyncio
 async def test_worker_review_gate_then_idempotent_test_policy(indexed, monkeypatch):
     from app.services.sharepoint.store import purge
     fake = FakeGraph()

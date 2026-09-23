@@ -180,6 +180,14 @@ for confidential files and check OCR text before approval. Complete English date
 such as `31 Jul 2027` are normalized to ISO only when the cited quote contains
 the original date; ambiguous numeric dates are left unspecified.
 
+After deploying an OCR recovery update, the next sync resets earlier PDF OCR
+failures once, including files that exhausted their previous attempt budget.
+The usual three-attempt limit still applies to the new processing attempt.
+Unchanged documents that are already ready are not reprocessed. If a PDF still
+fails after three attempts, check that the running backend image includes
+Tesseract and its English/Arabic language data; rebuilding an image without
+recreating the running backend container does not update the OCR runtime.
+
 Jobs checkpoint metadata pages and cursor state transactionally. Leases renew
 every 20 seconds and expire after 180 seconds; a restarted worker reclaims an
 expired lease. Up to three processing attempts are allowed; **Retry document**
