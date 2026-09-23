@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Link2,
@@ -103,6 +103,15 @@ function ConnectedSource({
     [remindersData]
   );
   const { reload: reloadReminders } = remindersFetch;
+  const lastLoadedSync = useRef(status.last_sync);
+
+  useEffect(() => {
+    if (status.last_sync && status.last_sync !== lastLoadedSync.current) {
+      void reloadDocs();
+      void reloadReminders();
+    }
+    lastLoadedSync.current = status.last_sync;
+  }, [status.last_sync, reloadDocs, reloadReminders]);
 
 
 
@@ -231,14 +240,11 @@ function ConnectedSource({
   }
 
   useEffect(() => {
-    if (!status.active_run) return;
     const timer = window.setInterval(() => {
       void reload();
-      void reloadDocs();
-      void reloadReminders();
-    }, 10000);
+    }, status.active_run ? 10000 : 30000);
     return () => window.clearInterval(timer);
-  }, [status.active_run, reload, reloadDocs, reloadReminders]);
+  }, [status.active_run, reload]);
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
@@ -292,13 +298,18 @@ function ConnectedSource({
           {activeTab === "alerts" && (
             <AlertsRemindersTab
               reminders={reminders}
-              isLoading={remindersFetch.loading}
+              documents={docs}
+              isLoading={remindersFetch.loading || searchResult.loading}
+              error={remindersFetch.error || searchResult.error}
               isAdmin={isAdmin}
               onComplete={handleCompleteReminder}
               onDismiss={handleDismissReminder}
               onSnooze={handleSnoozeReminder}
               onOpenDoc={(id) => setSelectedDocId(id)}
-              onRefresh={() => void reloadReminders()}
+              onRefresh={() => {
+                void reloadReminders();
+                void reloadDocs();
+              }}
             />
           )}
 

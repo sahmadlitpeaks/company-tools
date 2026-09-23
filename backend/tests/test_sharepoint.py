@@ -1,5 +1,6 @@
 """Privacy, permission and replay regression tests; all external services are fake."""
 import io
+import shutil
 import time
 import uuid
 import zipfile
@@ -13,7 +14,7 @@ from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointSource
+from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
 from app.models.user import User
 from app.schemas.sharepoint import DocumentAnalysis
 from app.services.sharepoint import analysis, graph, privacy, worker
@@ -88,6 +89,16 @@ def test_redaction_identity_stable_per_document_and_chunk_boundaries():
     assert len([key for key in mapping if key.startswith("[PERSON")]) == 1
 
 
+def test_bilingual_duplicate_year_is_not_redacted_as_phone():
+    segments, mapping, _ = privacy.sanitize(
+        [{"id": "s1", "location": "Page 1", "text": "Expiry Date 31 Jul 2027 2027; phone +971 800 123 4567"}],
+        [], lambda text: ([], {"en"}),
+    )
+    assert "31 Jul 2027 2027" in segments[0]["text"]
+    assert "[PHONE_1]" in segments[0]["text"]
+    assert len(mapping) == 1
+
+
 def test_source_placeholder_cannot_spoof_identity():
     segments, mapping, _ = privacy.sanitize([{"id": "s1", "location": "Text", "text": "[PERSON_1] Alice"}], [], recognizer)
     assert privacy.restore(segments, mapping)[0]["text"] == "[redacted] Alice"
@@ -144,10 +155,52 @@ def test_pdf_without_text_requires_ocr():
         privacy.extract(output.getvalue(), "pdf", 1000)
 
 
+def test_pdf_image_text_is_ocrd_before_analysis(monkeypatch):
+    from PIL import Image, ImageDraw
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    picture = Image.new("RGB", (500, 100), "white")
+    ImageDraw.Draw(picture).text((10, 30), "Commercial License", fill="black")
+    output = io.BytesIO()
+    pdf = canvas.Canvas(output)
+    pdf.drawImage(ImageReader(picture), 20, 600, 250, 50)
+    pdf.drawString(20, 550, "Expiry Date 31 Jul 2027")
+    pdf.save()
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "Commercial License")
+
+    segments = privacy.extract(output.getvalue(), "pdf", 1000)
+    assert any("Expiry Date 31 Jul 2027" in part["text"] for part in segments)
+    assert any(part["text"] == "Commercial License" and "image" in part["location"] for part in segments)
+
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "")
+    with pytest.raises(SharePointError, match="incomplete_visual_content"):
+        privacy.extract(output.getvalue(), "pdf", 1000)
+
+
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="local OCR binary unavailable")
+def test_colored_pdf_heading_ocr():
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1800, 114), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 20, 400, 94), fill="#0948ac")
+    font = ImageFont.truetype("DejaVuSans.ttf", 45)
+    draw.text((90, 33), "Address", font=font, fill="white")
+    buffer = io.BytesIO(); image.save(buffer, format="PNG")
+    assert "Address" in privacy._ocr_image(buffer.getvalue())
+
+
 def test_unsupported_language_fails_before_model_loading():
     offline = privacy.OfflineRecognizer(["en"], "/not-a-real-model-dir")
     with pytest.raises(SharePointError, match="unsupported_language"):
         offline("هذه وثيقة باللغة العربية تحتوي على معلومات مهمة عن المشروع والشركة")
+
+
+def test_missing_privacy_model_fails_closed():
+    offline = privacy.OfflineRecognizer(["en"], "/not-a-real-model-dir")
+    with pytest.raises(SharePointError, match="privacy_model_unavailable"):
+        offline("The company license has a renewal date in July 2027 and needs review.")
 
 
 def test_evidence_and_placeholder_validation():
@@ -161,6 +214,21 @@ def test_evidence_and_placeholder_validation():
     value["summary_evidence"][0]["quote"] = "Invented quotation"
     with pytest.raises(SharePointError, match="invalid_evidence"):
         analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+
+
+def test_natural_language_date_is_grounded_in_cited_quote():
+    segments = [{"id": "s1", "location": "Page 1", "text": "Current Issue Date 01 Aug 2026\nExpiry Date 31 Jul 2027"}]
+    value = analyzed(segments)["sections"][0]
+    value["expiries"] = [{"title": "Commercial License expiry", "date": "2027-07-31", "category": "expiry",
+                          "evidence": [{"segment_id": "s1", "quote": "Expiry Date 31 Jul 2027"}]}]
+    analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    value["expiries"][0]["date"] = "2026-08-01"
+    with pytest.raises(SharePointError, match="unsupported_expiry_date"):
+        analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    assert analysis._dates_in_quote("31st July 2027") == {"2027-07-31"}
+    assert analysis._dates_in_quote("July 31, 2027") == {"2027-07-31"}
+    assert analysis._dates_in_quote("31/07/2027") == set()
+    assert analysis._dates_in_quote("31 Feb 2027") == set()
 
 
 def test_encryption_rotation_and_missing_key(configured, monkeypatch):
@@ -268,9 +336,45 @@ async def test_approval_requires_reviewer_and_exact_current_payload(client, auth
 async def test_policy_change_invalidates_analysis(client, auth, indexed):
     response = await client.put("/api/sharepoint/rules", headers=auth, json={"policy": "skip", "terms": []})
     assert response.status_code == 200
+    assert response.json()["changed"] is True
     async with AsyncSessionLocal() as db:
         doc = await db.get(SharePointDocument, indexed[2])
         assert doc.analysis is None and doc.mapping_cipher is None and doc.status == "ai_skipped"
+        source = await db.get(SharePointSource, indexed[1])
+        assert source.active_run_id == response.json()["run"]["id"]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_privacy_save_preserves_processed_documents(client, auth, indexed):
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        original_version = source.policy_version
+        doc = await db.get(SharePointDocument, indexed[2])
+        original_analysis = doc.analysis
+    response = await client.put("/api/sharepoint/rules", headers=auth, json={"policy": "review", "terms": []})
+    assert response.status_code == 200
+    assert response.json()["changed"] is False
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        doc = await db.get(SharePointDocument, indexed[2])
+        assert source.policy_version == original_version and source.active_run_id is None
+        assert doc.status == "ready" and doc.analysis == original_analysis
+
+
+@pytest.mark.asyncio
+async def test_polling_queues_after_five_minutes(indexed, monkeypatch):
+    monkeypatch.setattr(settings, "SHAREPOINT_POLLING_ENABLED", True)
+    monkeypatch.setattr(settings, "SHAREPOINT_SYNC_INTERVAL_SECONDS", 300)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(minutes=4)
+        await db.commit()
+    assert await worker.claim() is None
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(minutes=6)
+        await db.commit()
+    assert await worker.claim() is not None
 
 
 @pytest.mark.asyncio
@@ -366,14 +470,76 @@ async def test_worker_review_gate_then_idempotent_test_policy(indexed, monkeypat
     assert len(calls) == 1
     await run_sync(indexed[1])
     assert len(calls) == 1  # unchanged replay doesn't call OpenAI
+    async with AsyncSessionLocal() as db:
+        existing = await db.get(SharePointDocument, indexed[2])
+        previous_processed_at, previous_attempts = existing.processed_at, existing.attempts
+    fake.values = [metadata(), metadata(item="new")]
+    await run_sync(indexed[1])
+    assert len(calls) == 2  # only the newly uploaded file is analyzed
+    async with AsyncSessionLocal() as db:
+        existing = await db.get(SharePointDocument, indexed[2])
+        assert existing.status == "ready"
+        assert (existing.processed_at, existing.attempts) == (previous_processed_at, previous_attempts)
     fake.version = "v2"; fake.values = [metadata(version="v2")]
     await run_sync(indexed[1])
-    assert len(calls) == 2
+    assert len(calls) == 3
     fake.values = [{"id": "one", "deleted": {}}]
     await run_sync(indexed[1])
     async with AsyncSessionLocal() as db:
         doc = await db.get(SharePointDocument, indexed[2])
         assert doc.deleted and not doc.in_scope and doc.mapping_cipher is None and doc.analysis is None
+
+
+@pytest.mark.asyncio
+async def test_reminder_failure_does_not_publish_ready_document(indexed, monkeypatch):
+    from app.services.sharepoint import reminders
+    from app.services.sharepoint.store import purge
+
+    fake = FakeGraph()
+    async def token(): return "app-token"
+    async def preprocess(*args):
+        return privacy.sanitize(privacy.extract(args[0], "txt", 1000), [], recognizer)
+    async def analyze(segments):
+        return analyzed(segments), {"input_tokens": 10, "output_tokens": 10}
+    async def fail_reminders(*args, **kwargs):
+        raise RuntimeError("synthetic reminder storage failure")
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "preprocess", preprocess)
+    monkeypatch.setattr(worker, "analyze", analyze)
+    monkeypatch.setattr(reminders, "populate_document_reminders", fail_reminders)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.policy = "test"
+        purge(await db.get(SharePointDocument, indexed[2]))
+        await db.commit()
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        assert doc.status == "processing" and doc.analysis is None
+
+
+@pytest.mark.asyncio
+async def test_sync_repairs_missing_reminders_without_reanalyzing(indexed, monkeypatch):
+    fake = FakeGraph()
+    async def token(): return "app-token"
+    async def should_not_analyze(*args):
+        raise AssertionError("ready document must not be reanalyzed")
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "analyze", should_not_analyze)
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.analysis = {"sections": [{"expiries": [{"title": "Trade licence", "date": "2026-12-15", "category": "expiry", "responsible": None}]}]}
+        await db.commit()
+        before = (doc.processed_at, doc.attempts)
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        reminders = list((await db.scalars(select(SharePointReminder).where(SharePointReminder.document_id == doc.id))).all())
+        assert reminders
+        assert doc.status == "ready" and (doc.processed_at, doc.attempts) == before
 
 
 @pytest.mark.asyncio

@@ -60,7 +60,8 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "microsoft_sign_in_required": False, "can_review": is_reviewer(user),
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
         "policy": source.policy if source else "review", "active_run": bool(source and source.active_run_id),
-        "run": run_info(run), "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
+        "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
+        "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
 
 
 @router.get("/connect")
@@ -139,16 +140,21 @@ async def rules(user=Depends(get_current_admin), db: AsyncSession = Depends(get_
 async def update_rules(body: RulesIn, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     source = await source_for(db)
     source = (await db.scalars(select(SharePointSource).where(SharePointSource.id == source.id).with_for_update().execution_options(populate_existing=True))).one()
+    terms = [term.model_dump() for term in body.terms]
+    current_terms = decrypt(source.rules_cipher) if source.rules_cipher else []
+    if source.policy == body.policy and current_terms == terms:
+        return {"ok": True, "changed": False}
     if source.active_run_id:
         raise SharePointError("sync_in_progress", 409)
-    source.policy, source.rules_cipher = body.policy, encrypt([x.model_dump() for x in body.terms])
+    source.policy, source.rules_cipher = body.policy, encrypt(terms)
     source.policy_version += 1
     for doc in (await db.scalars(select(SharePointDocument).where(SharePointDocument.source_id == source.id, SharePointDocument.in_scope.is_(True)))).all():
         purge(doc, "ai_skipped" if body.policy == "skip" else "queued")
         if doc.id:
             await purge_document_reminders(db, doc.id)
-    record(db, user=user, action="policy", entity_type="sharepoint", summary="Updated document privacy policy; previous analyses invalidated")
-    return {"ok": True}
+    run = await enqueue(db, source, user.id)
+    record(db, user=user, action="policy", entity_type="sharepoint", summary="Updated document privacy policy; reprocessing queued")
+    return {"ok": True, "changed": True, "run": run_info(run)}
 
 
 @router.post("/search")

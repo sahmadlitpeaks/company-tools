@@ -8,7 +8,7 @@ behavior and the organization's OpenAI account must still be verified.
 ## What works
 
 - A module-protected `/sharepoint` page with Microsoft connect/reconnect/disconnect,
-  administrator connection test and manual sync, private keyword search, document
+  administrator connection test and automatic or manual sync, private keyword search, document
   details, source excerpts, summaries, tasks, owners, ISO deadlines, risks and contacts.
 - Read-only Graph ingestion of a selected test folder. Incremental drive delta,
   page checkpoints, tombstones, folder ancestry, full reconciliation after an
@@ -18,8 +18,10 @@ behavior and the organization's OpenAI account must still be verified.
 - Live delegated metadata and content-read checks before every content-bearing
   response. Administrators cannot bypass SharePoint permissions. Changed versions
   and documents moved outside the configured folder are withheld until resynced.
-- Optional polling uses the same durable queue. It defaults to off. No chatbot,
-  OCR, automatic task creation or outgoing document reminders are included.
+- Automatic five-minute polling uses the same durable queue. Document chat,
+  extracted task reminders, and outgoing reminder delivery are included. Local
+  English/Arabic OCR reads text in embedded PDF images. Configurable
+  company/document-type owner assignment rules are not yet included.
 
 ## Values and permissions to obtain
 
@@ -122,7 +124,7 @@ Alembic runner select the Psycopg-compatible event loop on Windows. Use Python
    and folder configuration, not OpenAI connectivity or another user's permissions.
 4. Leave **Privacy policy** at **Review every sanitized payload**. Add company
    names, project names, addresses or values that must be pseudonymized.
-5. Click **Sync now**. A reviewer opens an awaiting-approval document, inspects
+5. Wait for the automatic sync (within five minutes), or click **Sync now** for an immediate test. A reviewer opens an awaiting-approval document, inspects
    every sanitized excerpt, and approves the exact payload. If private data is
    missed, update the terms and sync again instead of approving it.
 6. Verify source quotes, restored names, owners and dates. Search uses POST so
@@ -167,11 +169,16 @@ multilingual confidentiality guarantee.
 
 Default limits: 25 MiB download, 200,000 extracted characters, 200 PDF pages,
 50,000 workbook cells, 80 MiB expanded archive, 120 seconds and 2 GiB RSS per
-parser child. File bytes live only in memory. Encrypted files, empty/scanned PDFs,
-embedded images/objects/charts and spreadsheets with formulas are visibly blocked
-because this version cannot claim complete coverage. Reduce large/complex files
-or use reviewed text-only test fixtures. ISO deadlines must appear verbatim in
-the cited text; other date expressions remain unspecified with their evidence.
+parser child. File bytes live only in memory. The Docker backend includes local
+Tesseract English/Arabic OCR for embedded PDF images; it sends no raw images to
+OpenAI. An image larger than 10 million pixels, more than 100 images per page,
+OCR unavailability, or a substantial image with no readable text blocks PDF
+analysis. Small non-text graphics such as logos and QR codes stay in SharePoint
+and cannot supply AI evidence. Encrypted/empty PDFs, embedded objects/charts in
+Office files, and spreadsheets with formulas remain blocked. Use privacy review
+for confidential files and check OCR text before approval. Complete English dates
+such as `31 Jul 2027` are normalized to ISO only when the cited quote contains
+the original date; ambiguous numeric dates are left unspecified.
 
 Jobs checkpoint metadata pages and cursor state transactionally. Leases renew
 every 20 seconds and expire after 180 seconds; a restarted worker reclaims an
@@ -184,8 +191,11 @@ before approved work is sent to OpenAI.
 A crash after OpenAI accepted a request but before the result was committed can
 cause a repeat call and cost. Persisted unchanged completed results are reused;
 exactly-once provider billing is not promised. Failed pages resume on the next
-manual/optional polling run. Polling defaults off; enable with
-`SHAREPOINT_POLLING_ENABLED=true` and an interval of at least 60 seconds.
+automatic polling run. Polling defaults to every 300 seconds when SharePoint is
+enabled. Set `SHAREPOINT_POLLING_ENABLED=false` only to disable it explicitly;
+the interval has a minimum of 60 seconds. A changed privacy policy queues
+processing immediately. Saving the same policy and terms leaves existing
+analyses and approvals intact.
 
 Sync removes live derived content for deleted/out-of-scope files. Existing backup
 copies follow the organization's backup retention policy. Changing configured
@@ -251,9 +261,7 @@ The user-facing system is structured around 4 pillars:
    - Extracted deadlines, contract renewals, license expiries, and milestone deliverables stored as actionable tasks in `SharePointReminder`.
    - Actionable task extraction directly from document analysis findings (`section.tasks`), populated with priority, deliverable owner, target date, and notes.
    - Lifecycle management endpoints (`POST /reminders/{id}/complete`, `POST /reminders/{id}/reopen`, `POST /reminders/{id}/dismiss`, `PATCH /reminders/{id}`).
-   - Dedicated interactive UI in `TasksAndRemindersTab.tsx` with 5-metric overview, category pills (All, Expiries & Renewals, Actionable Tasks, Deadlines & Milestones), status filtering, keyword search, complete/re-open/dismiss actions, test dispatch, and direct SharePoint links.
+   - Dedicated interactive UI in `AlertsRemindersTab.tsx` with timeline and calendar views, completion and snooze actions, and a document review queue.
 4. **Escalating Notification Schedule**:
    - Automated delivery via Microsoft Teams Adaptive Cards and HTML Email.
    - Frequency increases as deadlines approach (e.g., monthly reminder → weekly reminders during the last month → 3 reminders in the final week → expiration alerts).
-
-

@@ -14,6 +14,7 @@ import {
 import {
   Bell,
   BellOff,
+  AlertTriangle,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -24,10 +25,11 @@ import {
   LayoutList,
   RefreshCw,
 } from "lucide-react";
-import type { SharePointReminder } from "@/api/sharepoint";
+import type { SharePointDocument, SharePointReminder } from "@/api/sharepoint";
 import type { User } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { useToast } from "@/components/ui";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,7 +61,9 @@ import { cn } from "@/lib/utils";
 
 export interface AlertsRemindersTabProps {
   reminders: SharePointReminder[];
+  documents: SharePointDocument[];
   isLoading?: boolean;
+  error?: string | null;
   isAdmin?: boolean;
   onComplete: (reminderId: string) => Promise<void>;
   onDismiss: (reminderId: string) => Promise<void>;
@@ -169,7 +173,9 @@ function isReminderAssignedToUser(
 
 export function AlertsRemindersTab({
   reminders,
+  documents,
   isLoading = false,
+  error,
   onComplete,
   onDismiss,
   onSnooze,
@@ -179,7 +185,7 @@ export function AlertsRemindersTab({
   const { user } = useAuth();
   const { notify } = useToast();
 
-  const [scope, setScope] = useState<"mine" | "everyone">("mine");
+  const [scope, setScope] = useState<"mine" | "everyone">("everyone");
   const [viewMode, setViewMode] = useState<"timeline" | "calendar">("timeline");
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
@@ -207,6 +213,11 @@ export function AlertsRemindersTab({
       (r) => r.status !== "completed" && r.status !== "dismissed"
     );
   }, [reminders]);
+
+  const attentionDocuments = useMemo(
+    () => documents.filter((doc) => doc.requires_attention || doc.status === "awaiting_approval" || doc.status === "failed"),
+    [documents]
+  );
 
   // Filter by user assignment (Mine vs Everyone)
   const scopedReminders = useMemo(() => {
@@ -502,7 +513,7 @@ export function AlertsRemindersTab({
             Alerts & reminders
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {countOverdue} overdue, {countThisWeek} due this week, {countLater} later this month.
+            {attentionDocuments.length} documents need attention, {countOverdue} overdue, {countThisWeek} due this week, {countLater} later this month.
           </p>
         </div>
 
@@ -585,12 +596,41 @@ export function AlertsRemindersTab({
         </div>
       </div>
 
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>Alerts could not be fully loaded: {error}</AlertDescription>
+        </Alert>
+      )}
+
+      {attentionDocuments.length > 0 && (
+        <section aria-labelledby="sharepoint-attention-title" className="border border-border bg-card">
+          <div className="flex items-center gap-2 border-b border-border p-3">
+            <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
+            <h2 id="sharepoint-attention-title" className="text-sm font-semibold">Documents needing attention</h2>
+            <Badge variant="destructive">{attentionDocuments.length}</Badge>
+          </div>
+          <div className="divide-y divide-border">
+            {attentionDocuments.map((doc) => (
+              <div key={doc.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium">{doc.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {doc.status === "awaiting_approval" ? "Privacy review required" : doc.status === "failed" ? "Processing failed" : "Review extracted findings"}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => onOpenDoc(doc.id)}>Open document</Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Main Content Area */}
-      {isLoading && totalCount === 0 ? (
+      {isLoading && totalCount === 0 && attentionDocuments.length === 0 ? (
         <div className="flex items-center justify-center p-12">
           <Spinner className="size-6 text-primary" aria-label="Loading reminders" />
         </div>
-      ) : totalCount === 0 ? (
+      ) : totalCount === 0 && attentionDocuments.length === 0 && !error ? (
         <Empty className="py-12 border border-dashed border-border bg-card/40 rounded-none">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -607,7 +647,7 @@ export function AlertsRemindersTab({
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : viewMode === "calendar" ? (
+      ) : totalCount === 0 ? null : viewMode === "calendar" ? (
         <div className="space-y-4">
           {/* Month Navigation */}
           <div className="flex items-center justify-between bg-card border border-border p-3 rounded-none shadow-xs">

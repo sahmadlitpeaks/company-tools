@@ -80,7 +80,7 @@ def reminder_stage_label(lead_days: int) -> tuple[str, str, str]:
     return f"Notice ({lead_days}d remaining)", "#334155", "#f8fafc"
 
 
-async def populate_document_reminders(db: AsyncSession, document: SharePointDocument, analysis: dict | None, source_id: uuid.UUID):
+async def populate_document_reminders(db: AsyncSession, document: SharePointDocument, analysis: dict | None, source_id: uuid.UUID, *, commit: bool = True):
     if not analysis:
         return
 
@@ -231,7 +231,8 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
             .on_conflict_do_nothing(index_elements=["document_id", "dedup_key"])
         )
         await db.execute(stmt)
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 def reminder_email_html(reminder: SharePointReminder, document: SharePointDocument) -> str:
