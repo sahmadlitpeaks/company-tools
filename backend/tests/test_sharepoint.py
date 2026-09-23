@@ -378,6 +378,33 @@ async def test_polling_queues_after_five_minutes(indexed, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_polling_queues_after_one_minute(indexed, monkeypatch):
+    monkeypatch.setattr(settings, "SHAREPOINT_POLLING_ENABLED", True)
+    monkeypatch.setattr(settings, "SHAREPOINT_SYNC_INTERVAL_SECONDS", 60)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(seconds=50)
+        await db.commit()
+    assert await worker.claim() is None
+
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(seconds=70)
+        await db.commit()
+    assert await worker.claim() is not None
+
+
+@pytest.mark.asyncio
+async def test_status_reports_polling_configuration(client, auth, indexed, monkeypatch):
+    monkeypatch.setattr(settings, "SHAREPOINT_POLLING_ENABLED", False)
+    monkeypatch.setattr(settings, "SHAREPOINT_SYNC_INTERVAL_SECONDS", 60)
+    response = await client.get("/api/sharepoint/status", headers=auth)
+    assert response.status_code == 200
+    assert response.json()["polling_enabled"] is False
+    assert response.json()["sync_interval_seconds"] == 60
+
+
+@pytest.mark.asyncio
 async def test_cross_origin_mutations_rejected(client, auth, indexed):
     response = await client.post("/api/sharepoint/sync", headers={**auth, "Origin": "https://evil.example"})
     assert response.status_code == 403

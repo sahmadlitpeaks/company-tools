@@ -90,27 +90,22 @@ needed language to that command and `SHAREPOINT_NER_LANGUAGES`; runtime never
 downloads models or sends text elsewhere for redaction. There is no local AI
 endpoint, model server or separate AI service to configure.
 
-The backend entrypoint upgrades Alembic before starting. The migration head is
-`i4d5e6f7a8b9`, following `h3c4d5e6f7a8`. The durable worker starts whenever
+The backend entrypoint upgrades Alembic before starting. Confirm there is one
+migration head with `python -m alembic heads`. The durable worker starts whenever
 `SHAREPOINT_ENABLED=true`, independently of the existing general scheduler flag.
 
-## Host development
+## Local development
 
-From the clean checkout, create/activate a Python environment and install:
+Build and run the backend and database with Docker. From the checkout root:
 
 ```bash
-python -m pip install -r backend/requirements-dev.txt
-python -m pip install -r backend/requirements-sharepoint-nlp.txt
-cd backend
-python scripts/sharepoint_models.py --languages ar,en --directory ./nlp-models
-python -m alembic upgrade head
-python scripts/dev_server.py --port 8000
+docker compose --env-file backend/.env up -d --build db backend
 ```
 
-Run `npm ci` and `npm run dev` from `frontend/` in another terminal. Keep the
-SPA on one origin and use the existing Vite proxy. The development helper and
-Alembic runner select the Psycopg-compatible event loop on Windows. Use Python
-3.11+ with supported PyTorch wheels for the host NLP installation.
+Run `pnpm dev` from `frontend/` in another terminal. Keep the SPA on one origin
+and use the existing Vite proxy. If port 8000 is in use, set `BACKEND_PORT=8001`
+for Docker Compose and `VITE_API_PROXY_TARGET=http://127.0.0.1:8001` for Vite.
+The Docker backend upgrades Alembic before serving requests.
 
 ## First live test
 
@@ -199,7 +194,7 @@ before approved work is sent to OpenAI.
 A crash after OpenAI accepted a request but before the result was committed can
 cause a repeat call and cost. Persisted unchanged completed results are reused;
 exactly-once provider billing is not promised. Failed pages resume on the next
-automatic polling run. Polling defaults to every 300 seconds when SharePoint is
+automatic polling run. Polling defaults to every 60 seconds when SharePoint is
 enabled. Set `SHAREPOINT_POLLING_ENABLED=false` only to disable it explicitly;
 the interval has a minimum of 60 seconds. A changed privacy policy queues
 processing immediately. Saving the same policy and terms leaves existing

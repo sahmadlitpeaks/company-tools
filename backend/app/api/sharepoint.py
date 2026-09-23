@@ -60,6 +60,8 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "microsoft_sign_in_required": False, "can_review": is_reviewer(user),
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
         "policy": source.policy if source else "review", "active_run": bool(source and source.active_run_id),
+        "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
+        "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
         "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
         "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
 

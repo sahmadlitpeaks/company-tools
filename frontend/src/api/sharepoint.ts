@@ -6,6 +6,7 @@ export type SharePointStatus = {
   enabled: boolean; configured: boolean; missing: string[]; connected: boolean;
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
   openai_configured: boolean; policy: "auto" | "review" | "test" | "skip"; active_run: boolean;
+  polling_enabled: boolean; sync_interval_seconds: number;
   run: SharePointRun | null; last_sync: string | null; languages: string[];
 };
 
