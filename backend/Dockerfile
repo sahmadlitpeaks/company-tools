@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential libpq5 postgresql-client fonts-dejavu-core \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential libpq5 postgresql-client fonts-dejavu-core tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

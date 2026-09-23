@@ -1,5 +1,6 @@
 """Privacy, permission and replay regression tests; all external services are fake."""
 import io
+import shutil
 import time
 import uuid
 import zipfile
@@ -88,6 +89,16 @@ def test_redaction_identity_stable_per_document_and_chunk_boundaries():
     assert len([key for key in mapping if key.startswith("[PERSON")]) == 1
 
 
+def test_bilingual_duplicate_year_is_not_redacted_as_phone():
+    segments, mapping, _ = privacy.sanitize(
+        [{"id": "s1", "location": "Page 1", "text": "Expiry Date 31 Jul 2027 2027; phone +971 800 123 4567"}],
+        [], lambda text: ([], {"en"}),
+    )
+    assert "31 Jul 2027 2027" in segments[0]["text"]
+    assert "[PHONE_1]" in segments[0]["text"]
+    assert len(mapping) == 1
+
+
 def test_source_placeholder_cannot_spoof_identity():
     segments, mapping, _ = privacy.sanitize([{"id": "s1", "location": "Text", "text": "[PERSON_1] Alice"}], [], recognizer)
     assert privacy.restore(segments, mapping)[0]["text"] == "[redacted] Alice"
@@ -144,10 +155,52 @@ def test_pdf_without_text_requires_ocr():
         privacy.extract(output.getvalue(), "pdf", 1000)
 
 
+def test_pdf_image_text_is_ocrd_before_analysis(monkeypatch):
+    from PIL import Image, ImageDraw
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    picture = Image.new("RGB", (500, 100), "white")
+    ImageDraw.Draw(picture).text((10, 30), "Commercial License", fill="black")
+    output = io.BytesIO()
+    pdf = canvas.Canvas(output)
+    pdf.drawImage(ImageReader(picture), 20, 600, 250, 50)
+    pdf.drawString(20, 550, "Expiry Date 31 Jul 2027")
+    pdf.save()
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "Commercial License")
+
+    segments = privacy.extract(output.getvalue(), "pdf", 1000)
+    assert any("Expiry Date 31 Jul 2027" in part["text"] for part in segments)
+    assert any(part["text"] == "Commercial License" and "image" in part["location"] for part in segments)
+
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "")
+    with pytest.raises(SharePointError, match="incomplete_visual_content"):
+        privacy.extract(output.getvalue(), "pdf", 1000)
+
+
+@pytest.mark.skipif(shutil.which("tesseract") is None, reason="local OCR binary unavailable")
+def test_colored_pdf_heading_ocr():
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1800, 114), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 20, 400, 94), fill="#0948ac")
+    font = ImageFont.truetype("DejaVuSans.ttf", 45)
+    draw.text((90, 33), "Address", font=font, fill="white")
+    buffer = io.BytesIO(); image.save(buffer, format="PNG")
+    assert "Address" in privacy._ocr_image(buffer.getvalue())
+
+
 def test_unsupported_language_fails_before_model_loading():
     offline = privacy.OfflineRecognizer(["en"], "/not-a-real-model-dir")
     with pytest.raises(SharePointError, match="unsupported_language"):
         offline("هذه وثيقة باللغة العربية تحتوي على معلومات مهمة عن المشروع والشركة")
+
+
+def test_missing_privacy_model_fails_closed():
+    offline = privacy.OfflineRecognizer(["en"], "/not-a-real-model-dir")
+    with pytest.raises(SharePointError, match="privacy_model_unavailable"):
+        offline("The company license has a renewal date in July 2027 and needs review.")
 
 
 def test_evidence_and_placeholder_validation():
@@ -161,6 +214,21 @@ def test_evidence_and_placeholder_validation():
     value["summary_evidence"][0]["quote"] = "Invented quotation"
     with pytest.raises(SharePointError, match="invalid_evidence"):
         analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+
+
+def test_natural_language_date_is_grounded_in_cited_quote():
+    segments = [{"id": "s1", "location": "Page 1", "text": "Current Issue Date 01 Aug 2026\nExpiry Date 31 Jul 2027"}]
+    value = analyzed(segments)["sections"][0]
+    value["expiries"] = [{"title": "Commercial License expiry", "date": "2027-07-31", "category": "expiry",
+                          "evidence": [{"segment_id": "s1", "quote": "Expiry Date 31 Jul 2027"}]}]
+    analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    value["expiries"][0]["date"] = "2026-08-01"
+    with pytest.raises(SharePointError, match="unsupported_expiry_date"):
+        analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    assert analysis._dates_in_quote("31st July 2027") == {"2027-07-31"}
+    assert analysis._dates_in_quote("July 31, 2027") == {"2027-07-31"}
+    assert analysis._dates_in_quote("31/07/2027") == set()
+    assert analysis._dates_in_quote("31 Feb 2027") == set()
 
 
 def test_encryption_rotation_and_missing_key(configured, monkeypatch):

@@ -1,9 +1,11 @@
 """Bounded, offline extraction and privacy preprocessing. No file writes or model downloads."""
 import asyncio
+import hashlib
 import io
 import logging
 import multiprocessing
 import re
+import subprocess
 import time
 import unicodedata
 import zipfile
@@ -11,15 +13,50 @@ import zipfile
 from app.services.sharepoint.common import SharePointError
 
 PLACEHOLDER = re.compile(r"\[(?:[A-Z0-9]+_)?[A-Z]+_\d+\]")
-PIPELINE_VERSION = "privacy-v1"
+PIPELINE_VERSION = "privacy-v2"
 
 
 def normalize(text):
     return unicodedata.normalize("NFKC", str(text)).replace("\x00", "")
 
 
+def _ocr_image(data):
+    """Read embedded image text locally, before any content crosses the privacy boundary."""
+    def read(pixels):
+        try:
+            result = subprocess.run(
+                ["tesseract", "stdin", "stdout", "-l", "eng+ara", "--psm", "6"],
+                input=pixels, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=20, check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            raise SharePointError("ocr_unavailable", 422) from None
+        if result.returncode:
+            raise SharePointError("ocr_unavailable", 422)
+        return result.stdout.decode("utf-8", errors="replace").strip()
+
+    text = read(data)
+    if text:
+        return text
+    # Wide colored heading bars can hide light text from whole-image OCR.
+    from PIL import Image, ImageOps
+    with Image.open(io.BytesIO(data)) as image:
+        if image.width <= image.height * 8:
+            return ""
+        pieces = []
+        for left, right in ((0, image.width // 4), (image.width * 3 // 4, image.width)):
+            crop = image.crop((left, image.height // 6, right, image.height * 5 // 6))
+            crop = ImageOps.invert(crop.convert("RGB"))
+            buffer = io.BytesIO()
+            crop.save(buffer, format="PNG")
+            value = read(buffer.getvalue())
+            if value:
+                pieces.append(value)
+        return "\n".join(pieces)
+
+
 def extract(data, extension, maximum):
-    """All-or-nothing text coverage: unsupported embedded/visual content is flagged."""
+    """Extract selectable text and embedded image text with bounded local OCR."""
     rows = []
     length = 0
 
@@ -43,14 +80,32 @@ def extract(data, extension, maximum):
             raise SharePointError("encrypted_document", 422)
         if len(reader.pages) > 200:
             raise SharePointError("page_limit", 422)
+        ocr_cache = {}
         for index, page in enumerate(reader.pages):
             value = page.extract_text() or ""
-            if not value.strip():
+            images = page.images
+            if len(images) > 100:
+                raise SharePointError("image_limit", 422)
+            if not value.strip() and not images:
                 raise SharePointError("needs_ocr", 422)
-            # Image-bearing PDFs need a future visual/OCR coverage path.
-            if len(page.images):
-                raise SharePointError("incomplete_visual_content", 422)
             add(f"Page {index + 1}", value)
+            for image_index, image in enumerate(images, 1):
+                width, height = image.image.size
+                if width * height > 10_000_000:
+                    raise SharePointError("image_limit", 422)
+                key = hashlib.sha256(image.data).digest()
+                if key not in ocr_cache:
+                    ocr_cache[key] = _ocr_image(image.data)
+                visual_text = ocr_cache[key]
+                # Small non-text graphics (for example QR codes or logos) are
+                # retained in SharePoint, but cannot supply analysis evidence.
+                if not visual_text and width * height > 22_500:
+                    raise SharePointError("incomplete_visual_content", 422)
+                if width * height <= 22_500 and len(visual_text.strip()) < 8:
+                    continue
+                add(f"Page {index + 1}, image {image_index}", visual_text)
+            if not value.strip() and not any(row["location"].startswith(f"Page {index + 1}, image ") for row in rows):
+                raise SharePointError("needs_ocr", 422)
     elif extension in ("docx", "xlsx"):
         from defusedxml.ElementTree import fromstring
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -110,14 +165,17 @@ class OfflineRecognizer:
         from langdetect.lang_detect_exception import LangDetectException
         DetectorFactory.seed = 0
         candidates = set()
-        # Run detection on script runs as well as the whole paragraph for mixed text.
-        pieces = [text] + re.findall(r"[\u0600-\u06ff\s]{12,}|[A-Za-z\s]{20,}", text)
+        # Script detection catches Arabic even when a bilingual page is mostly
+        # English. Short labels/names give unreliable statistical predictions.
+        if re.search(r"[\u0600-\u06ff]", text):
+            candidates.add("ar")
+        pieces = [text] + re.findall(r"[A-Za-z\s]{100,}", text)
         for piece in pieces:
-            if sum(c.isalpha() for c in piece) < 20:
+            if sum(c.isalpha() for c in piece) < 80:
                 continue
             try:
                 predictions = detect_langs(piece)
-                if predictions and predictions[0].prob >= 0.50:
+                if predictions and predictions[0].prob >= 0.80:
                     candidates.add(predictions[0].lang)
             except (LangDetectException, Exception):
                 pass
@@ -146,8 +204,7 @@ class OfflineRecognizer:
                         kind = {"PER": "PERSON", "PERSON": "PERSON", "ORG": "ORGANIZATION", "GPE": "ADDRESS", "LOC": "ADDRESS", "MONEY": "VALUE", "PERCENT": "VALUE"}.get(entity.type, "CONFIDENTIAL")
                         spans.append((entity.start_char, entity.end_char, kind, True))
                 except Exception:
-                    # Model not downloaded locally for this language; pattern matching applies
-                    pass
+                    raise SharePointError("privacy_model_unavailable", 422) from None
         return spans, candidates
 
 
@@ -172,7 +229,10 @@ def sanitize(segments, terms, recognizer):
         languages.update(detected)
         for kind, restorable, pattern in PATTERNS:
             for match in re.finditer(pattern, value):
-                if kind == "PHONE" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", match.group()):
+                if kind == "PHONE" and (
+                    re.fullmatch(r"\d{4}-\d{2}-\d{2}", match.group())
+                    or re.fullmatch(r"((?:19|20|21)\d{2})\s+\1", match.group())
+                ):
                     continue
                 spans.append((match.start(), match.end(), kind, restorable))
         for term in terms:

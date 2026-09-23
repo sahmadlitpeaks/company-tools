@@ -19,8 +19,9 @@ behavior and the organization's OpenAI account must still be verified.
   response. Administrators cannot bypass SharePoint permissions. Changed versions
   and documents moved outside the configured folder are withheld until resynced.
 - Automatic five-minute polling uses the same durable queue. Document chat,
-  extracted task reminders, and outgoing reminder delivery are included. OCR and
-  configurable company/document-type owner assignment rules are not yet included.
+  extracted task reminders, and outgoing reminder delivery are included. Local
+  English/Arabic OCR reads text in embedded PDF images. Configurable
+  company/document-type owner assignment rules are not yet included.
 
 ## Values and permissions to obtain
 
@@ -168,11 +169,16 @@ multilingual confidentiality guarantee.
 
 Default limits: 25 MiB download, 200,000 extracted characters, 200 PDF pages,
 50,000 workbook cells, 80 MiB expanded archive, 120 seconds and 2 GiB RSS per
-parser child. File bytes live only in memory. Encrypted files, empty/scanned PDFs,
-embedded images/objects/charts and spreadsheets with formulas are visibly blocked
-because this version cannot claim complete coverage. Reduce large/complex files
-or use reviewed text-only test fixtures. ISO deadlines must appear verbatim in
-the cited text; other date expressions remain unspecified with their evidence.
+parser child. File bytes live only in memory. The Docker backend includes local
+Tesseract English/Arabic OCR for embedded PDF images; it sends no raw images to
+OpenAI. An image larger than 10 million pixels, more than 100 images per page,
+OCR unavailability, or a substantial image with no readable text blocks PDF
+analysis. Small non-text graphics such as logos and QR codes stay in SharePoint
+and cannot supply AI evidence. Encrypted/empty PDFs, embedded objects/charts in
+Office files, and spreadsheets with formulas remain blocked. Use privacy review
+for confidential files and check OCR text before approval. Complete English dates
+such as `31 Jul 2027` are normalized to ISO only when the cited quote contains
+the original date; ambiguous numeric dates are left unspecified.
 
 Jobs checkpoint metadata pages and cursor state transactionally. Leases renew
 every 20 seconds and expire after 180 seconds; a restarted worker reclaims an
