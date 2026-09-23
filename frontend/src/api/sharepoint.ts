@@ -6,7 +6,7 @@ export type SharePointStatus = {
   enabled: boolean; configured: boolean; missing: string[]; connected: boolean;
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
   openai_configured: boolean; policy: "auto" | "review" | "test" | "skip"; active_run: boolean;
-  run: SharePointRun | null; languages: string[];
+  run: SharePointRun | null; last_sync: string | null; languages: string[];
 };
 
 export type Evidence = { segment_id: string; quote: string };
@@ -197,4 +197,3 @@ export function formatDateTime(iso?: string | null): string {
     return iso;
   }
 }
-

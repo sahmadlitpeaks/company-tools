@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointSource
+from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
 from app.models.user import User
 from app.schemas.sharepoint import DocumentAnalysis
 from app.services.sharepoint import analysis, graph, privacy, worker
@@ -268,9 +268,45 @@ async def test_approval_requires_reviewer_and_exact_current_payload(client, auth
 async def test_policy_change_invalidates_analysis(client, auth, indexed):
     response = await client.put("/api/sharepoint/rules", headers=auth, json={"policy": "skip", "terms": []})
     assert response.status_code == 200
+    assert response.json()["changed"] is True
     async with AsyncSessionLocal() as db:
         doc = await db.get(SharePointDocument, indexed[2])
         assert doc.analysis is None and doc.mapping_cipher is None and doc.status == "ai_skipped"
+        source = await db.get(SharePointSource, indexed[1])
+        assert source.active_run_id == response.json()["run"]["id"]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_privacy_save_preserves_processed_documents(client, auth, indexed):
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        original_version = source.policy_version
+        doc = await db.get(SharePointDocument, indexed[2])
+        original_analysis = doc.analysis
+    response = await client.put("/api/sharepoint/rules", headers=auth, json={"policy": "review", "terms": []})
+    assert response.status_code == 200
+    assert response.json()["changed"] is False
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        doc = await db.get(SharePointDocument, indexed[2])
+        assert source.policy_version == original_version and source.active_run_id is None
+        assert doc.status == "ready" and doc.analysis == original_analysis
+
+
+@pytest.mark.asyncio
+async def test_polling_queues_after_five_minutes(indexed, monkeypatch):
+    monkeypatch.setattr(settings, "SHAREPOINT_POLLING_ENABLED", True)
+    monkeypatch.setattr(settings, "SHAREPOINT_SYNC_INTERVAL_SECONDS", 300)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(minutes=4)
+        await db.commit()
+    assert await worker.claim() is None
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.last_sync = now() - timedelta(minutes=6)
+        await db.commit()
+    assert await worker.claim() is not None
 
 
 @pytest.mark.asyncio
@@ -366,14 +402,76 @@ async def test_worker_review_gate_then_idempotent_test_policy(indexed, monkeypat
     assert len(calls) == 1
     await run_sync(indexed[1])
     assert len(calls) == 1  # unchanged replay doesn't call OpenAI
+    async with AsyncSessionLocal() as db:
+        existing = await db.get(SharePointDocument, indexed[2])
+        previous_processed_at, previous_attempts = existing.processed_at, existing.attempts
+    fake.values = [metadata(), metadata(item="new")]
+    await run_sync(indexed[1])
+    assert len(calls) == 2  # only the newly uploaded file is analyzed
+    async with AsyncSessionLocal() as db:
+        existing = await db.get(SharePointDocument, indexed[2])
+        assert existing.status == "ready"
+        assert (existing.processed_at, existing.attempts) == (previous_processed_at, previous_attempts)
     fake.version = "v2"; fake.values = [metadata(version="v2")]
     await run_sync(indexed[1])
-    assert len(calls) == 2
+    assert len(calls) == 3
     fake.values = [{"id": "one", "deleted": {}}]
     await run_sync(indexed[1])
     async with AsyncSessionLocal() as db:
         doc = await db.get(SharePointDocument, indexed[2])
         assert doc.deleted and not doc.in_scope and doc.mapping_cipher is None and doc.analysis is None
+
+
+@pytest.mark.asyncio
+async def test_reminder_failure_does_not_publish_ready_document(indexed, monkeypatch):
+    from app.services.sharepoint import reminders
+    from app.services.sharepoint.store import purge
+
+    fake = FakeGraph()
+    async def token(): return "app-token"
+    async def preprocess(*args):
+        return privacy.sanitize(privacy.extract(args[0], "txt", 1000), [], recognizer)
+    async def analyze(segments):
+        return analyzed(segments), {"input_tokens": 10, "output_tokens": 10}
+    async def fail_reminders(*args, **kwargs):
+        raise RuntimeError("synthetic reminder storage failure")
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "preprocess", preprocess)
+    monkeypatch.setattr(worker, "analyze", analyze)
+    monkeypatch.setattr(reminders, "populate_document_reminders", fail_reminders)
+    async with AsyncSessionLocal() as db:
+        source = await db.get(SharePointSource, indexed[1])
+        source.policy = "test"
+        purge(await db.get(SharePointDocument, indexed[2]))
+        await db.commit()
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        assert doc.status == "processing" and doc.analysis is None
+
+
+@pytest.mark.asyncio
+async def test_sync_repairs_missing_reminders_without_reanalyzing(indexed, monkeypatch):
+    fake = FakeGraph()
+    async def token(): return "app-token"
+    async def should_not_analyze(*args):
+        raise AssertionError("ready document must not be reanalyzed")
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda token: fake)
+    monkeypatch.setattr(worker, "analyze", should_not_analyze)
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.analysis = {"sections": [{"expiries": [{"title": "Trade licence", "date": "2026-12-15", "category": "expiry", "responsible": None}]}]}
+        await db.commit()
+        before = (doc.processed_at, doc.attempts)
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        reminders = list((await db.scalars(select(SharePointReminder).where(SharePointReminder.document_id == doc.id))).all())
+        assert reminders
+        assert doc.status == "ready" and (doc.processed_at, doc.attempts) == before
 
 
 @pytest.mark.asyncio

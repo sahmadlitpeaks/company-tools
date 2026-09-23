@@ -47,8 +47,8 @@ function PrivacyForm({
             value: line.slice(separator + 1).trim(),
           };
         });
-      await api("/api/sharepoint/rules", { method: "PUT", body: { policy, terms: parsed } });
-      notify("Privacy policy saved. Sync to process documents with the new rules.");
+      const result = await api<{ changed: boolean }>("/api/sharepoint/rules", { method: "PUT", body: { policy, terms: parsed } });
+      notify(result.changed ? "Privacy policy saved. Document processing queued." : "Privacy policy is already up to date.");
       onSaved();
     } catch (error) {
       notify(readableStatus(error instanceof Error ? error.message : "Save failed"), "error");
@@ -61,7 +61,7 @@ function PrivacyForm({
     <form onSubmit={(event) => void save(event)} className="space-y-4 p-4">
       <Alert className="border-border bg-muted/40">
         <AlertDescription className="text-xs sm:text-sm text-foreground">
-          Saving clears existing analyses and approvals for this source. The next sync will re-process documents using these updated privacy rules.
+          Changing these rules clears existing analyses and approvals, then queues document processing. Saving without changes keeps processed documents intact.
         </AlertDescription>
       </Alert>
 

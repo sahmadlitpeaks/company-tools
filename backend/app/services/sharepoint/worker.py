@@ -8,7 +8,7 @@ from sqlalchemy import or_, select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.sharepoint import SharePointDocument, SharePointRun, SharePointSource
+from app.models.sharepoint import SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
 from app.models.user import User
 from app.services.sharepoint.analysis import analyze, payload_hash
 from app.services.sharepoint.common import SharePointError, decrypt, digest, encrypt, is_reviewer, now
@@ -284,13 +284,9 @@ async def process_document(source_id, owner, document_id, graph):
             doc.processed_at = now()
             run = await db.get(SharePointRun, uuid.UUID(live_source.active_run_id))
             run.processed += 1
+            from app.services.sharepoint.reminders import populate_document_reminders
+            await populate_document_reminders(db, doc, analysis, live_source.id, commit=False)
             await db.commit()
-            try:
-                from app.services.sharepoint.reminders import populate_document_reminders
-                await populate_document_reminders(db, doc, analysis, live_source.id)
-            except Exception as rem_err:
-                import logging
-                logging.getLogger("sharepoint_worker").warning("Reminder population failed for %s: %s", document_id, rem_err)
     except SharePointError as error:
         if error.code == "sync_lease_lost":
             raise
@@ -328,6 +324,33 @@ async def execute(source_id, owner):
                 SharePointDocument.attempts < 3))).all())
         for document_id in ids:
             await process_document(source_id, owner, document_id, graph)
+        # Repair results written by older workers that marked a document ready
+        # before reminder insertion failed. This uses stored analysis only.
+        async with AsyncSessionLocal() as db:
+            await owned(db, source_id, owner)
+            missing = select(SharePointDocument).where(
+                SharePointDocument.source_id == source_id,
+                SharePointDocument.in_scope.is_(True),
+                SharePointDocument.deleted.is_(False),
+                SharePointDocument.status == "ready",
+                SharePointDocument.analysis.is_not(None),
+                ~select(SharePointReminder.id).where(
+                    SharePointReminder.document_id == SharePointDocument.id,
+                ).exists(),
+            )
+            from app.services.sharepoint.reminders import populate_document_reminders
+            repaired = 0
+            for doc in (await db.scalars(missing)).all():
+                if not isinstance(doc.analysis, dict):
+                    continue
+                sections = doc.analysis.get("sections") or [doc.analysis]
+                if any(isinstance(section, dict) and (section.get("expiries") or section.get("deadlines") or section.get("tasks")) for section in sections):
+                    await populate_document_reminders(db, doc, doc.analysis, source_id, commit=False)
+                    repaired += 1
+                    if repaired % 20 == 0:
+                        await db.commit()
+                        await owned(db, source_id, owner)
+            await db.commit()
     except SharePointError as error:
         failure = error.code
     except Exception:

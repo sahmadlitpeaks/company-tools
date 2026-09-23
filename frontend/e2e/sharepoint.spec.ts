@@ -25,6 +25,7 @@ const readyStatus = {
   openai_configured: true,
   policy: "review",
   active_run: false,
+  last_sync: null,
   run: null,
   languages: ["ar", "en"],
 };
@@ -88,7 +89,9 @@ test.beforeEach(async ({ page }) => {
     else if (path === "/api/sharepoint/status") body = readyStatus;
     else if (path === "/api/sharepoint/search") body = { items: [document], next_cursor: null };
     else if (path === "/api/sharepoint/documents/doc-1") body = document;
-    else if (path === "/api/sharepoint/rules") body = { policy: "review", terms: [] };
+    else if (path === "/api/sharepoint/rules") body = route.request().method() === "PUT"
+      ? { ok: true, changed: true, run: { id: "run-1", status: "queued" } }
+      : { policy: "review", terms: [] };
     await route.fulfill({ json: body });
   });
 });
@@ -124,6 +127,27 @@ test("multilingual document details preserve direction, evidence and mobile layo
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
   expect(componentErrors).toEqual([]);
+});
+
+test("home attention appears on alerts page without generated reminders", async ({ page }) => {
+  await page.goto("/sharepoint");
+  await expect(page.getByText("1 thing needs your attention")).toBeVisible();
+  await page.getByRole("button", { name: /See all alerts and reminders/ }).click();
+  await expect(page).toHaveURL(/\/sharepoint\/alerts$/);
+  await expect(page.getByRole("heading", { name: "Documents needing attention" })).toBeVisible();
+  await expect(page.getByText(document.name)).toBeVisible();
+  await expect(page.getByText("No alerts or reminders")).toHaveCount(0);
+});
+
+test("authorized users see unassigned reminders on alerts page", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { ...user, is_admin: false, role: "member" } }));
+  await page.route("**/api/sharepoint/reminders", (route) => route.fulfill({ json: [{
+    id: "unassigned-1", document_id: "doc-1", title: "Renew trade licence",
+    category: "renewal", target_date: "2026-12-15", reminder_date: "2026-10-16",
+    lead_days: 60, recipient_email: null, responsible_name: null, status: "pending",
+  }] }));
+  await page.goto("/sharepoint/alerts");
+  await expect(page.getByRole("heading", { name: "Renew trade licence" })).toBeVisible();
 });
 
 test("revoked access never leaves a stale document body visible", async ({ page }) => {
