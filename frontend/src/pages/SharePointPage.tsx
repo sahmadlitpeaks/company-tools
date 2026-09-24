@@ -242,9 +242,12 @@ function ConnectedSource({
   useEffect(() => {
     const timer = window.setInterval(() => {
       void reload();
+      if (status.active_run) {
+        void reloadDocs();
+      }
     }, status.active_run ? 10000 : 30000);
     return () => window.clearInterval(timer);
-  }, [status.active_run, reload]);
+  }, [status.active_run, reload, reloadDocs]);
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">

@@ -237,7 +237,9 @@ export function AdminSourcesTab({
               Automatic sync
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">
-              Checks SharePoint for new and changed files every 5 minutes. Users never press sync.
+              {status.polling_enabled
+                ? `Checks SharePoint for new and changed files about every ${Math.ceil(status.sync_interval_seconds / 60)} minute${status.sync_interval_seconds > 60 ? "s" : ""}.`
+                : "Automatic checks are paused on this server. An administrator must enable SharePoint polling."}
             </div>
           </div>
 

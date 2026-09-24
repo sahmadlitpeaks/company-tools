@@ -121,9 +121,17 @@ export function getDocumentStatusBadge(doc: SharePointDocument): {
     };
   }
 
-  if (doc.status === "awaiting_approval" || doc.status === "queued") {
+  if (doc.status === "awaiting_approval") {
     return {
-      label: "Being prepared",
+      label: "Needs privacy review",
+      variant: "secondary",
+      className: "rounded-none font-semibold text-xs",
+    };
+  }
+
+  if (doc.status === "queued") {
+    return {
+      label: "Waiting for sync",
       variant: "secondary",
       className: "rounded-none font-semibold text-xs inline-flex items-center gap-1",
       isSpinning: true,

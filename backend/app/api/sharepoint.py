@@ -60,6 +60,8 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "microsoft_sign_in_required": False, "can_review": is_reviewer(user),
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
         "policy": source.policy if source else "review", "active_run": bool(source and source.active_run_id),
+        "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
+        "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
         "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
         "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
 
@@ -283,26 +285,24 @@ async def list_reminders(
     token = await delegated_token(db, user)
     graph = GraphClient(token)
 
-    # 1. Identify distinct candidate documents that have matching reminders
-    doc_stmt = (
-        select(SharePointDocument)
-        .join(SharePointReminder, SharePointReminder.document_id == SharePointDocument.id)
-        .where(
-            SharePointReminder.source_id == source.id,
-            SharePointDocument.deleted == False,
-            SharePointDocument.in_scope == True,
-        )
-    )
+    # 1. Filter by reminder IDs before loading document rows. DISTINCT on the
+    # full document fails in PostgreSQL because documents contain JSON fields.
+    reminder_doc_ids = select(SharePointReminder.document_id).where(SharePointReminder.source_id == source.id)
     if status:
-        doc_stmt = doc_stmt.where(SharePointReminder.status == status)
+        reminder_doc_ids = reminder_doc_ids.where(SharePointReminder.status == status)
     if category:
-        doc_stmt = doc_stmt.where(SharePointReminder.category == category)
+        reminder_doc_ids = reminder_doc_ids.where(SharePointReminder.category == category)
     if unassigned is True:
-        doc_stmt = doc_stmt.where(SharePointReminder.recipient_email.is_(None))
+        reminder_doc_ids = reminder_doc_ids.where(SharePointReminder.recipient_email.is_(None))
     elif unassigned is False:
-        doc_stmt = doc_stmt.where(SharePointReminder.recipient_email.is_not(None))
+        reminder_doc_ids = reminder_doc_ids.where(SharePointReminder.recipient_email.is_not(None))
 
-    candidate_docs = list((await db.scalars(doc_stmt.distinct())).all())
+    doc_stmt = select(SharePointDocument).where(
+        SharePointDocument.id.in_(reminder_doc_ids),
+        SharePointDocument.deleted.is_(False),
+        SharePointDocument.in_scope.is_(True),
+    )
+    candidate_docs = list((await db.scalars(doc_stmt)).all())
     if not candidate_docs:
         return []
 

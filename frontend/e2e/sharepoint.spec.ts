@@ -25,6 +25,8 @@ const readyStatus = {
   openai_configured: true,
   policy: "review",
   active_run: false,
+  polling_enabled: true,
+  sync_interval_seconds: 60,
   last_sync: null,
   run: null,
   languages: ["ar", "en"],
@@ -393,6 +395,38 @@ test("Document sources admin tab is accessible to administrators", async ({ page
   await expect(page.getByText("Privacy & redaction")).toBeVisible();
   await expect(page.getByText("Processing health")).toBeVisible();
   await expect(page.getByText("Reminder delivery")).toBeVisible();
+});
+
+test("queued documents and privacy review have distinct statuses", async ({ page }) => {
+  await page.route("**/api/sharepoint/search", (route) => route.fulfill({
+    json: {
+      items: [
+        { ...document, id: "queued-doc", name: "Queued.pdf", status: "queued", requires_attention: false },
+        { ...document, id: "review-doc", name: "Review.pdf", status: "awaiting_approval", requires_attention: false },
+      ],
+      next_cursor: null,
+    },
+  }));
+  await page.goto("/sharepoint/documents");
+  await expect(page.getByText("Waiting for sync").first()).toBeVisible();
+  await expect(page.getByText("Needs privacy review").first()).toBeVisible();
+});
+
+test("document list refreshes while a sync is active", async ({ page }) => {
+  let processed = false;
+  await page.route("**/api/sharepoint/status", (route) => route.fulfill({
+    json: { ...readyStatus, active_run: true },
+  }));
+  await page.route("**/api/sharepoint/search", (route) => route.fulfill({
+    json: {
+      items: [{ ...document, status: processed ? "ready" : "queued", requires_attention: false }],
+      next_cursor: null,
+    },
+  }));
+  await page.goto("/sharepoint/documents");
+  await expect(page.getByText("Waiting for sync").first()).toBeVisible();
+  processed = true;
+  await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("clicking a suggestion in Ask about your documents opens Assistant and submits query", async ({ page }) => {
