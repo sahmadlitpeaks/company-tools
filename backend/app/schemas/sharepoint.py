@@ -27,32 +27,12 @@ class Finding(StrictModel):
     priority: Literal["unknown", "low", "medium", "high"]
     evidence: list[Evidence] = Field(min_length=1, max_length=8)
 
-    @field_validator("deadline")
-    @classmethod
-    def valid_deadline(cls, value):
-        if value is not None:
-            from datetime import date
-            if date.fromisoformat(value).isoformat() != value:
-                raise ValueError("Use an unambiguous ISO date")
-        return value
-
-
 class ExpiryFinding(StrictModel):
     title: str = Field(max_length=1000)
     date: str = Field(max_length=20)
     category: Literal["expiry", "renewal", "effective", "warranty", "milestone", "deadline", "other"] = "expiry"
     responsible: str | None = None
     evidence: list[Evidence] = Field(min_length=1, max_length=8)
-
-    @field_validator("date")
-    @classmethod
-    def valid_date(cls, value):
-        if value is not None:
-            from datetime import date
-            if date.fromisoformat(value).isoformat() != value:
-                raise ValueError("Use an unambiguous ISO date")
-        return value
-
 
 class CommercialFinding(StrictModel):
     description: str = Field(max_length=1000)
@@ -69,13 +49,10 @@ class TextFact(StrictModel):
 
 
 class DateFact(TextFact):
-    @field_validator("value")
-    @classmethod
-    def valid_date(cls, value):
-        from datetime import date
-        if date.fromisoformat(value).isoformat() != value:
-            raise ValueError("Use an unambiguous ISO date")
-        return value
+    # The model sometimes returns a quoted date in the document's own format.
+    # Evidence validation normalizes unambiguous dates and rejects the rest;
+    # rejecting here would discard every other fact in the same AI response.
+    pass
 
 
 class NoticeFact(StrictModel):
@@ -224,7 +201,7 @@ class ComplianceReviewIn(StrictModel):
     termination_notice_days: int | None = Field(default=None, ge=1, le=730)
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
-    review_note: str = Field(min_length=3, max_length=2000)
+    review_note: str | None = Field(default=None, max_length=2000)
 
     @field_validator("expiry_date", "renewal_date")
     @classmethod

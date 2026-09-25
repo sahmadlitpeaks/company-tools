@@ -15,11 +15,11 @@ from sqlalchemy import select, update
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
-from app.models.sharepoint import SharePointComplianceTask, SharePointOwnerRule
+from app.models.sharepoint import SharePointComplianceEvent, SharePointComplianceTask, SharePointOwnerRule
 from app.models.company import Company
 from app.models.department import Department
 from app.models.user import User
-from app.schemas.sharepoint import DocumentAnalysis
+from app.schemas.sharepoint import ComplianceReviewIn, DocumentAnalysis
 from app.services.sharepoint import analysis, graph, privacy, worker
 from app.services.sharepoint.compliance import (
     apply_analysis, candidate_actions, combine_facts, reconcile_company_matches,
@@ -116,6 +116,23 @@ def test_source_placeholder_cannot_spoof_identity():
 def test_unsupported_and_empty(extension, data, code):
     with pytest.raises(SharePointError, match=code):
         privacy.extract(data, extension, 1000)
+
+
+@pytest.mark.parametrize("extension,data,code", [
+    ("txt", b"\xff", "invalid_text_encoding"),
+    ("pdf", b"not a PDF", "invalid_pdf"),
+    ("docx", b"not an Office archive", "invalid_office_document"),
+    ("xlsx", b"not an Office archive", "invalid_office_document"),
+    ("exe", b"binary", "unsupported_type"),
+])
+def test_parser_reports_file_failure_before_ai(extension, data, code):
+    class Pipe:
+        result = None
+        def send(self, value): self.result = value
+        def close(self): pass
+    pipe = Pipe()
+    privacy._child(pipe, data, extension, 1000)
+    assert pipe.result == (False, code)
 
 
 def test_text_bom_limit_and_docx():
@@ -223,6 +240,44 @@ def test_evidence_validation_without_redaction():
         analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
 
 
+def test_quoted_dates_normalize_without_rejecting_entire_analysis():
+    quote = "The agreement expires 31 July 2027 and notice is required before then."
+    segments = [{"id": "s1", "location": "Text", "text": quote}]
+    value = analyzed(segments)["sections"][0]
+    evidence = [{"segment_id": "s1", "quote": quote}]
+    value["deadlines"] = [{"title": "Review notice", "owner": None,
+                           "deadline": "31 July 2027", "status": "unknown",
+                           "priority": "unknown", "evidence": evidence}]
+    value["expiries"] = [{"title": "Agreement expiry", "date": "31 July 2027",
+                          "evidence": evidence}]
+    value["compliance"]["expiry_date"] = {"value": "31 July 2027", "evidence": evidence}
+    result = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(result, segments)
+    assert result.deadlines[0].deadline == "2027-07-31"
+    assert result.expiries[0].date == "2027-07-31"
+    assert result.compliance.expiry_date.value == "2027-07-31"
+    assert result.compliance.validation_issues == []
+
+
+def test_ambiguous_dates_are_removed_and_require_review():
+    quote = "The agreement expires 01/02/2027."
+    segments = [{"id": "s1", "location": "Text", "text": quote}]
+    value = analyzed(segments)["sections"][0]
+    evidence = [{"segment_id": "s1", "quote": quote}]
+    value["deadlines"] = [{"title": "Review expiry", "owner": None,
+                           "deadline": "01/02/2027", "status": "unknown",
+                           "priority": "unknown", "evidence": evidence}]
+    value["expiries"] = [{"title": "Agreement expiry", "date": "01/02/2027",
+                          "evidence": evidence}]
+    value["compliance"]["expiry_date"] = {"value": "01/02/2027", "evidence": evidence}
+    result = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(result, segments)
+    assert result.deadlines[0].deadline is None
+    assert result.expiries == []
+    assert result.compliance.expiry_date is None
+    assert {"deadline", "expiry_date"} <= set(result.compliance.validation_issues)
+
+
 def test_unsupported_compliance_fact_enters_review_instead_of_failing_analysis():
     segments = [{"id": "s1", "location": "Text", "text": "Agiomix Trade License expires 15 December 2026."}]
     value = analyzed(segments)["sections"][0]
@@ -264,12 +319,20 @@ def test_natural_language_date_is_grounded_in_cited_quote():
                           "evidence": [{"segment_id": "s1", "quote": "Expiry Date 31 Jul 2027"}]}]
     analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
     value["expiries"][0]["date"] = "2026-08-01"
-    with pytest.raises(SharePointError, match="unsupported_expiry_date"):
-        analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    unsupported = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(unsupported, segments)
+    assert unsupported.expiries == []
+    assert "expiry_date" in unsupported.compliance.validation_issues
     assert analysis._dates_in_quote("31st July 2027") == {"2027-07-31"}
     assert analysis._dates_in_quote("July 31, 2027") == {"2027-07-31"}
     assert analysis._dates_in_quote("31/07/2027") == set()
     assert analysis._dates_in_quote("31 Feb 2027") == set()
+
+
+def test_review_note_is_optional_and_accepts_short_context():
+    data = {"company_id": uuid.uuid4(), "document_type": "trade_license"}
+    assert ComplianceReviewIn.model_validate(data).review_note is None
+    assert ComplianceReviewIn.model_validate({**data, "review_note": "OK"}).review_note == "OK"
 
 
 def test_contract_notice_is_action_date_not_expiry_date():
@@ -389,6 +452,35 @@ async def test_uncertain_compliance_stays_in_review_without_task(indexed):
         assert "owner" not in document.compliance["review_reasons"]
         assert not (await db.scalars(select(SharePointComplianceTask).where(
             SharePointComplianceTask.document_id == document.id))).all()
+
+
+@pytest.mark.asyncio
+async def test_document_review_without_note_records_verified_facts(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        company = Company(name="Agiomix", slug="agiomix")
+        db.add(company)
+        await db.flush()
+        company_id = company.id
+        await db.commit()
+
+    response = await client.post(
+        f"/api/sharepoint/compliance/documents/{indexed[2]}/review", headers=auth,
+        json={"company_id": str(company_id), "document_type": "trade_license",
+              "reference_number": "TL-123", "expiry_date": "2027-07-31",
+              "owner_user_id": str(indexed[0])},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "active", "tasks_created": 1}
+    async with AsyncSessionLocal() as db:
+        reviewed = (await db.scalars(select(SharePointComplianceEvent).where(
+            SharePointComplianceEvent.document_id == indexed[2],
+            SharePointComplianceEvent.action == "reviewed"))).one()
+        assert reviewed.actor_id == indexed[0]
+        assert reviewed.details["reference_number"] == "TL-123"
+        assert reviewed.details["expiry_date"] == "2027-07-31"
+        assert "note" not in reviewed.details
 
 
 @pytest.mark.asyncio
@@ -1059,6 +1151,34 @@ async def test_openai_uses_only_official_endpoint_direct_payload_and_no_store(co
     assert calls[0]["store"] is False and calls[0]["text_format"] is DocumentAnalysis
     assert "[PERSON_1]" in calls[0]["input"][1]["content"]
     assert "filename" not in calls[0]["input"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_schema_failure_is_not_reported_as_provider_outage(configured, monkeypatch):
+    class FakeOpenAI:
+        def __init__(self, **kwargs): self.responses = self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def parse(self, **kwargs):
+            DocumentAnalysis.model_validate({"summary": None})
+    monkeypatch.setattr(analysis, "AsyncOpenAI", FakeOpenAI)
+    with pytest.raises(SharePointError, match="analysis_invalid_output"):
+        await analysis.analyze([{"id": "s1", "location": "Text", "text": "Agreement"}])
+
+
+@pytest.mark.asyncio
+async def test_openai_rate_limit_has_distinct_retryable_code(configured, monkeypatch):
+    from openai import RateLimitError
+    class FakeOpenAI:
+        def __init__(self, **kwargs): self.responses = self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def parse(self, **kwargs):
+            response = httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com/v1/responses"))
+            raise RateLimitError("rate limit", response=response, body={})
+    monkeypatch.setattr(analysis, "AsyncOpenAI", FakeOpenAI)
+    with pytest.raises(SharePointError, match="analysis_rate_limited"):
+        await analysis.analyze([{"id": "s1", "location": "Text", "text": "Agreement"}])
 
 
 @pytest.mark.asyncio

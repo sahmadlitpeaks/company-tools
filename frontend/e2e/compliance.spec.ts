@@ -188,8 +188,8 @@ test("uncertain extraction waits for a reviewer before activating tasks", async 
   await openView(page, "Review");
   await expect(page.getByText("Needs review · 1")).toBeVisible();
   await page.getByRole("button", { name: "Verify" }).click();
-  await page.getByLabel("Review note").fill("Verified against the SharePoint original.");
+  await expect(page.getByLabel("Review note (optional)")).toBeVisible();
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
-  expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: "Verified against the SharePoint original." });
+  expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: null });
 });

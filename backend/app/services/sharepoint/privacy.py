@@ -9,6 +9,10 @@ import subprocess
 import time
 import unicodedata
 import zipfile
+from xml.etree.ElementTree import ParseError
+
+from openpyxl.utils.exceptions import InvalidFileException
+from pypdf.errors import PdfReadError
 
 from app.services.sharepoint.common import SharePointError
 
@@ -310,6 +314,12 @@ def _child(pipe, data, extension, maximum):
         pipe.send((True, (segments, {}, [])))
     except SharePointError as error:
         pipe.send((False, error.code))
+    except (zipfile.BadZipFile, KeyError, ParseError, InvalidFileException):
+        pipe.send((False, "invalid_office_document"))
+    except PdfReadError:
+        pipe.send((False, "invalid_pdf"))
+    except UnicodeError:
+        pipe.send((False, "invalid_text_encoding"))
     except Exception:
         pipe.send((False, "extraction_failed"))
     finally:

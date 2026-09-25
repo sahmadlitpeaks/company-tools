@@ -267,7 +267,14 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
     if document.compliance_status != "active":
         raise SharePointError("review_still_incomplete", 422)
     document.reviewed_by, document.reviewed_at = user.id, now()
-    event(db, document.id, "reviewed", actor_id=user.id, details={"note": body.review_note})
+    review_details = {"company_id": str(body.company_id), "document_type": body.document_type,
+        "reference_number": body.reference_number, "expiry_date": body.expiry_date,
+        "renewal_date": body.renewal_date, "termination_notice_days": body.termination_notice_days,
+        "owner_user_id": str(body.owner_user_id) if body.owner_user_id else None,
+        "owner_department_id": str(body.owner_department_id) if body.owner_department_id else None}
+    if body.review_note and body.review_note.strip():
+        review_details["note"] = body.review_note.strip()
+    event(db, document.id, "reviewed", actor_id=user.id, details=review_details)
     for task, leads in tasks:
         await populate_task_reminders(db, task, leads)
     await db.commit()
