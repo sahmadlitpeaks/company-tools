@@ -40,6 +40,18 @@ The bundled Docker Compose stack passes the following settings to the backend. S
 
 The in-process scheduler should run in one backend replica to avoid duplicate external deliveries. Confirm the Microsoft Graph app has the selected site's application and delegated read permissions, users have connected Microsoft accounts and module access, and owner rules or a connected fallback owner exist. After upgrade, test one upload, extraction, owner assignment, reminder, and manager escalation with authorized test accounts. Keep the original SharePoint file and any existing database backups during rollout.
 
+### Migration preflight for the historical `i4d5e6f7a8b9` collision
+
+An earlier branch used `i4d5e6f7a8b9` for both SharePoint Intelligence and ad sync. The current migration tree contains only `i4d5e6f7a8b9_sharepoint_intelligence.py`, and `i5e6f7a8b9c0` expects its SharePoint tables. Before upgrading an existing deployment, run these **read-only queries against that deployment's PostgreSQL database**:
+
+```sql
+SELECT version_num FROM alembic_version;
+SELECT to_regclass('public.sharepoint_sources') AS sharepoint_sources,
+       to_regclass('public.sharepoint_documents') AS sharepoint_documents;
+```
+
+If the database reports `i4d5e6f7a8b9` or a later revision but either SharePoint table is missing, stop the deployment and reconcile the actual schema and migration history with a database backup. The revision value alone cannot tell which of the two old `i4` files ran. Do not fix this by stamping a revision without applying the missing schema. A database still before `i4` is expected to lack these tables; the normal upgrade creates them.
+
 ## Verification
 
 From `backend/`, run `python -m alembic heads` and `python -m pytest`. Test migrations on a disposable PostgreSQL database. From `frontend/`, run `npm run typecheck`, `npm run build`, `npm run doctor`, and `npx playwright test e2e/sharepoint.spec.ts e2e/compliance.spec.ts` against the local Vite server for desktop and Pixel 5.
