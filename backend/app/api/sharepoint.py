@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.models.sharepoint import SharePointComplianceTask, SharePointConnection, SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
 from app.schemas.sharepoint import CentralChatIn, ChatIn, ReminderOut, ReminderUpdateIn, SearchIn
 from app.services.activity import record
+from app.services.dispatch import email_enabled
 from app.services.sharepoint.chat import ask_central, ask_document
 from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
@@ -61,7 +62,7 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "active_run": bool(source and source.active_run_id),
         "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
         "scheduler_enabled": settings.RUN_SCHEDULER,
-        "email_configured": bool(settings.SMTP_HOST),
+        "email_configured": email_enabled(),
         "teams_configured": bool(settings.TEAMS_WEBHOOK_URL),
         "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
         "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,

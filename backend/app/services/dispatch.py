@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 from app.core.config import settings
-from app.services.email import notification_email_html, send_email
+from app.services.email import notification_email_html, send_email, smtp_configured
 
 
 def slack_enabled() -> bool:
@@ -20,7 +20,7 @@ def teams_enabled() -> bool:
 
 
 def email_enabled() -> bool:
-    return bool(settings.SMTP_HOST)
+    return smtp_configured()
 
 
 def send_slack(text: str) -> bool:
