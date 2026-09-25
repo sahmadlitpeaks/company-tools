@@ -108,9 +108,12 @@ async def lifespan(app: FastAPI):
             await ensure_default_departments(db)
             await ensure_default_leave_types(db)
         if settings.SHAREPOINT_ENABLED:
-            from app.services.sharepoint.compliance import reconcile_company_matches
+            from app.services.sharepoint.compliance import (
+                reconcile_company_matches, reconcile_optional_fact_reviews,
+            )
 
             await reconcile_company_matches(db)
+            await reconcile_optional_fact_reviews(db)
             await db.commit()
 
     tasks: list[asyncio.Task] = []

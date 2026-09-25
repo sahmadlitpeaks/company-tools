@@ -335,8 +335,8 @@ export function FindingsTab({
                       </CardTitle>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {item.priority && <PriorityBadge priority={item.priority} />}
-                      {item.status && <StatusBadge status={item.status} />}
+                      {item.priority && item.priority !== "unknown" && <PriorityBadge priority={item.priority} />}
+                      {item.status && item.status !== "unknown" && <StatusBadge status={item.status} />}
                     </div>
                   </div>
                 </CardHeader>

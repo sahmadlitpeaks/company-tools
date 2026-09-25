@@ -22,6 +22,7 @@ DOCUMENT_TYPES = {
 }
 CONTRACT_TYPES = {"contract", "vendor_agreement", "it_software_agreement", "dpa"}
 DEFAULT_LEADS = (60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1)
+OPTIONAL_FACT_ISSUES = frozenset({"parties", "obligations"})
 
 
 def event(db, document_id, action, *, task_id=None, actor_id=None, details=None):
@@ -59,11 +60,13 @@ def combine_facts(analysis: dict) -> tuple[dict, list[str]]:
     sections = analysis.get("sections") or [analysis]
     fields = ("document_type", "company", "reference_number", "issue_date", "effective_date",
               "expiry_date", "renewal_date", "termination_notice")
-    combined: dict = {"parties": [], "obligations": [], "required_actions": []}
+    combined: dict = {"parties": [], "obligations": [], "required_actions": [], "validation_issues": []}
     conflicts: list[str] = []
     for section in sections:
         data = section.get("compliance") or {}
-        conflicts.extend(data.get("validation_issues") or [])
+        issues = data.get("validation_issues") or []
+        combined["validation_issues"].extend(issues)
+        conflicts.extend(issue for issue in issues if issue not in OPTIONAL_FACT_ISSUES)
         for field in fields:
             candidate = data.get(field)
             if candidate is None or candidate == "unknown":
@@ -126,6 +129,34 @@ async def reconcile_company_matches(db: AsyncSession) -> int:
         for task, leads in plans:
             await populate_task_reminders(db, task, leads)
     return matched
+
+
+async def reconcile_optional_fact_reviews(db: AsyncSession) -> int:
+    """Recheck old review holds involving discarded optional descriptions.
+
+    Reuses stored analysis without calling the AI API or downloading the file.
+    Other review reasons, including missing owner or action date, still block.
+    """
+    from app.services.sharepoint.reminders import populate_task_reminders
+
+    documents = (await db.scalars(select(SharePointDocument).where(
+        SharePointDocument.status == "ready",
+        SharePointDocument.compliance_status == "needs_review",
+        SharePointDocument.in_scope.is_(True),
+        SharePointDocument.deleted.is_(False),
+    ))).all()
+    updated = 0
+    for document in documents:
+        reasons = set((document.compliance or {}).get("review_reasons") or [])
+        if not reasons.intersection(OPTIONAL_FACT_ISSUES) or not document.analysis:
+            continue
+        plans = await apply_analysis(db, document, document.analysis,
+            uploaded_by_email=document.uploaded_by_email,
+            uploaded_by_oid=document.uploaded_by_oid)
+        updated += 1
+        for task, leads in plans:
+            await populate_task_reminders(db, task, leads)
+    return updated
 
 
 async def resolve_owner(db: AsyncSession, company_id, document_type: str,

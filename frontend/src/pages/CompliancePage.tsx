@@ -42,6 +42,11 @@ const statusNames: Record<string, string> = {
 const reasonNames: Record<string, string> = {
   company: "Company not matched", owner: "Owner needed", action_date: "Action date unclear",
   document_type: "Document type unclear", notice_period: "Notice period unclear",
+  reference_number: "Reference number unclear", issue_date: "Issue date unclear",
+  effective_date: "Effective date unclear", expiry_date: "Expiry date unclear",
+  renewal_date: "Renewal date unclear", termination_notice: "Termination notice unclear",
+  required_actions: "Action details unclear", parties: "Parties could not be verified",
+  obligations: "Document condition could not be verified",
 };
 
 function formatDate(value: string | null | undefined) {
@@ -235,7 +240,7 @@ function DetailDialog({ document, onClose }: { document: ComplianceDocument; onC
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><div className="mb-2"><StatusBadge status={document.status} /></div><DialogTitle className="break-words text-lg">{document.name}</DialogTitle><DialogDescription className="text-sm">Extracted information, original source, and audit history</DialogDescription></DialogHeader>
     {detail.loading ? <Skeleton className="h-48 w-full" /> : detail.error ? <Alert variant="destructive"><AlertDescription>{detail.error}</AlertDescription></Alert> : <div className="space-y-5">
       <Card className="bg-muted/30"><CardHeader><CardTitle className="text-base">Document facts</CardTitle></CardHeader><CardContent><dl className="grid gap-4 sm:grid-cols-2">{fields.map(([label, value]) => <div key={label} className="min-w-0 border-t border-border pt-2"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-semibold">{value}</dd></div>)}</dl></CardContent></Card>
-      {facts?.obligations?.length ? <Card><CardHeader><CardTitle className="text-base">Important obligations</CardTitle></CardHeader><CardContent><ul className="list-disc space-y-2 ps-5 text-sm">{[...new Set(facts.obligations.map((item) => item.value))].map((value) => <li key={value}>{value}</li>)}</ul></CardContent></Card> : null}
+      {facts?.obligations?.length ? <Card><CardHeader><CardTitle className="text-base">Requirements in this document</CardTitle><CardDescription>Conditions stated in the source that may affect compliance.</CardDescription></CardHeader><CardContent><ul className="list-disc space-y-2 ps-5 text-sm">{[...new Set(facts.obligations.map((item) => item.value))].map((value) => <li key={value}>{value}</li>)}</ul></CardContent></Card> : null}
       <div className="flex flex-col gap-3 border-y border-border py-3 text-sm sm:flex-row sm:items-center sm:justify-between"><p className="text-muted-foreground">Uploaded by {document.uploaded_by_email || "an unknown user"}{document.uploaded_at ? ` · ${new Date(document.uploaded_at).toLocaleString()}` : ""}</p>{document.url && <Button variant="outline" nativeButton={false} className="bg-background text-sm" render={<a aria-label="Open original in SharePoint" href={document.url} target="_blank" rel="noreferrer" />}>Open in SharePoint<ArrowUpRight data-icon="inline-end" /></Button>}</div>
       <section className="space-y-3"><h3 className="text-base font-semibold">Audit history</h3>{history.loading ? <Skeleton className="h-20" /> : history.error ? <Alert variant="destructive"><AlertDescription>{history.error}</AlertDescription></Alert> : history.data?.events.length ? <ol className="border border-border bg-card">{history.data.events.map((item, index) => {
         const presentation = historyPresentation(item, document);
