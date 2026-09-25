@@ -12,9 +12,9 @@ short links, secure transfers, CRM, service desk, asset tracking, HR, payroll,
 training, recruiting, documents, notifications, audit history, and reporting—
 and now also includes:
 
-- Optional read-only SharePoint Intelligence: document search, source-backed
-  summaries and findings, Microsoft user access checks and sanitized-payload
-  review before OpenAI. See [setup and limits](docs/SHAREPOINT_INTELLIGENCE.md).
+- Optional read-only SharePoint Intelligence and Compliance: automatic document
+  analysis, owner assignment, tasks, reminders, review, and audit history with
+  live Microsoft access checks. See [setup and limits](docs/SHAREPOINT_INTELLIGENCE.md).
 
 - Simple time tracking with two primary actions (clock and break), a live
   `HH:MM:SS` timer that retains exact seconds after clock-out, a daily

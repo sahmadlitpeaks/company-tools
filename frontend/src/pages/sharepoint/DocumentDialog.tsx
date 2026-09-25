@@ -11,7 +11,6 @@ import {
   FolderTree,
   Layers,
   RefreshCw,
-  ShieldCheck,
 } from "lucide-react";
 import { api } from "@/api/client";
 import {
@@ -20,7 +19,6 @@ import {
   formatDateTime,
   getStatusBadgeInfo,
   readableStatus,
-  type PayloadPreview,
   type SharePointDocument,
   type SharePointReminder,
 } from "@/api/sharepoint";
@@ -35,118 +33,19 @@ import { ExpiriesTab } from "./ExpiriesTab";
 import { FindingsTab } from "./FindingsTab";
 import { SourceExcerptsTab } from "./SourceExcerptsTab";
 
-function ReviewPreview({ id, onApproved }: { id: string; onApproved: () => void }) {
-  const preview = useFetch<PayloadPreview>(`/api/sharepoint/documents/${id}/preview`);
-  const [busy, setBusy] = useState(false);
-  const { notify } = useToast();
-
-  async function approve() {
-    if (!preview.data || preview.loading || preview.error) return;
-    setBusy(true);
-    try {
-      await api(`/api/sharepoint/documents/${id}/approve`, {
-        method: "POST",
-        body: { payload_hash: preview.data.payload_hash },
-      });
-      notify("Approved! Queued for Luna AI analysis…");
-      onApproved();
-    } catch (error) {
-      notify(readableStatus(error instanceof Error ? error.message : "Approval failed"), "error");
-      void preview.reload();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (preview.loading) return <Loading />;
-  if (preview.error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>{readableStatus(preview.error)}</AlertDescription>
-      </Alert>
-    );
-  }
-  if (!preview.data) return null;
-
-  const allSegments = preview.data.payload.batches.flat();
-
-  return (
-    <div className="space-y-4">
-      <Alert>
-        <ShieldCheck />
-        <AlertDescription>
-          Review every excerpt for private details before approving. Only this sanitized payload will be sent to Luna AI.
-        </AlertDescription>
-      </Alert>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 border border-border p-3 text-xs bg-muted/20">
-        <div>
-          <span className="text-muted-foreground block text-[11px]">AI Model</span>
-          <strong>{preview.data.payload.model || "Not configured"}</strong>
-        </div>
-        <div>
-          <span className="text-muted-foreground block text-[11px]">Batches</span>
-          <strong>
-            {preview.data.payload.batches.length} batch
-            {preview.data.payload.batches.length === 1 ? "" : "es"}
-          </strong>
-        </div>
-        <div>
-          <span className="text-muted-foreground block text-[11px]">Sanitized Excerpts</span>
-          <strong>{allSegments.length} segments</strong>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <Layers className="size-3.5 text-primary" />
-          Sanitized Excerpts to be Sent
-        </h3>
-        <SourceExcerptsTab segments={allSegments} />
-      </div>
-
-      <details className="border border-border p-3 bg-muted/10 text-xs">
-        <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
-          View Prompt instructions and schema
-        </summary>
-        <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] font-mono max-h-48 overflow-y-auto">
-          {preview.data.payload.system}
-        </pre>
-        <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] font-mono max-h-48 overflow-y-auto">
-          {JSON.stringify(preview.data.payload.schema, null, 2)}
-        </pre>
-      </details>
-
-      <div className="pt-2 flex justify-end">
-        <Button
-          disabled={busy || !preview.data.payload.model}
-          onClick={() => void approve()}
-          className="rounded-none"
-        >
-          <ShieldCheck data-icon="inline-start" />
-          {busy ? "Approving…" : "Approve sanitized payload"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export default function DocumentDialog({
   id,
-  canReview,
   isAdmin,
   onClose,
   onChanged,
 }: {
   id: string;
-  canReview: boolean;
   isAdmin: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
   const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${id}`);
   const reminders = useFetch<SharePointReminder[]>(`/api/sharepoint/documents/${id}/reminders`);
-  const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("analysis");
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
@@ -205,7 +104,7 @@ export default function DocumentDialog({
 
   return (
     <Modal
-      title={reviewing ? "Review sanitized text" : "Document details"}
+      title="Document details"
       onClose={onClose}
       maxWidth={960}
     >
@@ -308,47 +207,17 @@ export default function DocumentDialog({
             </div>
           </div>
 
-          {/* Token Usage & Cost */}
+          {/* Keep the cost useful without exposing pricing math or token accounting. */}
           {doc.usage && (
-            <div className="border border-border p-3.5 bg-muted/10 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between font-semibold">
-                <span className="flex items-center gap-1.5 text-foreground text-xs sm:text-sm">
-                  <Coins className="size-4 text-muted-foreground" />
-                  AI Execution & Token Cost
-                </span>
-                {costInfo && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {costInfo.rateSummary}
-                    </span>
-                    <Badge variant="outline" className="font-mono text-emerald-700 dark:text-emerald-400 border-emerald-500/30 rounded-none text-xs font-semibold py-0.5 px-2">
-                      Est. {costInfo.formatted} USD
-                    </Badge>
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-muted-foreground text-xs">
+            <div className="flex flex-col gap-2 border border-border bg-muted/20 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2.5">
+                <Coins className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div>
-                  <span>Input Tokens: </span>
-                  <strong className="text-foreground text-sm font-semibold">{doc.usage.input_tokens.toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span>Output Tokens: </span>
-                  <strong className="text-foreground text-sm font-semibold">{doc.usage.output_tokens.toLocaleString()}</strong>
-                </div>
-                <div>
-                  <span>Total Tokens: </span>
-                  <strong className="text-foreground text-sm font-semibold">
-                    {(doc.usage.input_tokens + doc.usage.output_tokens).toLocaleString()}
-                  </strong>
+                  <p className="text-sm font-semibold">AI analysis</p>
+                  {doc.processed_at && <p className="mt-0.5 text-xs text-muted-foreground">Processed {formatDateTime(doc.processed_at)}</p>}
                 </div>
               </div>
-              {doc.processed_at && (
-                <div className="text-xs text-muted-foreground pt-1.5 border-t border-border/50 flex items-center gap-1.5 font-mono">
-                  <Clock className="size-3.5" />
-                  Processed at: {formatDateTime(doc.processed_at)}
-                </div>
-              )}
+              {costInfo && <p className="text-sm font-semibold tabular-nums sm:text-right"><span className="text-xs font-normal text-muted-foreground">Estimated cost </span>{costInfo.formatted}</p>}
             </div>
           )}
 
@@ -358,38 +227,8 @@ export default function DocumentDialog({
             </Alert>
           )}
 
-          {reviewing ? (
-            <ReviewPreview
-              id={id}
-              onApproved={() => {
-                onChanged();
-                onClose();
-              }}
-            />
-          ) : (
-            <>
+          <>
               {/* Contextual status alerts */}
-              {doc.status === "awaiting_approval" && (
-                <Alert>
-                  <ShieldCheck />
-                  <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <span>This document has extracted text waiting for privacy approval before being sent to Luna AI.</span>
-                    {canReview && (
-                      <Button size="sm" onClick={() => setReviewing(true)} className="rounded-none">
-                        <ShieldCheck data-icon="inline-start" />
-                        Review sanitized text
-                      </Button>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              )}
-              {doc.status === "approved" && (
-                <Alert>
-                  <AlertDescription>
-                    Sanitized text has been approved. The document is queued and will be processed by Luna AI shortly.
-                  </AlertDescription>
-                </Alert>
-              )}
               {doc.status === "processing" && (
                 <Alert>
                   <AlertDescription className="animate-pulse">
@@ -474,8 +313,6 @@ export default function DocumentDialog({
               ) : (
                 <>
                   {!doc.analysis &&
-                    doc.status !== "awaiting_approval" &&
-                    doc.status !== "approved" &&
                     doc.status !== "processing" && (
                       <p className="text-muted-foreground text-xs">
                         No completed analysis yet. Check the document status above.
@@ -493,7 +330,6 @@ export default function DocumentDialog({
                 </>
               )}
             </>
-          )}
         </div>
       )}
     </Modal>

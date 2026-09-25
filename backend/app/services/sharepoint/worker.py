@@ -9,13 +9,12 @@ from sqlalchemy import or_, select, update
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.sharepoint import SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
-from app.models.user import User
 from app.services.sharepoint.analysis import analyze, payload_hash
-from app.services.sharepoint.common import SharePointError, decrypt, digest, encrypt, is_reviewer, now
+from app.services.sharepoint.common import SharePointError, digest, now
+from app.services.sharepoint.compliance import apply_analysis, archive_prior_version, event
 from app.services.sharepoint.graph import GraphClient, application_token, graph_url, item_path
 from app.services.sharepoint.privacy import PIPELINE_VERSION, preprocess
 from app.services.sharepoint.store import (
-    authorize_document,
     enqueue,
     in_live_scope,
     purge,
@@ -125,7 +124,7 @@ async def discover(source_id, owner, graph):
     while True:
         async with AsyncSessionLocal() as db:
             source = await owned(db, source_id, owner)
-            link = source.next_link or source.delta_link or f"/drives/{drive}/root/delta?$select=id,name,eTag,parentReference,webUrl,file,folder,size,lastModifiedDateTime,deleted"
+            link = source.next_link or source.delta_link or f"/drives/{drive}/root/delta?$select=id,name,eTag,parentReference,webUrl,file,folder,size,createdDateTime,lastModifiedDateTime,createdBy,deleted"
             generation = source.generation
         pages += 1
         if link in visited or pages > settings.SHAREPOINT_MAX_ITEMS + 1:
@@ -165,16 +164,25 @@ async def discover(source_id, owner, graph):
                     doc = SharePointDocument(source_id=source_id, item_id=item["id"])
                     db.add(doc)
                     indexed[item["id"]] = doc
+                    await db.flush()
+                    event(db, doc.id, "detected", details={"uploaded_at": item.get("createdDateTime"),
+                        "uploaded_by_oid": ((item.get("createdBy") or {}).get("user") or {}).get("id")})
                 doc.seen_generation = generation
                 if "deleted" in item:
+                    if not doc.deleted:
+                        event(db, doc.id, "document_deleted", details={"source_version": doc.version})
                     doc.deleted = True
                     doc.in_scope = False
+                    await archive_prior_version(db, doc)
                     purge(doc, "deleted")
                     if doc.id:
                         await purge_document_reminders(db, doc.id)
                     doc.filename = doc.web_url = doc.path = ""
                     continue
                 if doc.version != item.get("eTag", "") or doc.deleted:
+                    if doc.version and not doc.deleted:
+                        event(db, doc.id, "source_updated", details={"previous_version": doc.version})
+                    await archive_prior_version(db, doc)
                     purge(doc)
                     if doc.id:
                         await purge_document_reminders(db, doc.id)
@@ -187,6 +195,10 @@ async def discover(source_id, owner, graph):
                 doc.mime_type = (item.get("file") or {}).get("mimeType", "")
                 doc.size = item.get("size", 0)
                 doc.modified_at = item.get("lastModifiedDateTime")
+                creator = (item.get("createdBy") or {}).get("user") or {}
+                doc.uploaded_by_oid = creator.get("id") or doc.uploaded_by_oid
+                doc.uploaded_by_email = creator.get("email") or doc.uploaded_by_email
+                doc.uploaded_at = item.get("createdDateTime") or doc.uploaded_at
                 run.discovered += 1
             source.next_link = next_link
             if not next_link:
@@ -194,20 +206,25 @@ async def discover(source_id, owner, graph):
                     for doc in indexed.values():
                         if doc.seen_generation != generation:
                             doc.deleted = True
+                            await archive_prior_version(db, doc)
                             purge(doc, "deleted")
                             if doc.id:
                                 await purge_document_reminders(db, doc.id)
                 for doc in indexed.values():
                     included = ancestry(doc, indexed, folder) and not doc.is_folder
                     if doc.in_scope and not included:
+                        event(db, doc.id, "document_out_of_scope")
+                        await archive_prior_version(db, doc)
                         purge(doc, "out_of_scope")
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
                     elif included and not doc.in_scope:
+                        await archive_prior_version(db, doc)
                         purge(doc)
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
                     elif included and doc.segments and doc.payload_hash != payload_hash(doc.segments):
+                        await archive_prior_version(db, doc)
                         purge(doc)
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
@@ -216,6 +233,7 @@ async def discover(source_id, owner, graph):
                     ):
                         # Older OCR failures need one fresh attempt after a parser
                         # deployment, even when SharePoint's eTag is unchanged.
+                        await archive_prior_version(db, doc)
                         purge(doc)
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
@@ -235,17 +253,10 @@ async def process_document(source_id, owner, document_id, graph):
         doc = await db.get(SharePointDocument, document_id)
         if not doc.in_scope or doc.deleted:
             return
-        if source.policy == "skip":
-            purge(doc, "ai_skipped")
-            if doc.id:
-                await purge_document_reminders(db, doc.id)
-            await db.commit()
-            return
-        policy, policy_version = source.policy, source.policy_version
-        terms = decrypt(source.rules_cipher) if source.rules_cipher else []
+        policy_version = source.policy_version
         drive, version, item, filename = source.drive_id, doc.version, doc.item_id, doc.filename
-        segments, mapping, languages = doc.segments, doc.mapping_cipher, doc.languages
-        approved = doc.approval_hash
+        segments = None if doc.compliance_status == "pending" else doc.segments
+        languages = doc.languages
         doc.status = "processing"
         doc.attempts += 1
         await db.commit()
@@ -257,9 +268,8 @@ async def process_document(source_id, owner, document_id, graph):
             if metadata.get("size", 0) > settings.SHAREPOINT_MAX_FILE_BYTES:
                 raise SharePointError("file_too_large", 422)
             data = await graph.get(item_path(drive, item) + "/content", content=True, download=True)
-            segments, mapping_values, languages = await preprocess(data, filename.rsplit(".", 1)[-1].lower(), terms)
+            segments, _, languages = await preprocess(data, filename.rsplit(".", 1)[-1].lower())
             del data
-            mapping = encrypt(mapping_values)
         final_metadata = await graph.item(drive, item)
         if final_metadata.get("eTag") != version or not await in_live_scope(graph, source, final_metadata):
             raise SharePointError("document_changed_sync_required", 409)
@@ -270,21 +280,8 @@ async def process_document(source_id, owner, document_id, graph):
             doc = await db.get(SharePointDocument, document_id)
             if live_source.policy_version != policy_version or doc.version != version:
                 raise SharePointError("document_changed_sync_required", 409)
-            doc.segments, doc.mapping_cipher, doc.languages = segments, mapping, languages
+            doc.segments, doc.mapping_cipher, doc.languages = segments, None, languages
             doc.payload_hash, doc.fingerprint = hashed, fingerprint
-            if policy == "review" and approved != hashed:
-                doc.status = "awaiting_approval"
-                doc.approval_hash = None
-                await db.commit()
-                return
-            if policy == "review":
-                reviewer = await db.get(User, doc.approved_by) if doc.approved_by else None
-                if not reviewer or not reviewer.is_active or reviewer.status != "active" or reviewer.must_change_password or not is_reviewer(reviewer) or "sharepoint_intelligence" not in reviewer.effective_permissions:
-                    doc.status = "awaiting_approval"
-                    doc.approval_hash = None
-                    await db.commit()
-                    return
-                await authorize_document(db, reviewer, live_source, doc)
             await db.commit()
         analysis, usage = await analyze(segments)
         metadata = await graph.item(drive, item)
@@ -299,8 +296,10 @@ async def process_document(source_id, owner, document_id, graph):
             doc.processed_at = now()
             run = await db.get(SharePointRun, uuid.UUID(live_source.active_run_id))
             run.processed += 1
-            from app.services.sharepoint.reminders import populate_document_reminders
-            await populate_document_reminders(db, doc, analysis, live_source.id, commit=False)
+            from app.services.sharepoint.reminders import populate_task_reminders
+            for task, leads in await apply_analysis(db, doc, analysis,
+                    uploaded_by_email=doc.uploaded_by_email, uploaded_by_oid=doc.uploaded_by_oid):
+                await populate_task_reminders(db, task, leads)
             await db.commit()
     except SharePointError as error:
         if error.code == "sync_lease_lost":
@@ -310,7 +309,9 @@ async def process_document(source_id, owner, document_id, graph):
             doc = await db.get(SharePointDocument, document_id)
             doc.error_code = error.code
             doc.status = "failed"
+            doc.compliance_status = "needs_review"
             doc.analysis = None
+            event(db, doc.id, "processing_failed", details={"error_code": error.code})
             if error.code in OCR_FAILURES:
                 doc.fingerprint = ocr_failure_fingerprint(version, policy_version)
             if error.code in ("document_changed_sync_required", "document_access_denied"):
@@ -337,37 +338,12 @@ async def execute(source_id, owner):
             await db.commit()
             ids = list((await db.scalars(select(SharePointDocument.id).where(
                 SharePointDocument.source_id == source_id, SharePointDocument.in_scope.is_(True),
-                SharePointDocument.deleted.is_(False), SharePointDocument.status.in_(["queued", "processing", "approved", "failed"]),
+                SharePointDocument.deleted.is_(False),
+                or_(SharePointDocument.status.in_(["queued", "processing", "approved", "failed"]),
+                    (SharePointDocument.status == "ready") & (SharePointDocument.compliance_status == "pending")),
                 SharePointDocument.attempts < 3))).all())
         for document_id in ids:
             await process_document(source_id, owner, document_id, graph)
-        # Repair results written by older workers that marked a document ready
-        # before reminder insertion failed. This uses stored analysis only.
-        async with AsyncSessionLocal() as db:
-            await owned(db, source_id, owner)
-            missing = select(SharePointDocument).where(
-                SharePointDocument.source_id == source_id,
-                SharePointDocument.in_scope.is_(True),
-                SharePointDocument.deleted.is_(False),
-                SharePointDocument.status == "ready",
-                SharePointDocument.analysis.is_not(None),
-                ~select(SharePointReminder.id).where(
-                    SharePointReminder.document_id == SharePointDocument.id,
-                ).exists(),
-            )
-            from app.services.sharepoint.reminders import populate_document_reminders
-            repaired = 0
-            for doc in (await db.scalars(missing)).all():
-                if not isinstance(doc.analysis, dict):
-                    continue
-                sections = doc.analysis.get("sections") or [doc.analysis]
-                if any(isinstance(section, dict) and (section.get("expiries") or section.get("deadlines") or section.get("tasks")) for section in sections):
-                    await populate_document_reminders(db, doc, doc.analysis, source_id, commit=False)
-                    repaired += 1
-                    if repaired % 20 == 0:
-                        await db.commit()
-                        await owned(db, source_id, owner)
-            await db.commit()
     except SharePointError as error:
         failure = error.code
     except Exception:

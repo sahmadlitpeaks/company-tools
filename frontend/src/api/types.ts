@@ -553,6 +553,8 @@ export interface Company {
   id: string;
   slug: string;
   name: string;
+  parent_company_id?: string | null;
+  aliases?: string[] | null;
   logo_url?: string | null;
   icon_url?: string | null;
   primary_color: string;

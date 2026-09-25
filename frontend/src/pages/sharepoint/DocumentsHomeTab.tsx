@@ -173,6 +173,7 @@ export function DocumentsHomeTab({
   // Attention items: overdue reminders, reminders due soon (<= 30 days), and documents requiring attention
   const attentionItems = useMemo(() => {
     const items: AttentionItem[] = [];
+    const seenActions = new Set<string>();
     const now = Date.now();
 
     for (const r of safeReminders) {
@@ -184,6 +185,11 @@ export function DocumentsHomeTab({
       const isDueSoon = daysLeft >= 0 && daysLeft <= 30;
 
       if (isOverdue || isDueSoon) {
+        const actionKey = r.task_id
+          ? `task:${r.task_id}`
+          : `${r.document_id}:${r.category}:${r.title}:${r.target_date}:${r.recipient_email ?? ""}`;
+        if (seenActions.has(actionKey)) continue;
+        seenActions.add(actionKey);
         let title: string;
         const isRenewal =
           r.category === "renewal" || r.title.toLowerCase().includes("renewal");

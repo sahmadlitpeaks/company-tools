@@ -77,6 +77,7 @@ const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const IdeasPage = lazy(() => import("./pages/IdeasPage"));
 const AiHelpPage = lazy(() => import("./pages/AiHelpPage"));
 const SharePointPage = lazy(() => import("./pages/SharePointPage"));
+const CompliancePage = lazy(() => import("./pages/CompliancePage"));
 const LostFoundPage = lazy(() => import("./pages/LostFoundPage"));
 
 function StandaloneRoute({ children }: { children: ReactNode }) {
@@ -210,6 +211,7 @@ export default function App() {
           <Route path="/ideas" element={<Protected module="ideas"><IdeasPage /></Protected>} />
           <Route path="/ai-help" element={<Protected module="ai_help"><AiHelpPage /></Protected>} />
           <Route path="/sharepoint" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="home" /></Protected>} />
+          <Route path="/sharepoint/compliance" element={<Protected module="sharepoint_intelligence"><CompliancePage /></Protected>} />
           <Route path="/sharepoint/documents" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="documents" /></Protected>} />
           <Route path="/sharepoint/assistant" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="assistant" /></Protected>} />
           <Route path="/sharepoint/alerts" element={<Protected module="sharepoint_intelligence"><SharePointPage tab="alerts" /></Protected>} />

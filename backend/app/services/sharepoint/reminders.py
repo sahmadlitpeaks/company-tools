@@ -12,9 +12,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
+from app.models.notification import Notification
+from app.models.sharepoint import SharePointComplianceEvent, SharePointComplianceTask, SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
 from app.models.user import User
-from app.services.dispatch import send_teams
+from app.services.dispatch import email_enabled, send_teams, teams_enabled
 from app.services.email import send_email
 from app.services.sharepoint.common import SharePointError, decrypt, digest, now
 from app.services.sharepoint.privacy import restore
@@ -69,6 +70,8 @@ TASK_DEADLINE_ESCALATION_LEADS = (30, 14, 7, 5, 3, 1, 0)
 
 def reminder_stage_label(lead_days: int) -> tuple[str, str, str]:
     """Returns (label_text, badge_color_hex, bg_color_hex) for escalating notifications."""
+    if lead_days < 0:
+        return "Overdue escalation", "#b91c1c", "#fef2f2"
     if lead_days == 0:
         return "🚨 Due Today — Expiration Notice", "#b91c1c", "#fef2f2"
     elif lead_days in (1, 3, 5):
@@ -235,6 +238,42 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
         await db.commit()
 
 
+async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTask, leads: list[int]):
+    """Materialize each notification date once; task completion cancels the rest."""
+    from app.models.department import Department
+    document = await db.get(SharePointDocument, task.document_id)
+    recipients: list[User] = []
+    if task.owner_user_id:
+        owner = await db.get(User, task.owner_user_id)
+        if owner and owner.is_active and owner.status == "active" and owner.email:
+            recipients = [owner]
+    elif task.owner_department_id:
+        department = await db.get(Department, task.owner_department_id)
+        if department:
+            recipients = list((await db.scalars(select(User).where(
+                User.department_id == department.id,
+                User.is_active.is_(True), User.status == "active", User.email.is_not(None)))).all())
+    for recipient in recipients:
+        for lead in sorted(set(leads), reverse=True):
+            if not isinstance(lead, int) or lead < -365 or lead > 730:
+                continue
+            destination = recipient
+            if lead < 0:
+                destination = await db.get(User, recipient.manager_id) if recipient.manager_id else None
+                if not destination or not destination.is_active or destination.status != "active" or not destination.email:
+                    continue
+            dedup = digest([str(task.id), document.version if document else "", destination.email.lower(), str(lead)])[:64]
+            await db.execute(pg_insert(SharePointReminder).values(
+                id=uuid.uuid4(), source_id=task.source_id, document_id=task.document_id,
+                task_id=task.id, title=task.title, category="compliance_task",
+                target_date=task.due_date.isoformat(),
+                reminder_date=_calculate_reminder_date(task.due_date.isoformat(), lead),
+                lead_days=lead, responsible_name=destination.display_name,
+                recipient_email=destination.email.lower(), status="pending", attempts=0,
+                dedup_key=dedup,
+            ).on_conflict_do_nothing(index_elements=["document_id", "dedup_key"]))
+
+
 def reminder_email_html(reminder: SharePointReminder, document: SharePointDocument) -> str:
     target_date_str = html.escape(reminder.target_date or "")
     days_left_text = ""
@@ -303,6 +342,14 @@ def reminder_email_html(reminder: SharePointReminder, document: SharePointDocume
 
 
 async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bool:
+    if reminder.status != "pending":
+        return False
+    if reminder.task_id:
+        task = await db.get(SharePointComplianceTask, reminder.task_id)
+        if not task or task.status != "active":
+            reminder.status = "dismissed"
+            await db.commit()
+            return False
     document = await db.get(SharePointDocument, reminder.document_id)
     if not document or document.deleted or not document.in_scope:
         reminder.status = "dismissed"
@@ -348,7 +395,7 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
             await db.commit()
             return False
         try:
-            await authorize_document(db, recipient_user, source, document, use_cache=True)
+            await authorize_document(db, recipient_user, source, document)
         except SharePointError as e:
             if e.code in ("document_access_denied", "document_not_found"):
                 log.warning("Recipient %s denied access to document %s in SharePoint; skipping delivery", recipient, document.id)
@@ -371,41 +418,78 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
     subject = f"{stage_label.split()[0]} {reminder.title} — {document.filename} ({reminder.target_date})"
     html_body = reminder_email_html(reminder, document)
 
+    if reminder.task_id:
+        dedup_key = f"sp:{reminder.id}"
+        existing = (await db.scalars(select(Notification).where(
+            Notification.user_id == recipient_user.id,
+            Notification.dedup_key == dedup_key))).first()
+        if not existing:
+            db.add(Notification(user_id=recipient_user.id,
+                title="Document compliance action due",
+                body=f"Action date: {reminder.target_date}. Open Compliance for details.",
+                link="/sharepoint/compliance", category="compliance", dedup_key=dedup_key))
+            from app.services.sharepoint.compliance import event
+            event(db, reminder.document_id, "in_app_reminder", task_id=reminder.task_id,
+                details={"lead_days": reminder.lead_days, "recipient_id": str(recipient_user.id)})
+
+    # The in-app notice is useful even when no external transport is configured.
+    # Keep the reminder pending so adding a Teams webhook can deliver it later.
+    if not email_enabled() and not teams_enabled():
+        reminder.last_error = "No outbound reminder channel configured"
+        await db.commit()
+        return False
+
     # 1. Email delivery via threadpool (non-blocking, Issue #20)
     email_sent = False
-    try:
-        email_sent = await asyncio.to_thread(
-            send_email,
-            to=recipient,
-            subject=subject,
-            html=html_body,
-        )
-    except Exception as e:
-        log.warning("Failed to send reminder email to %s: %s", recipient, e)
-        reminder.last_error = str(e)[:255]
+    if email_enabled():
+        try:
+            email_sent = await asyncio.to_thread(
+                send_email,
+                to=recipient,
+                subject=subject,
+                html=html_body,
+            )
+        except Exception as e:
+            log.warning("Failed to send reminder email to %s: %s", recipient, e)
+            reminder.last_error = str(e)[:255]
 
-    # 2. Microsoft Teams card delivery via threadpool (non-sensitive notification pointer only, Issue #17)
-    try:
-        teams_body = (
-            "A document compliance reminder has been dispatched to the assigned owner. "
-            "Authorized team members can view details and take action in Company Tools."
-        )
-        safe_link = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/sharepoint" if settings.PUBLIC_BASE_URL else None
-        await asyncio.to_thread(
-            send_teams,
-            title=f"Document Alert: {_escape_teams_markdown(reminder.title)}",
-            body=teams_body,
-            link=safe_link,
-        )
-    except Exception as e:
-        log.warning("Failed to dispatch Teams reminder: %s", e)
+    # A shared Teams channel receives one generic pointer per task and stage.
+    # Private details and the intended recipient remain in the permission-checked app.
+    teams_sent = False
+    if teams_enabled():
+        already_posted = False
+        if reminder.task_id:
+            already_posted = (await db.scalars(select(SharePointComplianceEvent).where(
+                SharePointComplianceEvent.task_id == reminder.task_id,
+                SharePointComplianceEvent.action == "reminder_sent",
+                SharePointComplianceEvent.details["lead_days"].as_integer() == reminder.lead_days,
+                SharePointComplianceEvent.details["teams"].as_boolean().is_(True),
+            ))).first() is not None
+        if already_posted:
+            teams_sent = True
+        else:
+            try:
+                teams_sent = await asyncio.to_thread(
+                    send_teams,
+                    title="Document compliance reminder",
+                    body="An authorized owner has an action due. Open Compliance in Company Tools to view it.",
+                    link="/sharepoint/compliance",
+                )
+            except Exception as e:
+                log.warning("Failed to dispatch Teams reminder: %s", e)
+                reminder.last_error = str(e)[:255]
 
     reminder.attempts = (reminder.attempts or 0) + 1
 
-    if email_sent:
+    if email_sent or teams_sent:
         reminder.status = "sent"
         reminder.sent_at = now()
         reminder.last_error = None
+        if reminder.task_id:
+            from app.services.sharepoint.compliance import event
+            event(db, reminder.document_id, "reminder_sent", task_id=reminder.task_id,
+                details={"lead_days": reminder.lead_days, "recipient_id": str(recipient_user.id),
+                         "email": email_sent, "teams": teams_sent})
     else:
         # Retryable state with attempts counter (Issue #18)
         if reminder.attempts >= 3:
@@ -414,7 +498,7 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
             reminder.status = "pending"
 
     await db.commit()
-    return email_sent
+    return email_sent or teams_sent
 
 
 async def run_sharepoint_reminders(db: AsyncSession) -> dict:
@@ -444,7 +528,7 @@ async def run_sharepoint_reminders(db: AsyncSession) -> dict:
         # Mark superseded earlier stages skipped
         groups: dict[tuple, list[SharePointReminder]] = {}
         for r in reminders:
-            group_key = (r.document_id, r.title, r.target_date)
+            group_key = (r.task_id or r.document_id, r.title, r.target_date, r.recipient_email)
             groups.setdefault(group_key, []).append(r)
 
         to_deliver: list[SharePointReminder] = []

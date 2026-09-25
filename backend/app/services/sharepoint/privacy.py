@@ -1,4 +1,4 @@
-"""Bounded, offline extraction and privacy preprocessing. No file writes or model downloads."""
+"""Bounded, offline document extraction. No file writes or model downloads."""
 import asyncio
 import hashlib
 import io
@@ -13,7 +13,7 @@ import zipfile
 from app.services.sharepoint.common import SharePointError
 
 PLACEHOLDER = re.compile(r"\[(?:[A-Z0-9]+_)?[A-Z]+_\d+\]")
-PIPELINE_VERSION = "privacy-v2"
+PIPELINE_VERSION = "direct-extraction-v1"
 
 
 def normalize(text):
@@ -292,11 +292,22 @@ def restore(value, mapping):
     return value
 
 
-def _child(pipe, data, extension, maximum, terms, languages, model_dir):
+def _child(pipe, data, extension, maximum):
     logging.disable(logging.CRITICAL)
     try:
         rows = extract(data, extension, maximum)
-        pipe.send((True, sanitize(rows, terms, OfflineRecognizer(languages, model_dir))))
+        segments = []
+        for row in rows:
+            remaining = row["text"]
+            while remaining:
+                cut = min(len(remaining), 3000)
+                if cut < len(remaining):
+                    boundary = remaining.rfind(" ", 0, cut)
+                    if boundary > 0:
+                        cut = boundary
+                segments.append({"id": f"s{len(segments) + 1}", "location": row["location"], "text": remaining[:cut]})
+                remaining = remaining[cut:].lstrip()
+        pipe.send((True, (segments, {}, [])))
     except SharePointError as error:
         pipe.send((False, error.code))
     except Exception:
@@ -305,13 +316,12 @@ def _child(pipe, data, extension, maximum, terms, languages, model_dir):
         pipe.close()
 
 
-async def preprocess(data, extension, terms):
+async def preprocess(data, extension, terms=None):
     from app.core.config import settings
     import psutil
     context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe(duplex=False)
-    process = context.Process(target=_child, args=(child, data, extension, settings.SHAREPOINT_MAX_TEXT_CHARS, terms,
-        [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()], settings.SHAREPOINT_NER_MODEL_DIR))
+    process = context.Process(target=_child, args=(child, data, extension, settings.SHAREPOINT_MAX_TEXT_CHARS))
     process.start()
     child.close()
     started = time.monotonic()

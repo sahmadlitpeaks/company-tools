@@ -11,10 +11,9 @@ from starlette.responses import RedirectResponse
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
-from app.schemas.sharepoint import ApprovalIn, CentralChatIn, ChatIn, ReminderOut, ReminderUpdateIn, RulesIn, SearchIn
+from app.models.sharepoint import SharePointComplianceTask, SharePointConnection, SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
+from app.schemas.sharepoint import CentralChatIn, ChatIn, ReminderOut, ReminderUpdateIn, SearchIn
 from app.services.activity import record
-from app.services.sharepoint.analysis import payload, payload_hash
 from app.services.sharepoint.chat import ask_central, ask_document
 from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
@@ -59,7 +58,7 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "missing": missing if user.is_admin else [], "connected": connected,
         "microsoft_sign_in_required": False, "can_review": is_reviewer(user),
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
-        "policy": source.policy if source else "review", "active_run": bool(source and source.active_run_id),
+        "active_run": bool(source and source.active_run_id),
         "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
         "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
         "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
@@ -132,33 +131,6 @@ async def sync(user=Depends(get_current_admin), db: AsyncSession = Depends(get_d
     return run_info(run)
 
 
-@router.get("/rules")
-async def rules(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
-    return {"policy": source.policy, "terms": decrypt(source.rules_cipher) if source.rules_cipher else []}
-
-
-@router.put("/rules")
-async def update_rules(body: RulesIn, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
-    source = (await db.scalars(select(SharePointSource).where(SharePointSource.id == source.id).with_for_update().execution_options(populate_existing=True))).one()
-    terms = [term.model_dump() for term in body.terms]
-    current_terms = decrypt(source.rules_cipher) if source.rules_cipher else []
-    if source.policy == body.policy and current_terms == terms:
-        return {"ok": True, "changed": False}
-    if source.active_run_id:
-        raise SharePointError("sync_in_progress", 409)
-    source.policy, source.rules_cipher = body.policy, encrypt(terms)
-    source.policy_version += 1
-    for doc in (await db.scalars(select(SharePointDocument).where(SharePointDocument.source_id == source.id, SharePointDocument.in_scope.is_(True)))).all():
-        purge(doc, "ai_skipped" if body.policy == "skip" else "queued")
-        if doc.id:
-            await purge_document_reminders(db, doc.id)
-    run = await enqueue(db, source, user.id)
-    record(db, user=user, action="policy", entity_type="sharepoint", summary="Updated document privacy policy; reprocessing queued")
-    return {"ok": True, "changed": True, "run": run_info(run)}
-
-
 @router.post("/search")
 async def documents(body: SearchIn,
                     user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -214,36 +186,6 @@ async def document(document_id: uuid.UUID, user=Depends(get_current_user), db: A
     return public_document(doc, metadata, detail=True)
 
 
-@router.get("/documents/{document_id}/preview")
-async def preview(document_id: uuid.UUID, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
-    if not is_reviewer(user):
-        raise SharePointError("reviewer_required", 403)
-    doc = await db.get(SharePointDocument, document_id)
-    await authorize_document(db, user, source, doc)
-    if doc.status != "awaiting_approval" or not doc.segments or doc.payload_hash != payload_hash(doc.segments):
-        raise SharePointError("preview_not_current", 409)
-    return {"payload_hash": doc.payload_hash, "payload": payload(doc.segments)}
-
-
-@router.post("/documents/{document_id}/approve", status_code=202)
-async def approve(document_id: uuid.UUID, body: ApprovalIn, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
-    if not is_reviewer(user):
-        raise SharePointError("reviewer_required", 403)
-    doc = await db.get(SharePointDocument, document_id)
-    await authorize_document(db, user, source, doc)
-    source = (await db.scalars(select(SharePointSource).where(SharePointSource.id == source.id).with_for_update().execution_options(populate_existing=True))).one()
-    await db.refresh(doc)
-    if source.active_run_id or source.policy != "review" or doc.status != "awaiting_approval" or body.payload_hash != doc.payload_hash or body.payload_hash != payload_hash(doc.segments or []):
-        raise SharePointError("approval_not_current", 409)
-    doc.approval_hash, doc.approved_by, doc.approved_at = body.payload_hash, user.id, now()
-    doc.status, doc.attempts = "approved", 0
-    run = await enqueue(db, source, user.id)
-    record(db, user=user, action="approve_ai", entity_type="sharepoint", entity_id=doc.id, summary="Approved exact sanitized document payload")
-    return run_info(run)
-
-
 @router.post("/documents/{document_id}/retry", status_code=202)
 async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     source = await source_for(db)
@@ -253,7 +195,7 @@ async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: Asy
     await db.refresh(doc)
     if source.active_run_id or doc.status != "failed":
         raise SharePointError("retry_not_available", 409)
-    # A retry always repeats sanitization and review; old approval is discarded.
+    # A retry repeats direct extraction and evidence validation.
     purge(doc)
     if doc.id:
         await purge_document_reminders(db, doc.id)
@@ -350,6 +292,7 @@ async def list_reminders(
         results.append(
             ReminderOut(
                 id=str(rem.id),
+                task_id=str(rem.task_id) if rem.task_id else None,
                 document_id=str(rem.document_id),
                 document_name=fname,
                 document_path=fpath,
@@ -400,6 +343,11 @@ async def dismiss_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
+    if rem.task_id:
+        task = await db.get(SharePointComplianceTask, rem.task_id)
+        if not task or not (user.is_admin or task.owner_user_id == user.id or
+            (task.owner_department_id is not None and task.owner_department_id == user.department_id)):
+            raise SharePointError("task_owner_required", 403)
     rem.status = "dismissed"
     await db.commit()
     return {"id": str(rem.id), "status": "dismissed"}
@@ -415,6 +363,22 @@ async def complete_reminder(reminder_id: uuid.UUID, user=Depends(get_current_use
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
+    if rem.task_id:
+        task = await db.get(SharePointComplianceTask, rem.task_id)
+        if not task or not (user.is_admin or task.owner_user_id == user.id or
+            (task.owner_department_id is not None and task.owner_department_id == user.department_id)):
+            raise SharePointError("task_owner_required", 403)
+        from app.services.sharepoint.compliance import event
+        task.status, task.completed_by, task.completed_at = "completed", user.id, now()
+        for pending in (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task.id,
+            SharePointReminder.status.in_(["pending", "failed"])))).all():
+            pending.status = "dismissed"
+        event(db, doc.id, "task_completed", task_id=task.id, actor_id=user.id)
+        all_tasks = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == doc.id))).all()
+        if all(item.status == "completed" for item in all_tasks):
+            doc.compliance_status = "completed"
     rem.status = "completed"
     await db.commit()
     return {"id": str(rem.id), "status": "completed"}
@@ -430,6 +394,8 @@ async def reopen_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
+    if rem.task_id:
+        raise SharePointError("use_compliance_task_workflow", 409)
     rem.status = "pending"
     await db.commit()
     return {"id": str(rem.id), "status": "pending"}
@@ -445,6 +411,8 @@ async def update_reminder(reminder_id: uuid.UUID, body: ReminderUpdateIn, user=D
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
+    if rem.task_id:
+        raise SharePointError("use_compliance_task_workflow", 409)
     if body.status is not None:
         rem.status = body.status
     if body.target_date is not None:
@@ -489,6 +457,7 @@ async def document_reminders(document_id: uuid.UUID, user=Depends(get_current_us
     return [
         ReminderOut(
             id=str(r.id),
+            task_id=str(r.task_id) if r.task_id else None,
             document_id=str(r.document_id),
             document_name=doc.filename,
             document_path=doc.path or doc.filename,

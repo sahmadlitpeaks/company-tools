@@ -105,6 +105,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: FolderOpen,
     items: [
       { to: "/sharepoint", label: "Home", icon: LayoutDashboard, end: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "home", "recent", "greeting"] },
+      { to: "/sharepoint/compliance", label: "Compliance", icon: ShieldCheck, module: "sharepoint_intelligence", keywords: ["documents", "compliance", "review", "tasks", "renewal", "ownership"] },
       { to: "/sharepoint/documents", label: "My documents", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "files", "library", "contracts", "licences"] },
       { to: "/sharepoint/assistant", label: "Assistant", icon: Bot, module: "sharepoint_intelligence", keywords: ["sharepoint", "assistant", "ai", "ask", "chat", "questions"] },
       { to: "/sharepoint/alerts", label: "Alerts", icon: Calendar, module: "sharepoint_intelligence", keywords: ["sharepoint", "alerts", "reminders", "deadlines", "tasks", "overdue"] },

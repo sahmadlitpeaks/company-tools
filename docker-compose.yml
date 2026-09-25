@@ -38,6 +38,9 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform}@db:5432/${POSTGRES_DB:-platform}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       SECRET_KEY: ${SECRET_KEY:-change-me-to-a-long-random-string}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@agholding.net}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-admin}
+      RUN_SCHEDULER: ${RUN_SCHEDULER:-true}
       # Blank => auto-derive public links/redirects from the request host, so
       # the app works on any IP/domain with no config. Set them for a fixed
       # domain or to force https behind TLS termination.
@@ -83,6 +86,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-no-reply@agholding.net}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
     depends_on:
       db:
         condition: service_healthy

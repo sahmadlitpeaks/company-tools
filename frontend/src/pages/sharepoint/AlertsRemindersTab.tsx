@@ -48,14 +48,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
@@ -231,6 +223,32 @@ export function AlertsRemindersTab({
     return assigned;
   }, [activeReminders, scope, user]);
 
+  // A compliance task can have many notification dates. Present one action,
+  // while retaining the individual rows for delivery and audit history.
+  const { displayReminders, scheduleCounts } = useMemo(() => {
+    const groups = new Map<string, SharePointReminder[]>();
+    for (const reminder of scopedReminders) {
+      const key = reminder.task_id
+        ? `task:${reminder.task_id}`
+        : `${reminder.document_id}:${reminder.category}:${reminder.title}:${reminder.target_date}:${reminder.recipient_email ?? ""}`;
+      const group = groups.get(key) ?? [];
+      group.push(reminder);
+      groups.set(key, group);
+    }
+    const display: SharePointReminder[] = [];
+    const counts = new Map<string, number>();
+    for (const group of groups.values()) {
+      const next = [...group].sort((a, b) => {
+        if (a.status === "pending" && b.status !== "pending") return -1;
+        if (a.status !== "pending" && b.status === "pending") return 1;
+        return a.reminder_date.localeCompare(b.reminder_date);
+      })[0];
+      display.push(next);
+      counts.set(next.id, group.length);
+    }
+    return { displayReminders: display, scheduleCounts: counts };
+  }, [scopedReminders]);
+
   // Categorize reminders into sections
   const {
     overdueItems,
@@ -243,7 +261,7 @@ export function AlertsRemindersTab({
     const laterMonth: ParsedReminderItem[] = [];
     const upcoming: ParsedReminderItem[] = [];
 
-    for (const rem of scopedReminders) {
+    for (const rem of displayReminders) {
       const { month, day, diffDays } = parseReminderDate(rem.target_date);
       const isOverdue = rem.status === "overdue" || diffDays < 0;
 
@@ -277,7 +295,7 @@ export function AlertsRemindersTab({
       laterThisMonthItems: laterMonth,
       upcomingItems: upcoming,
     };
-  }, [scopedReminders]);
+  }, [displayReminders]);
 
   const countOverdue = overdueItems.length;
   const countThisWeek = thisWeekItems.length;
@@ -338,6 +356,7 @@ export function AlertsRemindersTab({
     const isBusy = busyAction?.id === rem.id;
     const isCompleting = isBusy && busyAction?.type === "complete";
     const isSnoozing = isBusy && busyAction?.type === "snooze";
+    const scheduleCount = scheduleCounts.get(rem.id) ?? 1;
 
     return (
       <div
@@ -387,6 +406,7 @@ export function AlertsRemindersTab({
             <h3 className="text-sm font-bold text-foreground break-words sm:truncate">
               {rem.title}
             </h3>
+            {scheduleCount > 1 && <p className="mt-0.5 text-xs text-muted-foreground">One action · {scheduleCount} scheduled reminders{rem.status === "pending" ? ` · Next ${format(new Date(`${rem.reminder_date.slice(0, 10)}T12:00:00`), "d MMM yyyy")}` : ""}</p>}
             <p className="text-xs text-muted-foreground mt-0.5 break-words">
               {section === "overdue" ? (
                 <>
@@ -440,7 +460,7 @@ export function AlertsRemindersTab({
             Mark done
           </Button>
 
-          <Popover
+          {scheduleCount === 1 && <Popover
             open={openSnoozeId === rem.id}
             onOpenChange={(open) => setOpenSnoozeId(open ? rem.id : null)}
           >
@@ -497,7 +517,7 @@ export function AlertsRemindersTab({
                 Dismiss
               </Button>
             </PopoverContent>
-          </Popover>
+          </Popover>}
         </div>
       </div>
     );
@@ -513,7 +533,7 @@ export function AlertsRemindersTab({
             Alerts & reminders
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {attentionDocuments.length} documents need attention, {countOverdue} overdue, {countThisWeek} due this week, {countLater} later this month.
+            {totalCount} {totalCount === 1 ? "action" : "actions"} · {scopedReminders.length} scheduled {scopedReminders.length === 1 ? "reminder" : "reminders"}{attentionDocuments.length > 0 ? ` · ${attentionDocuments.length} ${attentionDocuments.length === 1 ? "document needs" : "documents need"} attention` : ""}
           </p>
         </div>
 
@@ -615,7 +635,7 @@ export function AlertsRemindersTab({
                 <div className="min-w-0">
                   <p className="break-words text-sm font-medium">{doc.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {doc.status === "awaiting_approval" ? "Privacy review required" : doc.status === "failed" ? "Processing failed" : "Review extracted findings"}
+                    {doc.status === "awaiting_approval" ? "Compliance review required" : doc.status === "failed" ? "Processing failed" : "Review extracted findings"}
                   </p>
                 </div>
                 <Button type="button" size="sm" variant="outline" onClick={() => onOpenDoc(doc.id)}>Open document</Button>
@@ -706,7 +726,7 @@ export function AlertsRemindersTab({
                   const dayIso = format(day, "yyyy-MM-dd");
                   const isCurrentMonth = isSameMonth(day, calendarMonth);
                   const isCurrentDay = isToday(day);
-                  const dayReminders = scopedReminders.filter((r) =>
+                  const dayReminders = displayReminders.filter((r) =>
                     r.target_date ? r.target_date.startsWith(dayIso) : false
                   );
 
@@ -929,107 +949,13 @@ export function AlertsRemindersTab({
             </div>
           )}
 
-          {/* All Reminders & Tasks Table */}
-          {scopedReminders.length > 0 && (
-            <div className="space-y-2 pt-3 border-t border-border">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  All Reminders &amp; Tasks
-                </h2>
-                <span className="font-mono text-xs text-muted-foreground hidden sm:inline">
-                  ↔ Scroll horizontally to view all columns
-                </span>
-              </div>
-              <div className="w-full min-w-0 max-w-full [&>div]:border [&>div]:border-border [&>div]:bg-card shadow-xs">
-                <Table className="w-full min-w-[1000px]">
-                  <TableHeader>
-                    <TableRow className="group/row hover:bg-transparent border-b">
-                      <TableHead className="sticky left-0 z-20 bg-table-header border-e border-border/70 min-w-[280px] max-w-[360px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
-                        Title &amp; Category
-                      </TableHead>
-                      <TableHead className="min-w-[240px] max-w-[320px] py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
-                        Document
-                      </TableHead>
-                      <TableHead className="min-w-[140px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
-                        Target Date
-                      </TableHead>
-                      <TableHead className="min-w-[120px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
-                        Value
-                      </TableHead>
-                      <TableHead className="min-w-[180px] whitespace-nowrap py-3 px-3.5 text-xs font-bold uppercase text-foreground/80">
-                        Responsible
-                      </TableHead>
-                      <TableHead className="min-w-[110px] whitespace-nowrap text-center py-3 px-2 text-xs font-bold uppercase text-foreground/80">
-                        Status
-                      </TableHead>
-                      <TableHead className="min-w-[160px] whitespace-nowrap text-end py-3 px-3.5">
-                        <span className="sr-only">Actions</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scopedReminders.map((r: SharePointReminder) => (
-                      <TableRow key={r.id} className="group/row">
-                        <TableCell className="sticky left-0 z-10 bg-card group-hover/row:bg-table-row-hover transition-colors border-e border-border/70 min-w-[280px] max-w-[360px] align-middle py-3 px-3.5">
-                          <span className={cn("text-xs sm:text-sm font-semibold text-foreground block truncate", r.status === "completed" && "line-through text-muted-foreground")}>
-                            {r.title}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground capitalize">
-                            {r.category.replace(/_/g, " ")}
-                          </span>
-                        </TableCell>
-                        <TableCell className="min-w-[240px] max-w-[320px] py-3 px-3.5 align-middle text-xs truncate">
-                          <button
-                            type="button"
-                            onClick={() => onOpenDoc(r.document_id)}
-                            className="text-primary hover:underline font-medium text-left truncate block max-w-full"
-                          >
-                            {r.document_name || "Document"}
-                          </button>
-                        </TableCell>
-                        <TableCell className="min-w-[140px] whitespace-nowrap py-3 px-3.5 align-middle text-xs font-mono">
-                          {r.target_date}
-                        </TableCell>
-                        <TableCell className="min-w-[120px] whitespace-nowrap py-3 px-3.5 align-middle text-xs font-mono">
-                          {r.amount ? `${r.currency || "AED"} ${r.amount.toLocaleString()}` : "—"}
-                        </TableCell>
-                        <TableCell className="min-w-[180px] whitespace-nowrap py-3 px-3.5 align-middle text-xs text-muted-foreground truncate">
-                          {r.responsible_name || r.recipient_email || "Not assigned"}
-                        </TableCell>
-                        <TableCell className="min-w-[110px] whitespace-nowrap text-center py-3 px-2 align-middle">
-                          <span className={cn("text-xs font-semibold px-2 py-0.5 border rounded-none uppercase", r.status === "completed" ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-muted text-foreground border-border")}>
-                            {r.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="min-w-[160px] whitespace-nowrap text-end py-3 px-3.5 align-middle">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {r.status === "pending" && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void onComplete(r.id)}
-                                className="rounded-none h-7 px-2 text-xs"
-                              >
-                                <Check data-icon="inline-start" /> Done
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {/* Footer Note */}
       <div className="pt-2">
         <p className="text-xs text-muted-foreground">
-          You are emailed 30 days, 7 days and on the day of expiry.
+          Reminder dates are scheduled for each action. Completing an action stops its remaining reminders.
         </p>
       </div>
     </div>

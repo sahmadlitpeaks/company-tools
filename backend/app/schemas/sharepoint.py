@@ -1,3 +1,4 @@
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -62,6 +63,42 @@ class CommercialFinding(StrictModel):
     evidence: list[Evidence] = Field(min_length=1, max_length=8)
 
 
+class TextFact(StrictModel):
+    value: str = Field(min_length=1, max_length=500)
+    evidence: list[Evidence] = Field(min_length=1, max_length=5)
+
+
+class DateFact(TextFact):
+    @field_validator("value")
+    @classmethod
+    def valid_date(cls, value):
+        from datetime import date
+        if date.fromisoformat(value).isoformat() != value:
+            raise ValueError("Use an unambiguous ISO date")
+        return value
+
+
+class NoticeFact(StrictModel):
+    days: int = Field(ge=1, le=730)
+    evidence: list[Evidence] = Field(min_length=1, max_length=5)
+
+
+class ComplianceExtraction(StrictModel):
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other", "unknown"]
+    type_evidence: list[Evidence] = Field(default_factory=list, max_length=5)
+    company: TextFact | None = None
+    reference_number: TextFact | None = None
+    issue_date: DateFact | None = None
+    effective_date: DateFact | None = None
+    expiry_date: DateFact | None = None
+    renewal_date: DateFact | None = None
+    termination_notice: NoticeFact | None = None
+    parties: list[TextFact] = Field(default_factory=list, max_length=20)
+    obligations: list[TextFact] = Field(default_factory=list, max_length=30)
+    required_actions: list[Finding] = Field(default_factory=list, max_length=30)
+    validation_issues: list[str] = Field(default_factory=list, max_length=30)
+
+
 class DocumentAnalysis(StrictModel):
     summary: str = Field(max_length=6000)
     summary_evidence: list[Evidence] = Field(min_length=1, max_length=20)
@@ -74,6 +111,7 @@ class DocumentAnalysis(StrictModel):
     commercials: list[CommercialFinding] = Field(default_factory=list, max_length=100)
     project_status: str | None = None
     requires_attention: bool = False
+    compliance: ComplianceExtraction
 
 
 class ConfidentialTerm(StrictModel):
@@ -120,6 +158,7 @@ class CentralChatIn(StrictModel):
 
 class ReminderOut(StrictModel):
     id: str
+    task_id: str | None = None
     document_id: str
     document_name: str | None = None
     document_path: str | None = None
@@ -144,3 +183,45 @@ class ReminderUpdateIn(StrictModel):
     responsible_name: str | None = None
     recipient_email: str | None = None
     notes: str | None = None
+
+
+class OwnerRuleIn(StrictModel):
+    company_id: uuid.UUID | None = None
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other"] | None = None
+    owner_user_id: uuid.UUID | None = None
+    owner_department_id: uuid.UUID | None = None
+    reminder_leads: list[int] = Field(default_factory=lambda: [60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1], max_length=100)
+    priority: int = Field(default=100, ge=0, le=1000)
+
+    @field_validator("reminder_leads")
+    @classmethod
+    def valid_leads(cls, value):
+        if any(not -365 <= lead <= 730 for lead in value) or len(value) != len(set(value)):
+            raise ValueError("Invalid reminder schedule")
+        return value
+
+
+class ComplianceReviewIn(StrictModel):
+    company_id: uuid.UUID
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other"]
+    reference_number: str | None = Field(default=None, max_length=255)
+    expiry_date: str | None = None
+    renewal_date: str | None = None
+    termination_notice_days: int | None = Field(default=None, ge=1, le=730)
+    owner_user_id: uuid.UUID | None = None
+    owner_department_id: uuid.UUID | None = None
+    review_note: str = Field(min_length=3, max_length=2000)
+
+    @field_validator("expiry_date", "renewal_date")
+    @classmethod
+    def valid_optional_date(cls, value):
+        if value is not None:
+            from datetime import date
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError("Use an unambiguous ISO date")
+        return value
+
+
+class ComplianceTaskUpdateIn(StrictModel):
+    status: Literal["active", "completed"]
+    note: str | None = Field(default=None, max_length=2000)
