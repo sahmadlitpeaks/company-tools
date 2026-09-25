@@ -10,12 +10,20 @@ from html import escape
 from app.core.config import settings
 
 
-def _smtp_configured() -> bool:
-    return bool(settings.SMTP_HOST)
+def smtp_configured() -> bool:
+    if not settings.SMTP_HOST:
+        return False
+    # Brevo requires an SMTP key and an explicit sender address. A relay host
+    # alone must not make the UI claim that email delivery is configured.
+    if settings.SMTP_HOST.strip().casefold() == "smtp-relay.brevo.com":
+        user = settings.SMTP_USER.strip()
+        sender = settings.SMTP_FROM.strip()
+        return bool(user and settings.SMTP_PASSWORD.strip() and sender and sender.casefold() != user.casefold())
+    return True
 
 
 def send_email(to: str, subject: str, html: str) -> bool:
-    if not _smtp_configured():
+    if not smtp_configured():
         return False
     msg = EmailMessage()
     msg["From"] = settings.SMTP_FROM or settings.SMTP_USER or "no-reply@agholding.net"

@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.models.sharepoint import SharePointComplianceTask, SharePointConnection, SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
 from app.schemas.sharepoint import CentralChatIn, ChatIn, ReminderOut, ReminderUpdateIn, SearchIn
 from app.services.activity import record
+from app.services.dispatch import email_enabled
 from app.services.sharepoint.chat import ask_central, ask_document
 from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
@@ -60,6 +61,9 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
         "active_run": bool(source and source.active_run_id),
         "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
+        "scheduler_enabled": settings.RUN_SCHEDULER,
+        "email_configured": email_enabled(),
+        "teams_configured": bool(settings.TEAMS_WEBHOOK_URL),
         "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
         "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
         "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
@@ -309,6 +313,9 @@ async def list_reminders(
                 status=rem.status,
                 notes=rem.notes,
                 sent_at=rem.sent_at.isoformat() if rem.sent_at else None,
+                delivery_channels=rem.delivery_channels,
+                last_error=rem.last_error if user.is_admin else None,
+                attempts=rem.attempts or 0,
             )
         )
     return results
@@ -474,6 +481,9 @@ async def document_reminders(document_id: uuid.UUID, user=Depends(get_current_us
             status=r.status,
             notes=r.notes,
             sent_at=r.sent_at.isoformat() if r.sent_at else None,
+            delivery_channels=r.delivery_channels,
+            last_error=r.last_error if user.is_admin else None,
+            attempts=r.attempts or 0,
         )
         for r in reminders
     ]

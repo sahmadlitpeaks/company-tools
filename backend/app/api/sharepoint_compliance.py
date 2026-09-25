@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.sharepoint import same_origin
@@ -15,9 +15,11 @@ from app.models.department import Department
 from app.models.sharepoint import (SharePointComplianceEvent, SharePointComplianceTask,
     SharePointDocument, SharePointDocumentVersion, SharePointOwnerRule, SharePointReminder)
 from app.models.user import User
-from app.schemas.sharepoint import ComplianceReviewIn, ComplianceTaskUpdateIn, OwnerRuleIn
+from app.schemas.sharepoint import (ComplianceReviewIn, ComplianceTaskAssignIn,
+    ComplianceTaskUpdateIn, OwnerRuleIn)
 from app.services.sharepoint.common import SharePointError, digest, now
-from app.services.sharepoint.compliance import apply_analysis, event
+from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_department_owner,
+    apply_analysis, event)
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.reminders import populate_task_reminders
 from app.services.sharepoint.store import authorize_document, source_for
@@ -155,6 +157,7 @@ async def rules(user=Depends(get_current_admin), db: AsyncSession = Depends(get_
         SharePointOwnerRule.priority.asc(), SharePointOwnerRule.created_at.asc()))).all()
     return [{"id": str(rule.id), "company_id": str(rule.company_id) if rule.company_id else None,
         "document_type": rule.document_type,
+        "folder_name": rule.folder_name,
         "owner_user_id": str(rule.owner_user_id) if rule.owner_user_id else None,
         "owner_department_id": str(rule.owner_department_id) if rule.owner_department_id else None,
         "reminder_leads": rule.reminder_leads, "priority": rule.priority,
@@ -168,14 +171,15 @@ async def options(user=Depends(get_current_user), db: AsyncSession = Depends(get
         raise SharePointError("reviewer_required", 403)
     companies = (await db.scalars(select(Company).where(Company.is_active.is_(True)).order_by(Company.name))).all()
     departments = (await db.scalars(select(Department).order_by(Department.name))).all()
-    users = (await db.scalars(select(User).where(User.is_active.is_(True), User.status == "active").order_by(User.display_name))).all()
+    users = (await db.scalars(select(User).where(User.is_active.is_(True),
+        User.status == "active", User.email.is_not(None),
+        func.length(func.trim(User.email)) > 0).order_by(User.display_name))).all()
     return {"companies": [{"id": str(row.id), "name": row.name} for row in companies],
         "departments": [{"id": str(row.id), "name": row.name} for row in departments],
         "users": [{"id": str(row.id), "name": row.display_name or row.email} for row in users]}
 
 
-@router.post("/rules", status_code=201)
-async def create_rule(body: OwnerRuleIn, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+async def _validate_rule(db, body: OwnerRuleIn, *, excluding=None):
     if bool(body.owner_user_id) == bool(body.owner_department_id):
         raise SharePointError("exactly_one_owner_required", 422)
     if body.company_id and not await db.get(Company, body.company_id):
@@ -184,11 +188,39 @@ async def create_rule(body: OwnerRuleIn, user=Depends(get_current_admin), db: As
         owner = await db.get(User, body.owner_user_id)
         if not owner or not owner.is_active or owner.status != "active" or not owner.email:
             raise SharePointError("owner_not_active", 422)
-    if body.owner_department_id and not await db.get(Department, body.owner_department_id):
-        raise SharePointError("department_not_found", 404)
+    if body.owner_department_id:
+        if not await db.get(Department, body.owner_department_id):
+            raise SharePointError("department_not_found", 404)
+        if not await _active_department_owner(db, body.owner_department_id):
+            raise SharePointError("department_has_no_active_member", 422)
+    rows = (await db.scalars(select(SharePointOwnerRule))).all()
+    for row in rows:
+        if row.id == excluding:
+            continue
+        if (row.company_id == body.company_id and row.document_type == body.document_type and
+            (row.folder_name or "").casefold() == (body.folder_name or "").casefold()):
+            raise SharePointError("assignment_rule_already_exists", 409)
+
+
+@router.post("/rules", status_code=201)
+async def create_rule(body: OwnerRuleIn, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    await _validate_rule(db, body)
     rule = SharePointOwnerRule(**body.model_dump())
     db.add(rule)
     await db.flush()
+    await db.commit()
+    return {"id": str(rule.id)}
+
+
+@router.put("/rules/{rule_id}")
+async def update_rule(rule_id: uuid.UUID, body: OwnerRuleIn,
+                      user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    rule = await db.get(SharePointOwnerRule, rule_id)
+    if not rule:
+        raise SharePointError("rule_not_found", 404)
+    await _validate_rule(db, body, excluding=rule_id)
+    for key, value in body.model_dump().items():
+        setattr(rule, key, value)
     await db.commit()
     return {"id": str(rule.id)}
 
@@ -235,7 +267,14 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
     if document.compliance_status != "active":
         raise SharePointError("review_still_incomplete", 422)
     document.reviewed_by, document.reviewed_at = user.id, now()
-    event(db, document.id, "reviewed", actor_id=user.id, details={"note": body.review_note})
+    review_details = {"company_id": str(body.company_id), "document_type": body.document_type,
+        "reference_number": body.reference_number, "expiry_date": body.expiry_date,
+        "renewal_date": body.renewal_date, "termination_notice_days": body.termination_notice_days,
+        "owner_user_id": str(body.owner_user_id) if body.owner_user_id else None,
+        "owner_department_id": str(body.owner_department_id) if body.owner_department_id else None}
+    if body.review_note and body.review_note.strip():
+        review_details["note"] = body.review_note.strip()
+    event(db, document.id, "reviewed", actor_id=user.id, details=review_details)
     for task, leads in tasks:
         await populate_task_reminders(db, task, leads)
     await db.commit()
@@ -283,6 +322,85 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
           details={"note": body.note} if body.note else None)
     await db.commit()
     return {"id": str(task.id), "status": task.status}
+
+
+@router.post("/tasks/{task_id}/assign")
+async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
+                      user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.sharepoint.common import is_reviewer
+
+    if not user.is_admin and not is_reviewer(user):
+        raise SharePointError("reviewer_required", 403)
+    if bool(body.owner_user_id) == bool(body.owner_department_id):
+        raise SharePointError("exactly_one_owner_required", 422)
+    task = await db.get(SharePointComplianceTask, task_id)
+    if not task:
+        raise SharePointError("task_not_found", 404)
+    document, _ = await _authorized(db, user, task.document_id)
+    if task.status != "active":
+        raise SharePointError("task_not_active", 409)
+    if task.owner_user_id == body.owner_user_id and task.owner_department_id == body.owner_department_id:
+        raise SharePointError("owner_unchanged", 409)
+    if body.owner_user_id:
+        owner = await db.get(User, body.owner_user_id)
+        if not owner or not owner.is_active or owner.status != "active" or not owner.email:
+            raise SharePointError("owner_not_active", 422)
+    else:
+        if not await db.get(Department, body.owner_department_id):
+            raise SharePointError("department_not_found", 404)
+        if not await _active_department_owner(db, body.owner_department_id):
+            raise SharePointError("department_has_no_active_member", 422)
+
+    old_owner_user_id, old_owner_department_id = task.owner_user_id, task.owner_department_id
+    old_owner = await db.get(User, old_owner_user_id) if old_owner_user_id else await db.get(Department, old_owner_department_id)
+    new_owner = await db.get(User, body.owner_user_id) if body.owner_user_id else await db.get(Department, body.owner_department_id)
+    old_owner_name = (old_owner.display_name or old_owner.email) if old_owner_user_id and old_owner else old_owner.name if old_owner else "Unknown"
+    new_owner_name = (new_owner.display_name or new_owner.email) if body.owner_user_id and new_owner else new_owner.name if new_owner else "Unknown"
+    reminders = (await db.scalars(select(SharePointReminder).where(
+        SharePointReminder.task_id == task.id))).all()
+    leads = sorted({item.lead_days for item in reminders}) or list(DEFAULT_LEADS)
+    for reminder in reminders:
+        if reminder.status in {"pending", "failed"}:
+            reminder.status = "dismissed"
+    task.owner_user_id = body.owner_user_id
+    task.owner_department_id = body.owner_department_id
+    task.assignment_source = "manual"
+    await db.flush()
+    await populate_task_reminders(db, task, leads)
+
+    # A task can return to an earlier owner. Re-arm only that owner's current
+    # document-version reminders; older delivery history remains untouched.
+    recipient_ids = [body.owner_user_id] if body.owner_user_id else [row.id for row in
+        (await db.scalars(select(User).where(User.department_id == body.owner_department_id,
+            User.is_active.is_(True), User.status == "active", User.email.is_not(None),
+            func.length(func.trim(User.email)) > 0))).all()]
+    recipients = [await db.get(User, owner_id) for owner_id in recipient_ids]
+    allowed_emails = {owner.email.lower() for owner in recipients if owner and owner.email}
+    for owner in recipients:
+        if owner and owner.manager_id:
+            manager = await db.get(User, owner.manager_id)
+            if manager and manager.is_active and manager.status == "active" and manager.email:
+                allowed_emails.add(manager.email.lower())
+    for reminder in (await db.scalars(select(SharePointReminder).where(
+        SharePointReminder.task_id == task.id, SharePointReminder.status == "dismissed"))).all():
+        email = (reminder.recipient_email or "").lower()
+        current_key = digest([str(task.id), document.version or "", email, str(reminder.lead_days)])[:64]
+        if (email in allowed_emails and reminder.dedup_key == current_key and
+            (reminder.reminder_date >= date.today().isoformat() or reminder.lead_days == -1)):
+            reminder.status = "pending"
+            reminder.attempts = 0
+            reminder.last_error = None
+    event(db, document.id, "task_reassigned", task_id=task.id, actor_id=user.id,
+        details={"from_user_id": str(old_owner_user_id) if old_owner_user_id else None,
+                 "from_department_id": str(old_owner_department_id) if old_owner_department_id else None,
+                 "to_user_id": str(body.owner_user_id) if body.owner_user_id else None,
+                 "to_department_id": str(body.owner_department_id) if body.owner_department_id else None,
+                 "from_owner_name": old_owner_name, "to_owner_name": new_owner_name,
+                 "changed_by": user.display_name or user.email,
+                 "note": body.note})
+    await db.commit()
+    return {"id": str(task.id), "owner_user_id": str(task.owner_user_id) if task.owner_user_id else None,
+            "owner_department_id": str(task.owner_department_id) if task.owner_department_id else None}
 
 
 @router.get("/documents/{document_id}/history")

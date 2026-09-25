@@ -60,6 +60,7 @@ export type OwnerRule = {
   id: string;
   company_id: string | null;
   document_type: string | null;
+  folder_name: string | null;
   owner_user_id: string | null;
   owner_department_id: string | null;
   reminder_leads: number[];
