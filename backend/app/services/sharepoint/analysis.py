@@ -68,6 +68,7 @@ _MONTH_PATTERN = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _ISO_DATE = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
 _DAY_MONTH_YEAR = re.compile(rf"(?<!\d)(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_PATTERN})\.?\s*,?\s*(\d{{4}})(?!\d)", re.I)
 _MONTH_DAY_YEAR = re.compile(rf"\b({_MONTH_PATTERN})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?\s*,?\s*(\d{{4}})(?!\d)", re.I)
+_OBLIGATION_CUE = re.compile(r"\b(shall|must|required|requires|obliged|subject to|only if)\b|يجب|يلتزم|يتعين|بشرط", re.I)
 
 
 def _dates_in_quote(quote):
@@ -138,6 +139,17 @@ def validate_evidence(result, segments):
             evidence_text = " ".join(norm_source.get(e.segment_id, "") for e in fact.evidence)
             if re.sub(r"\s+", " ", fact.value).strip().casefold() in evidence_text.casefold():
                 grounded.append(fact)
+            elif field == "obligations" and len(fact.evidence) == 1:
+                # A model may paraphrase a condition despite citing its exact text.
+                # Show the source wording rather than blocking an otherwise
+                # well-evidenced renewal task over an optional description.
+                quote = re.sub(r"\s+", " ", fact.evidence[0].quote).strip()
+                if (len(quote) <= 500 and _OBLIGATION_CUE.search(quote)
+                        and quote in norm_source.get(fact.evidence[0].segment_id, "")):
+                    fact.value = quote
+                    grounded.append(fact)
+                else:
+                    compliance.validation_issues.append(field)
             else:
                 compliance.validation_issues.append(field)
         setattr(compliance, field, grounded)
