@@ -112,6 +112,7 @@ class SharePointReminder(UUIDMixin, TimestampMixin, Base):
     dedup_key: Mapped[str] = mapped_column(String(128))
     notes: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_channels: Mapped[list[str] | None] = mapped_column(JSON)
     last_error: Mapped[str | None] = mapped_column(String(255))
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
@@ -120,6 +121,7 @@ class SharePointOwnerRule(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "sharepoint_owner_rules"
     company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    folder_name: Mapped[str | None] = mapped_column(String(128), index=True)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     owner_department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="CASCADE"))
     reminder_leads: Mapped[list[int] | None] = mapped_column(JSON)

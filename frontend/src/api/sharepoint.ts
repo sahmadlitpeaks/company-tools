@@ -7,6 +7,7 @@ export type SharePointStatus = {
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
   openai_configured: boolean; active_run: boolean;
   polling_enabled: boolean; sync_interval_seconds: number;
+  scheduler_enabled: boolean; email_configured: boolean; teams_configured: boolean;
   run: SharePointRun | null; last_sync: string | null; languages: string[];
 };
 
@@ -80,6 +81,9 @@ export type SharePointReminder = {
   status: "pending" | "sent" | "completed" | "dismissed" | "overdue" | "failed";
   notes?: string | null;
   sent_at?: string | null;
+  delivery_channels?: string[] | null;
+  last_error?: string | null;
+  attempts?: number;
 };
 
 export type ChatCitation = {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowRight, ArrowUpRight, Bell, CalendarClock, Check,
   ChevronRight, CircleCheck, FileCheck2, FileText, ListFilter, RefreshCw,
@@ -10,7 +10,7 @@ import {
   type ComplianceDashboard, type ComplianceDocument, type ComplianceOptions,
   type ComplianceTask, type OwnerRule, DOCUMENT_TYPES, documentTypeLabel, factValue,
 } from "@/api/compliance";
-import { formatDateTime, type SharePointDocument, type SharePointStatus } from "@/api/sharepoint";
+import { formatDateTime, type SharePointDocument, type SharePointReminder, type SharePointStatus } from "@/api/sharepoint";
 import { useAuth } from "@/auth/AuthContext";
 import { useToast, PageHead } from "@/components/ui";
 import { useFetch } from "@/hooks/useApi";
@@ -48,6 +48,19 @@ const reasonNames: Record<string, string> = {
   required_actions: "Action details unclear", parties: "Parties could not be verified",
   obligations: "Document condition could not be verified",
 };
+const workflowErrors: Record<string, string> = {
+  assignment_rule_already_exists: "A rule already covers this folder, company, and document type. Edit that rule instead.",
+  department_has_no_active_member: "This department needs an active member with a work email before it can own tasks.",
+  owner_not_active: "Choose an active person with a work email.",
+  owner_unchanged: "Choose a different person or department.",
+  task_not_active: "Only active tasks can be reassigned.",
+  reviewer_required: "Only a compliance reviewer or administrator can change this owner.",
+};
+
+function workflowError(cause: unknown, fallback: string) {
+  if (!(cause instanceof Error)) return fallback;
+  return workflowErrors[cause.message] ?? cause.message;
+}
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "Not set";
@@ -80,6 +93,7 @@ function historyPresentation(item: HistoryEvent, document: ComplianceDocument) {
     case "company_matched": return { title: "Company matched", description: document.company || "Matched to a company in the group.", tone: "text-success", icon: CircleCheck };
     case "extracted": return { title: "Document analyzed", description: `${documentTypeLabel(String(details.document_type || document.document_type))} details extracted.`, tone: "text-success", icon: CircleCheck };
     case "task_created": return { title: "Action created", description: typeof details.due_date === "string" ? `Due ${formatDate(details.due_date)}.` : "An owned task was created.", tone: "text-success", icon: CircleCheck };
+    case "task_reassigned": return { title: "Owner changed", description: `${String(details.from_owner_name || "Previous owner")} → ${String(details.to_owner_name || "New owner")}${details.changed_by ? ` by ${String(details.changed_by)}` : ""}.${details.note ? ` Reason: ${String(details.note)}` : ""}`, tone: "text-info", icon: UsersRound };
     case "task_reactivated": return { title: "Action reopened", description: "The task is active again.", tone: "text-warning", icon: CalendarClock };
     case "task_completed": return { title: "Action completed", description: "Future reminders stopped.", tone: "text-success", icon: CircleCheck };
     case "task_superseded": return { title: "Previous action replaced", description: "The earlier task is no longer active.", tone: "text-muted-foreground", icon: Check };
@@ -198,7 +212,7 @@ function DocumentRegister({ documents, totalCount, onOpen }: { documents: Compli
   </CardContent></Card>;
 }
 
-function TaskList({ tasks, totalCount, onOpen, onComplete, busy }: { tasks: ComplianceTask[]; totalCount: number; onOpen: (id: string) => void; onComplete: (id: string) => void; busy: string | null }) {
+function TaskList({ tasks, totalCount, onOpen, onComplete, onAssign, canAssign, busy }: { tasks: ComplianceTask[]; totalCount: number; onOpen: (id: string) => void; onComplete: (id: string) => void; onAssign: (id: string) => void; canAssign: boolean; busy: string | null }) {
   const groups = [
     { title: "Overdue", description: "Act now or update the owner", tone: "border-destructive", items: tasks.filter((task) => task.status === "active" && task.due_date < isoDate(0)) },
     { title: "Due this week", description: "The next seven days", tone: "border-warning", items: tasks.filter((task) => task.status === "active" && task.due_date >= isoDate(0) && task.due_date <= isoDate(7)) },
@@ -209,9 +223,41 @@ function TaskList({ tasks, totalCount, onOpen, onComplete, busy }: { tasks: Comp
     {!tasks.length ? <Card><CardContent><Empty><EmptyHeader><EmptyTitle>{totalCount ? "No tasks match" : "No compliance tasks yet"}</EmptyTitle><EmptyDescription>{totalCount ? "Try another search or change the filters." : "A verified document will create its required actions and reminders automatically."}</EmptyDescription></EmptyHeader></Empty></CardContent></Card> : groups.filter((group) => group.items.length).map((group) => <Card key={group.title} className="gap-0"><CardHeader className={`border-l-2 ${group.tone} py-3`}><CardTitle className="flex items-center justify-between gap-2 text-base"><span>{group.title}</span><Badge variant="outline" className="bg-background">{group.items.length}</Badge></CardTitle><CardDescription className="text-sm">{group.description}</CardDescription></CardHeader><CardContent className="divide-y divide-border">{group.items.sort((a, b) => a.due_date.localeCompare(b.due_date)).map((task) => <div key={task.id} className="flex flex-col gap-3 py-4 first:pt-3 last:pb-1 sm:flex-row sm:items-center">
       <div className="flex w-14 shrink-0 flex-col items-center border border-border bg-muted/40 py-1" aria-label={formatDate(task.due_date)}><span className="text-xs font-semibold uppercase">{new Date(`${task.due_date}T12:00:00`).toLocaleString("en", { month: "short" })}</span><strong className="text-lg tabular-nums">{task.due_date.slice(8, 10)}</strong></div>
       <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{task.title}</p>{task.status !== "active" && <StatusBadge status={task.status} />}</div><Button variant="link" className="mt-1 h-auto max-w-full justify-start whitespace-normal break-words p-0 text-left text-sm" onClick={() => onOpen(task.document_id)}>{task.document_name}</Button><p className="mt-1 text-sm text-muted-foreground">{task.company || "Unclassified"} · Owner: {task.owner} · {dueText(task.due_date)}</p></div>
-      {task.status === "active" && <Button variant="outline" className="w-full bg-background text-sm sm:w-auto" disabled={busy === task.id} onClick={() => onComplete(task.id)}><Check data-icon="inline-start" />Complete</Button>}
+      {task.status === "active" && <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">{canAssign && <Button variant="outline" className="bg-background text-sm" onClick={() => onAssign(task.id)}>Change owner</Button>}<Button variant="outline" className="bg-background text-sm" disabled={busy === task.id} onClick={() => onComplete(task.id)}><Check data-icon="inline-start" />Complete</Button></div>}
     </div>)}</CardContent></Card>)}
   </div>;
+}
+
+function AssignDialog({ task, options, onClose, onSaved }: { task: ComplianceTask; options: ComplianceOptions; onClose: () => void; onSaved: () => void }) {
+  const [kind, setKind] = useState(task.owner_department_id ? "department" : "user");
+  const [ownerId, setOwnerId] = useState(task.owner_department_id ?? task.owner_user_id ?? "none");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const { notify } = useToast();
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (ownerId === "none") { setError("Choose a person or department."); return; }
+    if (ownerId === (task.owner_user_id ?? task.owner_department_id)) { setError("Choose a different owner."); return; }
+    setBusy(true); setError("");
+    try {
+      await api(`/api/sharepoint/compliance/tasks/${task.id}/assign`, { method: "POST", body: {
+        owner_user_id: kind === "user" ? ownerId : null,
+        owner_department_id: kind === "department" ? ownerId : null,
+        note,
+      } });
+      notify("Task owner changed. Pending reminders now follow the new owner.");
+      onSaved();
+    } catch (cause) { setError(workflowError(cause, "Could not change owner")); }
+    finally { setBusy(false); }
+  }
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Change task owner</DialogTitle><DialogDescription>Assign {task.title} to a person or department. The reason and owner change are recorded in audit history.</DialogDescription></DialogHeader>
+    <form className="space-y-4" onSubmit={(event) => void submit(event)}><p className="text-sm text-muted-foreground">Current owner: <strong className="text-foreground">{task.owner}</strong></p><FieldGroup className="grid gap-4 sm:grid-cols-2">
+      <Choice id="assign-kind" label="Assign to" value={kind} onChange={(next) => { setKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} />
+      <Choice id="assign-owner" label="New owner" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: "Choose owner" }, ...(kind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} />
+      <Field className="sm:col-span-2"><FieldLabel htmlFor="assign-note">Reason for change</FieldLabel><Textarea id="assign-note" required minLength={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why is this person or department responsible?" /></Field>
+    </FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save owner"}</Button></div></form>
+  </DialogContent></Dialog>;
 }
 
 function ReviewQueue({ documents, canReview, canRetry, onOpen, onReview, onRetry, busy }: {
@@ -310,12 +356,17 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
   </DialogContent></Dialog>;
 }
 
-function Governance({ options, onReload }: { options: ComplianceOptions; onReload: () => void }) {
+function Governance({ options, status, onReload }: { options: ComplianceOptions; status: SharePointStatus; onReload: () => void }) {
+  const formRef = useRef<HTMLDivElement>(null);
   const rules = useFetch<OwnerRule[]>("/api/sharepoint/compliance/rules");
+  const reminders = useFetch<SharePointReminder[]>("/api/sharepoint/reminders?category=compliance_task");
   const [company, setCompany] = useState("all");
   const [type, setType] = useState("all");
+  const [folder, setFolder] = useState("");
   const [ownerKind, setOwnerKind] = useState("user");
   const [owner, setOwner] = useState("none");
+  const [priority, setPriority] = useState(100);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [leads, setLeads] = useState("60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -324,43 +375,74 @@ function Governance({ options, onReload }: { options: ComplianceOptions; onReloa
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (owner === "none") { setError("Choose an owner."); return; }
+    if (folder.includes("/") || folder.includes("\\")) { setError("Enter a single folder name, such as Finance or Admin."); return; }
     const schedule = leads.split(",").map((item) => Number(item.trim()));
     if (!leads.trim() || schedule.length > 100 || schedule.some((value) => !Number.isInteger(value) || value < -365 || value > 730) || new Set(schedule).size !== schedule.length) {
       setError("Enter unique whole numbers from -365 to 730, separated by commas."); return;
     }
     setBusy(true); setError("");
     try {
-      await api("/api/sharepoint/compliance/rules", { method: "POST", body: {
+      await api(editingId ? `/api/sharepoint/compliance/rules/${editingId}` : "/api/sharepoint/compliance/rules", { method: editingId ? "PUT" : "POST", body: {
         company_id: company === "all" ? null : company,
         document_type: type === "all" ? null : type,
+        folder_name: folder.trim() || null,
         owner_user_id: ownerKind === "user" ? owner : null,
         owner_department_id: ownerKind === "department" ? owner : null,
-        reminder_leads: schedule, priority: 100,
+        reminder_leads: schedule, priority,
       } });
-      notify("Assignment rule saved."); setOwner("none"); void rules.reload(); onReload();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save rule"); }
+      notify(editingId ? "Assignment rule updated." : "Assignment rule added.");
+      resetForm(); void rules.reload(); onReload();
+    } catch (cause) { setError(workflowError(cause, "Could not save rule")); }
     finally { setBusy(false); }
+  }
+  function resetForm() {
+    setEditingId(null); setCompany("all"); setType("all"); setFolder("");
+    setOwnerKind("user"); setOwner("none"); setPriority(100);
+    setLeads("60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1"); setError("");
+  }
+  function editRule(rule: OwnerRule) {
+    setEditingId(rule.id); setCompany(rule.company_id ?? "all"); setType(rule.document_type ?? "all");
+    setFolder(rule.folder_name ?? ""); setOwnerKind(rule.owner_department_id ? "department" : "user");
+    setOwner(rule.owner_department_id ?? rule.owner_user_id ?? "none"); setPriority(rule.priority);
+    setLeads(rule.reminder_leads.join(", ")); setError("");
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("rule-folder")?.focus({ preventScroll: true });
+    });
   }
   async function remove(id: string) {
     setBusy(true);
-    try { await api(`/api/sharepoint/compliance/rules/${id}`, { method: "DELETE" }); notify("Rule removed."); setRemoveId(null); void rules.reload(); onReload(); }
+    try { await api(`/api/sharepoint/compliance/rules/${id}`, { method: "DELETE" }); notify("Rule removed."); setRemoveId(null); if (editingId === id) resetForm(); void rules.reload(); onReload(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Could not remove rule"); }
     finally { setBusy(false); }
   }
   const name = (items: ComplianceOptions[keyof ComplianceOptions], id: string | null) => id ? items.find((item) => item.id === id)?.name ?? "Unknown" : "Any";
+  const activity = [...(reminders.data ?? [])].filter((item) => item.status === "sent" || item.status === "failed")
+    .sort((a, b) => (b.sent_at ?? b.reminder_date).localeCompare(a.sent_at ?? a.reminder_date)).slice(0, 5);
   return <div className="space-y-4">
-    <Card><CardHeader><Badge variant="outline" className="mb-1">Administrator settings</Badge><CardTitle className="text-xl">Ownership and reminders</CardTitle><CardDescription className="max-w-2xl text-sm">Set who receives an action for each company and document type. The most specific rule wins. If no rule matches, the system tries the uploader, Compliance department, then a connected administrator.</CardDescription></CardHeader></Card>
+    <h1 className="sr-only">Compliance governance</h1>
+    <Card><CardHeader><Badge variant="outline" className="mb-1">Administrator settings</Badge><CardTitle className="text-xl">Ownership and reminders</CardTitle><CardDescription className="max-w-2xl text-sm">Route documents by SharePoint folder, company, and document type. Finance and Admin folders use their matching active departments by default. A folder rule overrides that default. Existing tasks keep their owner until changed in Tasks.</CardDescription></CardHeader></Card>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(19rem,1fr)]"><Card><CardHeader><CardTitle className="text-base">Assignment rules · {rules.data?.length ?? 0}</CardTitle><CardDescription className="text-sm">Rules determine future task ownership.</CardDescription></CardHeader><CardContent className="space-y-3">
       {rules.error && <Alert variant="destructive"><AlertDescription>{rules.error}</AlertDescription></Alert>}
-      {rules.loading && !rules.data ? <Skeleton className="h-24" /> : rules.data?.length ? rules.data.map((rule) => <Card key={rule.id} size="sm" className="bg-muted/30"><CardContent className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold">{name(options.companies, rule.company_id)} · {rule.document_type ? documentTypeLabel(rule.document_type) : "Any document type"}</p><p className="mt-1 text-sm text-muted-foreground">Assigned to {name(rule.owner_user_id ? options.users : options.departments, rule.owner_user_id ?? rule.owner_department_id)}</p></div><Button variant="destructive" size="sm" disabled={busy} onClick={() => setRemoveId(rule.id)}>Remove</Button></div><div className="flex flex-wrap gap-1 border-t border-border pt-3"><Badge variant="outline" className="bg-background">{rule.reminder_leads.length} reminder stages</Badge><span className="text-sm text-muted-foreground">{rule.reminder_leads.join(", ")} days</span></div></CardContent></Card>) : <Empty><EmptyHeader><EmptyTitle>No rules configured</EmptyTitle><EmptyDescription>Create a rule to route future documents to the right person or department.</EmptyDescription></EmptyHeader></Empty>}
+      {rules.loading && !rules.data ? <Skeleton className="h-24" /> : rules.data?.length ? rules.data.map((rule) => <Card key={rule.id} size="sm" className="bg-muted/30"><CardContent className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold">{rule.folder_name ? `${rule.folder_name} folder · ` : ""}{name(options.companies, rule.company_id)} · {rule.document_type ? documentTypeLabel(rule.document_type) : "Any document type"}</p><p className="mt-1 text-sm text-muted-foreground">Assigned to {name(rule.owner_user_id ? options.users : options.departments, rule.owner_user_id ?? rule.owner_department_id)}</p></div><div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={() => editRule(rule)}>Edit</Button><Button variant="outline" size="sm" disabled={busy} onClick={() => setRemoveId(rule.id)}>Remove</Button></div></div><div className="flex flex-wrap gap-1 border-t border-border pt-3"><Badge variant="outline" className="bg-background">{rule.reminder_leads.length} reminder stages</Badge><span className="text-sm text-muted-foreground">{rule.reminder_leads.join(", ")} days</span></div></CardContent></Card>) : <Empty><EmptyHeader><EmptyTitle>No rules configured</EmptyTitle><EmptyDescription>Create a rule to route future documents to the right person or department.</EmptyDescription></EmptyHeader></Empty>}
     </CardContent></Card>
-    <Card><CardHeader><CardTitle className="text-base">Add an owner rule</CardTitle><CardDescription className="text-sm">Choose a scope, an owner, and a reminder schedule.</CardDescription></CardHeader><CardContent><form onSubmit={(event) => void save(event)} className="space-y-5"><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <Card ref={formRef}><CardHeader><CardTitle className="text-base">{editingId ? "Edit assignment rule" : "Add an assignment rule"}</CardTitle><CardDescription className="text-sm">Choose a SharePoint folder, company, or document type, then the responsible person or department.</CardDescription></CardHeader><CardContent><form onSubmit={(event) => void save(event)} className="space-y-5"><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Choice id="rule-company" label="Company" value={company} onChange={setCompany} items={[{ value: "all", label: "Any company" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
       <Choice id="rule-type" label="Document type" value={type} onChange={setType} items={[{ value: "all", label: "Any document type" }, ...DOCUMENT_TYPES.map(([value, label]) => ({ value, label }))]} />
+      <Field className="sm:col-span-2"><FieldLabel htmlFor="rule-folder">SharePoint folder name</FieldLabel><Input id="rule-folder" className="h-10 text-sm md:text-sm" placeholder="Finance or Admin (optional)" value={folder} onChange={(event) => setFolder(event.target.value)} /><p className="mt-1 text-sm text-muted-foreground">Match a folder in the document path. Leave blank to apply across folders.</p></Field>
       <Choice id="rule-owner-kind" label="Assign to" value={ownerKind} onChange={(next) => { setOwnerKind(next); setOwner("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} />
       <Choice id="rule-owner" label="Responsible owner" value={owner} onChange={setOwner} items={[{ value: "none", label: "Choose owner" }, ...(ownerKind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} />
+      <Field><FieldLabel htmlFor="rule-priority">Priority</FieldLabel><Input id="rule-priority" className="h-10 text-sm md:text-sm" type="number" min="0" max="1000" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><p className="mt-1 text-sm text-muted-foreground">Lower number wins when scopes are equally specific.</p></Field>
       <Field className="sm:col-span-2"><FieldLabel htmlFor="rule-leads" className="text-sm">Reminder days before the due date</FieldLabel><Input className="h-10 text-sm md:text-sm" id="rule-leads" value={leads} onChange={(event) => setLeads(event.target.value)} /><p className="mt-1 text-sm text-muted-foreground">Comma-separated days. Use 0 for the due date and -1 for manager escalation one day overdue.</p></Field>
-    </FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<Button className="w-full text-sm sm:w-auto" disabled={busy} type="submit">{busy ? "Saving…" : "Add rule"}</Button></form></CardContent></Card></div>
+    </FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex gap-2"><Button className="text-sm" disabled={busy} type="submit">{busy ? "Saving…" : editingId ? "Save changes" : "Add rule"}</Button>{editingId && <Button type="button" variant="outline" onClick={resetForm}>Cancel edit</Button>}</div></form></CardContent></Card></div>
+    <Card><CardHeader><CardTitle className="text-base">Reminder delivery</CardTitle><CardDescription className="text-sm">Configuration and recorded results for compliance task reminders on documents you can access. Uploading a file schedules future reminders; it does not send them immediately.</CardDescription></CardHeader><CardContent className="space-y-4">
+      <div className="flex flex-wrap gap-2"><Badge variant={status.teams_configured ? "success" : "warning"}>Teams {status.teams_configured ? "configured" : "off"}</Badge><Badge variant={status.email_configured ? "success" : "secondary"}>Email {status.email_configured ? "configured" : "off"}</Badge><Badge variant={status.scheduler_enabled ? "success" : "warning"}>Scheduler {status.scheduler_enabled ? "on" : "off"}</Badge></div>
+      {reminders.loading && !reminders.data ? <Skeleton className="h-20" /> : reminders.error ? <Alert variant="destructive"><AlertDescription>{reminders.error} <Button variant="link" onClick={() => void reminders.reload()}>Retry</Button></AlertDescription></Alert> : <>
+        <div className="flex flex-wrap gap-3 text-sm text-muted-foreground"><span>{reminders.data?.filter((item) => item.status === "sent").length ?? 0} sent stages</span><span>{reminders.data?.filter((item) => item.status === "pending" && item.reminder_date <= isoDate(0)).length ?? 0} due now</span><span>{reminders.data?.filter((item) => item.status === "failed").length ?? 0} failed</span></div>
+        {activity.length ? <div className="divide-y divide-border border-t border-border">{activity.map((item) => <div key={item.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="truncate text-sm font-medium">{item.title} · {item.document_name}</p><p className="text-xs text-muted-foreground">{item.recipient_email || "No recipient"} · {item.sent_at ? formatDateTime(item.sent_at) : formatDate(item.reminder_date)}</p>{item.status === "failed" && item.last_error && <p className="text-xs text-destructive">{item.last_error}</p>}</div><Badge variant={item.status === "sent" ? "success" : "destructive"}>{item.status === "sent" ? item.delivery_channels?.length ? `Sent via ${item.delivery_channels.join(" + ")}` : "Sent · channel not recorded" : "Failed"}</Badge></div>)}</div> : <p className="text-sm text-muted-foreground">No sent or failed compliance task reminders are recorded in the visible history.</p>}
+        {(reminders.data?.length ?? 0) >= 150 && <p className="text-xs text-muted-foreground">Showing the first 150 accessible reminder stages. Open Alerts for the full filtered list.</p>}
+      </>}
+    </CardContent></Card>
     <AlertDialog open={removeId !== null} onOpenChange={(open) => { if (!open) setRemoveId(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle className="text-base">Remove this assignment rule?</AlertDialogTitle><AlertDialogDescription className="text-sm">Future documents will use another matching rule or the fallback owner. Existing tasks keep their current owner.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={busy} onClick={() => { if (removeId) void remove(removeId); }}>Remove rule</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }
@@ -373,6 +455,7 @@ export default function CompliancePage() {
   const [taskFilter, setTaskFilter] = useState<Filter>({ ...emptyFilter });
   const [selected, setSelected] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const status = useFetch<SharePointStatus>("/api/sharepoint/status");
   const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? "/api/sharepoint/compliance/dashboard" : null);
@@ -403,6 +486,7 @@ export default function CompliancePage() {
   }) ?? [], [data, taskFilter]);
   const selectedDoc = data?.documents.find((doc) => doc.id === selected);
   const reviewDoc = data?.documents.find((doc) => doc.id === reviewing);
+  const assignTask = data?.tasks.find((task) => task.id === assigning);
   function openMetric(metric: Metric) {
     if (metric === "needs_review" || metric === "unassigned") { setView("review"); return; }
     if (metric === "expiring_60" || metric === "expiring_30") {
@@ -439,12 +523,13 @@ export default function CompliancePage() {
         <TabsList variant="line" className="hidden group-data-horizontal/tabs:h-12 w-full justify-start gap-4 border-b border-border px-0 py-0 sm:flex" aria-label="Compliance views"><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="overview"><FileCheck2 data-icon="inline-start" />Overview</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="documents"><FileText data-icon="inline-start" />Documents</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="tasks"><Bell data-icon="inline-start" />Tasks</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="review"><AlertTriangle data-icon="inline-start" />Review{data.summary.needs_review > 0 && <Badge aria-hidden="true" variant="warning" className="ms-1">{data.summary.needs_review}</Badge>}</TabsTrigger>{user?.is_admin && <TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent sm:ml-auto" value="governance"><ShieldCheck data-icon="inline-start" />Governance</TabsTrigger>}</TabsList>
         <TabsContent value="overview" className="mt-4 text-sm"><Overview data={data} onOpen={setSelected} onView={setView} onMetric={openMetric} /></TabsContent>
         <TabsContent value="documents" className="mt-4 space-y-4 text-sm"><Filters mode="documents" value={documentFilter} onChange={setDocumentFilter} data={data} /><DocumentRegister documents={filteredDocuments} totalCount={data.documents.length} onOpen={setSelected} /></TabsContent>
-        <TabsContent value="tasks" className="mt-4 space-y-4 text-sm"><Filters mode="tasks" value={taskFilter} onChange={setTaskFilter} data={data} /><TaskList tasks={filteredTasks} totalCount={data.tasks.length} onOpen={setSelected} onComplete={(id) => void complete(id)} busy={busy} /></TabsContent>
+        <TabsContent value="tasks" className="mt-4 space-y-4 text-sm"><Filters mode="tasks" value={taskFilter} onChange={setTaskFilter} data={data} /><TaskList tasks={filteredTasks} totalCount={data.tasks.length} onOpen={setSelected} onComplete={(id) => void complete(id)} onAssign={setAssigning} canAssign={canReview} busy={busy} /></TabsContent>
         <TabsContent value="review" className="mt-4 text-sm"><ReviewQueue documents={data.documents.filter((doc) => doc.status === "needs_review")} canReview={canReview} canRetry={Boolean(user?.is_admin)} onOpen={setSelected} onReview={setReviewing} onRetry={(id) => void retry(id)} busy={busy} /></TabsContent>
-        {user?.is_admin && <TabsContent value="governance" className="mt-4 text-sm">{options.data ? <Governance options={options.data} onReload={() => void dashboard.reload()} /> : options.error ? <Alert variant="destructive"><AlertDescription>{options.error}</AlertDescription></Alert> : <Skeleton className="h-48" />}</TabsContent>}
+        {user?.is_admin && <TabsContent value="governance" className="mt-4 text-sm">{options.data ? <Governance options={options.data} status={status.data} onReload={() => void dashboard.reload()} /> : options.error ? <Alert variant="destructive"><AlertDescription>{options.error}</AlertDescription></Alert> : <Skeleton className="h-48" />}</TabsContent>}
       </Tabs>}
       {selectedDoc && <DetailDialog document={selectedDoc} onClose={() => setSelected(null)} />}
       {reviewDoc && options.data && <ReviewDialog document={reviewDoc} options={options.data} onClose={() => setReviewing(null)} onSaved={() => { setReviewing(null); void dashboard.reload(); }} />}
+      {assignTask && options.data && <AssignDialog task={assignTask} options={options.data} onClose={() => setAssigning(null)} onSaved={() => { setAssigning(null); void dashboard.reload(); }} />}
     </>}
   </div>;
 }

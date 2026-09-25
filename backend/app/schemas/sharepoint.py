@@ -175,6 +175,9 @@ class ReminderOut(StrictModel):
     status: str
     notes: str | None = None
     sent_at: str | None = None
+    delivery_channels: list[str] | None = None
+    last_error: str | None = None
+    attempts: int = 0
 
 
 class ReminderUpdateIn(StrictModel):
@@ -188,10 +191,21 @@ class ReminderUpdateIn(StrictModel):
 class OwnerRuleIn(StrictModel):
     company_id: uuid.UUID | None = None
     document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other"] | None = None
+    folder_name: str | None = Field(default=None, max_length=128)
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
     reminder_leads: list[int] = Field(default_factory=lambda: [60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1], max_length=100)
     priority: int = Field(default=100, ge=0, le=1000)
+
+    @field_validator("folder_name")
+    @classmethod
+    def valid_folder_name(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("Enter one SharePoint folder name, without a path")
+        return value
 
     @field_validator("reminder_leads")
     @classmethod
@@ -225,3 +239,17 @@ class ComplianceReviewIn(StrictModel):
 class ComplianceTaskUpdateIn(StrictModel):
     status: Literal["active", "completed"]
     note: str | None = Field(default=None, max_length=2000)
+
+
+class ComplianceTaskAssignIn(StrictModel):
+    owner_user_id: uuid.UUID | None = None
+    owner_department_id: uuid.UUID | None = None
+    note: str = Field(min_length=3, max_length=2000)
+
+    @field_validator("note")
+    @classmethod
+    def valid_note(cls, value):
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Explain why the task owner is changing")
+        return value
