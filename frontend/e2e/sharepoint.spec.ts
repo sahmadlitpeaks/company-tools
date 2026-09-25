@@ -127,6 +127,23 @@ test("multilingual document details preserve direction, evidence and mobile layo
   expect(componentErrors).toEqual([]);
 });
 
+test("contact findings omit unknown priority and status badges", async ({ page }) => {
+  await page.route("**/api/sharepoint/documents/doc-1", (route) => route.fulfill({ json: {
+    ...document, analysis: { ...document.analysis, sections: [{
+      ...document.analysis.sections[0], tasks: [], contacts: [{
+        title: "General Manager", owner: "Nassim,Marie Hambouz", deadline: null,
+        status: "unknown", priority: "unknown",
+        evidence: [{ segment_id: "s1", quote: "General Manager" }],
+      }],
+    }] },
+  } }));
+  await page.goto("/sharepoint");
+  await page.getByRole("button", { name: /View (document|خطة)/ }).first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("General Manager", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Unknown", { exact: true })).toHaveCount(0);
+});
+
 test("document details show a compact estimated AI cost", async ({ page }) => {
   await page.route("**/api/sharepoint/documents/doc-1", (route) => route.fulfill({ json: {
     ...document, model: "gpt-5.6-luna", processed_at: "2026-09-24T15:47:00Z",

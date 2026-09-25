@@ -20,7 +20,10 @@ from app.models.company import Company
 from app.models.user import User
 from app.schemas.sharepoint import DocumentAnalysis
 from app.services.sharepoint import analysis, graph, privacy, worker
-from app.services.sharepoint.compliance import apply_analysis, candidate_actions, reconcile_company_matches
+from app.services.sharepoint.compliance import (
+    apply_analysis, candidate_actions, combine_facts, reconcile_company_matches,
+    reconcile_optional_fact_reviews,
+)
 from app.services.sharepoint.common import SharePointError, decrypt, encrypt, now
 from app.services.sharepoint.store import enqueue, source_for
 
@@ -233,6 +236,26 @@ def test_unsupported_compliance_fact_enters_review_instead_of_failing_analysis()
     assert "company" in parsed.compliance.validation_issues
 
 
+def test_paraphrased_optional_condition_uses_source_wording_without_blocking():
+    source = "The DUL shall be read in conjunction with a valid and active DDA license."
+    segments = [{"id": "s1", "location": "Page 1", "text": source}]
+    value = analyzed(segments)["sections"][0]
+    value["compliance"] = {"document_type": "unknown",
+        "obligations": [{"value": "Keep the DDA licence active", "evidence": [
+            {"segment_id": "s1", "quote": source}]},
+            {"value": "Pay an invented fee", "evidence": [
+                {"segment_id": "s1", "quote": "The DUL"}]}],
+        "parties": [{"value": "Invented party", "evidence": [
+            {"segment_id": "s1", "quote": "The DUL"}]}]}
+    parsed = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(parsed, segments)
+    assert [item.value for item in parsed.compliance.obligations] == [source]
+    assert parsed.compliance.parties == []
+    assert parsed.compliance.validation_issues == ["parties", "obligations"]
+    _, blockers = combine_facts({"sections": [parsed.model_dump()]})
+    assert blockers == []
+
+
 def test_natural_language_date_is_grounded_in_cited_quote():
     segments = [{"id": "s1", "location": "Page 1", "text": "Current Issue Date 01 Aug 2026\nExpiry Date 31 Jul 2027"}]
     value = analyzed(segments)["sections"][0]
@@ -323,6 +346,35 @@ async def test_new_company_alias_reconciles_existing_document_without_new_ai_cal
         reminders = (await db.scalars(select(SharePointReminder).where(
             SharePointReminder.task_id == tasks[0].id))).all()
         assert reminders
+
+
+@pytest.mark.asyncio
+async def test_old_optional_obligation_review_recovers_without_new_ai_call(indexed):
+    saved_analysis = {"sections": [{"compliance": {
+        "document_type": "trade_license", "company": {"value": "Agiomix"},
+        "reference_number": {"value": "94503"},
+        "expiry_date": {"value": "2027-07-31"},
+        "obligations": [], "validation_issues": ["obligations"],
+    }}]}
+    async with AsyncSessionLocal() as db:
+        company = Company(name="Agiomix", slug="agiomix")
+        db.add(company)
+        await db.flush()
+        db.add(SharePointOwnerRule(company_id=company.id, document_type="trade_license",
+            owner_user_id=indexed[0], is_active=True))
+        document = await db.get(SharePointDocument, indexed[2])
+        document.analysis = saved_analysis
+        document.compliance = {"review_reasons": ["obligations"]}
+        document.compliance_status = "needs_review"
+        await db.flush()
+
+        assert await reconcile_optional_fact_reviews(db) == 1
+        assert await reconcile_optional_fact_reviews(db) == 0
+        assert document.compliance_status == "active"
+        assert document.compliance["review_reasons"] == []
+        tasks = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == document.id))).all()
+        assert len(tasks) == 1 and tasks[0].owner_user_id == indexed[0]
 
 
 @pytest.mark.asyncio
