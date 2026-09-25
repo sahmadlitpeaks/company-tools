@@ -1,5 +1,5 @@
 """Import all models so Alembic's autogenerate can see them."""
-from app.models.sharepoint import SharePointSource, SharePointConnection, SharePointDocument, SharePointRun, SharePointReminder  # noqa: F401
+from app.models.sharepoint import SharePointSource, SharePointConnection, SharePointDocument, SharePointRun, SharePointReminder, SharePointOwnerRule, SharePointComplianceTask, SharePointDocumentVersion, SharePointComplianceEvent  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.department import Department  # noqa: F401
 from app.models.company import Company  # noqa: F401

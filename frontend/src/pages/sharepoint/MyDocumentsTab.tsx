@@ -123,7 +123,7 @@ export function getDocumentStatusBadge(doc: SharePointDocument): {
 
   if (doc.status === "awaiting_approval") {
     return {
-      label: "Needs privacy review",
+      label: "Needs compliance review",
       variant: "secondary",
       className: "rounded-none font-semibold text-xs",
     };

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -21,6 +21,9 @@ class Company(UUIDMixin, TimestampMixin, Base):
 
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+    parent_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    aliases: Mapped[list[str] | None] = mapped_column(JSON)
     logo_url: Mapped[str | None] = mapped_column(String(1024))
     icon_url: Mapped[str | None] = mapped_column(String(1024))
     primary_color: Mapped[str] = mapped_column(String(9), default="#0b5cab")

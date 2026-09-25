@@ -59,6 +59,11 @@ async def create_brand(
     data["slug"] = await _unique_slug(db, payload.slug or payload.name)
     brand = Company(**data)
     db.add(brand)
+    await db.flush()
+    if settings.SHAREPOINT_ENABLED:
+        from app.services.sharepoint.compliance import reconcile_company_matches
+
+        await reconcile_company_matches(db)
     record(
         db,
         user=user,
@@ -97,6 +102,11 @@ async def update_brand(
     _require_manage(user, brand)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(brand, field, value)
+    if settings.SHAREPOINT_ENABLED and (payload.name is not None or payload.is_active is True):
+        from app.services.sharepoint.compliance import reconcile_company_matches
+
+        await db.flush()
+        await reconcile_company_matches(db)
     await db.commit()
     await db.refresh(brand)
     return brand

@@ -32,7 +32,8 @@ async def source_for(db):
     try:
         async with db.begin_nested():
             source = SharePointSource(scope_key=key, tenant_id=settings.SHAREPOINT_TENANT_ID,
-                site_id=settings.SHAREPOINT_SITE_ID, drive_id=settings.SHAREPOINT_DRIVE_ID, folder_id=settings.SHAREPOINT_FOLDER_ID)
+                site_id=settings.SHAREPOINT_SITE_ID, drive_id=settings.SHAREPOINT_DRIVE_ID,
+                folder_id=settings.SHAREPOINT_FOLDER_ID, policy="auto")
             db.add(source)
             await db.flush()
     except IntegrityError:
@@ -43,6 +44,10 @@ async def source_for(db):
 def purge(document, status="queued"):
     clear_auth_cache()
     document.status = status
+    document.compliance_status = "pending"
+    document.compliance = None
+    document.company_id = None
+    document.reviewed_by = document.reviewed_at = None
     document.segments = document.mapping_cipher = document.analysis = document.usage = None
     document.languages = document.fingerprint = document.payload_hash = document.approval_hash = None
     document.approved_by = document.approved_at = document.processed_at = None
@@ -166,6 +171,7 @@ def public_document(document, metadata, detail=False):
     if detail:
         mapping = decrypt(document.mapping_cipher) if document.mapping_cipher else {}
         result["analysis"] = restore(document.analysis, mapping)
+        result["compliance"] = document.compliance
         result["segments"] = restore(document.segments or [], mapping)
         result["usage"] = document.usage
         result["model"] = settings.SHAREPOINT_OPENAI_MODEL

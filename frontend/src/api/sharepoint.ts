@@ -5,7 +5,7 @@ export type SharePointRun = {
 export type SharePointStatus = {
   enabled: boolean; configured: boolean; missing: string[]; connected: boolean;
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
-  openai_configured: boolean; policy: "auto" | "review" | "test" | "skip"; active_run: boolean;
+  openai_configured: boolean; active_run: boolean;
   polling_enabled: boolean; sync_interval_seconds: number;
   run: SharePointRun | null; last_sync: string | null; languages: string[];
 };
@@ -37,6 +37,19 @@ export type AnalysisSection = {
   risks: Finding[]; blockers: Finding[]; contacts: Finding[];
   expiries?: ExpiryFinding[]; commercials?: CommercialFinding[];
   project_status: string | null; requires_attention: boolean;
+  compliance?: {
+    document_type: string;
+    company?: { value: string } | null;
+    reference_number?: { value: string } | null;
+    issue_date?: { value: string } | null;
+    effective_date?: { value: string } | null;
+    expiry_date?: { value: string } | null;
+    renewal_date?: { value: string } | null;
+    termination_notice?: { days: number } | null;
+    parties?: Array<{ value: string }>;
+    obligations?: Array<{ value: string }>;
+    review_reasons?: string[];
+  };
 };
 export type Segment = { id: string; location: string; text: string };
 export type SharePointDocument = {
@@ -44,17 +57,13 @@ export type SharePointDocument = {
   languages: string[]; size?: number; modified_at: string | null; processed_at?: string | null;
   requires_attention: boolean; model?: string; attempts?: number;
   analysis?: { sections: AnalysisSection[]; requires_attention: boolean } | null;
+  compliance?: AnalysisSection["compliance"] | null;
   segments?: Segment[]; usage?: { input_tokens: number; output_tokens: number } | null;
 };
 export type DocumentPage = { items: SharePointDocument[]; next_cursor: string | null };
-export type PayloadPreview = {
-  payload_hash: string;
-  payload: { model: string; system: string; schema: unknown; batches: Segment[][] };
-};
-export type PrivacyRules = { policy: "auto" | "review" | "test" | "skip"; terms: { kind: string; value: string }[] };
-
 export type SharePointReminder = {
   id: string;
+  task_id?: string | null;
   document_id: string;
   document_name?: string | null;
   document_path?: string | null;
@@ -118,10 +127,6 @@ export function getStatusBadgeInfo(status: string): {
   switch (status) {
     case "ready":
       return { label: "Ready", variant: "default", className: "bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 border-emerald-600/30 font-medium" };
-    case "awaiting_approval":
-      return { label: "Review Needed", variant: "secondary", className: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 font-medium" };
-    case "approved":
-      return { label: "Approved · Queued for AI", variant: "secondary", className: "bg-sky-500/15 text-sky-800 dark:text-sky-300 border-sky-500/30" };
     case "processing":
       return { label: "AI Processing…", variant: "outline", className: "bg-primary/10 text-primary border-primary/30 animate-pulse font-medium" };
     case "queued":
@@ -138,48 +143,40 @@ export function getStatusBadgeInfo(status: string): {
 export function calculateEstimatedCost(
   usage?: { input_tokens: number; output_tokens: number } | null,
   modelName?: string | null
-): { costUsd: number; formatted: string; rateSummary: string } | null {
+): { costUsd: number; formatted: string } | null {
   if (!usage) return null;
   const model = (modelName || "gpt-5.6-luna").toLowerCase();
   let inRate = 0.20 / 1_000_000;
   let outRate = 1.20 / 1_000_000;
-  let rateSummary = "$0.20/M in · $1.20/M out";
 
   if (model.includes("gpt-5.6-luna")) {
     inRate = 0.20 / 1_000_000;
     outRate = 1.20 / 1_000_000;
-    rateSummary = "$0.20/M in · $1.20/M out";
   } else if (model.includes("gpt-5.6-sol")) {
     inRate = 4.00 / 1_000_000;
     outRate = 20.00 / 1_000_000;
-    rateSummary = "$4.00/M in · $20.00/M out";
   } else if (model.includes("gpt-5.6-terra")) {
     inRate = 2.00 / 1_000_000;
     outRate = 12.00 / 1_000_000;
-    rateSummary = "$2.00/M in · $12.00/M out";
   } else if (model.includes("gpt-4o-mini")) {
     inRate = 0.15 / 1_000_000;
     outRate = 0.60 / 1_000_000;
-    rateSummary = "$0.15/M in · $0.60/M out";
   } else if (model.includes("gpt-4o")) {
     inRate = 2.50 / 1_000_000;
     outRate = 10.00 / 1_000_000;
-    rateSummary = "$2.50/M in · $10.00/M out";
   } else if (model.includes("o3-mini") || model.includes("o4-mini")) {
     inRate = 1.10 / 1_000_000;
     outRate = 4.40 / 1_000_000;
-    rateSummary = "$1.10/M in · $4.40/M out";
   } else if (model.includes("o1")) {
     inRate = 15.00 / 1_000_000;
     outRate = 60.00 / 1_000_000;
-    rateSummary = "$15.00/M in · $60.00/M out";
   }
 
   const cost = (usage.input_tokens * inRate) + (usage.output_tokens * outRate);
-  const formatted = cost < 0.0001
-    ? "< $0.0001"
-    : `$${cost.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 5 })}`;
-  return { costUsd: cost, formatted, rateSummary };
+  const formatted = cost > 0 && cost < 0.01
+    ? "<$0.01"
+    : `$${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return { costUsd: cost, formatted };
 }
 
 export function formatDateTime(iso?: string | null): string {

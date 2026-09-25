@@ -65,6 +65,7 @@ from app.api import (
     settings as settings_api,
     shares,
     sharepoint,
+    sharepoint_compliance,
     shortener,
     signatures,
     tasks,
@@ -106,6 +107,11 @@ async def lifespan(app: FastAPI):
         if settings.ENVIRONMENT != "production":
             await ensure_default_departments(db)
             await ensure_default_leave_types(db)
+        if settings.SHAREPOINT_ENABLED:
+            from app.services.sharepoint.compliance import reconcile_company_matches
+
+            await reconcile_company_matches(db)
+            await db.commit()
 
     tasks: list[asyncio.Task] = []
     if settings.RUN_SCHEDULER:
@@ -290,6 +296,7 @@ app.include_router(leave.router, prefix=api_prefix, dependencies=_mod("approvals
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
 app.include_router(sharepoint.router, prefix=api_prefix, dependencies=_mod("sharepoint_intelligence"))
+app.include_router(sharepoint_compliance.router, prefix=api_prefix, dependencies=_mod("sharepoint_intelligence"))
 app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))
 app.include_router(people.router, prefix=api_prefix, dependencies=_mod("people_ops"))
 app.include_router(worklog.router, prefix=api_prefix, dependencies=_mod("worklog"))

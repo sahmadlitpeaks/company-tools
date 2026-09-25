@@ -562,9 +562,8 @@ async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUI
     if not doc or doc.source_id != source.id or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
 
-    # Review policy gate (Issue #15)
-    if source.policy == "review" and doc.status != "ready":
-        raise SharePointError("document_review_required", 400)
+    if doc.status != "ready":
+        raise SharePointError("document_not_ready", 409)
     if doc.status not in ("ready", "approved", "analyzed"):
         raise SharePointError("document_not_ready", 400)
 

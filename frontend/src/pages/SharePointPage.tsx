@@ -22,7 +22,6 @@ import { CentralChatTab } from "./sharepoint/CentralChatTab";
 import { AlertsRemindersTab } from "./sharepoint/AlertsRemindersTab";
 import { AdminSourcesTab } from "./sharepoint/AdminSourcesTab";
 import DocumentDialog from "./sharepoint/DocumentDialog";
-import PrivacyDialog from "./sharepoint/PrivacyDialog";
 import { useDocumentSearch } from "./sharepoint/useDocumentSearch";
 
 function ConnectedSource({
@@ -82,7 +81,6 @@ function ConnectedSource({
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [assistantQuery, setAssistantQuery] = useState<string | undefined>();
   const [assistantDocId, setAssistantDocId] = useState<string | undefined>();
-  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { notify } = useToast();
 
@@ -215,30 +213,6 @@ function ConnectedSource({
     }
   }
 
-  async function toggleAutoPolicy() {
-    setBusy(true);
-    try {
-      const current = await api<{ policy: string; terms: unknown[] }>("/api/sharepoint/rules");
-      const nextPolicy = current.policy === "auto" ? "review" : "auto";
-      await api("/api/sharepoint/rules", {
-        method: "PUT",
-        body: { policy: nextPolicy, terms: current.terms },
-      });
-      notify(
-        nextPolicy === "auto"
-          ? "Switched to Auto-AI Processing policy."
-          : "Switched to Manual Review policy."
-      );
-      await reload();
-      void reloadDocs();
-      void reloadReminders();
-    } catch (err) {
-      notify(readableStatus(err instanceof Error ? err.message : "toggle_failed"), "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   useEffect(() => {
     const timer = window.setInterval(() => {
       void reload();
@@ -324,12 +298,6 @@ function ConnectedSource({
                 action("test-connection", "SharePoint read access verified.")
               }
               onSyncNow={() => action("sync", "Document sync queued.")}
-              onToggleAutoPolicy={toggleAutoPolicy}
-              onOpenPrivacy={() => setPrivacyOpen(true)}
-              onOpenReviewQueue={() => {
-                setCategoryFilter("All types");
-                handleNavigateTab("documents");
-              }}
               isBusy={busy}
             />
           )}
@@ -362,7 +330,6 @@ function ConnectedSource({
       {selectedDocId && (
         <DocumentDialog
           id={selectedDocId}
-          canReview={status.can_review}
           isAdmin={isAdmin}
           onClose={() => setSelectedDocId(null)}
           onChanged={() => {
@@ -373,17 +340,6 @@ function ConnectedSource({
         />
       )}
 
-      {privacyOpen && (
-        <PrivacyDialog
-          onClose={() => setPrivacyOpen(false)}
-          onSaved={() => {
-            setPrivacyOpen(false);
-            void reload();
-            void reloadDocs();
-            void reloadReminders();
-          }}
-        />
-      )}
     </div>
   );
 }

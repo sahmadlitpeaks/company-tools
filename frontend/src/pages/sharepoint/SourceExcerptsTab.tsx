@@ -190,7 +190,6 @@ export function SourceExcerptsTab({
 }) {
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [onlyRedacted, setOnlyRedacted] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [allCopied, setAllCopied] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -217,10 +216,6 @@ export function SourceExcerptsTab({
       if (locationFilter !== "all" && !seg.location.toLowerCase().includes(locationFilter.toLowerCase())) {
         return false;
       }
-      // Redacted only filter
-      if (onlyRedacted && !PLACEHOLDER_REGEX.test(seg.text)) {
-        return false;
-      }
       // Text query
       if (q) {
         const matchText = seg.text.toLowerCase().includes(q);
@@ -230,7 +225,7 @@ export function SourceExcerptsTab({
       }
       return true;
     });
-  }, [segments, search, locationFilter, onlyRedacted]);
+  }, [segments, search, locationFilter]);
 
   // Smooth scroll to active segment when set
   useEffect(() => {
@@ -323,17 +318,6 @@ export function SourceExcerptsTab({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={onlyRedacted ? "default" : "outline"}
-              size="sm"
-              onClick={() => setOnlyRedacted(!onlyRedacted)}
-              className="text-xs sm:text-sm h-9 gap-2 font-medium"
-              title="Show only excerpts containing privacy-redacted placeholders"
-            >
-              <Lock data-icon="inline-start" className="size-3.5" />
-              Redacted Only
-            </Button>
-
             <Button
               variant="outline"
               size="sm"

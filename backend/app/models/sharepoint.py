@@ -1,8 +1,8 @@
-"""Private derived content. No SharePoint file bytes or download URLs are stored."""
+"""SharePoint metadata and sensitive derived content; original file bytes stay in SharePoint."""
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -16,7 +16,7 @@ class SharePointSource(UUIDMixin, TimestampMixin, Base):
     site_id: Mapped[str] = mapped_column(String(255))
     drive_id: Mapped[str] = mapped_column(String(255))
     folder_id: Mapped[str] = mapped_column(String(255))
-    policy: Mapped[str] = mapped_column(String(16), default="review")
+    policy: Mapped[str] = mapped_column(String(16), default="auto")
     rules_cipher: Mapped[str | None] = mapped_column(Text)
     policy_version: Mapped[int] = mapped_column(Integer, default=1)
     delta_link: Mapped[str | None] = mapped_column(Text)
@@ -51,6 +51,9 @@ class SharePointDocument(UUIDMixin, TimestampMixin, Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[str] = mapped_column(Text, default="")
     modified_at: Mapped[str | None] = mapped_column(String(64))
+    uploaded_by_oid: Mapped[str | None] = mapped_column(String(64))
+    uploaded_by_email: Mapped[str | None] = mapped_column(String(320))
+    uploaded_at: Mapped[str | None] = mapped_column(String(64))
     is_folder: Mapped[bool] = mapped_column(Boolean, default=False)
     in_scope: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -69,6 +72,11 @@ class SharePointDocument(UUIDMixin, TimestampMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    compliance: Mapped[dict | None] = mapped_column(JSON)
+    compliance_status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SharePointRun(UUIDMixin, TimestampMixin, Base):
@@ -90,6 +98,7 @@ class SharePointReminder(UUIDMixin, TimestampMixin, Base):
     )
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_sources.id", ondelete="CASCADE"), index=True)
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sharepoint_compliance_tasks.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(40), default="expiry")
     target_date: Mapped[str] = mapped_column(String(10))
@@ -105,3 +114,55 @@ class SharePointReminder(UUIDMixin, TimestampMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(255))
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class SharePointOwnerRule(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "sharepoint_owner_rules"
+    company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[str | None] = mapped_column(String(80), index=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    owner_department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="CASCADE"))
+    reminder_leads: Mapped[list[int] | None] = mapped_column(JSON)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SharePointComplianceTask(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "sharepoint_compliance_tasks"
+    __table_args__ = (
+        UniqueConstraint("document_id", "action_key", name="uq_sharepoint_task_action"),
+        CheckConstraint("status <> 'active' OR (owner_user_id IS NOT NULL) <> (owner_department_id IS NOT NULL)",
+                        name="ck_sp_active_task_one_owner"),
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_sources.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="CASCADE"), index=True)
+    action_key: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(512))
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    basis: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    owner_department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), index=True)
+    assignment_source: Mapped[str] = mapped_column(String(32))
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="SET NULL"))
+
+
+class SharePointDocumentVersion(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "sharepoint_document_versions"
+    __table_args__ = (UniqueConstraint("document_id", "source_version", name="uq_sharepoint_document_version"),)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="CASCADE"), index=True)
+    source_version: Mapped[str] = mapped_column(Text)
+    modified_at: Mapped[str | None] = mapped_column(String(64))
+    extracted: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32))
+
+
+class SharePointComplianceEvent(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "sharepoint_compliance_events"
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sharepoint_compliance_tasks.id", ondelete="SET NULL"))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    details: Mapped[dict | None] = mapped_column(JSON)
