@@ -71,7 +71,7 @@ When a local test pack has `ground_truth.json` and its listed PDFs, evaluate eve
 
 ```bash
 cd backend
-python scripts/evaluate_sharepoint_test_pack.py /path/to/files /path/to/results.json
+python -m scripts.evaluate_sharepoint_test_pack /path/to/files /path/to/results.json
 ```
 
 Add `--live --max-spend-usd 3` to call the configured analysis model. Confirm the current input and output token prices on the [model page](https://developers.openai.com/api/docs/models/gpt-6-luna) before a paid run; the command's price flags default to GPT-6 Luna's September 2026 standard rates. It reserves a conservative maximum before each request, reports actual token usage when available, stops before the supplied cost ceiling, and never retries a failed provider request automatically. Keep the JSON result outside the repository because it contains extracted document facts. This test checks local extraction, OCR in an environment with Tesseract installed, and AI output; it does not create a SharePoint source, product catalogue entries, owners, tasks, or delivered reminders.
