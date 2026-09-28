@@ -19,7 +19,7 @@ from app.schemas.sharepoint import (ComplianceReviewIn, ComplianceTaskAssignIn,
     ComplianceTaskUpdateIn, OwnerRuleIn)
 from app.services.sharepoint.common import SharePointError, digest, now
 from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_department_owner,
-    apply_analysis, event)
+    apply_analysis, candidate_actions, event)
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.reminders import populate_task_reminders
 from app.services.sharepoint.store import authorize_document, source_for
@@ -102,13 +102,15 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
     result_documents = []
     for document, metadata in accessible:
         facts = document.compliance or {}
-        company_name = companies.get(document.company_id) or "Unclassified"
+        company_name = (companies.get(document.company_id) or
+            ((facts.get("company") or {}).get("value") or "").strip() or "Unclassified")
         summary["documents_by_company"][company_name] = summary["documents_by_company"].get(company_name, 0) + 1
         if document.compliance_status == "needs_review":
             summary["needs_review"] += 1
             if "owner" in facts.get("review_reasons", []):
                 summary["unassigned"] += 1
         expiry = (facts.get("expiry_date") or {}).get("value")
+        action_dates = [due for _, _, due, _ in candidate_actions(facts)]
         if expiry and document.compliance_status == "active":
             remaining = (date.fromisoformat(expiry) - today).days
             if 0 <= remaining <= 60:
@@ -120,6 +122,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "company": company_name, "document_type": facts.get("document_type", "unknown"),
             "reference_number": (facts.get("reference_number") or {}).get("value"),
             "expiry_date": expiry,
+            "action_date": min(action_dates).isoformat() if action_dates else None,
             "renewal_date": (facts.get("renewal_date") or {}).get("value"),
             "notice_days": (facts.get("termination_notice") or {}).get("days"),
             "status": document.compliance_status, "processing_status": document.status,
@@ -142,7 +145,8 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
                 summary["unassigned"] += 1
         result_tasks.append({"id": str(task.id), "document_id": str(task.document_id),
             "document_name": document.filename, "title": task.title,
-            "company": companies.get(document.company_id),
+            "company": companies.get(document.company_id) or
+                (((document.compliance or {}).get("company") or {}).get("value") or "").strip() or None,
             "document_type": (document.compliance or {}).get("document_type"),
             "due_date": task.due_date.isoformat(), "basis": task.basis,
             "status": task.status, "owner": name,
@@ -243,8 +247,14 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
     document, _ = await _authorized(db, user, document_id)
     if document.status != "ready" or not document.segments:
         raise SharePointError("document_not_ready", 409)
-    if not await db.get(Company, body.company_id):
+    if body.company_id and body.company_name:
+        raise SharePointError("choose_one_company_source", 422)
+    company = await db.get(Company, body.company_id) if body.company_id else None
+    if body.company_id and (not company or not company.is_active):
         raise SharePointError("company_not_found", 404)
+    company_name = company.name if company else (body.company_name or "").strip()
+    if not company_name:
+        raise SharePointError("company_name_required", 422)
     if bool(body.owner_user_id) and bool(body.owner_department_id):
         raise SharePointError("one_owner_only", 422)
     if body.owner_user_id:
@@ -255,7 +265,7 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
         raise SharePointError("department_not_found", 404)
     original = document.compliance or {}
     facts = {**original, "document_type": body.document_type,
-        "company": {"value": (await db.get(Company, body.company_id)).name, "evidence": []}}
+        "company": {"value": company_name, "evidence": []}}
     for key, value in (("reference_number", body.reference_number),
                        ("expiry_date", body.expiry_date), ("renewal_date", body.renewal_date)):
         facts[key] = {"value": value, "evidence": []} if value is not None else None
@@ -267,7 +277,8 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
     if document.compliance_status != "active":
         raise SharePointError("review_still_incomplete", 422)
     document.reviewed_by, document.reviewed_at = user.id, now()
-    review_details = {"company_id": str(body.company_id), "document_type": body.document_type,
+    review_details = {"company_id": str(body.company_id) if body.company_id else None,
+        "company_name": company_name, "document_type": body.document_type,
         "reference_number": body.reference_number, "expiry_date": body.expiry_date,
         "renewal_date": body.renewal_date, "termination_notice_days": body.termination_notice_days,
         "owner_user_id": str(body.owner_user_id) if body.owner_user_id else None,

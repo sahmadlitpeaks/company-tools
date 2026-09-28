@@ -5,6 +5,7 @@ const document = {
   id: "doc-1", name: "Agiomix Trade Licence.pdf", url: "https://example.sharepoint.com/doc",
   company_id: "company-1", company: "Agiomix", document_type: "trade_license",
   reference_number: "TL-123", expiry_date: "2026-12-15", renewal_date: null,
+  action_date: "2026-11-30",
   notice_days: null, status: "active", processing_status: "ready", review_reasons: [],
   modified_at: null, uploaded_at: null, uploaded_by_email: null,
 };
@@ -61,6 +62,9 @@ test.beforeEach(async ({ page }) => {
       ...document, analysis: null, segments: [], compliance: {
         document_type: "trade_license", reference_number: { value: "TL-123" },
         expiry_date: { value: "2026-12-15" }, obligations: [],
+        required_actions: [{ title: "Review renewal application", deadline: "2026-11-30",
+          owner: null, status: "unknown", priority: "unknown",
+          evidence: [{ segment_id: "s1", quote: "Renewal application deadline\n30 Nov 2026" }] }],
       },
     };
     else if (path === "/api/sharepoint/compliance/documents/doc-1/history") body = {
@@ -83,6 +87,8 @@ test("compliance overview, register, tasks and detail work at desktop and mobile
   await expect(page.getByText("Compliance tasks · 1")).toBeVisible();
   await page.getByRole("button", { name: document.name }).first().click();
   await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Action dates found in the document")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Renewal application deadline")).toBeVisible();
   await expect(page.getByRole("dialog").getByText("Action created")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -187,9 +193,29 @@ test("uncertain extraction waits for a reviewer before activating tasks", async 
   }
   await openView(page, "Review");
   await expect(page.getByText("Needs review · 1")).toBeVisible();
+  await expect(page.getByText("Action due: Nov 30, 2026")).toBeVisible();
   await page.getByRole("button", { name: "Verify" }).click();
   await expect(page.getByLabel("Review note (optional)")).toBeVisible();
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
   expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: null });
+});
+
+test("reviewer can confirm a named external entity without adding a company brand", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 0, tasks_by_owner: {}, documents_by_company: { "External Vendor LLC": 1 } },
+    documents: [{ ...document, company_id: null, company: "External Vendor LLC",
+      status: "needs_review", review_reasons: ["notice_period"] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/review", (route) => route.fulfill({ json: { status: "active", tasks_created: 1 } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await page.getByRole("button", { name: "Verify" }).click();
+  await expect(page.getByRole("dialog").getByText("Action dates found in the document")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Company or entity" })).toContainText("External entity");
+  await expect(page.getByRole("textbox", { name: "Legal entity name" })).toHaveValue("External Vendor LLC");
+  const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
+  await page.getByRole("button", { name: "Verify and create tasks" }).click();
+  expect((await request).postDataJSON()).toMatchObject({ company_id: null, company_name: "External Vendor LLC" });
 });
