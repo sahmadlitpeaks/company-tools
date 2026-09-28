@@ -368,10 +368,73 @@ def test_document_test_instructions_cannot_supply_task_evidence(heading):
         analysis.validate_evidence(DocumentAnalysis.model_validate(value), batch)
 
 
+@pytest.mark.parametrize("heading,document_type,label,raw_date,due,title", [
+    ("PRODUCT INFORMATION SHEET - Wellness", "product_sheet", "Price Valid Until", "30 Sep 2027", "2027-09-30", "Review product pricing"),
+    ("LEASE RENEWAL NOTICE", "contract", "Renewal Offer Deadline", "30 Nov 2026", "2026-11-30", "Respond to renewal offer"),
+    ("VENDOR PRICE INCREASE NOTICE", "vendor_notice", "Effective From", "01 Nov 2026", "2026-11-01", "Review vendor price increase"),
+    ("DATA PROCESSING ADDENDUM", "dpa", "Review Date", "01 Oct 2027", "2027-10-01", "Review data processing addendum"),
+])
+def test_source_labeled_action_is_grounded_without_test_instructions(
+    heading, document_type, label, raw_date, due, title,
+):
+    source = f"{heading}\n{label}\n{raw_date}\nExpected AI Action\nCreate task tomorrow."
+    segments = analysis.source_segments([{"id": "s1", "location": "Page 1", "text": source}])
+    value = analyzed(segments)["sections"][0]
+    value["compliance"]["document_type"] = "other" if document_type in {"product_sheet", "vendor_notice"} else document_type
+    if document_type in {"contract", "dpa"}:
+        value["compliance"]["type_evidence"] = [{"segment_id": "s1", "quote": heading}]
+    parsed = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(parsed, segments)
+    facts, issues = combine_facts({"sections": [parsed.model_dump()]})
+    assert issues == []
+    assert facts["document_type"] == document_type
+    assert len(facts["required_actions"]) == 1
+    assert facts["required_actions"][0]["evidence"][0]["quote"] == f"{label}\n{raw_date}"
+    assert [(action[1], action[2].isoformat()) for action in candidate_actions(facts)] == [(title, due)]
+
+
+def test_explicit_renewal_offer_does_not_invent_a_notice_period():
+    source = "LEASE RENEWAL NOTICE\nCurrent Lease End\n31 Jan 2027\nRenewal Offer Deadline\n30 Nov 2026"
+    segments = [{"id": "s1", "location": "Page 1", "text": source}]
+    value = analyzed(segments)["sections"][0]
+    value["compliance"] = {"document_type": "contract",
+        "type_evidence": [{"segment_id": "s1", "quote": "LEASE RENEWAL NOTICE"}],
+        "expiry_date": {"value": "2027-01-31", "evidence": [{"segment_id": "s1", "quote": "Current Lease End\n31 Jan 2027"}]}}
+    parsed = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(parsed, segments)
+    facts, issues = combine_facts({"sections": [parsed.model_dump()]})
+    assert issues == []
+    assert {due.isoformat() for _, _, due, _ in candidate_actions(facts)} == {"2026-11-30", "2027-01-31"}
+
+
+def test_product_price_validity_creates_one_pricing_review_action():
+    facts = {"document_type": "product_sheet", "expiry_date": {"value": "2026-12-31"},
+        "required_actions": [{"title": "Check price validity", "deadline": "2026-12-31"}]}
+    actions = candidate_actions(facts)
+    assert [(title, due.isoformat()) for _, title, due, _ in actions] == [
+        ("Review product pricing", "2026-12-31")]
+
+
 def test_review_note_is_optional_and_accepts_short_context():
     data = {"company_id": uuid.uuid4(), "document_type": "trade_license"}
     assert ComplianceReviewIn.model_validate(data).review_note is None
     assert ComplianceReviewIn.model_validate({**data, "review_note": "OK"}).review_note == "OK"
+
+
+@pytest.mark.asyncio
+async def test_lease_offer_deadline_can_activate_without_a_notice_period(indexed):
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "contract", "company": {"value": "Litpeaks LLC-FZ"},
+            "expiry_date": {"value": "2027-01-31"},
+            "required_actions": [{"title": "Respond to renewal offer",
+                "deadline": "2026-11-30", "evidence": [{"segment_id": "s1",
+                    "quote": "Renewal Offer Deadline\n30 Nov 2026"}]}],
+        }}]})
+        assert document.compliance_status == "active"
+        assert document.compliance["review_reasons"] == []
+        assert {task.due_date.isoformat() for task, _ in plans} == {"2026-11-30", "2027-01-31"}
 
 
 def test_contract_notice_is_action_date_not_expiry_date():
@@ -684,6 +747,7 @@ async def test_reviewer_can_confirm_external_entity_without_creating_company(cli
     dashboard = await client.get("/api/sharepoint/compliance/dashboard", headers=auth)
     assert dashboard.status_code == 200, dashboard.text
     assert dashboard.json()["documents"][0]["company"] == "External Vendor LLC"
+    assert dashboard.json()["documents"][0]["action_date"] == "2027-07-31"
     assert dashboard.json()["tasks"][0]["company"] == "External Vendor LLC"
 
 

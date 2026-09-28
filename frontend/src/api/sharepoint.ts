@@ -49,6 +49,7 @@ export type AnalysisSection = {
     termination_notice?: { days: number } | null;
     parties?: Array<{ value: string }>;
     obligations?: Array<{ value: string }>;
+    required_actions?: Finding[];
     review_reasons?: string[];
   };
 };

@@ -61,7 +61,7 @@ class NoticeFact(StrictModel):
 
 
 class ComplianceExtraction(StrictModel):
-    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other", "unknown"]
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "product_sheet", "vendor_notice", "other", "unknown"]
     type_evidence: list[Evidence] = Field(default_factory=list, max_length=5)
     company: TextFact | None = None
     reference_number: TextFact | None = None

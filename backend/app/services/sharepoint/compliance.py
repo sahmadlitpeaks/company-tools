@@ -18,7 +18,7 @@ from app.services.sharepoint.common import digest, now
 DOCUMENT_TYPES = {
     "trade_license", "contract", "iso_cap_certificate", "insurance", "dpa",
     "regulatory_license", "vendor_agreement", "laboratory_accreditation",
-    "it_software_agreement", "other", "unknown",
+    "it_software_agreement", "product_sheet", "vendor_notice", "other", "unknown",
 }
 CONTRACT_TYPES = {"contract", "vendor_agreement", "it_software_agreement", "dpa"}
 DEFAULT_LEADS = (60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1)
@@ -265,7 +265,8 @@ def candidate_actions(facts: dict) -> list[tuple[str, str, date, str]]:
         if document_type in CONTRACT_TYPES and notice:
             result.append(("termination_notice", "Review termination or renewal notice", expiry_date - timedelta(days=notice), "notice_period"))
         else:
-            result.append(("expiry", f"Renew {label}", expiry_date, "expiry"))
+            title = "Review product pricing" if document_type == "product_sheet" else f"Renew {label}"
+            result.append(("expiry", title, expiry_date, "expiry"))
     renewal = _fact_value(facts.get("renewal_date"))
     if renewal:
         renewal_date = date.fromisoformat(renewal)
@@ -274,7 +275,11 @@ def candidate_actions(facts: dict) -> list[tuple[str, str, date, str]]:
     for index, action in enumerate(facts.get("required_actions") or []):
         deadline = action.get("deadline")
         if deadline:
-            result.append((f"action-{index}", action.get("title") or "Document action", date.fromisoformat(deadline), "explicit_action"))
+            due = date.fromisoformat(deadline)
+            title = action.get("title") or "Document action"
+            if not any(existing_due == due and (existing_title == title or document_type == "product_sheet")
+                       for _, existing_title, existing_due, _ in result):
+                result.append((f"action-{index}", title, due, "explicit_action"))
     return result
 
 
@@ -319,7 +324,14 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
         reasons.append("owner")
     if facts.get("termination_notice") and not facts.get("expiry_date"):
         reasons.append("notice_without_expiry")
-    if document_type in CONTRACT_TYPES and facts.get("expiry_date") and not facts.get("termination_notice") and not human_review:
+    has_explicit_renewal_deadline = any(
+        "renewal offer deadline" in evidence.get("quote", "").casefold()
+        for action in facts.get("required_actions") or []
+        for evidence in action.get("evidence") or []
+    )
+    if (document_type in CONTRACT_TYPES and facts.get("expiry_date")
+            and not facts.get("termination_notice") and not has_explicit_renewal_deadline
+            and not human_review):
         reasons.append("notice_period")
     facts["review_reasons"] = sorted(set(reasons))
     document.compliance, document.company_id = facts, company.id if company else None

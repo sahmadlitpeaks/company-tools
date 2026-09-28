@@ -19,7 +19,7 @@ from app.schemas.sharepoint import (ComplianceReviewIn, ComplianceTaskAssignIn,
     ComplianceTaskUpdateIn, OwnerRuleIn)
 from app.services.sharepoint.common import SharePointError, digest, now
 from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_department_owner,
-    apply_analysis, event)
+    apply_analysis, candidate_actions, event)
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.reminders import populate_task_reminders
 from app.services.sharepoint.store import authorize_document, source_for
@@ -110,6 +110,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             if "owner" in facts.get("review_reasons", []):
                 summary["unassigned"] += 1
         expiry = (facts.get("expiry_date") or {}).get("value")
+        action_dates = [due for _, _, due, _ in candidate_actions(facts)]
         if expiry and document.compliance_status == "active":
             remaining = (date.fromisoformat(expiry) - today).days
             if 0 <= remaining <= 60:
@@ -121,6 +122,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "company": company_name, "document_type": facts.get("document_type", "unknown"),
             "reference_number": (facts.get("reference_number") or {}).get("value"),
             "expiry_date": expiry,
+            "action_date": min(action_dates).isoformat() if action_dates else None,
             "renewal_date": (facts.get("renewal_date") or {}).get("value"),
             "notice_days": (facts.get("termination_notice") or {}).get("days"),
             "status": document.compliance_status, "processing_status": document.status,

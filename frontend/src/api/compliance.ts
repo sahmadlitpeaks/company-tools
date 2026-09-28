@@ -18,6 +18,7 @@ export type ComplianceDocument = {
   document_type: string;
   reference_number: string | null;
   expiry_date: string | null;
+  action_date: string | null;
   renewal_date: string | null;
   notice_days: number | null;
   status: string;
@@ -83,6 +84,8 @@ export const DOCUMENT_TYPES = [
   ["vendor_agreement", "Vendor agreement"],
   ["laboratory_accreditation", "Laboratory accreditation"],
   ["it_software_agreement", "IT / software agreement"],
+  ["product_sheet", "Product information sheet"],
+  ["vendor_notice", "Vendor price notice"],
   ["other", "Other compliance document"],
 ] as const;
 
