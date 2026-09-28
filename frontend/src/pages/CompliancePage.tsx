@@ -40,7 +40,7 @@ const statusNames: Record<string, string> = {
   pending: "Processing", superseded: "Replaced", failed: "Processing failed",
 };
 const reasonNames: Record<string, string> = {
-  company: "Company not matched", owner: "Owner needed", action_date: "Action date unclear",
+  company: "Company needs confirmation", owner: "Owner needed", action_date: "Action date unclear",
   document_type: "Document type unclear", notice_period: "Notice period unclear",
   reference_number: "Reference number unclear", issue_date: "Issue date unclear",
   effective_date: "Effective date unclear", expiry_date: "Expiry date unclear",
@@ -129,7 +129,7 @@ function Choice({ id, label, value, onChange, items }: {
 
 function Filters({ value, onChange, data, mode }: { value: Filter; onChange: (next: Filter) => void; data: ComplianceDashboard; mode: FilterMode }) {
   const [advanced, setAdvanced] = useState(Boolean(value.from || value.to || value.company !== "all" || value.type !== "all" || value.status !== "all"));
-  const companies = [...new Map(data.documents.filter((doc) => doc.company_id).map((doc) => [doc.company_id, doc.company])).entries()];
+  const companies = [...new Set(data.documents.map((doc) => doc.company).filter((name) => name !== "Unclassified"))].sort();
   const owners = [...new Map(data.tasks.filter((task) => task.owner_user_id).map((task) => [task.owner_user_id, task.owner])).entries()];
   const departments = [...new Map(data.tasks.filter((task) => task.owner_department_id).map((task) => [task.owner_department_id, task.owner])).entries()];
   const set = (key: keyof Filter, next: string) => onChange({ ...value, [key]: next });
@@ -148,7 +148,7 @@ function Filters({ value, onChange, data, mode }: { value: Filter; onChange: (ne
     <CardContent className="space-y-4">
       <Field><FieldLabel htmlFor={`compliance-${mode}-search`} className="text-sm font-medium">Search {mode}</FieldLabel><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input id={`compliance-${mode}-search`} className="h-10 bg-background pl-9 text-sm md:text-sm" placeholder={mode === "documents" ? "Name, reference, company or type" : "Action, document, owner or company"} value={value.search} onChange={(event) => set("search", event.target.value)} /></div></Field>
       {advanced && <FieldGroup id={`compliance-${mode}-advanced`} className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Choice id={`compliance-${mode}-company`} label="Company" value={value.company} onChange={(v) => set("company", v)} items={[{ value: "all", label: "All companies" }, ...companies.map(([id, name]) => ({ value: id!, label: name }))]} />
+        <Choice id={`compliance-${mode}-company`} label="Company" value={value.company} onChange={(v) => set("company", v)} items={[{ value: "all", label: "All companies" }, ...companies.map((name) => ({ value: name, label: name }))]} />
         <Choice id={`compliance-${mode}-type`} label="Document type" value={value.type} onChange={(v) => set("type", v)} items={[{ value: "all", label: "All document types" }, ...DOCUMENT_TYPES.map(([key, label]) => ({ value: key, label }))]} />
         <Choice id={`compliance-${mode}-status`} label="Status" value={value.status} onChange={(v) => set("status", v)} items={[{ value: "all", label: "All statuses" }, ...statusItems.map((key) => ({ value: key, label: statusNames[key] }))]} />
         {mode === "tasks" && <Choice id="compliance-task-owner" label="Owner" value={value.owner} onChange={(v) => set("owner", v)} items={[{ value: "all", label: "All owners" }, ...owners.map(([id, name]) => ({ value: id!, label: name }))]} />}
@@ -306,7 +306,8 @@ function DetailDialog({ document, onClose }: { document: ComplianceDocument; onC
 function ReviewDialog({ document, options, onClose, onSaved }: { document: ComplianceDocument; options: ComplianceOptions; onClose: () => void; onSaved: () => void }) {
   const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${document.id}`);
   const facts = detail.data?.compliance ?? detail.data?.analysis?.sections?.[0]?.compliance;
-  const [companyId, setCompanyId] = useState(document.company_id ?? "none");
+  const [companyId, setCompanyId] = useState(document.company_id ?? (document.company !== "Unclassified" ? "external" : "none"));
+  const [companyName, setCompanyName] = useState(document.company_id ? "" : document.company === "Unclassified" ? "" : document.company);
   const [documentType, setDocumentType] = useState(document.document_type === "unknown" ? "none" : document.document_type);
   const [reference, setReference] = useState(document.reference_number ?? "");
   const [expiry, setExpiry] = useState(document.expiry_date ?? "");
@@ -320,12 +321,15 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
   const { notify } = useToast();
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (companyId === "none") { setError("Choose a company before creating tasks."); return; }
+    if (companyId === "none") { setError("Choose an internal company or name the external entity."); return; }
+    if (companyId === "external" && !companyName.trim()) { setError("Enter the legal entity named in the document."); return; }
     if (documentType === "none") { setError("Choose the correct document type."); return; }
     setBusy(true); setError("");
     try {
       await api(`/api/sharepoint/compliance/documents/${document.id}/review`, { method: "POST", body: {
-        company_id: companyId, document_type: documentType,
+        company_id: companyId === "external" ? null : companyId,
+        company_name: companyId === "external" ? companyName.trim() : null,
+        document_type: documentType,
         reference_number: reference || null, expiry_date: expiry || null,
         renewal_date: renewal || null, termination_notice_days: notice ? Number(notice) : null,
         owner_user_id: ownerKind === "user" && ownerId !== "none" ? ownerId : null,
@@ -338,11 +342,12 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
   }
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><Badge variant="warning" className="mb-2">Verification required</Badge><DialogTitle className="break-words text-lg">Review {document.name}</DialogTitle><DialogDescription className="text-sm">Confirm the facts against the SharePoint original. Your changes enter the audit history.</DialogDescription></DialogHeader>
     <Alert className="border-warning/40 bg-warning/10"><AlertTriangle className="size-4" /><AlertDescription className="text-sm">Check: {document.review_reasons.map((reason) => reasonNames[reason] ?? reason.replace(/_/g, " ")).join(", ") || "uncertain extraction"}.</AlertDescription></Alert>
-    {!document.company_id && factValue(facts?.company) && <Alert><AlertDescription className="text-sm">The file names <strong>{factValue(facts?.company)}</strong>, but this company is not in the registry. <Link className="font-semibold underline" to="/companies">Add it in Companies</Link>, then return to verify this record.</AlertDescription></Alert>}
+    {!document.company_id && factValue(facts?.company) && <Alert><AlertDescription className="text-sm">The file names <strong>{factValue(facts?.company)}</strong>. Confirm it as an external entity, or select the correct internal company if it belongs to the group.</AlertDescription></Alert>}
     {detail.loading ? <Skeleton className="h-24" /> : detail.error ? <Alert variant="destructive"><AlertDescription>{detail.error}</AlertDescription></Alert> : <form onSubmit={(event) => void submit(event)} className="space-y-5">
       {document.url && <Button variant="outline" nativeButton={false} className="bg-background text-sm" render={<a aria-label="Check original in SharePoint" href={document.url} target="_blank" rel="noreferrer" />}>Check original in SharePoint<ArrowUpRight data-icon="inline-end" /></Button>}
       <section className="space-y-3"><div><h3 className="text-base font-semibold">Document details</h3><p className="text-sm text-muted-foreground">Correct the extracted values before an action is created.</p></div><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Choice id="review-company" label="Company" value={companyId} onChange={setCompanyId} items={[{ value: "none", label: "Choose company" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
+        <Choice id="review-company" label="Company or entity" value={companyId} onChange={setCompanyId} items={[{ value: "none", label: "Choose company or entity" }, { value: "external", label: "External entity" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
+        {companyId === "external" && <Field><FieldLabel htmlFor="review-company-name" className="text-sm">Legal entity name</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-company-name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} maxLength={255} required /></Field>}
         <Choice id="review-type" label="Document type" value={documentType} onChange={setDocumentType} items={[{ value: "none", label: "Choose document type" }, ...DOCUMENT_TYPES.map(([value, label]) => ({ value, label }))]} />
         <Field><FieldLabel htmlFor="review-reference" className="text-sm">Reference number</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-reference" value={reference} onChange={(event) => setReference(event.target.value)} /></Field>
         <Field><FieldLabel htmlFor="review-expiry" className="text-sm">Expiry date</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-expiry" type="date" value={expiry} onChange={(event) => setExpiry(event.target.value)} /></Field>
@@ -465,7 +470,7 @@ export default function CompliancePage() {
   const filteredDocuments = useMemo(() => data?.documents.filter((doc) => {
     const query = documentFilter.search.trim().toLowerCase();
     if (query && ![doc.name, doc.company, documentTypeLabel(doc.document_type), doc.reference_number || ""].some((value) => value.toLowerCase().includes(query))) return false;
-    if (documentFilter.company !== "all" && doc.company_id !== documentFilter.company) return false;
+    if (documentFilter.company !== "all" && doc.company !== documentFilter.company) return false;
     if (documentFilter.type !== "all" && doc.document_type !== documentFilter.type) return false;
     if (documentFilter.status !== "all" && doc.status !== documentFilter.status) return false;
     if (documentFilter.from && (!doc.expiry_date || doc.expiry_date < documentFilter.from)) return false;
@@ -475,7 +480,7 @@ export default function CompliancePage() {
   const filteredTasks = useMemo(() => data?.tasks.filter((task) => {
     const query = taskFilter.search.trim().toLowerCase();
     if (query && ![task.title, task.document_name, task.owner, task.company || ""].some((value) => value.toLowerCase().includes(query))) return false;
-    if (taskFilter.company !== "all" && !data.documents.some((doc) => doc.id === task.document_id && doc.company_id === taskFilter.company)) return false;
+    if (taskFilter.company !== "all" && !data.documents.some((doc) => doc.id === task.document_id && doc.company === taskFilter.company)) return false;
     if (taskFilter.type !== "all" && task.document_type !== taskFilter.type) return false;
     if (taskFilter.owner !== "all" && task.owner_user_id !== taskFilter.owner) return false;
     if (taskFilter.department !== "all" && task.owner_department_id !== taskFilter.department) return false;

@@ -193,3 +193,21 @@ test("uncertain extraction waits for a reviewer before activating tasks", async 
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
   expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: null });
 });
+
+test("reviewer can confirm a named external entity without adding a company brand", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 0, tasks_by_owner: {}, documents_by_company: { "External Vendor LLC": 1 } },
+    documents: [{ ...document, company_id: null, company: "External Vendor LLC",
+      status: "needs_review", review_reasons: ["notice_period"] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/review", (route) => route.fulfill({ json: { status: "active", tasks_created: 1 } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await page.getByRole("button", { name: "Verify" }).click();
+  await expect(page.getByRole("combobox", { name: "Company or entity" })).toContainText("External entity");
+  await expect(page.getByRole("textbox", { name: "Legal entity name" })).toHaveValue("External Vendor LLC");
+  const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
+  await page.getByRole("button", { name: "Verify and create tasks" }).click();
+  expect((await request).postDataJSON()).toMatchObject({ company_id: null, company_name: "External Vendor LLC" });
+});

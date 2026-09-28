@@ -194,7 +194,8 @@ class OwnerRuleIn(StrictModel):
 
 
 class ComplianceReviewIn(StrictModel):
-    company_id: uuid.UUID
+    company_id: uuid.UUID | None = None
+    company_name: str | None = Field(default=None, max_length=255)
     document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other"]
     reference_number: str | None = Field(default=None, max_length=255)
     expiry_date: str | None = None

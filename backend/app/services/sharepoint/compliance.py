@@ -98,16 +98,17 @@ async def _company(db: AsyncSession, name: str | None) -> Company | None:
 
 
 async def reconcile_company_matches(db: AsyncSession) -> int:
-    """Revisit stored extractions after the company catalog gains a matching name.
+    """Revisit old company holds using saved, evidence-backed extractions.
 
-    Uses saved analysis, so this does not call the AI API or re-download files.
-    Other review reasons remain in force; tasks start only when validation clears.
+    A named external entity no longer needs an internal brand record. This
+    also links a record when the catalog later gains an exact name or alias.
+    No AI request or SharePoint download is needed.
     """
     from app.services.sharepoint.reminders import populate_task_reminders
 
     documents = (await db.scalars(select(SharePointDocument).where(
         SharePointDocument.status == "ready",
-        SharePointDocument.compliance_status == "needs_review",
+        SharePointDocument.compliance_status.in_(["needs_review", "active"]),
         SharePointDocument.company_id.is_(None),
         SharePointDocument.in_scope.is_(True),
         SharePointDocument.deleted.is_(False),
@@ -115,17 +116,26 @@ async def reconcile_company_matches(db: AsyncSession) -> int:
     matched = 0
     for document in documents:
         facts = document.compliance or {}
-        if "company" not in facts.get("review_reasons", []) or not document.analysis:
+        company_name = (_fact_value(facts.get("company")) or "").strip()
+        if not company_name:
             continue
-        if not await _company(db, _fact_value(facts.get("company"))):
+        if document.compliance_status == "active":
+            company = await _company(db, company_name)
+            if company:
+                document.company_id = company.id
+                matched += 1
+                event(db, document.id, "company_matched", details={"company_id": str(company.id)})
+            continue
+        if "company" not in facts.get("review_reasons", []) or not document.analysis:
             continue
         plans = await apply_analysis(db, document, document.analysis,
             uploaded_by_email=document.uploaded_by_email,
             uploaded_by_oid=document.uploaded_by_oid)
-        if not document.company_id:
+        if "company" in (document.compliance or {}).get("review_reasons", []):
             continue
         matched += 1
-        event(db, document.id, "company_matched", details={"company_id": str(document.company_id)})
+        if document.company_id:
+            event(db, document.id, "company_matched", details={"company_id": str(document.company_id)})
         for task, leads in plans:
             await populate_task_reminders(db, task, leads)
     return matched
@@ -301,7 +311,7 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
     reasons = [] if human_review else list(conflicts)
     if document_type == "unknown" or document_type not in DOCUMENT_TYPES or (document_type == "other" and not human_review):
         reasons.append("document_type")
-    if not company:
+    if not (_fact_value(facts.get("company")) or "").strip():
         reasons.append("company")
     if not actions:
         reasons.append("action_date")
@@ -355,7 +365,9 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
                 SharePointReminder.status.in_(["pending", "failed"])))).all():
                 reminder.status = "dismissed"
     event(db, document.id, "extracted", details={"document_type": document_type,
-        "company_id": str(company.id), "reference_number": _fact_value(facts.get("reference_number")),
+        "company_id": str(company.id) if company else None,
+        "company_name": _fact_value(facts.get("company")),
+        "reference_number": _fact_value(facts.get("reference_number")),
         "task_count": len(tasks)})
     await _supersede_previous(db, document, facts)
     # A late-arriving older copy can be superseded by a document already in
@@ -366,16 +378,21 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
 async def _supersede_previous(db: AsyncSession, new_document: SharePointDocument, facts: dict):
     reference = _fact_value(facts.get("reference_number"))
     expiry = _fact_value(facts.get("expiry_date"))
-    if not reference or not expiry or not new_document.company_id:
+    company_name = (_fact_value(facts.get("company")) or "").strip().casefold()
+    if not reference or not expiry or (not new_document.company_id and not company_name):
         return
     previous = (await db.scalars(select(SharePointDocument).where(
         SharePointDocument.source_id == new_document.source_id,
-        SharePointDocument.company_id == new_document.company_id,
         SharePointDocument.id != new_document.id,
         SharePointDocument.compliance_status == "active"))).all()
     matching = []
     for old in previous:
         old_facts = old.compliance or {}
+        old_company_name = (_fact_value(old_facts.get("company")) or "").strip().casefold()
+        same_catalog_company = bool(new_document.company_id and old.company_id == new_document.company_id)
+        same_extracted_company = bool(company_name and old_company_name == company_name)
+        if not same_catalog_company and not same_extracted_company:
+            continue
         if old_facts.get("document_type") != facts.get("document_type"):
             continue
         if str(_fact_value(old_facts.get("reference_number")) or "").casefold() != reference.casefold():

@@ -492,9 +492,10 @@ async def test_new_company_alias_reconciles_existing_document_without_new_ai_cal
     async with AsyncSessionLocal() as db:
         document = await db.get(SharePointDocument, indexed[2])
         document.analysis = saved_analysis
-        assert await apply_analysis(db, document, saved_analysis) == []
-        assert document.compliance_status == "needs_review"
-        assert "company" in document.compliance["review_reasons"]
+        plans = await apply_analysis(db, document, saved_analysis)
+        assert len(plans) == 1
+        assert document.compliance_status == "active"
+        original_task = plans[0][0]
 
         company = Company(name="Agiomix", slug="agiomix", aliases=["Agiomix FZ-LLC"])
         db.add(company)
@@ -508,10 +509,60 @@ async def test_new_company_alias_reconciles_existing_document_without_new_ai_cal
         assert document.compliance["review_reasons"] == []
         tasks = (await db.scalars(select(SharePointComplianceTask).where(
             SharePointComplianceTask.document_id == document.id))).all()
-        assert len(tasks) == 1 and tasks[0].owner_user_id == indexed[0]
-        reminders = (await db.scalars(select(SharePointReminder).where(
-            SharePointReminder.task_id == tasks[0].id))).all()
-        assert reminders
+        assert len(tasks) == 1 and tasks[0].id == original_task.id
+        assert tasks[0].owner_user_id == indexed[0]
+
+
+@pytest.mark.asyncio
+async def test_named_external_entity_creates_owned_task_and_reconciles_old_review(indexed):
+    facts = {"sections": [{"compliance": {
+        "document_type": "trade_license", "company": {"value": "ScanTest Technology LLC"},
+        "reference_number": {"value": "OCR-778899"},
+        "expiry_date": {"value": "2026-10-11"}, "required_actions": [],
+    }}]}
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        document.analysis = facts
+        document.compliance = {"company": {"value": "ScanTest Technology LLC"},
+            "review_reasons": ["company"]}
+        document.compliance_status = "needs_review"
+        await db.flush()
+
+        assert await reconcile_company_matches(db) == 1
+        assert await reconcile_company_matches(db) == 0
+        assert document.company_id is None
+        assert document.compliance_status == "active"
+        assert document.compliance["review_reasons"] == []
+        task = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == document.id))).one()
+        assert task.owner_user_id == indexed[0]
+        assert task.due_date.isoformat() == "2026-10-11"
+        assert (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task.id))).all()
+
+
+@pytest.mark.asyncio
+async def test_unregistered_entity_replacement_requires_same_name_and_reference(indexed):
+    async with AsyncSessionLocal() as db:
+        current = await db.get(SharePointDocument, indexed[2])
+        older = SharePointDocument(source_id=indexed[1], item_id="external-older",
+            parent_id="folder", in_scope=True, version="v1", filename="old.pdf", status="ready")
+        other = SharePointDocument(source_id=indexed[1], item_id="other-company",
+            parent_id="folder", in_scope=True, version="v1", filename="other.pdf", status="ready")
+        db.add_all([older, other])
+        await db.flush()
+
+        def facts(name, expiry):
+            return {"sections": [{"compliance": {"document_type": "trade_license",
+                "company": {"value": name}, "reference_number": {"value": "TL-100"},
+                "expiry_date": {"value": expiry}, "required_actions": []}}]}
+
+        await apply_analysis(db, current, facts("Vendor One LLC", "2027-12-31"))
+        await apply_analysis(db, other, facts("Vendor Two LLC", "2026-12-31"))
+        assert await apply_analysis(db, older, facts("Vendor One LLC", "2026-12-31")) == []
+        assert older.compliance_status == "superseded"
+        assert current.compliance_status == "active"
+        assert other.compliance_status == "active"
 
 
 @pytest.mark.asyncio
@@ -607,6 +658,33 @@ async def test_document_review_without_note_records_verified_facts(client, auth,
         assert old_task.status == "superseded"
         assert all(row.status != "pending" for row in old_reminders)
         assert new_task.id != old_task_id and new_task.due_date == date(2028, 7, 31)
+
+
+@pytest.mark.asyncio
+async def test_reviewer_can_confirm_external_entity_without_creating_company(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    response = await client.post(
+        f"/api/sharepoint/compliance/documents/{indexed[2]}/review", headers=auth,
+        json={"company_name": "External Vendor LLC", "document_type": "trade_license",
+              "reference_number": "EV-100", "expiry_date": "2027-07-31",
+              "owner_user_id": str(indexed[0])},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "active", "tasks_created": 1}
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        assert document.company_id is None
+        assert document.compliance["company"]["value"] == "External Vendor LLC"
+        reviewed = (await db.scalars(select(SharePointComplianceEvent).where(
+            SharePointComplianceEvent.document_id == document.id,
+            SharePointComplianceEvent.action == "reviewed"))).one()
+        assert reviewed.details["company_name"] == "External Vendor LLC"
+
+    dashboard = await client.get("/api/sharepoint/compliance/dashboard", headers=auth)
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["documents"][0]["company"] == "External Vendor LLC"
+    assert dashboard.json()["tasks"][0]["company"] == "External Vendor LLC"
 
 
 @pytest.mark.asyncio
