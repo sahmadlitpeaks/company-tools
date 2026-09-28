@@ -64,3 +64,19 @@ From `backend/`, run `python -m alembic heads` and `python -m pytest`. Test migr
 These tests use synthetic documents and mocked Graph responses. Before relying on real alerts, upload test files to the configured folder and verify the live Graph sync, delegated access for users with different permissions, extracted dates, owner rules, Teams delivery, and manager escalation. A successful local OpenAI call confirms the configured model/key but does not prove tenant connectivity or outbound delivery.
 
 For the manager's document-type trial, upload at least one Finance contract with a notice period, one Finance insurance or pricing document, one Admin licence, and one Admin agreement. Compare the extracted company, reference, dates, notice/action date, owner, task, and review reasons against each original. Verify both departments have connected, authorized members before checking scheduled reminders. The local synthetic tests cover these branches but do not replace real SharePoint and Teams acceptance checks.
+
+### Local synthetic PDF pack
+
+When a local test pack has `ground_truth.json` and its listed PDFs, evaluate every PDF without uploading it to SharePoint:
+
+```bash
+cd backend
+python scripts/evaluate_sharepoint_test_pack.py /path/to/files /path/to/results.json
+```
+
+Add `--live --max-spend-usd 3` to call the configured analysis model. Confirm the current input and output token prices on the [model page](https://developers.openai.com/api/docs/models/gpt-6-luna) before a paid run; the command's price flags default to GPT-6 Luna's September 2026 standard rates. It reserves a conservative maximum before each request, reports actual token usage when available, stops before the supplied cost ceiling, and never retries a failed provider request automatically. Keep the JSON result outside the repository because it contains extracted document facts. This test checks local extraction, OCR in an environment with Tesseract installed, and AI output; it does not create a SharePoint source, product catalogue entries, owners, tasks, or delivered reminders.
+
+The application treats embedded headings such as `Expected AI Action` and `AI Test Expectation` as test instructions, so those sections cannot supply task evidence or document-assistant answers. The original extracted text remains available in the protected document record. An older licence with the same verified company, type, reference and an earlier expiry is superseded even when it is processed after the newer licence.
+An explicitly suspended trade or regulatory licence creates an immediate action as well as any expiry action once its company and owner are verified.
+
+Product sheets currently appear as generic analysis with summary, price and date findings; they do not update the product catalogue. Pricing amendments are described in their own analysis but do not automatically replace master prices in other records. The compliance review queue remains necessary for documents with multiple possible companies, no configured owner, or an unclear notice clause. Do not interpret a successful local pack run as SharePoint sync or notification delivery proof.

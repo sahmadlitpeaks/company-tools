@@ -65,6 +65,7 @@ class ComplianceExtraction(StrictModel):
     type_evidence: list[Evidence] = Field(default_factory=list, max_length=5)
     company: TextFact | None = None
     reference_number: TextFact | None = None
+    document_status: TextFact | None = None
     issue_date: DateFact | None = None
     effective_date: DateFact | None = None
     expiry_date: DateFact | None = None

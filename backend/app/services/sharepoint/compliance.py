@@ -58,7 +58,7 @@ def _fact_value(fact):
 def combine_facts(analysis: dict) -> tuple[dict, list[str]]:
     """Reject conflicts between independently analyzed document chunks."""
     sections = analysis.get("sections") or [analysis]
-    fields = ("document_type", "company", "reference_number", "issue_date", "effective_date",
+    fields = ("document_type", "company", "reference_number", "document_status", "issue_date", "effective_date",
               "expiry_date", "renewal_date", "termination_notice")
     combined: dict = {"parties": [], "obligations": [], "required_actions": [], "validation_issues": []}
     conflicts: list[str] = []
@@ -245,6 +245,9 @@ def candidate_actions(facts: dict) -> list[tuple[str, str, date, str]]:
     result = []
     document_type = facts.get("document_type", "other")
     label = document_type.replace("_", " ").title()
+    status = (_fact_value(facts.get("document_status")) or "").strip().casefold()
+    if document_type in {"trade_license", "regulatory_license"} and status.startswith("suspended"):
+        result.append(("suspended_status", "Resolve suspended licence", date.today(), "status"))
     expiry = _fact_value(facts.get("expiry_date"))
     notice = (facts.get("termination_notice") or {}).get("days")
     if expiry:
@@ -256,7 +259,7 @@ def candidate_actions(facts: dict) -> list[tuple[str, str, date, str]]:
     renewal = _fact_value(facts.get("renewal_date"))
     if renewal:
         renewal_date = date.fromisoformat(renewal)
-        if not result or renewal_date != result[0][2]:
+        if not any(renewal_date == action[2] for action in result):
             result.append(("renewal", f"Renew {label}", renewal_date, "renewal"))
     for index, action in enumerate(facts.get("required_actions") or []):
         deadline = action.get("deadline")
@@ -350,7 +353,9 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
         "company_id": str(company.id), "reference_number": _fact_value(facts.get("reference_number")),
         "task_count": len(tasks)})
     await _supersede_previous(db, document, facts)
-    return [(task, leads) for task in tasks]
+    # A late-arriving older copy can be superseded by a document already in
+    # the catalogue. Do not schedule reminders for its now-closed task.
+    return [(task, leads) for task in tasks if task.status == "active"]
 
 
 async def _supersede_previous(db: AsyncSession, new_document: SharePointDocument, facts: dict):
@@ -363,6 +368,7 @@ async def _supersede_previous(db: AsyncSession, new_document: SharePointDocument
         SharePointDocument.company_id == new_document.company_id,
         SharePointDocument.id != new_document.id,
         SharePointDocument.compliance_status == "active"))).all()
+    matching = []
     for old in previous:
         old_facts = old.compliance or {}
         if old_facts.get("document_type") != facts.get("document_type"):
@@ -370,17 +376,31 @@ async def _supersede_previous(db: AsyncSession, new_document: SharePointDocument
         if str(_fact_value(old_facts.get("reference_number")) or "").casefold() != reference.casefold():
             continue
         old_expiry = _fact_value(old_facts.get("expiry_date"))
-        if not old_expiry or old_expiry >= expiry:
+        if not old_expiry:
             continue
-        old.compliance_status = "superseded"
-        for task in (await db.scalars(select(SharePointComplianceTask).where(
-            SharePointComplianceTask.document_id == old.id,
-            SharePointComplianceTask.status == "active"))).all():
-            task.status, task.superseded_by_id = "superseded", new_document.id
-            event(db, old.id, "task_superseded", task_id=task.id,
-                details={"replacement_id": str(new_document.id)})
-            for reminder in (await db.scalars(select(SharePointReminder).where(
-                SharePointReminder.task_id == task.id,
-                SharePointReminder.status.in_(["pending", "failed"])))).all():
-                reminder.status = "dismissed"
-        event(db, old.id, "document_superseded", details={"replacement_id": str(new_document.id)})
+        matching.append((old, old_expiry))
+
+    newer = [entry for entry in matching if entry[1] > expiry]
+    if newer:
+        replacement = max(newer, key=lambda entry: entry[1])[0]
+        await _supersede_document(db, new_document, replacement)
+        return
+    for old, old_expiry in matching:
+        if old_expiry < expiry:
+            await _supersede_document(db, old, new_document)
+
+
+async def _supersede_document(db: AsyncSession, old: SharePointDocument,
+                              replacement: SharePointDocument):
+    old.compliance_status = "superseded"
+    for task in (await db.scalars(select(SharePointComplianceTask).where(
+        SharePointComplianceTask.document_id == old.id,
+        SharePointComplianceTask.status == "active"))).all():
+        task.status, task.superseded_by_id = "superseded", replacement.id
+        event(db, old.id, "task_superseded", task_id=task.id,
+              details={"replacement_id": str(replacement.id)})
+        for reminder in (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task.id,
+            SharePointReminder.status.in_(["pending", "failed"])))).all():
+            reminder.status = "dismissed"
+    event(db, old.id, "document_superseded", details={"replacement_id": str(replacement.id)})

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.sharepoint import SharePointDocument, SharePointSource
 from app.models.user import User
+from app.services.sharepoint.analysis import source_segments
 from app.services.sharepoint.common import SharePointError, decrypt
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.privacy import restore
@@ -579,7 +580,7 @@ async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUI
 
     # Privacy preservation: DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
     # The outbound prompt contains sanitized text with placeholders
-    segments_text = format_segments_context(doc.segments or [])
+    segments_text = format_segments_context(source_segments(doc.segments or []))
     analysis_text = format_analysis_summary(doc.analysis)
 
     system_content = CHAT_SYSTEM_PROMPT.format(
@@ -738,7 +739,7 @@ async def ask_central(
                 metadata = {"id": doc.item_id or str(doc.id), "name": doc.filename, "webUrl": doc.web_url or ""}
             # DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
             # Pass sanitized segments and analysis
-            authorized_docs.append((doc, metadata, doc.segments or [], doc.analysis))
+            authorized_docs.append((doc, metadata, source_segments(doc.segments or []), doc.analysis))
         except SharePointError as error:
             if error.code in ("document_access_denied", "document_not_found", "document_changed_sync_required"):
                 continue
