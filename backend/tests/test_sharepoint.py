@@ -15,14 +15,15 @@ from sqlalchemy import select, update
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.sharepoint import SharePointConnection, SharePointDocument, SharePointReminder, SharePointSource
-from app.models.sharepoint import SharePointComplianceTask, SharePointOwnerRule
+from app.models.sharepoint import SharePointComplianceEvent, SharePointComplianceTask, SharePointOwnerRule
 from app.models.company import Company
+from app.models.department import Department
 from app.models.user import User
-from app.schemas.sharepoint import DocumentAnalysis
+from app.schemas.sharepoint import ComplianceReviewIn, DocumentAnalysis
 from app.services.sharepoint import analysis, graph, privacy, worker
 from app.services.sharepoint.compliance import (
     apply_analysis, candidate_actions, combine_facts, reconcile_company_matches,
-    reconcile_optional_fact_reviews,
+    reconcile_optional_fact_reviews, resolve_owner,
 )
 from app.services.sharepoint.common import SharePointError, decrypt, encrypt, now
 from app.services.sharepoint.store import enqueue, source_for
@@ -115,6 +116,23 @@ def test_source_placeholder_cannot_spoof_identity():
 def test_unsupported_and_empty(extension, data, code):
     with pytest.raises(SharePointError, match=code):
         privacy.extract(data, extension, 1000)
+
+
+@pytest.mark.parametrize("extension,data,code", [
+    ("txt", b"\xff", "invalid_text_encoding"),
+    ("pdf", b"not a PDF", "invalid_pdf"),
+    ("docx", b"not an Office archive", "invalid_office_document"),
+    ("xlsx", b"not an Office archive", "invalid_office_document"),
+    ("exe", b"binary", "unsupported_type"),
+])
+def test_parser_reports_file_failure_before_ai(extension, data, code):
+    class Pipe:
+        result = None
+        def send(self, value): self.result = value
+        def close(self): pass
+    pipe = Pipe()
+    privacy._child(pipe, data, extension, 1000)
+    assert pipe.result == (False, code)
 
 
 def test_text_bom_limit_and_docx():
@@ -222,6 +240,44 @@ def test_evidence_validation_without_redaction():
         analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
 
 
+def test_quoted_dates_normalize_without_rejecting_entire_analysis():
+    quote = "The agreement expires 31 July 2027 and notice is required before then."
+    segments = [{"id": "s1", "location": "Text", "text": quote}]
+    value = analyzed(segments)["sections"][0]
+    evidence = [{"segment_id": "s1", "quote": quote}]
+    value["deadlines"] = [{"title": "Review notice", "owner": None,
+                           "deadline": "31 July 2027", "status": "unknown",
+                           "priority": "unknown", "evidence": evidence}]
+    value["expiries"] = [{"title": "Agreement expiry", "date": "31 July 2027",
+                          "evidence": evidence}]
+    value["compliance"]["expiry_date"] = {"value": "31 July 2027", "evidence": evidence}
+    result = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(result, segments)
+    assert result.deadlines[0].deadline == "2027-07-31"
+    assert result.expiries[0].date == "2027-07-31"
+    assert result.compliance.expiry_date.value == "2027-07-31"
+    assert result.compliance.validation_issues == []
+
+
+def test_ambiguous_dates_are_removed_and_require_review():
+    quote = "The agreement expires 01/02/2027."
+    segments = [{"id": "s1", "location": "Text", "text": quote}]
+    value = analyzed(segments)["sections"][0]
+    evidence = [{"segment_id": "s1", "quote": quote}]
+    value["deadlines"] = [{"title": "Review expiry", "owner": None,
+                           "deadline": "01/02/2027", "status": "unknown",
+                           "priority": "unknown", "evidence": evidence}]
+    value["expiries"] = [{"title": "Agreement expiry", "date": "01/02/2027",
+                          "evidence": evidence}]
+    value["compliance"]["expiry_date"] = {"value": "01/02/2027", "evidence": evidence}
+    result = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(result, segments)
+    assert result.deadlines[0].deadline is None
+    assert result.expiries == []
+    assert result.compliance.expiry_date is None
+    assert {"deadline", "expiry_date"} <= set(result.compliance.validation_issues)
+
+
 def test_unsupported_compliance_fact_enters_review_instead_of_failing_analysis():
     segments = [{"id": "s1", "location": "Text", "text": "Agiomix Trade License expires 15 December 2026."}]
     value = analyzed(segments)["sections"][0]
@@ -263,12 +319,20 @@ def test_natural_language_date_is_grounded_in_cited_quote():
                           "evidence": [{"segment_id": "s1", "quote": "Expiry Date 31 Jul 2027"}]}]
     analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
     value["expiries"][0]["date"] = "2026-08-01"
-    with pytest.raises(SharePointError, match="unsupported_expiry_date"):
-        analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    unsupported = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(unsupported, segments)
+    assert unsupported.expiries == []
+    assert "expiry_date" in unsupported.compliance.validation_issues
     assert analysis._dates_in_quote("31st July 2027") == {"2027-07-31"}
     assert analysis._dates_in_quote("July 31, 2027") == {"2027-07-31"}
     assert analysis._dates_in_quote("31/07/2027") == set()
     assert analysis._dates_in_quote("31 Feb 2027") == set()
+
+
+def test_review_note_is_optional_and_accepts_short_context():
+    data = {"company_id": uuid.uuid4(), "document_type": "trade_license"}
+    assert ComplianceReviewIn.model_validate(data).review_note is None
+    assert ComplianceReviewIn.model_validate({**data, "review_note": "OK"}).review_note == "OK"
 
 
 def test_contract_notice_is_action_date_not_expiry_date():
@@ -391,6 +455,35 @@ async def test_uncertain_compliance_stays_in_review_without_task(indexed):
 
 
 @pytest.mark.asyncio
+async def test_document_review_without_note_records_verified_facts(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        company = Company(name="Agiomix", slug="agiomix")
+        db.add(company)
+        await db.flush()
+        company_id = company.id
+        await db.commit()
+
+    response = await client.post(
+        f"/api/sharepoint/compliance/documents/{indexed[2]}/review", headers=auth,
+        json={"company_id": str(company_id), "document_type": "trade_license",
+              "reference_number": "TL-123", "expiry_date": "2027-07-31",
+              "owner_user_id": str(indexed[0])},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "active", "tasks_created": 1}
+    async with AsyncSessionLocal() as db:
+        reviewed = (await db.scalars(select(SharePointComplianceEvent).where(
+            SharePointComplianceEvent.document_id == indexed[2],
+            SharePointComplianceEvent.action == "reviewed"))).one()
+        assert reviewed.actor_id == indexed[0]
+        assert reviewed.details["reference_number"] == "TL-123"
+        assert reviewed.details["expiry_date"] == "2027-07-31"
+        assert "note" not in reviewed.details
+
+
+@pytest.mark.asyncio
 async def test_compliance_dashboard_permission_and_completion_stop_reminders(client, auth, indexed, monkeypatch):
     from app.models.notification import Notification
     from app.services.sharepoint.reminders import deliver_reminder, populate_task_reminders
@@ -445,6 +538,7 @@ async def test_compliance_dashboard_permission_and_completion_stop_reminders(cli
             lambda *args, **kwargs: sent_cards.append(kwargs) or True)
         assert await deliver_reminder(db, due) is True
         assert due.status == "sent" and len(sent_cards) == 1
+        assert due.delivery_channels == ["teams"]
         assert sent_cards[0]["link"] == "/sharepoint/compliance"
         assert await deliver_reminder(db, due) is False
         assert len(sent_cards) == 1
@@ -485,6 +579,139 @@ async def test_compliance_dashboard_permission_and_completion_stop_reminders(cli
     monkeypatch.setattr(graph.GraphClient, "can_read", denied)
     hidden = await client.get("/api/sharepoint/compliance/dashboard", headers=auth)
     assert hidden.status_code == 200 and hidden.json()["documents"] == []
+
+
+@pytest.mark.asyncio
+async def test_finance_admin_folder_routing_and_manual_reassignment(client, auth, indexed, monkeypatch):
+    from app.models.sharepoint import SharePointComplianceEvent
+    from app.services.sharepoint.reminders import populate_task_reminders
+
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        finance = (await db.scalars(select(Department).where(Department.name == "Finance"))).one()
+        admin_department = (await db.scalars(select(Department).where(Department.name == "Admin"))).one()
+        unavailable = await resolve_owner(db, None, "trade_license",
+            document_path="/Shared Documents/Finance/licence.pdf")
+        assert unavailable[:3] == (None, None, "folder_department_unavailable")
+        finance_user = User(email="finance@example.com", display_name="Finance Owner",
+            role="member", status="active", is_active=True, department_id=finance.id)
+        db.add(finance_user)
+        admin_user = await db.get(User, indexed[0])
+        admin_user.department_id = admin_department.id
+        db.add(SharePointOwnerRule(owner_user_id=admin_user.id, priority=1))
+        await db.flush()
+        assert (await resolve_owner(db, None, "trade_license",
+            document_path="/Shared Documents/Finance/licence.pdf"))[1:3] == (finance.id, "folder_department")
+        assert (await resolve_owner(db, None, "trade_license",
+            document_path="/Shared Documents/ADMIN/licence.pdf"))[1:3] == (admin_department.id, "folder_department")
+        assert (await resolve_owner(db, None, "trade_license",
+            document_path="/Shared Documents/Finances/licence.pdf"))[2] != "folder_department"
+        company = Company(name="Agiomix", slug="agiomix")
+        db.add(company)
+        document = await db.get(SharePointDocument, indexed[2])
+        document.path = "/Shared Documents/Finance/licence.pdf"
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "trade_license", "company": {"value": "Agiomix"},
+            "reference_number": {"value": "TL-123"}, "expiry_date": {"value": "2027-07-31"}}}]})
+        task, leads = plans[0]
+        assert task.owner_department_id == finance.id
+        await populate_task_reminders(db, task, leads)
+        await db.commit()
+        task_id, finance_id, admin_id = task.id, finance.id, admin_department.id
+
+    response = await client.post(f"/api/sharepoint/compliance/tasks/{task_id}/assign", headers=auth,
+        json={"owner_department_id": str(admin_id), "note": "Admin handles this renewal."})
+    assert response.status_code == 200, response.text
+    async with AsyncSessionLocal() as db:
+        task = await db.get(SharePointComplianceTask, task_id)
+        assert task.owner_department_id == admin_id and task.assignment_source == "manual"
+        reminders = (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task_id))).all()
+        assert any(row.recipient_email == "finance@example.com" and row.status == "dismissed" for row in reminders)
+        assert any(row.recipient_email == "admin@agholding.net" and row.status == "pending" for row in reminders)
+        events = (await db.scalars(select(SharePointComplianceEvent).where(
+            SharePointComplianceEvent.task_id == task_id,
+            SharePointComplianceEvent.action == "task_reassigned"))).all()
+        assert len(events) == 1 and events[0].details["from_department_id"] == str(finance_id)
+        task.status = "suspended"
+        document = await db.get(SharePointDocument, task.document_id)
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "trade_license", "company": {"value": "Agiomix"},
+            "reference_number": {"value": "TL-123"}, "expiry_date": {"value": "2027-07-31"}}}]})
+        assert plans[0][0].owner_department_id == admin_id
+        assert plans[0][0].assignment_source == "manual"
+        await db.commit()
+
+    same = await client.post(f"/api/sharepoint/compliance/tasks/{task_id}/assign", headers=auth,
+        json={"owner_department_id": str(admin_id), "note": "No change"})
+    assert same.status_code == 409
+    async with AsyncSessionLocal() as db:
+        admin_user = await db.get(User, indexed[0]); admin_user.is_admin = False; admin_user.role = "member"
+        admin_user.permissions = ["sharepoint_intelligence"]
+        await db.commit()
+    forbidden = await client.post(f"/api/sharepoint/compliance/tasks/{task_id}/assign", headers=auth,
+        json={"owner_department_id": str(finance_id), "note": "Attempted change"})
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_folder_owner_rule_can_be_edited_and_duplicate_scope_rejected(client, auth, indexed):
+    async with AsyncSessionLocal() as db:
+        finance = (await db.scalars(select(Department).where(Department.name == "Finance"))).one()
+        admin_department = (await db.scalars(select(Department).where(Department.name == "Admin"))).one()
+        db.add(User(email="finance@example.com", display_name="Finance Owner", role="member",
+            status="active", is_active=True, department_id=finance.id))
+        (await db.get(User, indexed[0])).department_id = admin_department.id
+        await db.commit()
+        finance_id, admin_id = finance.id, admin_department.id
+    body = {"folder_name": "Finance", "owner_department_id": str(finance_id), "reminder_leads": [30, 7, 0, -1]}
+    created = await client.post("/api/sharepoint/compliance/rules", headers=auth, json=body)
+    assert created.status_code == 201, created.text
+    rule_id = created.json()["id"]
+    assert (await client.post("/api/sharepoint/compliance/rules", headers=auth, json=body)).status_code == 409
+    updated = await client.put(f"/api/sharepoint/compliance/rules/{rule_id}", headers=auth,
+        json={**body, "owner_department_id": str(admin_id), "reminder_leads": [14, 0]})
+    assert updated.status_code == 200, updated.text
+    rules = (await client.get("/api/sharepoint/compliance/rules", headers=auth)).json()
+    assert rules[0]["folder_name"] == "Finance" and rules[0]["owner_department_id"] == str(admin_id)
+    async with AsyncSessionLocal() as db:
+        selected = await resolve_owner(db, None, "insurance",
+            document_path="/Shared Documents/Finance/insurance.pdf")
+        assert selected[1:4] == (admin_id, "rule", [14, 0])
+
+
+@pytest.mark.asyncio
+async def test_different_document_types_keep_correct_deadlines_and_departments(indexed):
+    async with AsyncSessionLocal() as db:
+        finance = (await db.scalars(select(Department).where(Department.name == "Finance"))).one()
+        admin_department = (await db.scalars(select(Department).where(Department.name == "Admin"))).one()
+        db.add(User(email="finance@example.com", display_name="Finance Owner", role="member",
+            status="active", is_active=True, department_id=finance.id))
+        (await db.get(User, indexed[0])).department_id = admin_department.id
+        db.add(Company(name="Agiomix", slug="agiomix"))
+        await db.flush()
+        cases = [
+            ("contract", "/Shared Documents/Finance/supplier-contract.pdf", "2026-12-31",
+             {"days": 60}, finance.id, "2026-11-01", "Review termination or renewal notice"),
+            ("insurance", "/Shared Documents/ADMIN/insurance.pdf", "2027-01-15",
+             None, admin_department.id, "2027-01-15", "Renew Insurance"),
+        ]
+        for index, (kind, path, expiry, notice, department_id, due, title) in enumerate(cases):
+            document = SharePointDocument(source_id=indexed[1], item_id=f"workflow-case-{index}",
+                parent_id="folder", in_scope=True, version="v1", filename=path.rsplit("/", 1)[-1],
+                path=path, status="ready")
+            db.add(document)
+            await db.flush()
+            plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+                "document_type": kind, "company": {"value": "Agiomix"},
+                "expiry_date": {"value": expiry}, "termination_notice": notice}}]})
+            assert len(plans) == 1
+            task = plans[0][0]
+            assert document.compliance_status == "active"
+            assert task.owner_department_id == department_id
+            assert task.due_date.isoformat() == due
+            assert task.title == title
 
 
 def test_encryption_rotation_and_missing_key(configured, monkeypatch):
@@ -924,6 +1151,34 @@ async def test_openai_uses_only_official_endpoint_direct_payload_and_no_store(co
     assert calls[0]["store"] is False and calls[0]["text_format"] is DocumentAnalysis
     assert "[PERSON_1]" in calls[0]["input"][1]["content"]
     assert "filename" not in calls[0]["input"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_schema_failure_is_not_reported_as_provider_outage(configured, monkeypatch):
+    class FakeOpenAI:
+        def __init__(self, **kwargs): self.responses = self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def parse(self, **kwargs):
+            DocumentAnalysis.model_validate({"summary": None})
+    monkeypatch.setattr(analysis, "AsyncOpenAI", FakeOpenAI)
+    with pytest.raises(SharePointError, match="analysis_invalid_output"):
+        await analysis.analyze([{"id": "s1", "location": "Text", "text": "Agreement"}])
+
+
+@pytest.mark.asyncio
+async def test_openai_rate_limit_has_distinct_retryable_code(configured, monkeypatch):
+    from openai import RateLimitError
+    class FakeOpenAI:
+        def __init__(self, **kwargs): self.responses = self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def parse(self, **kwargs):
+            response = httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com/v1/responses"))
+            raise RateLimitError("rate limit", response=response, body={})
+    monkeypatch.setattr(analysis, "AsyncOpenAI", FakeOpenAI)
+    with pytest.raises(SharePointError, match="analysis_rate_limited"):
+        await analysis.analyze([{"id": "s1", "location": "Text", "text": "Agreement"}])
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ export type SharePointStatus = {
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
   openai_configured: boolean; active_run: boolean;
   polling_enabled: boolean; sync_interval_seconds: number;
+  scheduler_enabled: boolean; email_configured: boolean; teams_configured: boolean;
   run: SharePointRun | null; last_sync: string | null; languages: string[];
 };
 
@@ -80,6 +81,9 @@ export type SharePointReminder = {
   status: "pending" | "sent" | "completed" | "dismissed" | "overdue" | "failed";
   notes?: string | null;
   sent_at?: string | null;
+  delivery_channels?: string[] | null;
+  last_error?: string | null;
+  attempts?: number;
 };
 
 export type ChatCitation = {
@@ -109,6 +113,35 @@ export type CentralChatIn = {
 };
 
 export function readableStatus(value: string) {
+  const documentErrors: Record<string, string> = {
+    analysis_invalid_output: "The AI returned details it could not validate. Retry processing or ask an administrator to review this file.",
+    analysis_provider_error: "The AI service could not complete analysis. Please retry later.",
+    analysis_rate_limited: "The AI service is busy. Please retry in a few minutes.",
+    analysis_auth_error: "The AI connection needs administrator attention.",
+    invalid_text_encoding: "This text file could not be read. Save it as UTF-8 or UTF-16 and upload it again.",
+    invalid_pdf: "This PDF could not be read. Re-save or repair it, then upload it again.",
+    invalid_office_document: "This Word or Excel file could not be read. Re-save it as a valid DOCX or XLSX, then upload it again.",
+    unsupported_type: "This file type cannot be analyzed. Supported files are TXT, PDF, DOCX, and XLSX.",
+    encrypted_document: "This file is password protected. Upload an unlocked copy for analysis.",
+    empty_document: "No readable text was found in this file. Check the original and upload a copy with selectable text.",
+    needs_ocr: "This scan has no readable text. Upload a searchable PDF or a clearer copy.",
+    ocr_unavailable: "Text recognition is unavailable. Ask an administrator to check the document processor.",
+    incomplete_visual_content: "Important content is embedded as images. Upload a searchable copy so it can be analyzed safely.",
+    formula_requires_review: "This spreadsheet contains formulas that need review before analysis.",
+    text_limit: "This document has too much text to analyze. Split it into smaller files.",
+    page_limit: "This PDF exceeds the page limit. Split it into smaller files.",
+    image_limit: "This file contains too many or oversized images. Upload a smaller searchable copy.",
+    cell_limit: "This spreadsheet has too many cells to analyze. Split it into smaller files.",
+    archive_limit: "This Office file exceeds the safe processing limit. Split or simplify it and upload it again.",
+    parser_timeout: "Reading this file took too long. Try a smaller or simplified copy.",
+    parser_memory_limit: "Reading this file exceeded the processor memory limit. Try a smaller copy.",
+    file_too_large: "This file is too large to process. Upload a smaller copy.",
+    document_changed_sync_required: "This file changed in SharePoint during processing. Sync again to analyze the latest version.",
+    analysis_incomplete_or_refused: "The AI did not finish analyzing this file. Retry processing or ask an administrator to review it.",
+    openai_not_configured: "AI analysis is not configured. Ask an administrator to check the connection.",
+    extraction_failed: "The file could not be read. Check that it opens correctly, then upload it again.",
+  };
+  if (documentErrors[value]) return documentErrors[value];
   return value.replace(/_/g, " ");
 }
 

@@ -3,7 +3,7 @@
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company import Company
@@ -159,29 +159,61 @@ async def reconcile_optional_fact_reviews(db: AsyncSession) -> int:
     return updated
 
 
+def matching_folder(document_path: str | None, folder_name: str | None) -> bool:
+    if not document_path or not folder_name:
+        return False
+    parent_parts = document_path.replace("\\", "/").split("/")[:-1]
+    return folder_name.casefold() in {part.casefold() for part in parent_parts if part}
+
+
+async def _active_department_owner(db: AsyncSession, department_id):
+    department = await db.get(Department, department_id)
+    if not department:
+        return None
+    member = (await db.scalars(select(User).where(
+        User.department_id == department_id, User.is_active.is_(True),
+        User.status == "active", User.email.is_not(None),
+        func.length(func.trim(User.email)) > 0).limit(1))).first()
+    return department if member else None
+
+
 async def resolve_owner(db: AsyncSession, company_id, document_type: str,
-                        uploaded_by_email: str | None = None, uploaded_by_oid: str | None = None):
+                        uploaded_by_email: str | None = None, uploaded_by_oid: str | None = None,
+                        *, document_path: str | None = None):
     rules = (await db.scalars(select(SharePointOwnerRule).where(SharePointOwnerRule.is_active.is_(True))
         .order_by(SharePointOwnerRule.priority.asc(), SharePointOwnerRule.created_at.asc()))).all()
     rules = sorted(rules, key=lambda rule: (
+        0 if rule.folder_name else 1,
         0 if rule.company_id == company_id else 1,
         0 if rule.document_type == document_type else 1,
         rule.priority,
     ))
-    for rule in rules:
-        if rule.company_id not in (None, company_id) or rule.document_type not in (None, document_type):
-            continue
+    async def rule_owner(rule):
         if rule.owner_user_id:
             owner = await db.get(User, rule.owner_user_id)
             if owner and owner.is_active and owner.status == "active" and owner.email:
                 return owner.id, None, "rule", rule.reminder_leads or list(DEFAULT_LEADS)
         if rule.owner_department_id:
-            department = await db.get(Department, rule.owner_department_id)
-            member = (await db.scalars(select(User).where(
-                User.department_id == rule.owner_department_id, User.is_active.is_(True),
-                User.status == "active", User.email.is_not(None)).limit(1))).first()
-            if department and member:
+            department = await _active_department_owner(db, rule.owner_department_id)
+            if department:
                 return None, department.id, "rule", rule.reminder_leads or list(DEFAULT_LEADS)
+        return None, None, "rule_owner_unavailable", rule.reminder_leads or list(DEFAULT_LEADS)
+
+    for rule in rules:
+        if (rule.folder_name and matching_folder(document_path, rule.folder_name) and
+            rule.company_id in (None, company_id) and rule.document_type in (None, document_type)):
+            return await rule_owner(rule)
+    for department_name in ("Finance", "Admin"):
+        if matching_folder(document_path, department_name):
+            department = (await db.scalars(select(Department).where(
+                func.lower(Department.name) == department_name.lower()).limit(1))).first()
+            if department and await _active_department_owner(db, department.id):
+                return None, department.id, "folder_department", list(DEFAULT_LEADS)
+            return None, None, "folder_department_unavailable", list(DEFAULT_LEADS)
+    for rule in rules:
+        if (not rule.folder_name and rule.company_id in (None, company_id) and
+            rule.document_type in (None, document_type)):
+            return await rule_owner(rule)
     if uploaded_by_email or uploaded_by_oid:
         from sqlalchemy import or_
         checks = []
@@ -241,11 +273,28 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
     company = await db.get(Company, override_company_id) if override_company_id else await _company(db, _fact_value(facts.get("company")))
     document_type = facts["document_type"]
     owner_user_id, owner_department_id, assignment, leads = await resolve_owner(
-        db, company.id if company else None, document_type, uploaded_by_email, uploaded_by_oid)
+        db, company.id if company else None, document_type, uploaded_by_email, uploaded_by_oid,
+        document_path=document.path)
     if override_owner_user_id or override_owner_department_id:
         owner_user_id, owner_department_id = override_owner_user_id, override_owner_department_id
         assignment = "human_review"
     actions = candidate_actions(facts)
+    manual_owners = {}
+    for key, title, due, _ in actions:
+        action_key = digest([key, title, due.isoformat()])[:64]
+        old_task = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == document.id,
+            SharePointComplianceTask.action_key == action_key,
+            SharePointComplianceTask.assignment_source == "manual",
+            SharePointComplianceTask.status.in_(["active", "suspended"])))).first()
+        if old_task and old_task.owner_user_id:
+            manual_owner = await db.get(User, old_task.owner_user_id)
+            if manual_owner and manual_owner.is_active and manual_owner.status == "active" and manual_owner.email:
+                manual_owners[action_key] = (manual_owner.id, None)
+        elif old_task and old_task.owner_department_id:
+            department = await _active_department_owner(db, old_task.owner_department_id)
+            if department:
+                manual_owners[action_key] = (None, department.id)
     reasons = [] if human_review else list(conflicts)
     if document_type == "unknown" or document_type not in DOCUMENT_TYPES or (document_type == "other" and not human_review):
         reasons.append("document_type")
@@ -253,7 +302,7 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
         reasons.append("company")
     if not actions:
         reasons.append("action_date")
-    if not owner_user_id and not owner_department_id:
+    if not owner_user_id and not owner_department_id and len(manual_owners) != len(actions):
         reasons.append("owner")
     if facts.get("termination_notice") and not facts.get("expiry_date"):
         reasons.append("notice_without_expiry")
@@ -283,8 +332,11 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
                   details={"due_date": due.isoformat(), "assignment": assignment})
         elif task.status == "suspended":
             task.status = "active"
-            task.owner_user_id, task.owner_department_id = owner_user_id, owner_department_id
-            task.assignment_source = assignment
+            if action_key in manual_owners and not (override_owner_user_id or override_owner_department_id):
+                task.owner_user_id, task.owner_department_id = manual_owners[action_key]
+            else:
+                task.owner_user_id, task.owner_department_id = owner_user_id, owner_department_id
+                task.assignment_source = assignment
             event(db, document.id, "task_reactivated", task_id=task.id)
         tasks.append(task)
     active_keys = {task.action_key for task in tasks}

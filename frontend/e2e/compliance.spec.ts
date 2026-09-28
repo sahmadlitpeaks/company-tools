@@ -42,6 +42,7 @@ test.beforeEach(async ({ page }) => {
       enabled: true, configured: true, missing: [], connected: true,
       microsoft_sign_in_required: false, can_review: true, user_id: "admin-1",
       openai_configured: true, active_run: false, polling_enabled: true,
+      scheduler_enabled: true, email_configured: false, teams_configured: true,
       sync_interval_seconds: 60, last_sync: null, run: null, languages: ["en"],
     };
     else if (path === "/api/sharepoint/compliance/dashboard") body = {
@@ -52,7 +53,8 @@ test.beforeEach(async ({ page }) => {
     };
     else if (path === "/api/sharepoint/compliance/options") body = {
       companies: [{ id: "company-1", name: "Agiomix" }],
-      departments: [], users: [{ id: "admin-1", name: "Alex Admin" }],
+      departments: [{ id: "finance-1", name: "Finance" }, { id: "admin-dept-1", name: "Admin" }],
+      users: [{ id: "admin-1", name: "Alex Admin" }],
     };
     else if (path === "/api/sharepoint/compliance/rules") body = [];
     else if (path === "/api/sharepoint/documents/doc-1") body = {
@@ -65,6 +67,7 @@ test.beforeEach(async ({ page }) => {
       versions: [], events: [{ id: "event-1", action: "task_created", at: "2026-09-24T10:00:00Z", details: null }],
     };
     else if (path === "/api/sharepoint/compliance/tasks/task-1" && route.request().method() === "PATCH") body = { id: "task-1", status: "completed" };
+    else if (path === "/api/sharepoint/compliance/tasks/task-1/assign" && route.request().method() === "POST") body = { id: "task-1", owner_department_id: "finance-1" };
     await route.fulfill({ json: body });
   });
 });
@@ -116,6 +119,56 @@ test("completing an owned task calls the task workflow", async ({ page }) => {
   expect((await request).postDataJSON()).toEqual({ status: "completed" });
 });
 
+test("a reviewer can change an active task owner with an audit reason", async ({ page }) => {
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Tasks");
+  await page.getByRole("button", { name: "Change owner" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change task owner" });
+  await expect(dialog.getByText("Current owner: Alex Admin")).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await dialog.getByRole("combobox", { name: "Assign to" }).click();
+  await page.getByRole("option", { name: "Department" }).click();
+  await dialog.getByRole("combobox", { name: "New owner" }).click();
+  await page.getByRole("option", { name: "Finance" }).click();
+  await dialog.getByRole("textbox", { name: "Reason for change" }).fill("Finance handles this renewal.");
+  const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/tasks/task-1/assign") && item.method() === "POST");
+  await dialog.getByRole("button", { name: "Save owner" }).click();
+  expect((await request).postDataJSON()).toEqual({ owner_user_id: null, owner_department_id: "finance-1", note: "Finance handles this renewal." });
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test("governance edits a folder rule and shows real notification channel state", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/rules", (route) => route.fulfill({ json: [{
+    id: "rule-1", company_id: null, document_type: null, folder_name: "Finance",
+    owner_user_id: null, owner_department_id: "finance-1", reminder_leads: [30, 7, 0, -1],
+    priority: 100, is_active: true,
+  }] }));
+  await page.route("**/api/sharepoint/compliance/rules/rule-1", (route) => route.fulfill({ json: { id: "rule-1" } }));
+  await page.route("**/api/sharepoint/reminders?category=compliance_task", (route) => route.fulfill({ json: [{
+    id: "reminder-1", task_id: "task-1", document_id: "doc-1", document_name: document.name,
+    title: "Renew Trade License", category: "compliance_task", target_date: "2026-12-15",
+    reminder_date: "2026-09-24", lead_days: 60, responsible_name: "Alex Admin",
+    recipient_email: "admin@example.com", amount: null, currency: null,
+    status: "sent", sent_at: "2026-09-24T10:00:00Z", delivery_channels: ["teams"],
+  }] }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Governance");
+  await expect(page.getByText("Finance folder · Any · Any document type")).toBeVisible();
+  await expect(page.getByText("Teams configured")).toBeVisible();
+  await expect(page.getByText("Email off")).toBeVisible();
+  await expect(page.getByText("Sent via teams")).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('[role="tabpanel"]').analyze()).violations).toEqual([]);
+  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByRole("textbox", { name: "SharePoint folder name" })).toHaveValue("Finance");
+  await page.getByRole("combobox", { name: "Responsible owner" }).click();
+  await page.getByRole("option", { name: "Admin" }).click();
+  const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/rules/rule-1") && item.method() === "PUT");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  expect((await request).postDataJSON()).toMatchObject({ folder_name: "Finance", owner_department_id: "admin-dept-1" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
 test("uncertain extraction waits for a reviewer before activating tasks", async ({ page }) => {
   await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
     summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
@@ -135,8 +188,8 @@ test("uncertain extraction waits for a reviewer before activating tasks", async 
   await openView(page, "Review");
   await expect(page.getByText("Needs review · 1")).toBeVisible();
   await page.getByRole("button", { name: "Verify" }).click();
-  await page.getByLabel("Review note").fill("Verified against the SharePoint original.");
+  await expect(page.getByLabel("Review note (optional)")).toBeVisible();
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
-  expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: "Verified against the SharePoint original." });
+  expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: null });
 });

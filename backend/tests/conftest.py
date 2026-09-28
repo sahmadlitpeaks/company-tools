@@ -11,6 +11,11 @@ os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["RUN_SCHEDULER"] = "false"
 os.environ["TEAMS_WEBHOOK_URL"] = ""
 os.environ["SLACK_WEBHOOK_URL"] = ""
+# Local developer credentials must never make test fixtures send real mail.
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_USER"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["SMTP_FROM"] = ""
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402

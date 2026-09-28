@@ -252,7 +252,8 @@ async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTa
         if department:
             recipients = list((await db.scalars(select(User).where(
                 User.department_id == department.id,
-                User.is_active.is_(True), User.status == "active", User.email.is_not(None)))).all())
+                User.is_active.is_(True), User.status == "active", User.email.is_not(None),
+                func.length(func.trim(User.email)) > 0))).all())
     for recipient in recipients:
         for lead in sorted(set(leads), reverse=True):
             if not isinstance(lead, int) or lead < -365 or lead > 730:
@@ -484,6 +485,7 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
     if email_sent or teams_sent:
         reminder.status = "sent"
         reminder.sent_at = now()
+        reminder.delivery_channels = (["email"] if email_sent else []) + (["teams"] if teams_sent else [])
         reminder.last_error = None
         if reminder.task_id:
             from app.services.sharepoint.compliance import event

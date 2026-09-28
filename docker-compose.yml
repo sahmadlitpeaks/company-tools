@@ -85,7 +85,7 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@agholding.net}
+      SMTP_FROM: ${SMTP_FROM:-}
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
     depends_on:
       db:

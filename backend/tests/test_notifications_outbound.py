@@ -1,6 +1,6 @@
 import pytest
 
-from app.services import dispatch
+from app.services import dispatch, email
 
 
 def test_deliver_gating_no_config(monkeypatch):
@@ -58,6 +58,66 @@ def test_deliver_swallows_transport_errors(monkeypatch):
     monkeypatch.setattr(dispatch, "send_email", boom)
     # Should not raise; email failed so no channels reported.
     assert dispatch.deliver_notification(to_email="a@b.com", title="Hi") == []
+
+
+def test_brevo_smtp_requires_key_and_explicit_sender(monkeypatch):
+    monkeypatch.setattr(email.settings, "SMTP_HOST", "smtp-relay.brevo.com")
+    monkeypatch.setattr(email.settings, "SMTP_USER", "relay@smtp-brevo.com")
+    monkeypatch.setattr(email.settings, "SMTP_PASSWORD", "")
+    monkeypatch.setattr(email.settings, "SMTP_FROM", "")
+    assert not dispatch.email_enabled()
+    assert email.send_email("recipient@example.com", "Test", "<p>Test</p>") is False
+
+    monkeypatch.setattr(email.settings, "SMTP_PASSWORD", "test-smtp-key")
+    monkeypatch.setattr(email.settings, "SMTP_FROM", "relay@smtp-brevo.com")
+    assert not dispatch.email_enabled()
+    monkeypatch.setattr(email.settings, "SMTP_FROM", "verified@example.com")
+    monkeypatch.setattr(email.settings, "SMTP_PORT", 587)
+    monkeypatch.setattr(email.settings, "SMTP_STARTTLS", True)
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            sent["connection"] = (host, port, timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def starttls(self):
+            sent["tls"] = True
+
+        def login(self, user, password):
+            sent["login"] = (user, password)
+
+        def send_message(self, message):
+            sent["message"] = message
+
+    monkeypatch.setattr(email.smtplib, "SMTP", FakeSMTP)
+    assert dispatch.email_enabled()
+    assert email.send_email("recipient@example.com", "Test", "<p>Test</p>") is True
+    assert sent["connection"] == ("smtp-relay.brevo.com", 587, 15)
+    assert sent["tls"] is True
+    assert sent["login"] == ("relay@smtp-brevo.com", "test-smtp-key")
+    assert sent["message"]["From"] == "verified@example.com"
+    assert sent["message"]["To"] == "recipient@example.com"
+
+
+@pytest.mark.asyncio
+async def test_sharepoint_status_waits_for_complete_brevo_settings(client, auth, monkeypatch):
+    monkeypatch.setattr(email.settings, "SMTP_HOST", "smtp-relay.brevo.com")
+    monkeypatch.setattr(email.settings, "SMTP_USER", "relay@smtp-brevo.com")
+    monkeypatch.setattr(email.settings, "SMTP_FROM", "verified@example.com")
+    monkeypatch.setattr(email.settings, "SMTP_PASSWORD", "")
+    response = await client.get("/api/sharepoint/status", headers=auth)
+    assert response.status_code == 200
+    assert response.json()["email_configured"] is False
+
+    monkeypatch.setattr(email.settings, "SMTP_PASSWORD", "test-smtp-key")
+    response = await client.get("/api/sharepoint/status", headers=auth)
+    assert response.json()["email_configured"] is True
 
 
 @pytest.mark.asyncio
