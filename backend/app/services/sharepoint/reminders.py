@@ -242,6 +242,10 @@ async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTa
     """Materialize each notification date once; task completion cancels the rest."""
     from app.models.department import Department
     document = await db.get(SharePointDocument, task.document_id)
+    sent_stages = {(row.recipient_email, row.lead_days) for row in
+        (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task.id,
+            SharePointReminder.status == "sent"))).all()}
     recipients: list[User] = []
     if task.owner_user_id:
         owner = await db.get(User, task.owner_user_id)
@@ -263,7 +267,11 @@ async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTa
                 destination = await db.get(User, recipient.manager_id) if recipient.manager_id else None
                 if not destination or not destination.is_active or destination.status != "active" or not destination.email:
                     continue
-            dedup = digest([str(task.id), document.version if document else "", destination.email.lower(), str(lead)])[:64]
+            if (destination.email.lower(), lead) in sent_stages:
+                continue
+            dedup = digest([str(task.id), document.version if document else "",
+                            document.payload_hash if document else "",
+                            destination.email.lower(), str(lead)])[:64]
             await db.execute(pg_insert(SharePointReminder).values(
                 id=uuid.uuid4(), source_id=task.source_id, document_id=task.document_id,
                 task_id=task.id, title=task.title, category="compliance_task",

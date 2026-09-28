@@ -343,12 +343,17 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
             event(db, document.id, "task_reactivated", task_id=task.id)
         tasks.append(task)
     active_keys = {task.action_key for task in tasks}
+    stale_statuses = ["suspended", "active"] if human_review else ["suspended"]
     for old_task in (await db.scalars(select(SharePointComplianceTask).where(
         SharePointComplianceTask.document_id == document.id,
-        SharePointComplianceTask.status == "suspended"))).all():
+        SharePointComplianceTask.status.in_(stale_statuses)))).all():
         if old_task.action_key not in active_keys:
             old_task.status = "superseded"
             event(db, document.id, "task_superseded", task_id=old_task.id)
+            for reminder in (await db.scalars(select(SharePointReminder).where(
+                SharePointReminder.task_id == old_task.id,
+                SharePointReminder.status.in_(["pending", "failed"])))).all():
+                reminder.status = "dismissed"
     event(db, document.id, "extracted", details={"document_type": document_type,
         "company_id": str(company.id), "reference_number": _fact_value(facts.get("reference_number")),
         "task_count": len(tasks)})

@@ -25,7 +25,7 @@ from app.services.sharepoint.compliance import (
     apply_analysis, candidate_actions, combine_facts, reconcile_company_matches,
     reconcile_optional_fact_reviews, resolve_owner,
 )
-from app.services.sharepoint.common import SharePointError, decrypt, encrypt, now
+from app.services.sharepoint.common import SharePointError, decrypt, digest, encrypt, now
 from app.services.sharepoint.store import enqueue, source_for
 
 TENANT = "11111111-1111-4111-8111-111111111111"
@@ -583,6 +583,30 @@ async def test_document_review_without_note_records_verified_facts(client, auth,
         assert reviewed.details["reference_number"] == "TL-123"
         assert reviewed.details["expiry_date"] == "2027-07-31"
         assert "note" not in reviewed.details
+        old_task = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == indexed[2]))).one()
+        old_task_id = old_task.id
+        document = await db.get(SharePointDocument, indexed[2])
+        document.compliance_status = "needs_review"
+        await db.commit()
+
+    revised = await client.post(
+        f"/api/sharepoint/compliance/documents/{indexed[2]}/review", headers=auth,
+        json={"company_id": str(company_id), "document_type": "trade_license",
+              "reference_number": "TL-123", "expiry_date": "2028-07-31",
+              "owner_user_id": str(indexed[0])},
+    )
+    assert revised.status_code == 200, revised.text
+    async with AsyncSessionLocal() as db:
+        old_task = await db.get(SharePointComplianceTask, old_task_id)
+        new_task = (await db.scalars(select(SharePointComplianceTask).where(
+            SharePointComplianceTask.document_id == indexed[2],
+            SharePointComplianceTask.status == "active"))).one()
+        old_reminders = (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == old_task_id))).all()
+        assert old_task.status == "superseded"
+        assert all(row.status != "pending" for row in old_reminders)
+        assert new_task.id != old_task_id and new_task.due_date == date(2028, 7, 31)
 
 
 @pytest.mark.asyncio
@@ -1133,6 +1157,160 @@ async def test_worker_auto_analysis_and_idempotent_sync(indexed, monkeypatch):
     async with AsyncSessionLocal() as db:
         doc = await db.get(SharePointDocument, indexed[2])
         assert doc.deleted and not doc.in_scope and doc.mapping_cipher is None and doc.analysis is None
+
+
+@pytest.mark.asyncio
+async def test_prompt_refresh_failure_keeps_existing_action_and_allows_retry(client, auth, indexed, monkeypatch):
+    fake = FakeGraph()
+
+    async def token():
+        return "app-token"
+
+    async def unavailable(_segments):
+        raise SharePointError("analysis_provider_error", 502)
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda _token: fake)
+    monkeypatch.setattr(worker, "analyze", unavailable)
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.payload_hash = "previous-prompt-hash"
+        doc.compliance_status = "active"
+        doc.compliance = {"document_type": "trade_license", "reference_number": {"value": "TEST-1"}}
+        task = SharePointComplianceTask(source_id=indexed[1], document_id=doc.id,
+            action_key="existing-action", title="Renew licence", due_date=date(2027, 1, 31),
+            basis="expiry", status="active", owner_user_id=indexed[0], assignment_source="rule")
+        db.add(task)
+        await db.flush()
+        reminder = SharePointReminder(source_id=indexed[1], document_id=doc.id,
+            task_id=task.id, title=task.title, category="compliance_task",
+            target_date="2027-01-31", reminder_date="2027-01-01", lead_days=30,
+            recipient_email="admin@agholding.net", status="pending", dedup_key="existing-reminder")
+        db.add(reminder)
+        await db.flush()
+        task_id, reminder_id = task.id, reminder.id
+        await db.commit()
+
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        task = await db.get(SharePointComplianceTask, task_id)
+        reminder = await db.get(SharePointReminder, reminder_id)
+        assert doc.status == "failed" and doc.compliance_status == "needs_review"
+        assert doc.error_code == "analysis_provider_error"
+        assert doc.compliance["reference_number"]["value"] == "TEST-1"
+        assert task.status == "active" and reminder.status == "pending"
+
+    async def authorized(*_args):
+        return metadata()
+
+    monkeypatch.setattr("app.api.sharepoint.authorize_document", authorized)
+    response = await client.post(f"/api/sharepoint/documents/{indexed[2]}/retry", headers=auth)
+    assert response.status_code == 202
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        task = await db.get(SharePointComplianceTask, task_id)
+        reminder = await db.get(SharePointReminder, reminder_id)
+        assert doc.status == "queued" and doc.compliance is not None
+        assert task.status == "active" and reminder.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_uncertain_prompt_refresh_keeps_prior_action_until_review(indexed, monkeypatch):
+    fake = FakeGraph()
+
+    async def token():
+        return "app-token"
+
+    async def uncertain(segments):
+        return analyzed(segments), {"input_tokens": 10, "output_tokens": 10}
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda _token: fake)
+    monkeypatch.setattr(worker, "analyze", uncertain)
+
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.payload_hash = "previous-prompt-hash"
+        doc.compliance_status = "active"
+        doc.compliance = {"document_type": "trade_license", "reference_number": {"value": "TEST-1"}}
+        task = SharePointComplianceTask(source_id=indexed[1], document_id=doc.id,
+            action_key="existing-action", title="Renew licence", due_date=date(2027, 1, 31),
+            basis="expiry", status="active", owner_user_id=indexed[0], assignment_source="rule")
+        db.add(task)
+        await db.flush()
+        reminder = SharePointReminder(source_id=indexed[1], document_id=doc.id,
+            task_id=task.id, title=task.title, category="compliance_task",
+            target_date="2027-01-31", reminder_date="2027-01-01", lead_days=30,
+            recipient_email="admin@agholding.net", status="pending", dedup_key="existing-reminder")
+        db.add(reminder)
+        await db.flush()
+        task_id, reminder_id = task.id, reminder.id
+        await db.commit()
+
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        task = await db.get(SharePointComplianceTask, task_id)
+        reminder = await db.get(SharePointReminder, reminder_id)
+        assert doc.status == "ready" and doc.compliance_status == "needs_review"
+        assert task.status == "active" and reminder.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_successful_prompt_refresh_replaces_pending_stages_without_resending_sent(indexed, monkeypatch):
+    fake = FakeGraph()
+    facts = {"document_type": "trade_license", "company": {"value": "Litpeaks"},
+             "reference_number": {"value": "TEST-1"},
+             "expiry_date": {"value": "2027-01-31"}, "required_actions": []}
+
+    async def token():
+        return "app-token"
+
+    async def refreshed(_segments):
+        return {"sections": [{"compliance": facts}]}, {"input_tokens": 10, "output_tokens": 10}
+
+    monkeypatch.setattr(worker, "application_token", token)
+    monkeypatch.setattr(worker, "GraphClient", lambda _token: fake)
+    monkeypatch.setattr(worker, "analyze", refreshed)
+
+    async with AsyncSessionLocal() as db:
+        company = Company(name="Litpeaks", slug="litpeaks")
+        db.add(company)
+        await db.flush()
+        db.add(SharePointOwnerRule(company_id=company.id, document_type="trade_license",
+            owner_user_id=indexed[0], priority=1, is_active=True))
+        doc = await db.get(SharePointDocument, indexed[2])
+        doc.company_id = company.id
+        doc.compliance_status = "active"
+        doc.compliance = facts
+        doc.payload_hash = "previous-prompt-hash"
+        task = SharePointComplianceTask(source_id=indexed[1], document_id=doc.id,
+            action_key=digest(["expiry", "Renew Trade License", "2027-01-31"])[:64],
+            title="Renew Trade License", due_date=date(2027, 1, 31), basis="expiry",
+            status="active", owner_user_id=indexed[0], assignment_source="rule")
+        db.add(task)
+        await db.flush()
+        for lead, status in ((60, "sent"), (30, "pending")):
+            db.add(SharePointReminder(source_id=indexed[1], document_id=doc.id,
+                task_id=task.id, title=task.title, category="compliance_task",
+                target_date="2027-01-31", reminder_date="2027-01-01", lead_days=lead,
+                recipient_email="admin@agholding.net", status=status,
+                dedup_key=f"old-{lead}"))
+        task_id = task.id
+        await db.commit()
+
+    await run_sync(indexed[1])
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        task = await db.get(SharePointComplianceTask, task_id)
+        reminders = list((await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task_id))).all())
+        assert doc.status == "ready" and doc.compliance_status == "active"
+        assert task.status == "active"
+        assert sorted((row.lead_days, row.status) for row in reminders if row.lead_days in (60, 30)) == [
+            (30, "dismissed"), (30, "pending"), (60, "sent")]
 
 
 @pytest.mark.asyncio
