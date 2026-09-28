@@ -199,10 +199,14 @@ async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: Asy
     await db.refresh(doc)
     if source.active_run_id or doc.status != "failed":
         raise SharePointError("retry_not_available", 409)
-    # A retry repeats direct extraction and evidence validation.
-    purge(doc)
-    if doc.id:
-        await purge_document_reminders(db, doc.id)
+    # Keep an older verified compliance action live while retrying a prompt
+    # refresh. A first extraction failure has no prior facts to retain.
+    if doc.compliance and doc.segments:
+        doc.status, doc.error_code, doc.attempts = "queued", None, 0
+    else:
+        purge(doc)
+        if doc.id:
+            await purge_document_reminders(db, doc.id)
     return run_info(await enqueue(db, source, user.id))
 
 

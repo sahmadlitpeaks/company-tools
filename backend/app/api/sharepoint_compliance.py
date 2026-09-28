@@ -307,7 +307,8 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
             SharePointReminder.task_id == task.id,
             SharePointReminder.status == "dismissed"))).all():
             current_key = digest([str(task.id), document.version or "",
-                (reminder.recipient_email or "").lower(), str(reminder.lead_days)])[:64]
+                document.payload_hash or "", (reminder.recipient_email or "").lower(),
+                str(reminder.lead_days)])[:64]
             if reminder.dedup_key == current_key and (
                 reminder.reminder_date >= date.today().isoformat() or reminder.lead_days == -1
             ):
@@ -384,7 +385,8 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
     for reminder in (await db.scalars(select(SharePointReminder).where(
         SharePointReminder.task_id == task.id, SharePointReminder.status == "dismissed"))).all():
         email = (reminder.recipient_email or "").lower()
-        current_key = digest([str(task.id), document.version or "", email, str(reminder.lead_days)])[:64]
+        current_key = digest([str(task.id), document.version or "",
+                              document.payload_hash or "", email, str(reminder.lead_days)])[:64]
         if (email in allowed_emails and reminder.dedup_key == current_key and
             (reminder.reminder_date >= date.today().isoformat() or reminder.lead_days == -1)):
             reminder.status = "pending"

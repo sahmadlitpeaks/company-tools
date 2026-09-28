@@ -8,7 +8,7 @@ from sqlalchemy import or_, select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.sharepoint import SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
+from app.models.sharepoint import SharePointComplianceTask, SharePointDocument, SharePointReminder, SharePointRun, SharePointSource
 from app.services.sharepoint.analysis import analyze, payload_hash
 from app.services.sharepoint.common import SharePointError, digest, now
 from app.services.sharepoint.compliance import apply_analysis, archive_prior_version, event
@@ -224,10 +224,13 @@ async def discover(source_id, owner, graph):
                         if doc.id:
                             await purge_document_reminders(db, doc.id)
                     elif included and doc.segments and doc.payload_hash != payload_hash(doc.segments):
-                        await archive_prior_version(db, doc)
-                        purge(doc)
-                        if doc.id:
-                            await purge_document_reminders(db, doc.id)
+                        # A prompt/schema refresh must not stop an existing
+                        # compliance alert before the replacement analysis is
+                        # known to be usable. Source file changes still take
+                        # the versioned purge path above.
+                        doc.status = "queued"
+                        doc.error_code = None
+                        doc.attempts = 0
                     elif included and doc.status == "failed" and doc.error_code in OCR_FAILURES and (
                         doc.fingerprint != ocr_failure_fingerprint(doc.version, source.policy_version)
                     ):
@@ -255,6 +258,7 @@ async def process_document(source_id, owner, document_id, graph):
             return
         policy_version = source.policy_version
         drive, version, item, filename = source.drive_id, doc.version, doc.item_id, doc.filename
+        refreshing = bool(doc.compliance and doc.segments)
         segments = None if doc.compliance_status == "pending" else doc.segments
         languages = doc.languages
         doc.status = "processing"
@@ -292,13 +296,39 @@ async def process_document(source_id, owner, document_id, graph):
             doc = await db.get(SharePointDocument, document_id)
             if live_source.policy_version != policy_version or doc.version != version:
                 raise SharePointError("document_changed_sync_required", 409)
+            prior_task_ids = []
+            prior_reminders = {}
+            if refreshing:
+                # Preserve the old actions through provider failures; replace
+                # them only after a confident, evidence-validated response.
+                prior_task_ids = list((await db.scalars(select(SharePointComplianceTask.id).where(
+                    SharePointComplianceTask.document_id == doc.id,
+                    SharePointComplianceTask.status == "active"))).all())
+                if prior_task_ids:
+                    prior_reminders = {row.id: row.status for row in
+                        (await db.scalars(select(SharePointReminder).where(
+                            SharePointReminder.task_id.in_(prior_task_ids),
+                            SharePointReminder.status.in_(["pending", "failed"])))).all()}
+                await archive_prior_version(db, doc)
             doc.analysis, doc.usage, doc.status, doc.error_code = analysis, usage, "ready", None
             doc.processed_at = now()
             run = await db.get(SharePointRun, uuid.UUID(live_source.active_run_id))
             run.processed += 1
             from app.services.sharepoint.reminders import populate_task_reminders
-            for task, leads in await apply_analysis(db, doc, analysis,
-                    uploaded_by_email=doc.uploaded_by_email, uploaded_by_oid=doc.uploaded_by_oid):
+            plans = await apply_analysis(db, doc, analysis,
+                uploaded_by_email=doc.uploaded_by_email, uploaded_by_oid=doc.uploaded_by_oid)
+            if refreshing and doc.compliance_status == "needs_review":
+                # The new facts still need a reviewer. Keep the last verified
+                # action and its existing reminder schedule alive until then.
+                for task_id in prior_task_ids:
+                    task = await db.get(SharePointComplianceTask, task_id)
+                    if task and task.status == "suspended":
+                        task.status = "active"
+                for reminder_id, status in prior_reminders.items():
+                    reminder = await db.get(SharePointReminder, reminder_id)
+                    if reminder and reminder.status == "dismissed":
+                        reminder.status = status
+            for task, leads in plans:
                 await populate_task_reminders(db, task, leads)
             await db.commit()
     except SharePointError as error:
