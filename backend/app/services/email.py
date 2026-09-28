@@ -11,14 +11,21 @@ from app.core.config import settings
 
 
 def smtp_configured() -> bool:
-    if not settings.SMTP_HOST:
+    host = settings.SMTP_HOST.strip().casefold()
+    if not host:
         return False
     # Brevo requires an SMTP key and an explicit sender address. A relay host
     # alone must not make the UI claim that email delivery is configured.
-    if settings.SMTP_HOST.strip().casefold() == "smtp-relay.brevo.com":
+    if host == "smtp-relay.brevo.com":
         user = settings.SMTP_USER.strip()
         sender = settings.SMTP_FROM.strip()
         return bool(user and settings.SMTP_PASSWORD.strip() and sender and sender.casefold() != user.casefold())
+    # Microsoft 365 client submission needs a mailbox login and STARTTLS.
+    # A host alone must not make Governance claim Outlook email is ready.
+    if host == "smtp.office365.com":
+        return bool(settings.SMTP_PORT in (25, 587) and settings.SMTP_STARTTLS
+                    and settings.SMTP_USER.strip() and settings.SMTP_PASSWORD.strip()
+                    and settings.SMTP_FROM.strip())
     return True
 
 
