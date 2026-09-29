@@ -48,6 +48,15 @@ export interface Department {
   created_at: string;
 }
 
+export interface DepartmentMember {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+  role: string;
+  status: string;
+  is_active: boolean;
+}
+
 export interface ModuleInfo {
   key: string;
   label: string;
