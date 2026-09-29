@@ -179,6 +179,18 @@ def matching_folder(document_path: str | None, folder_name: str | None) -> bool:
     return folder_name.casefold() in {part.casefold() for part in parent_parts if part}
 
 
+def department_for_path(document_path: str | None, departments: list[Department]) -> Department | None:
+    """Use the closest matching parent folder as the document's department."""
+    if not document_path:
+        return None
+    by_name = {department.name.casefold(): department for department in departments}
+    for part in reversed(document_path.replace("\\", "/").split("/")[:-1]):
+        match = by_name.get(part.casefold())
+        if match:
+            return match
+    return None
+
+
 async def _active_department_owner(db: AsyncSession, department_id):
     department = await db.get(Department, department_id)
     if not department:
@@ -216,13 +228,11 @@ async def resolve_owner(db: AsyncSession, company_id, document_type: str,
         if (rule.folder_name and matching_folder(document_path, rule.folder_name) and
             rule.company_id in (None, company_id) and rule.document_type in (None, document_type)):
             return await rule_owner(rule)
-    for department_name in ("Finance", "Admin"):
-        if matching_folder(document_path, department_name):
-            department = (await db.scalars(select(Department).where(
-                func.lower(Department.name) == department_name.lower()).limit(1))).first()
-            if department and await _active_department_owner(db, department.id):
-                return None, department.id, "folder_department", list(DEFAULT_LEADS)
-            return None, None, "folder_department_unavailable", list(DEFAULT_LEADS)
+    department = department_for_path(document_path, (await db.scalars(select(Department))).all())
+    if department:
+        if await _active_department_owner(db, department.id):
+            return None, department.id, "folder_department", list(DEFAULT_LEADS)
+        return None, None, "folder_department_unavailable", list(DEFAULT_LEADS)
     for rule in rules:
         if (not rule.folder_name and rule.company_id in (None, company_id) and
             rule.document_type in (None, document_type)):
@@ -360,6 +370,8 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
             await db.flush()
             event(db, document.id, "task_created", task_id=task.id,
                   details={"due_date": due.isoformat(), "assignment": assignment})
+            from app.services.sharepoint.reminders import notify_task_assignment
+            await notify_task_assignment(db, task)
         elif task.status == "suspended":
             task.status = "active"
             if action_key in manual_owners and not (override_owner_user_id or override_owner_department_id):

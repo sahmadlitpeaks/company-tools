@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.sharepoint import same_origin
@@ -12,16 +12,18 @@ from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.models.company import Company
 from app.models.department import Department
+from app.models.notification import Notification
 from app.models.sharepoint import (SharePointComplianceEvent, SharePointComplianceTask,
     SharePointDocument, SharePointDocumentVersion, SharePointOwnerRule, SharePointReminder)
 from app.models.user import User
 from app.schemas.sharepoint import (ComplianceReviewIn, ComplianceTaskAssignIn,
     ComplianceTaskUpdateIn, OwnerRuleIn)
-from app.services.sharepoint.common import SharePointError, digest, now
+from app.services.sharepoint.common import SharePointError, digest, is_reviewer, now
 from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_department_owner,
-    apply_analysis, candidate_actions, event)
+    apply_analysis, candidate_actions, department_for_path, event)
 from app.services.sharepoint.graph import GraphClient, delegated_token
-from app.services.sharepoint.reminders import populate_task_reminders
+from app.services.sharepoint.reminders import (compliance_task_recipients,
+    notify_task_assignment, populate_task_reminders)
 from app.services.sharepoint.store import authorize_document, source_for
 
 router = APIRouter(prefix="/sharepoint/compliance", tags=["sharepoint-compliance"],
@@ -36,12 +38,28 @@ async def _authorized(db, user, document_id):
 
 
 async def _can_manage(db, user, task):
-    if user.is_admin or task.owner_user_id == user.id or (
-        task.owner_department_id and task.owner_department_id == user.department_id
-    ):
+    if user.is_admin or task.owner_user_id == user.id:
         return True
+    if task.owner_department_id and task.owner_department_id == user.department_id:
+        return any(recipient.id == user.id for recipient in await compliance_task_recipients(db, task))
     owner = await db.get(User, task.owner_user_id) if task.owner_user_id else None
     return bool(owner and owner.manager_id == user.id)
+
+
+def _department_manager(user: User, department_id: uuid.UUID | None) -> bool:
+    return bool(department_id and user.department_id == department_id and
+        user.role == "manager" and user.is_active and user.status == "active")
+
+
+async def _can_assign(db, user: User, task: SharePointComplianceTask) -> bool:
+    if user.is_admin or is_reviewer(user):
+        return True
+    if not user.department_id or user.role != "manager":
+        return False
+    if _department_manager(user, task.owner_department_id):
+        return True
+    owner = await db.get(User, task.owner_user_id) if task.owner_user_id else None
+    return bool(owner and _department_manager(user, owner.department_id))
 
 
 @router.get("/dashboard")
@@ -55,6 +73,9 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
         SharePointDocument.source_id == source.id,
         SharePointDocument.in_scope.is_(True), SharePointDocument.deleted.is_(False),
         SharePointDocument.is_folder.is_(False)).order_by(SharePointDocument.created_at.desc()))).all()
+    all_departments = (await db.scalars(select(Department))).all()
+    routed_departments = {document.id: department_for_path(document.path, all_departments)
+        for document in candidates}
     accessible = []
     for document in candidates:
         try:
@@ -74,6 +95,18 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
     ids = [document.id for document, _ in accessible]
     tasks = (await db.scalars(select(SharePointComplianceTask).where(
         SharePointComplianceTask.document_id.in_(ids)).order_by(SharePointComplianceTask.due_date.asc()))).all() if ids else []
+    if not (user.is_admin or is_reviewer(user)):
+        owner_ids_for_scope = {task.owner_user_id for task in tasks if task.owner_user_id}
+        owner_departments = {owner.id: owner.department_id for owner in (await db.scalars(
+            select(User).where(User.id.in_(owner_ids_for_scope)))).all()} if owner_ids_for_scope else {}
+        led_departments = {lead.department_id for lead in (await db.scalars(select(User).where(
+            User.department_id.is_not(None), User.is_active.is_(True), User.status == "active",
+            or_(User.role == "manager", User.is_admin.is_(True))))).all()}
+        tasks = [task for task in tasks if task.owner_user_id == user.id or (
+            user.department_id and (
+                (task.owner_department_id == user.department_id and (
+                    user.role == "manager" or user.department_id not in led_departments)) or
+                (user.role == "manager" and owner_departments.get(task.owner_user_id) == user.department_id)))]
     if owner_id:
         tasks = [task for task in tasks if task.owner_user_id == owner_id]
     if department_id:
@@ -106,9 +139,14 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             ((facts.get("company") or {}).get("value") or "").strip() or "Unclassified")
         summary["documents_by_company"][company_name] = summary["documents_by_company"].get(company_name, 0) + 1
         if document.compliance_status == "needs_review":
-            summary["needs_review"] += 1
-            if "owner" in facts.get("review_reasons", []):
-                summary["unassigned"] += 1
+            can_review = user.is_admin or is_reviewer(user) or _department_manager(
+                user, routed_departments[document.id].id if routed_departments[document.id] else None)
+            if can_review:
+                summary["needs_review"] += 1
+                if "owner" in facts.get("review_reasons", []):
+                    summary["unassigned"] += 1
+        else:
+            can_review = False
         expiry = (facts.get("expiry_date") or {}).get("value")
         action_dates = [due for _, _, due, _ in candidate_actions(facts)]
         if expiry and document.compliance_status == "active":
@@ -127,6 +165,9 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "notice_days": (facts.get("termination_notice") or {}).get("days"),
             "status": document.compliance_status, "processing_status": document.status,
             "error_code": document.error_code if document.status == "failed" else None,
+            "folder_department_id": str(routed_departments[document.id].id) if routed_departments[document.id] else None,
+            "folder_department": routed_departments[document.id].name if routed_departments[document.id] else None,
+            "can_review": bool(can_review),
             "review_reasons": facts.get("review_reasons", []), "modified_at": document.modified_at,
             "uploaded_at": document.uploaded_at, "uploaded_by_email": document.uploaded_by_email})
     result_tasks = []
@@ -151,6 +192,8 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "document_type": (document.compliance or {}).get("document_type"),
             "due_date": task.due_date.isoformat(), "basis": task.basis,
             "status": task.status, "owner": name,
+            "can_assign": await _can_assign(db, user, task),
+            "can_complete": await _can_manage(db, user, task),
             "owner_user_id": str(task.owner_user_id) if task.owner_user_id else None,
             "owner_department_id": str(task.owner_department_id) if task.owner_department_id else None})
     return {"summary": summary, "documents": result_documents, "tasks": result_tasks}
@@ -171,8 +214,7 @@ async def rules(user=Depends(get_current_admin), db: AsyncSession = Depends(get_
 
 @router.get("/options")
 async def options(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services.sharepoint.common import is_reviewer
-    if not user.is_admin and not is_reviewer(user):
+    if not user.is_admin and not is_reviewer(user) and not _department_manager(user, user.department_id):
         raise SharePointError("reviewer_required", 403)
     companies = (await db.scalars(select(Company).where(Company.is_active.is_(True)).order_by(Company.name))).all()
     departments = (await db.scalars(select(Department).order_by(Department.name))).all()
@@ -181,7 +223,8 @@ async def options(user=Depends(get_current_user), db: AsyncSession = Depends(get
         func.length(func.trim(User.email)) > 0).order_by(User.display_name))).all()
     return {"companies": [{"id": str(row.id), "name": row.name} for row in companies],
         "departments": [{"id": str(row.id), "name": row.name} for row in departments],
-        "users": [{"id": str(row.id), "name": row.display_name or row.email} for row in users]}
+        "users": [{"id": str(row.id), "name": row.display_name or row.email,
+            "department_id": str(row.department_id) if row.department_id else None} for row in users]}
 
 
 async def _validate_rule(db, body: OwnerRuleIn, *, excluding=None):
@@ -242,10 +285,11 @@ async def delete_rule(rule_id: uuid.UUID, user=Depends(get_current_admin), db: A
 @router.post("/documents/{document_id}/review")
 async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
                  user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services.sharepoint.common import is_reviewer
-    if not user.is_admin and not is_reviewer(user):
-        raise SharePointError("reviewer_required", 403)
     document, _ = await _authorized(db, user, document_id)
+    routed = department_for_path(document.path, (await db.scalars(select(Department))).all())
+    if not (user.is_admin or is_reviewer(user) or
+            _department_manager(user, routed.id if routed else None)):
+        raise SharePointError("reviewer_required", 403)
     if document.status != "ready" or not document.segments:
         raise SharePointError("document_not_ready", 409)
     if body.company_id and body.company_name:
@@ -262,8 +306,14 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
         owner = await db.get(User, body.owner_user_id)
         if not owner or not owner.is_active or owner.status != "active" or not owner.email:
             raise SharePointError("owner_not_active", 422)
+        if body.department_id and owner.department_id != body.department_id:
+            raise SharePointError("owner_outside_department", 422)
+        if (routed or owner.department_id or not (user.is_admin or is_reviewer(user))) and not body.department_id:
+            raise SharePointError("department_required", 422)
     if body.owner_department_id and not await db.get(Department, body.owner_department_id):
         raise SharePointError("department_not_found", 404)
+    if body.owner_department_id and body.department_id and body.owner_department_id != body.department_id:
+        raise SharePointError("owner_outside_department", 422)
     original = document.compliance or {}
     facts = {**original, "document_type": body.document_type,
         "company": {"value": company_name, "evidence": []}}
@@ -283,7 +333,8 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
         "reference_number": body.reference_number, "expiry_date": body.expiry_date,
         "renewal_date": body.renewal_date, "termination_notice_days": body.termination_notice_days,
         "owner_user_id": str(body.owner_user_id) if body.owner_user_id else None,
-        "owner_department_id": str(body.owner_department_id) if body.owner_department_id else None}
+        "owner_department_id": str(body.owner_department_id) if body.owner_department_id else None,
+        "selected_department_id": str(body.department_id) if body.department_id else None}
     if body.review_note and body.review_note.strip():
         review_details["note"] = body.review_note.strip()
     event(db, document.id, "reviewed", actor_id=user.id, details=review_details)
@@ -313,6 +364,9 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
             SharePointReminder.status.in_(["pending", "failed"])))).all()
         for reminder in reminders:
             reminder.status = "dismissed"
+        await db.execute(update(Notification).where(
+            Notification.dedup_key.like(f"sp_assignment:{task.id}:%"),
+            Notification.is_read.is_(False)).values(is_read=True))
     else:
         await populate_task_reminders(db, task, [60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1])
         for reminder in (await db.scalars(select(SharePointReminder).where(
@@ -340,16 +394,14 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
 @router.post("/tasks/{task_id}/assign")
 async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
                       user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services.sharepoint.common import is_reviewer
-
-    if not user.is_admin and not is_reviewer(user):
-        raise SharePointError("reviewer_required", 403)
     if bool(body.owner_user_id) == bool(body.owner_department_id):
         raise SharePointError("exactly_one_owner_required", 422)
     task = await db.get(SharePointComplianceTask, task_id)
     if not task:
         raise SharePointError("task_not_found", 404)
     document, _ = await _authorized(db, user, task.document_id)
+    if not await _can_assign(db, user, task):
+        raise SharePointError("reviewer_required", 403)
     if task.status != "active":
         raise SharePointError("task_not_active", 409)
     if task.owner_user_id == body.owner_user_id and task.owner_department_id == body.owner_department_id:
@@ -358,11 +410,18 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
         owner = await db.get(User, body.owner_user_id)
         if not owner or not owner.is_active or owner.status != "active" or not owner.email:
             raise SharePointError("owner_not_active", 422)
+        if body.department_id and owner.department_id != body.department_id:
+            raise SharePointError("owner_outside_department", 422)
+        routed = department_for_path(document.path, (await db.scalars(select(Department))).all())
+        if (routed or owner.department_id or not (user.is_admin or is_reviewer(user))) and not body.department_id:
+            raise SharePointError("department_required", 422)
     else:
         if not await db.get(Department, body.owner_department_id):
             raise SharePointError("department_not_found", 404)
         if not await _active_department_owner(db, body.owner_department_id):
             raise SharePointError("department_has_no_active_member", 422)
+        if body.department_id and body.department_id != body.owner_department_id:
+            raise SharePointError("owner_outside_department", 422)
 
     old_owner_user_id, old_owner_department_id = task.owner_user_id, task.owner_department_id
     old_owner = await db.get(User, old_owner_user_id) if old_owner_user_id else await db.get(Department, old_owner_department_id)
@@ -375,19 +434,19 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
     for reminder in reminders:
         if reminder.status in {"pending", "failed"}:
             reminder.status = "dismissed"
+    await db.execute(update(Notification).where(
+        Notification.dedup_key.like(f"sp_assignment:{task.id}:%"),
+        Notification.is_read.is_(False)).values(is_read=True))
     task.owner_user_id = body.owner_user_id
     task.owner_department_id = body.owner_department_id
     task.assignment_source = "manual"
     await db.flush()
+    await notify_task_assignment(db, task)
     await populate_task_reminders(db, task, leads)
 
     # A task can return to an earlier owner. Re-arm only that owner's current
     # document-version reminders; older delivery history remains untouched.
-    recipient_ids = [body.owner_user_id] if body.owner_user_id else [row.id for row in
-        (await db.scalars(select(User).where(User.department_id == body.owner_department_id,
-            User.is_active.is_(True), User.status == "active", User.email.is_not(None),
-            func.length(func.trim(User.email)) > 0))).all()]
-    recipients = [await db.get(User, owner_id) for owner_id in recipient_ids]
+    recipients = await compliance_task_recipients(db, task)
     allowed_emails = {owner.email.lower() for owner in recipients if owner and owner.email}
     for owner in recipients:
         if owner and owner.manager_id:
@@ -409,6 +468,7 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
                  "from_department_id": str(old_owner_department_id) if old_owner_department_id else None,
                  "to_user_id": str(body.owner_user_id) if body.owner_user_id else None,
                  "to_department_id": str(body.owner_department_id) if body.owner_department_id else None,
+                 "selected_department_id": str(body.department_id) if body.department_id else None,
                  "from_owner_name": old_owner_name, "to_owner_name": new_owner_name,
                  "changed_by": user.display_name or user.email,
                  "note": body.note})

@@ -203,6 +203,7 @@ class ComplianceReviewIn(StrictModel):
     termination_notice_days: int | None = Field(default=None, ge=1, le=730)
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
     review_note: str | None = Field(default=None, max_length=2000)
 
     @field_validator("expiry_date", "renewal_date")
@@ -223,6 +224,7 @@ class ComplianceTaskUpdateIn(StrictModel):
 class ComplianceTaskAssignIn(StrictModel):
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
     note: str = Field(min_length=3, max_length=2000)
 
     @field_validator("note")

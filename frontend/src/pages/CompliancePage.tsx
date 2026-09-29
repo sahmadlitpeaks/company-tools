@@ -79,10 +79,12 @@ function processingError(code: string | null | undefined) {
 const workflowErrors: Record<string, string> = {
   assignment_rule_already_exists: "A rule already covers this folder, company, and document type. Edit that rule instead.",
   department_has_no_active_member: "This department needs an active member with a work email before it can own tasks.",
+  owner_outside_department: "Choose a person who belongs to the selected department.",
+  department_required: "Choose a department before assigning a person.",
   owner_not_active: "Choose an active person with a work email.",
   owner_unchanged: "Choose a different person or department.",
   task_not_active: "Only active tasks can be reassigned.",
-  reviewer_required: "Only a compliance reviewer or administrator can change this owner.",
+  reviewer_required: "Only the routed department's manager, a compliance reviewer, or an administrator can manage this item.",
   review_still_incomplete: "An action date or owner is still missing. Check the document and choose an owner before verifying.",
   document_not_ready: "This document has not finished processing. Retry it before verification.",
   company_name_required: "Choose an internal company or enter the external legal entity.",
@@ -136,6 +138,7 @@ function historyPresentation(item: HistoryEvent, document: ComplianceDocument) {
     case "source_updated": return { title: "SharePoint file updated", description: "A new source version was detected.", tone: "text-muted-foreground", icon: FileText };
     case "document_superseded": return { title: "Document renewed", description: "A verified replacement took its place.", tone: "text-success", icon: CircleCheck };
     case "reminder_sent": return { title: "Reminder sent", description: "The owner was notified.", tone: "text-success", icon: Bell };
+    case "assignment_notification_created": return { title: "Assignment notice created", description: "The responsible department lead or person was notified in the workspace.", tone: "text-info", icon: Bell };
     case "in_app_reminder": return { title: "In-app reminder created", description: "A reminder appeared in the workspace.", tone: "text-muted-foreground", icon: Bell };
     default: return { title: item.action.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase()), description: "Recorded in the audit trail.", tone: "text-muted-foreground", icon: FileText };
   }
@@ -238,45 +241,52 @@ function Overview({ data, onOpen, onView, onMetric }: {
 
 function DocumentRegister({ documents, totalCount, onOpen }: { documents: ComplianceDocument[]; totalCount: number; onOpen: (id: string) => void }) {
   return <Card><CardHeader className="border-b border-border"><CardTitle className="text-base">Document register · {documents.length}</CardTitle><CardDescription className="text-sm">Files remain in SharePoint. Open a record for extracted details and its audit history.</CardDescription></CardHeader><CardContent>
-    {!documents.length ? <Empty><EmptyHeader><EmptyTitle>{totalCount ? "No documents match" : "No documents yet"}</EmptyTitle><EmptyDescription>{totalCount ? "Try another search or change the filters." : "New files in the connected SharePoint folder will appear here automatically."}</EmptyDescription></EmptyHeader></Empty> : <>
+    {!documents.length ? <Empty><EmptyHeader><EmptyTitle>{totalCount ? "No documents match" : "No documents yet"}</EmptyTitle><EmptyDescription>{totalCount ? "Try another search or change the filters." : "New files in the monitored SharePoint folders will appear here automatically."}</EmptyDescription></EmptyHeader></Empty> : <>
       <div className="space-y-3 lg:hidden">{documents.map((doc) => <Card key={doc.id} size="sm" className="bg-muted/25"><CardContent className="space-y-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><Button variant="link" className="h-auto max-w-full justify-start whitespace-normal break-words p-0 text-left text-sm font-semibold" onClick={() => onOpen(doc.id)}>{doc.name}</Button><p className="mt-1 text-sm text-muted-foreground">{doc.company} · {documentTypeLabel(doc.document_type)}</p></div><StatusBadge status={doc.status} /></div><div className="flex items-center justify-between gap-3 border-t border-border pt-3 text-sm"><span>Reference <strong>{doc.reference_number || "Not found"}</strong></span><span className="text-right">Expires <strong>{formatDate(doc.expiry_date)}</strong></span></div></CardContent></Card>)}</div>
       <TableSurface className="hidden lg:block"><Table className="table-fixed"><TableHeader><TableRow><TableHead className="w-[48%]">Document</TableHead><TableHead className="w-[17%]">Reference</TableHead><TableHead className="w-[19%]">Expiry</TableHead><TableHead className="w-[16%]">Status</TableHead></TableRow></TableHeader><TableBody>{documents.map((doc) => <TableRow key={doc.id}><TableCell className="whitespace-normal"><Button variant="link" className="h-auto max-w-full justify-start whitespace-normal break-words p-0 text-left text-sm font-semibold" onClick={() => onOpen(doc.id)}>{doc.name}</Button><p className="mt-1 text-sm text-muted-foreground">{doc.company} · {documentTypeLabel(doc.document_type)}</p></TableCell><TableCell className="whitespace-normal text-sm">{doc.reference_number || "—"}</TableCell><TableCell className="whitespace-normal text-sm">{formatDate(doc.expiry_date)}</TableCell><TableCell><StatusBadge status={doc.status} /></TableCell></TableRow>)}</TableBody></Table></TableSurface>
     </>}
   </CardContent></Card>;
 }
 
-function TaskList({ tasks, totalCount, onOpen, onComplete, onAssign, canAssign, busy }: { tasks: ComplianceTask[]; totalCount: number; onOpen: (id: string) => void; onComplete: (id: string) => void; onAssign: (id: string) => void; canAssign: boolean; busy: string | null }) {
+function TaskList({ tasks, totalCount, onOpen, onComplete, onAssign, busy }: { tasks: ComplianceTask[]; totalCount: number; onOpen: (id: string) => void; onComplete: (id: string) => void; onAssign: (id: string) => void; busy: string | null }) {
   const groups = [
-    { title: "Overdue", description: "Act now or update the owner", tone: "border-destructive", items: tasks.filter((task) => task.status === "active" && task.due_date < isoDate(0)) },
-    { title: "Due this week", description: "The next seven days", tone: "border-warning", items: tasks.filter((task) => task.status === "active" && task.due_date >= isoDate(0) && task.due_date <= isoDate(7)) },
-    { title: "Coming up", description: "Actions beyond this week", tone: "border-border", items: tasks.filter((task) => task.status === "active" && task.due_date > isoDate(7)) },
+    { title: "Needs assignment", description: "The department manager should assign a responsible person", tone: "border-warning", items: tasks.filter((task) => task.status === "active" && task.owner_department_id) },
+    { title: "Overdue", description: "Act now or update the owner", tone: "border-destructive", items: tasks.filter((task) => task.status === "active" && !task.owner_department_id && task.due_date < isoDate(0)) },
+    { title: "Due this week", description: "The next seven days", tone: "border-warning", items: tasks.filter((task) => task.status === "active" && !task.owner_department_id && task.due_date >= isoDate(0) && task.due_date <= isoDate(7)) },
+    { title: "Coming up", description: "Actions beyond this week", tone: "border-border", items: tasks.filter((task) => task.status === "active" && !task.owner_department_id && task.due_date > isoDate(7)) },
     { title: "Closed", description: "Completed or replaced actions", tone: "border-border", items: tasks.filter((task) => task.status !== "active") },
   ];
   return <div className="space-y-4"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Compliance tasks · {tasks.length}</h2><p className="text-sm text-muted-foreground">Grouped by urgency so the next action stays visible.</p></div></div>
     {!tasks.length ? <Card><CardContent><Empty><EmptyHeader><EmptyTitle>{totalCount ? "No tasks match" : "No compliance tasks yet"}</EmptyTitle><EmptyDescription>{totalCount ? "Try another search or change the filters." : "A verified document will create its required actions and reminders automatically."}</EmptyDescription></EmptyHeader></Empty></CardContent></Card> : groups.filter((group) => group.items.length).map((group) => <Card key={group.title} className="gap-0"><CardHeader className={`border-l-2 ${group.tone} py-3`}><CardTitle className="flex items-center justify-between gap-2 text-base"><span>{group.title}</span><Badge variant="outline" className="bg-background">{group.items.length}</Badge></CardTitle><CardDescription className="text-sm">{group.description}</CardDescription></CardHeader><CardContent className="divide-y divide-border">{group.items.sort((a, b) => a.due_date.localeCompare(b.due_date)).map((task) => <div key={task.id} className="flex flex-col gap-3 py-4 first:pt-3 last:pb-1 sm:flex-row sm:items-center">
       <div className="flex w-14 shrink-0 flex-col items-center border border-border bg-muted/40 py-1" aria-label={formatDate(task.due_date)}><span className="text-xs font-semibold uppercase">{new Date(`${task.due_date}T12:00:00`).toLocaleString("en", { month: "short" })}</span><strong className="text-lg tabular-nums">{task.due_date.slice(8, 10)}</strong></div>
       <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{task.title}</p>{task.status !== "active" && <StatusBadge status={task.status} />}</div><Button variant="link" className="mt-1 h-auto max-w-full justify-start whitespace-normal break-words p-0 text-left text-sm" onClick={() => onOpen(task.document_id)}>{task.document_name}</Button><p className="mt-1 text-sm text-muted-foreground">{task.company || "Unclassified"} · Owner: {task.owner} · {dueText(task.due_date)}</p></div>
-      {task.status === "active" && <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">{canAssign && <Button variant="outline" className="bg-background text-sm" onClick={() => onAssign(task.id)}>Change owner</Button>}<Button variant="outline" className="bg-background text-sm" disabled={busy === task.id} onClick={() => onComplete(task.id)}><Check data-icon="inline-start" />Complete</Button></div>}
+      {task.status === "active" && (task.can_assign || task.can_complete) && <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">{task.can_assign && <Button variant="outline" className="bg-background text-sm" onClick={() => onAssign(task.id)}>{task.owner_department_id ? "Assign person" : "Change owner"}</Button>}{task.can_complete && <Button variant="outline" className="bg-background text-sm" disabled={busy === task.id} onClick={() => onComplete(task.id)}><Check data-icon="inline-start" />Complete</Button>}</div>}
     </div>)}</CardContent></Card>)}
   </div>;
 }
 
-function AssignDialog({ task, options, onClose, onSaved }: { task: ComplianceTask; options: ComplianceOptions; onClose: () => void; onSaved: () => void }) {
-  const [kind, setKind] = useState(task.owner_department_id ? "department" : "user");
-  const [ownerId, setOwnerId] = useState(task.owner_department_id ?? task.owner_user_id ?? "none");
+function AssignDialog({ task, document, options, onClose, onSaved }: { task: ComplianceTask; document: ComplianceDocument | undefined; options: ComplianceOptions; onClose: () => void; onSaved: () => void }) {
+  const currentUser = options.users.find((person) => person.id === task.owner_user_id);
+  const [departmentId, setDepartmentId] = useState(task.owner_department_id ?? currentUser?.department_id ?? document?.folder_department_id ?? "none");
+  const [kind, setKind] = useState("user");
+  const [ownerId, setOwnerId] = useState(task.owner_user_id ?? "none");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { notify } = useToast();
+  const members = options.users.filter((person) => person.department_id === departmentId);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (ownerId === "none") { setError("Choose a person or department."); return; }
-    if (ownerId === (task.owner_user_id ?? task.owner_department_id)) { setError("Choose a different owner."); return; }
+    if (departmentId === "none") { setError("Choose a department."); return; }
+    if (kind === "user" && ownerId === "none") { setError("Choose a member of this department."); return; }
+    const nextOwnerId = kind === "user" ? ownerId : departmentId;
+    if (nextOwnerId === (task.owner_user_id ?? task.owner_department_id)) { setError("Choose a different owner."); return; }
     setBusy(true); setError("");
     try {
       await api(`/api/sharepoint/compliance/tasks/${task.id}/assign`, { method: "POST", body: {
         owner_user_id: kind === "user" ? ownerId : null,
-        owner_department_id: kind === "department" ? ownerId : null,
+        owner_department_id: kind === "department" ? departmentId : null,
+        department_id: departmentId,
         note,
       } });
       notify("Task owner changed. Pending reminders now follow the new owner.");
@@ -284,12 +294,13 @@ function AssignDialog({ task, options, onClose, onSaved }: { task: ComplianceTas
     } catch (cause) { setError(workflowError(cause, "Could not change owner")); }
     finally { setBusy(false); }
   }
-  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Change task owner</DialogTitle><DialogDescription>Assign {task.title} to a person or department. The reason and owner change are recorded in audit history.</DialogDescription></DialogHeader>
-    <form className="space-y-4" onSubmit={(event) => void submit(event)}><p className="text-sm text-muted-foreground">Current owner: <strong className="text-foreground">{task.owner}</strong></p><FieldGroup className="grid gap-4 sm:grid-cols-2">
-      <Choice id="assign-kind" label="Assign to" value={kind} onChange={(next) => { setKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} />
-      <Choice id="assign-owner" label="New owner" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: "Choose owner" }, ...(kind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} />
-      <Field className="sm:col-span-2"><FieldLabel htmlFor="assign-note">Reason for change</FieldLabel><Textarea id="assign-note" required minLength={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why is this person or department responsible?" /></Field>
-    </FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save owner"}</Button></div></form>
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Change task owner</DialogTitle><DialogDescription>Choose a department, then assign one of its active members. The change and reason enter audit history.</DialogDescription></DialogHeader>
+    <form className="space-y-4" onSubmit={(event) => void submit(event)}><p className="text-sm text-muted-foreground">Current owner: <strong className="text-foreground">{task.owner}</strong>{document?.folder_department && <span> · SharePoint folder: {document.folder_department}</span>}</p><FieldGroup className="grid gap-4 sm:grid-cols-2">
+      <Choice id="assign-department" label="Department" value={departmentId} onChange={(next) => { setDepartmentId(next); setOwnerId("none"); setError(""); }} items={[{ value: "none", label: "Choose department" }, ...options.departments.map((item) => ({ value: item.id, label: item.name }))]} />
+      <Choice id="assign-kind" label="Assign to" value={kind} onChange={(next) => { setKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department inbox" }]} />
+      {kind === "user" && <Choice id="assign-owner" label="Department member" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: members.length ? "Choose member" : "No active members" }, ...members.map((item) => ({ value: item.id, label: item.name }))]} />}
+      <Field className={kind === "user" ? "sm:col-span-2" : ""}><FieldLabel htmlFor="assign-note">Reason for change</FieldLabel><Textarea id="assign-note" required minLength={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why is this person or department responsible?" /></Field>
+    </FieldGroup><p className="text-sm text-muted-foreground">The selected person must also be able to open the original file in SharePoint to receive document details and reminders.</p>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save owner"}</Button></div></form>
   </DialogContent></Dialog>;
 }
 
@@ -310,6 +321,7 @@ function DetailDialog({ document, onClose }: { document: ComplianceDocument; onC
   const facts = detail.data?.compliance ?? detail.data?.analysis?.sections?.[0]?.compliance;
   const fields = [
     ["Company", document.company_id ? document.company : factValue(facts?.company) || "Unclassified"],
+    ["SharePoint department", document.folder_department || "No matching department folder"],
     ["Document type", documentTypeLabel(document.document_type)],
     ["Reference", factValue(facts?.reference_number) || document.reference_number || "Not found"],
     ["Expiry", formatDate(factValue(facts?.expiry_date) || document.expiry_date)],
@@ -356,11 +368,13 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
   const [notice, setNotice] = useState(document.notice_days ? String(document.notice_days) : "");
   const [ownerKind, setOwnerKind] = useState("user");
   const [ownerId, setOwnerId] = useState("none");
+  const [departmentId, setDepartmentId] = useState(document.folder_department_id ?? "none");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [errorField, setErrorField] = useState<"company" | "companyName" | "documentType" | null>(null);
   const { notify } = useToast();
+  const members = options.users.filter((person) => person.department_id === departmentId);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const invalid = companyId === "none" ? "company" : companyId === "external" && !companyName.trim() ? "companyName" : documentType === "none" ? "documentType" : null;
@@ -370,6 +384,7 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
       window.document.getElementById(invalid === "company" ? "review-company" : invalid === "companyName" ? "review-company-name" : "review-type")?.focus();
       return;
     }
+    if (ownerId !== "none" && departmentId === "none") { setErrorField(null); setError("Choose a department for the owner."); window.document.getElementById("review-department")?.focus(); return; }
     setBusy(true); setError(""); setErrorField(null);
     try {
       await api(`/api/sharepoint/compliance/documents/${document.id}/review`, { method: "POST", body: {
@@ -379,7 +394,8 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
         reference_number: reference || null, expiry_date: expiry || null,
         renewal_date: renewal || null, termination_notice_days: notice ? Number(notice) : null,
         owner_user_id: ownerKind === "user" && ownerId !== "none" ? ownerId : null,
-        owner_department_id: ownerKind === "department" && ownerId !== "none" ? ownerId : null,
+        owner_department_id: ownerKind === "department" && departmentId !== "none" ? departmentId : null,
+        department_id: ownerId !== "none" ? departmentId : null,
         review_note: note.trim() || null,
       } });
       notify("Document verified and tasks created."); onSaved();
@@ -405,7 +421,7 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
         <Field><FieldLabel htmlFor="review-notice" className="text-sm">Termination notice days</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-notice" type="number" min="1" max="730" value={notice} onChange={(event) => setNotice(event.target.value)} /></Field>
       </FieldGroup>{facts?.termination_notice?.days && <p className="text-sm text-muted-foreground">AI found a {facts.termination_notice.days}-day notice period. Confirm it against the contract.</p>}</section>
       <ActionDates actions={facts?.required_actions} />
-      <section className="space-y-3 border-t border-border pt-4"><div><h3 className="text-base font-semibold">Ownership and review</h3><p className="text-sm text-muted-foreground">Choose an owner, or use the configured assignment rules and fallback.</p></div><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Choice id="review-owner-kind" label="Assign to" value={ownerKind} onChange={(next) => { setOwnerKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} /><Choice id="review-owner" label="Owner" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: "Use assignment rule" }, ...(ownerKind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} /><Field className="sm:col-span-2"><FieldLabel htmlFor="review-note" className="text-sm">Review note (optional)</FieldLabel><Textarea className="min-h-24 text-sm md:text-sm" id="review-note" placeholder="Add context if you corrected or confirmed something important" value={note} onChange={(event) => setNote(event.target.value)} /></Field></FieldGroup></section>
+      <section className="space-y-3 border-t border-border pt-4"><div><h3 className="text-base font-semibold">Ownership and review</h3><p className="text-sm text-muted-foreground">The SharePoint folder suggests {document.folder_department || "a department"}. You may choose another department, or use the configured assignment rule.</p></div><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Choice id="review-department" label="Department" value={departmentId} onChange={(next) => { setDepartmentId(next); setOwnerId("none"); }} items={[{ value: "none", label: "Choose department" }, ...options.departments.map((item) => ({ value: item.id, label: item.name }))]} /><Choice id="review-owner-kind" label="Assign to" value={ownerKind} onChange={(next) => { setOwnerKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department inbox" }]} />{ownerKind === "user" && <Choice id="review-owner" label="Department member" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: members.length ? "Use assignment rule" : "No active members; use rule" }, ...members.map((item) => ({ value: item.id, label: item.name }))]} />}{ownerKind === "department" && <Choice id="review-owner" label="Owner" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: "Use assignment rule" }, ...(departmentId !== "none" ? [{ value: departmentId, label: options.departments.find((item) => item.id === departmentId)?.name ?? "Selected department" }] : [])]} />}<Field className="sm:col-span-2"><FieldLabel htmlFor="review-note" className="text-sm">Review note (optional)</FieldLabel><Textarea className="min-h-24 text-sm md:text-sm" id="review-note" placeholder="Add context if you corrected or confirmed something important" value={note} onChange={(event) => setNote(event.target.value)} /></Field></FieldGroup></section>
       <div className="sticky bottom-[-1rem] z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-border bg-popover p-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" className="text-sm" onClick={onClose}>Cancel</Button><Button type="submit" className="text-sm" disabled={busy}>{busy ? "Saving…" : "Verify and create tasks"}</Button></div>
     </form>}
   </DialogContent></Dialog>;
@@ -420,6 +436,7 @@ function Governance({ options, status, onReload }: { options: ComplianceOptions;
   const [folder, setFolder] = useState("");
   const [ownerKind, setOwnerKind] = useState("user");
   const [owner, setOwner] = useState("none");
+  const [memberDepartment, setMemberDepartment] = useState("none");
   const [priority, setPriority] = useState(100);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [leads, setLeads] = useState("60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1");
@@ -452,13 +469,14 @@ function Governance({ options, status, onReload }: { options: ComplianceOptions;
   }
   function resetForm() {
     setEditingId(null); setCompany("all"); setType("all"); setFolder("");
-    setOwnerKind("user"); setOwner("none"); setPriority(100);
+    setOwnerKind("user"); setOwner("none"); setMemberDepartment("none"); setPriority(100);
     setLeads("60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1"); setError("");
   }
   function editRule(rule: OwnerRule) {
     setEditingId(rule.id); setCompany(rule.company_id ?? "all"); setType(rule.document_type ?? "all");
     setFolder(rule.folder_name ?? ""); setOwnerKind(rule.owner_department_id ? "department" : "user");
     setOwner(rule.owner_department_id ?? rule.owner_user_id ?? "none"); setPriority(rule.priority);
+    setMemberDepartment(options.users.find((person) => person.id === rule.owner_user_id)?.department_id ?? "none");
     setLeads(rule.reminder_leads.join(", ")); setError("");
     requestAnimationFrame(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -476,7 +494,7 @@ function Governance({ options, status, onReload }: { options: ComplianceOptions;
     .sort((a, b) => (b.sent_at ?? b.reminder_date).localeCompare(a.sent_at ?? a.reminder_date)).slice(0, 5);
   return <div className="space-y-4">
     <h1 className="sr-only">Compliance governance</h1>
-    <Card><CardHeader><Badge variant="outline" className="mb-1">Administrator settings</Badge><CardTitle className="text-xl">Ownership and reminders</CardTitle><CardDescription className="max-w-2xl text-sm">Route documents by SharePoint folder, company, and document type. Finance and Admin folders use their matching active departments by default. A folder rule overrides that default. Existing tasks keep their owner until changed in Tasks.</CardDescription></CardHeader></Card>
+    <Card><CardHeader><Badge variant="outline" className="mb-1">Administrator settings</Badge><CardTitle className="text-xl">Ownership and reminders</CardTitle><CardDescription className="max-w-2xl text-sm">Folders matching an access department route new documents to that team's inbox. An explicit folder rule can choose a specific owner. Existing tasks keep their owner until changed in Tasks.</CardDescription></CardHeader></Card>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(19rem,1fr)]"><Card><CardHeader><CardTitle className="text-base">Assignment rules · {rules.data?.length ?? 0}</CardTitle><CardDescription className="text-sm">Rules determine future task ownership.</CardDescription></CardHeader><CardContent className="space-y-3">
       {rules.error && <Alert variant="destructive"><AlertDescription>{rules.error}</AlertDescription></Alert>}
       {rules.loading && !rules.data ? <Skeleton className="h-24" /> : rules.data?.length ? rules.data.map((rule) => <Card key={rule.id} size="sm" className="bg-muted/30"><CardContent className="space-y-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold">{rule.folder_name ? `${rule.folder_name} folder · ` : ""}{name(options.companies, rule.company_id)} · {rule.document_type ? documentTypeLabel(rule.document_type) : "Any document type"}</p><p className="mt-1 text-sm text-muted-foreground">Assigned to {name(rule.owner_user_id ? options.users : options.departments, rule.owner_user_id ?? rule.owner_department_id)}</p></div><div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy} onClick={() => editRule(rule)}>Edit</Button><Button variant="outline" size="sm" disabled={busy} onClick={() => setRemoveId(rule.id)}>Remove</Button></div></div><div className="flex flex-wrap gap-1 border-t border-border pt-3"><Badge variant="outline" className="bg-background">{rule.reminder_leads.length} reminder stages</Badge><span className="text-sm text-muted-foreground">{rule.reminder_leads.join(", ")} days</span></div></CardContent></Card>) : <Empty><EmptyHeader><EmptyTitle>No rules configured</EmptyTitle><EmptyDescription>Create a rule to route future documents to the right person or department.</EmptyDescription></EmptyHeader></Empty>}
@@ -484,9 +502,10 @@ function Governance({ options, status, onReload }: { options: ComplianceOptions;
     <Card ref={formRef}><CardHeader><CardTitle className="text-base">{editingId ? "Edit assignment rule" : "Add an assignment rule"}</CardTitle><CardDescription className="text-sm">Choose a SharePoint folder, company, or document type, then the responsible person or department.</CardDescription></CardHeader><CardContent><form onSubmit={(event) => void save(event)} className="space-y-5"><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Choice id="rule-company" label="Company" value={company} onChange={setCompany} items={[{ value: "all", label: "Any company" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
       <Choice id="rule-type" label="Document type" value={type} onChange={setType} items={[{ value: "all", label: "Any document type" }, ...DOCUMENT_TYPES.map(([value, label]) => ({ value, label }))]} />
-      <Field className="sm:col-span-2"><FieldLabel htmlFor="rule-folder">SharePoint folder name</FieldLabel><Input id="rule-folder" className="h-10 text-sm md:text-sm" placeholder="Finance or Admin (optional)" value={folder} onChange={(event) => setFolder(event.target.value)} /><p className="mt-1 text-sm text-muted-foreground">Match a folder in the document path. Leave blank to apply across folders.</p></Field>
+      <Field className="sm:col-span-2"><FieldLabel htmlFor="rule-folder">SharePoint folder name</FieldLabel><Input id="rule-folder" className="h-10 text-sm md:text-sm" placeholder="Finance or Marketing (optional)" value={folder} onChange={(event) => { const next = event.target.value; setFolder(next); setMemberDepartment(options.departments.find((item) => item.name.toLowerCase() === next.trim().toLowerCase())?.id ?? "none"); setOwner("none"); }} /><p className="mt-1 text-sm text-muted-foreground">Match a folder in the document path. Leave blank to apply across folders.</p></Field>
       <Choice id="rule-owner-kind" label="Assign to" value={ownerKind} onChange={(next) => { setOwnerKind(next); setOwner("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} />
-      <Choice id="rule-owner" label="Responsible owner" value={owner} onChange={setOwner} items={[{ value: "none", label: "Choose owner" }, ...(ownerKind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} />
+      {ownerKind === "user" && <Choice id="rule-member-department" label="Member department" value={memberDepartment} onChange={(next) => { setMemberDepartment(next); setOwner("none"); }} items={[{ value: "none", label: "Choose department" }, ...options.departments.map((item) => ({ value: item.id, label: item.name }))]} />}
+      <Choice id="rule-owner" label="Responsible owner" value={owner} onChange={setOwner} items={[{ value: "none", label: "Choose owner" }, ...(ownerKind === "user" ? options.users.filter((person) => person.department_id === memberDepartment) : options.departments).map((item) => ({ value: item.id, label: item.name }))]} />
       <Field><FieldLabel htmlFor="rule-priority">Priority</FieldLabel><Input id="rule-priority" className="h-10 text-sm md:text-sm" type="number" min="0" max="1000" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /><p className="mt-1 text-sm text-muted-foreground">Lower number wins when scopes are equally specific.</p></Field>
       <Field className="sm:col-span-2"><FieldLabel htmlFor="rule-leads" className="text-sm">Reminder days before the due date</FieldLabel><Input className="h-10 text-sm md:text-sm" id="rule-leads" value={leads} onChange={(event) => setLeads(event.target.value)} /><p className="mt-1 text-sm text-muted-foreground">Comma-separated days. Use 0 for the due date and -1 for manager escalation one day overdue.</p></Field>
     </FieldGroup>{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}<div className="flex gap-2"><Button className="text-sm" disabled={busy} type="submit">{busy ? "Saving…" : editingId ? "Save changes" : "Add rule"}</Button>{editingId && <Button type="button" variant="outline" onClick={resetForm}>Cancel edit</Button>}</div></form></CardContent></Card></div>
@@ -514,7 +533,7 @@ export default function CompliancePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const status = useFetch<SharePointStatus>("/api/sharepoint/status");
   const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? "/api/sharepoint/compliance/dashboard" : null);
-  const canReview = Boolean(user?.is_admin || status.data?.can_review);
+  const canReview = Boolean(user?.is_admin || status.data?.can_review || (user?.role === "manager" && user.department_id));
   const options = useFetch<ComplianceOptions>(status.data?.connected && canReview ? "/api/sharepoint/compliance/options" : null);
   const data = dashboard.data;
   const filteredDocuments = useMemo(() => data?.documents.filter((doc) => {
@@ -578,13 +597,13 @@ export default function CompliancePage() {
         <TabsList variant="line" className="hidden group-data-horizontal/tabs:h-12 w-full justify-start gap-4 border-b border-border px-0 py-0 sm:flex" aria-label="Compliance views"><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="overview"><FileCheck2 data-icon="inline-start" />Overview</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="documents"><FileText data-icon="inline-start" />Documents</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="tasks"><Bell data-icon="inline-start" />Tasks</TabsTrigger><TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent" value="review"><AlertTriangle data-icon="inline-start" />Review{data.summary.needs_review > 0 && <Badge aria-hidden="true" variant="warning" className="ms-1">{data.summary.needs_review}</Badge>}</TabsTrigger>{user?.is_admin && <TabsTrigger className="h-9 flex-none px-1 text-sm font-medium data-active:border-transparent data-active:bg-transparent sm:ml-auto" value="governance"><ShieldCheck data-icon="inline-start" />Governance</TabsTrigger>}</TabsList>
         <TabsContent value="overview" className="mt-4 text-sm"><Overview data={data} onOpen={setSelected} onView={setView} onMetric={openMetric} /></TabsContent>
         <TabsContent value="documents" className="mt-4 space-y-4 text-sm"><Filters mode="documents" value={documentFilter} onChange={setDocumentFilter} data={data} /><DocumentRegister documents={filteredDocuments} totalCount={data.documents.length} onOpen={setSelected} /></TabsContent>
-        <TabsContent value="tasks" className="mt-4 space-y-4 text-sm"><Filters mode="tasks" value={taskFilter} onChange={setTaskFilter} data={data} /><TaskList tasks={filteredTasks} totalCount={data.tasks.length} onOpen={setSelected} onComplete={(id) => void complete(id)} onAssign={setAssigning} canAssign={canReview} busy={busy} /></TabsContent>
-        <TabsContent value="review" className="mt-4 text-sm"><ReviewQueue documents={data.documents.filter((doc) => doc.status === "needs_review")} canReview={canReview} canRetry={Boolean(user?.is_admin)} onOpen={setSelected} onReview={setReviewing} onRetry={(id) => void retry(id)} busy={busy} /></TabsContent>
+        <TabsContent value="tasks" className="mt-4 space-y-4 text-sm"><Filters mode="tasks" value={taskFilter} onChange={setTaskFilter} data={data} /><TaskList tasks={filteredTasks} totalCount={data.tasks.length} onOpen={setSelected} onComplete={(id) => void complete(id)} onAssign={setAssigning} busy={busy} /></TabsContent>
+        <TabsContent value="review" className="mt-4 text-sm"><ReviewQueue documents={data.documents.filter((doc) => doc.status === "needs_review" && doc.can_review)} canReview={canReview} canRetry={Boolean(user?.is_admin)} onOpen={setSelected} onReview={setReviewing} onRetry={(id) => void retry(id)} busy={busy} /></TabsContent>
         {user?.is_admin && <TabsContent value="governance" className="mt-4 text-sm">{options.data ? <Governance options={options.data} status={status.data} onReload={() => void dashboard.reload()} /> : options.error ? <Alert variant="destructive"><AlertDescription>{options.error}</AlertDescription></Alert> : <Skeleton className="h-48" />}</TabsContent>}
       </Tabs>}
       {selectedDoc && <DetailDialog document={selectedDoc} onClose={() => setSelected(null)} />}
       {reviewDoc && options.data && <ReviewDialog document={reviewDoc} options={options.data} onClose={() => setReviewing(null)} onSaved={() => { setReviewing(null); void dashboard.reload(); }} />}
-      {assignTask && options.data && <AssignDialog task={assignTask} options={options.data} onClose={() => setAssigning(null)} onSaved={() => { setAssigning(null); void dashboard.reload(); }} />}
+      {assignTask && options.data && <AssignDialog task={assignTask} document={data?.documents.find((doc) => doc.id === assignTask.document_id)} options={options.data} onClose={() => setAssigning(null)} onSaved={() => { setAssigning(null); void dashboard.reload(); }} />}
     </>}
   </div>;
 }
