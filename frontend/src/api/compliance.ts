@@ -23,6 +23,7 @@ export type ComplianceDocument = {
   notice_days: number | null;
   status: string;
   processing_status: string;
+  error_code: string | null;
   review_reasons: string[];
   modified_at: string | null;
   uploaded_at: string | null;
@@ -90,6 +91,7 @@ export const DOCUMENT_TYPES = [
 ] as const;
 
 export function documentTypeLabel(value: string) {
+  if (!value || value === "unknown") return "Not classified";
   return DOCUMENT_TYPES.find(([key]) => key === value)?.[1] ?? value.replace(/_/g, " ");
 }
 

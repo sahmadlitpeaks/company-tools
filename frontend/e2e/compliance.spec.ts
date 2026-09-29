@@ -219,3 +219,52 @@ test("reviewer can confirm a named external entity without adding a company bran
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
   expect((await request).postDataJSON()).toMatchObject({ company_id: null, company_name: "External Vendor LLC" });
 });
+
+test("review errors identify the field and show readable server validation", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 1, tasks_by_owner: {}, documents_by_company: { Unclassified: 1 } },
+    documents: [{ ...document, company_id: null, company: "Unclassified", document_type: "product_sheet",
+      status: "needs_review", review_reasons: ["company"] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/review", (route) => route.fulfill({
+    status: 422, json: { detail: [{ loc: ["body", "document_type"], msg: "Choose a supported document type", type: "value_error" }] },
+  }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await page.getByRole("button", { name: "Verify" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Verify and create tasks" }).click();
+  const fieldError = dialog.getByText("Choose an internal company or an external entity.");
+  await expect(fieldError).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Company or entity" })).toHaveAttribute("aria-invalid", "true");
+  await dialog.getByRole("combobox", { name: "Company or entity" }).click();
+  await page.getByRole("option", { name: "External entity" }).click();
+  await dialog.getByRole("textbox", { name: "Legal entity name" }).fill("Example Vendor LLC");
+  await dialog.getByRole("button", { name: "Verify and create tasks" }).click();
+  await expect(dialog.getByText("document type: Choose a supported document type")).toBeVisible();
+  await expect(dialog.getByText("[object Object]")).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("failed document shows a readable reason in queue and audit history", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 0, tasks_by_owner: {}, documents_by_company: { Unclassified: 1 } },
+    documents: [{ ...document, name: "Agreement.docx", company: "Unclassified",
+      document_type: "unknown", status: "needs_review", processing_status: "failed",
+      error_code: "invalid_evidence", review_reasons: [] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/history", (route) => route.fulfill({ json: {
+    versions: [], events: [{ id: "event-1", action: "processing_failed", at: "2026-09-24T10:00:00Z",
+      details: { error_code: "invalid_evidence" } }],
+  } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await expect(page.getByText("A cited passage did not match the document. Retry analysis and verify the source.")).toBeVisible();
+  await page.getByRole("button", { name: "Details" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Analysis failed")).toBeVisible();
+  await expect(dialog.getByText("A cited passage did not match the document. Retry analysis and verify the source.")).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});

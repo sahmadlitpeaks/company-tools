@@ -22,7 +22,10 @@ DOCUMENT_TYPES = {
 }
 CONTRACT_TYPES = {"contract", "vendor_agreement", "it_software_agreement", "dpa"}
 DEFAULT_LEADS = (60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1)
-OPTIONAL_FACT_ISSUES = frozenset({"parties", "obligations"})
+OPTIONAL_FACT_ISSUES = frozenset({
+    "summary", "tasks", "deadlines", "risks", "blockers", "contacts", "commercials",
+    "parties", "obligations",
+})
 
 
 def event(db, document_id, action, *, task_id=None, actor_id=None, details=None):
@@ -314,6 +317,8 @@ async def apply_analysis(db: AsyncSession, document: SharePointDocument, analysi
             if department:
                 manual_owners[action_key] = (None, department.id)
     reasons = [] if human_review else list(conflicts)
+    if not human_review and "visual_content" in (analysis.get("extraction_warnings") or []):
+        reasons.append("visual_content")
     if document_type == "unknown" or document_type not in DOCUMENT_TYPES or (document_type == "other" and not human_review):
         reasons.append("document_type")
     if not (_fact_value(facts.get("company")) or "").strip():
