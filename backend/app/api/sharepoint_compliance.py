@@ -126,6 +126,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "renewal_date": (facts.get("renewal_date") or {}).get("value"),
             "notice_days": (facts.get("termination_notice") or {}).get("days"),
             "status": document.compliance_status, "processing_status": document.status,
+            "error_code": document.error_code if document.status == "failed" else None,
             "review_reasons": facts.get("review_reasons", []), "modified_at": document.modified_at,
             "uploaded_at": document.uploaded_at, "uploaded_by_email": document.uploaded_by_email})
     result_tasks = []

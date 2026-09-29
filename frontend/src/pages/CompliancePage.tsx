@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,7 +47,35 @@ const reasonNames: Record<string, string> = {
   renewal_date: "Renewal date unclear", termination_notice: "Termination notice unclear",
   required_actions: "Action details unclear", parties: "Parties could not be verified",
   obligations: "Document condition could not be verified",
+  visual_content: "Embedded visual needs verification",
+  summary: "Document summary needs verification", tasks: "Task citation needs verification",
+  deadlines: "Deadline citation needs verification", risks: "Risk citation needs verification",
+  blockers: "Blocker citation needs verification", contacts: "Contact citation needs verification",
+  commercials: "Price citation needs verification", deadline: "Deadline unclear",
 };
+const processingErrors: Record<string, string> = {
+  incomplete_visual_content: "Embedded graphics could not be read. Check the original before retrying.",
+  needs_ocr: "No readable text was found. Check whether the file is scanned or image-only.",
+  ocr_unavailable: "Image text recognition is unavailable. Ask an administrator to check the document processor.",
+  invalid_office_document: "The Office file could not be opened. Check that the original is a valid DOCX or XLSX file.",
+  invalid_pdf: "The PDF could not be opened. Check the original file.",
+  encrypted_document: "This file is password protected. Provide an accessible original before retrying.",
+  unsupported_type: "This file type is not supported for analysis.",
+  empty_document: "No text was found in this file.",
+  text_limit: "The document contains more text than the processor allows.",
+  parser_timeout: "Reading the file took too long. Ask an administrator to check the processor.",
+  parser_memory_limit: "The file needs more memory than the processor allows.",
+  archive_limit: "This Office file exceeds the safe archive limits.",
+  image_limit: "An image in this file exceeds the safe image limit.",
+  extraction_failed: "The document reader failed. Ask an administrator to inspect the processing logs.",
+  processing_retry_limit: "Automatic attempts stopped. Check the original file before retrying.",
+  unsupported_owner: "An extracted owner could not be confirmed in the document. Retry analysis, then review the owner.",
+  unsupported_responsible: "A responsible person could not be confirmed in the document. Retry analysis, then review the owner.",
+  invalid_evidence: "A cited passage did not match the document. Retry analysis and verify the source.",
+};
+function processingError(code: string | null | undefined) {
+  return code ? processingErrors[code] ?? "Processing failed. Ask an administrator to check the document processor." : "Processing needs attention.";
+}
 const workflowErrors: Record<string, string> = {
   assignment_rule_already_exists: "A rule already covers this folder, company, and document type. Edit that rule instead.",
   department_has_no_active_member: "This department needs an active member with a work email before it can own tasks.",
@@ -55,6 +83,10 @@ const workflowErrors: Record<string, string> = {
   owner_unchanged: "Choose a different person or department.",
   task_not_active: "Only active tasks can be reassigned.",
   reviewer_required: "Only a compliance reviewer or administrator can change this owner.",
+  review_still_incomplete: "An action date or owner is still missing. Check the document and choose an owner before verifying.",
+  document_not_ready: "This document has not finished processing. Retry it before verification.",
+  company_name_required: "Choose an internal company or enter the external legal entity.",
+  choose_one_company_source: "Choose either an internal company or an external entity.",
 };
 
 function workflowError(cause: unknown, fallback: string) {
@@ -99,7 +131,7 @@ function historyPresentation(item: HistoryEvent, document: ComplianceDocument) {
     case "task_superseded": return { title: "Previous action replaced", description: "The earlier task is no longer active.", tone: "text-muted-foreground", icon: Check };
     case "needs_review": return { title: "Review required", description: reasons.length ? reasons.map((reason) => reasonNames[reason] ?? reason.replace(/_/g, " ")).join(" · ") : "Some details need verification.", tone: "text-warning", icon: AlertTriangle };
     case "reviewed": return { title: "Details verified", description: typeof details.note === "string" && details.note.trim() ? details.note : "A reviewer confirmed the document details.", tone: "text-success", icon: CircleCheck };
-    case "processing_failed": return { title: "Analysis failed", description: "Processing needs another attempt.", tone: "text-destructive", icon: AlertTriangle };
+    case "processing_failed": return { title: "Analysis failed", description: processingError(typeof details.error_code === "string" ? details.error_code : null), tone: "text-destructive", icon: AlertTriangle };
     case "version_archived": return { title: "Previous version saved", description: "The earlier document version remains in the audit record.", tone: "text-muted-foreground", icon: FileText };
     case "source_updated": return { title: "SharePoint file updated", description: "A new source version was detected.", tone: "text-muted-foreground", icon: FileText };
     case "document_superseded": return { title: "Document renewed", description: "A verified replacement took its place.", tone: "text-success", icon: CircleCheck };
@@ -114,16 +146,17 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={variant} className="text-xs">{statusNames[status] ?? status.replace(/_/g, " ")}</Badge>;
 }
 
-function Choice({ id, label, value, onChange, items }: {
+function Choice({ id, label, value, onChange, items, error }: {
   id: string; label: string; value: string; onChange: (value: string) => void;
-  items: Array<{ value: string; label: string }>;
+  items: Array<{ value: string; label: string }>; error?: string;
 }) {
-  return <Field className="min-w-0">
+  return <Field className="min-w-0" data-invalid={Boolean(error)}>
     <FieldLabel htmlFor={id} className="text-sm font-medium">{label}</FieldLabel>
     <Select items={items} value={value} onValueChange={(next) => onChange(next ?? "all")}>
-      <SelectTrigger id={id} className="h-10 w-full bg-background px-3 text-sm md:text-sm"><SelectValue /></SelectTrigger>
+      <SelectTrigger id={id} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className="h-10 w-full bg-background px-3 text-sm md:text-sm"><SelectValue /></SelectTrigger>
       <SelectContent><SelectGroup>{items.map((item) => <SelectItem className="py-2.5 text-sm" key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent>
     </Select>
+    {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
   </Field>;
 }
 
@@ -267,7 +300,7 @@ function ReviewQueue({ documents, canReview, canRetry, onOpen, onReview, onRetry
 }) {
   return <div className="space-y-4">
     <Card className="border-l-2 border-warning"><CardHeader><Badge variant="warning" className="mb-1">Human check</Badge><CardTitle className="text-xl">Needs review · {documents.length}</CardTitle><CardDescription className="max-w-2xl text-sm">The system found information it could not verify. Check the SharePoint original, correct the details, and confirm the owner before reminders start.</CardDescription></CardHeader></Card>
-    {!documents.length ? <Card><CardContent><Empty><EmptyHeader><EmptyTitle>Review queue is clear</EmptyTitle><EmptyDescription>Uncertain documents will appear here automatically.</EmptyDescription></EmptyHeader></Empty></CardContent></Card> : <div className="grid gap-3">{documents.map((doc) => <Card key={doc.id} className="border-l-2 border-warning"><CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center gap-2"><StatusBadge status={doc.status} /><span className="text-sm text-muted-foreground">{documentTypeLabel(doc.document_type)}</span></div><h3 className="break-words text-base font-semibold">{doc.name}</h3><div className="flex flex-wrap gap-2">{doc.review_reasons.length ? doc.review_reasons.map((reason) => <Badge key={reason} variant="warning">{reasonNames[reason] ?? reason.replace(/_/g, " ")}</Badge>) : <Badge variant="warning">Processing needs attention</Badge>}</div><p className="text-sm text-muted-foreground">Reference: {doc.reference_number || "Not found"}{doc.action_date && <span> · Action due: {formatDate(doc.action_date)}</span>}{doc.expiry_date && doc.expiry_date !== doc.action_date && <span> · Expiry: {formatDate(doc.expiry_date)}</span>}{!doc.action_date && !doc.expiry_date && <span> · Action date: Not found</span>}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" className="bg-background text-sm" onClick={() => onOpen(doc.id)}>Details</Button>{doc.processing_status === "failed" ? canRetry && <Button className="text-sm" disabled={busy === doc.id} onClick={() => onRetry(doc.id)}>Retry processing</Button> : canReview && <Button className="text-sm" onClick={() => onReview(doc.id)}>Verify<ArrowRight data-icon="inline-end" /></Button>}</div></CardContent></Card>)}</div>}
+    {!documents.length ? <Card><CardContent><Empty><EmptyHeader><EmptyTitle>Review queue is clear</EmptyTitle><EmptyDescription>Uncertain documents will appear here automatically.</EmptyDescription></EmptyHeader></Empty></CardContent></Card> : <div className="grid gap-3">{documents.map((doc) => <Card key={doc.id} className="border-l-2 border-warning"><CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center gap-2"><StatusBadge status={doc.status} /><span className="text-sm text-muted-foreground">{documentTypeLabel(doc.document_type)}</span></div><h3 className="break-words text-base font-semibold">{doc.name}</h3><div className="flex flex-wrap gap-2">{doc.review_reasons.length ? doc.review_reasons.map((reason) => <Badge key={reason} variant="warning">{reasonNames[reason] ?? reason.replace(/_/g, " ")}</Badge>) : <Badge variant="destructive">Processing failed</Badge>}</div>{doc.processing_status === "failed" && <p className="text-sm text-destructive">{processingError(doc.error_code)}</p>}<p className="text-sm text-muted-foreground">Reference: {doc.reference_number || "Not found"}{doc.action_date && <span> · Action due: {formatDate(doc.action_date)}</span>}{doc.expiry_date && doc.expiry_date !== doc.action_date && <span> · Expiry: {formatDate(doc.expiry_date)}</span>}{!doc.action_date && !doc.expiry_date && <span> · Action date: Not found</span>}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" className="bg-background text-sm" onClick={() => onOpen(doc.id)}>Details</Button>{doc.processing_status === "failed" ? canRetry && <Button className="text-sm" disabled={busy === doc.id} onClick={() => onRetry(doc.id)}>Retry processing</Button> : canReview && <Button className="text-sm" onClick={() => onReview(doc.id)}>Verify<ArrowRight data-icon="inline-end" /></Button>}</div></CardContent></Card>)}</div>}
   </div>;
 }
 
@@ -285,6 +318,7 @@ function DetailDialog({ document, onClose }: { document: ComplianceDocument; onC
   ];
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><div className="mb-2"><StatusBadge status={document.status} /></div><DialogTitle className="break-words text-lg">{document.name}</DialogTitle><DialogDescription className="text-sm">Extracted information, original source, and audit history</DialogDescription></DialogHeader>
     {detail.loading ? <Skeleton className="h-48 w-full" /> : detail.error ? <Alert variant="destructive"><AlertDescription>{detail.error}</AlertDescription></Alert> : <div className="space-y-5">
+      {document.processing_status === "failed" && <Alert variant="destructive"><AlertDescription className="!text-foreground">{processingError(detail.data?.error_code ?? document.error_code)}</AlertDescription></Alert>}
       <Card className="bg-muted/30"><CardHeader><CardTitle className="text-base">Document facts</CardTitle></CardHeader><CardContent><dl className="grid gap-4 sm:grid-cols-2">{fields.map(([label, value]) => <div key={label} className="min-w-0 border-t border-border pt-2"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-semibold">{value}</dd></div>)}</dl></CardContent></Card>
       <ActionDates actions={facts?.required_actions} />
       {facts?.obligations?.length ? <Card><CardHeader><CardTitle className="text-base">Requirements in this document</CardTitle><CardDescription>Conditions stated in the source that may affect compliance.</CardDescription></CardHeader><CardContent><ul className="list-disc space-y-2 ps-5 text-sm">{[...new Set(facts.obligations.map((item) => item.value))].map((value) => <li key={value}>{value}</li>)}</ul></CardContent></Card> : null}
@@ -325,13 +359,18 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorField, setErrorField] = useState<"company" | "companyName" | "documentType" | null>(null);
   const { notify } = useToast();
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (companyId === "none") { setError("Choose an internal company or name the external entity."); return; }
-    if (companyId === "external" && !companyName.trim()) { setError("Enter the legal entity named in the document."); return; }
-    if (documentType === "none") { setError("Choose the correct document type."); return; }
-    setBusy(true); setError("");
+    const invalid = companyId === "none" ? "company" : companyId === "external" && !companyName.trim() ? "companyName" : documentType === "none" ? "documentType" : null;
+    if (invalid) {
+      setErrorField(invalid);
+      setError(invalid === "company" ? "Choose an internal company or an external entity." : invalid === "companyName" ? "Enter the legal entity named in the document." : "Choose the correct document type.");
+      window.document.getElementById(invalid === "company" ? "review-company" : invalid === "companyName" ? "review-company-name" : "review-type")?.focus();
+      return;
+    }
+    setBusy(true); setError(""); setErrorField(null);
     try {
       await api(`/api/sharepoint/compliance/documents/${document.id}/review`, { method: "POST", body: {
         company_id: companyId === "external" ? null : companyId,
@@ -344,18 +383,22 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
         review_note: note.trim() || null,
       } });
       notify("Document verified and tasks created."); onSaved();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Review failed"); }
+    } catch (cause) {
+      setError(workflowError(cause, "Could not verify this document")); setErrorField(null);
+      requestAnimationFrame(() => window.document.getElementById("review-submit-error")?.scrollIntoView({ block: "nearest" }));
+    }
     finally { setBusy(false); }
   }
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto"><DialogHeader><Badge variant="warning" className="mb-2">Verification required</Badge><DialogTitle className="break-words text-lg">Review {document.name}</DialogTitle><DialogDescription className="text-sm">Confirm the facts against the SharePoint original. Your changes enter the audit history.</DialogDescription></DialogHeader>
-    <Alert className="border-warning/40 bg-warning/10"><AlertTriangle className="size-4" /><AlertDescription className="text-sm">Check: {document.review_reasons.map((reason) => reasonNames[reason] ?? reason.replace(/_/g, " ")).join(", ") || "uncertain extraction"}.</AlertDescription></Alert>
+    <Alert className="border-warning/40 bg-warning/10"><AlertTriangle className="size-4" /><AlertDescription className="text-sm text-foreground">Check: {document.review_reasons.map((reason) => reasonNames[reason] ?? reason.replace(/_/g, " ")).join(", ") || "uncertain extraction"}.</AlertDescription></Alert>
     {!document.company_id && factValue(facts?.company) && <Alert><AlertDescription className="text-sm">The file names <strong>{factValue(facts?.company)}</strong>. Confirm it as an external entity, or select the correct internal company if it belongs to the group.</AlertDescription></Alert>}
-    {detail.loading ? <Skeleton className="h-24" /> : detail.error ? <Alert variant="destructive"><AlertDescription>{detail.error}</AlertDescription></Alert> : <form onSubmit={(event) => void submit(event)} className="space-y-5">
+    {error && !errorField && <Alert id="review-submit-error" variant="destructive" role="alert"><AlertDescription className="!text-foreground">{error}</AlertDescription></Alert>}
+    {detail.loading ? <Skeleton className="h-24" /> : detail.error ? <Alert variant="destructive"><AlertDescription>{detail.error}</AlertDescription></Alert> : <form noValidate onSubmit={(event) => void submit(event)} className="space-y-5">
       {document.url && <Button variant="outline" nativeButton={false} className="bg-background text-sm" render={<a aria-label="Check original in SharePoint" href={document.url} target="_blank" rel="noreferrer" />}>Check original in SharePoint<ArrowUpRight data-icon="inline-end" /></Button>}
       <section className="space-y-3"><div><h3 className="text-base font-semibold">Document details</h3><p className="text-sm text-muted-foreground">Correct the extracted values before an action is created.</p></div><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Choice id="review-company" label="Company or entity" value={companyId} onChange={setCompanyId} items={[{ value: "none", label: "Choose company or entity" }, { value: "external", label: "External entity" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
-        {companyId === "external" && <Field><FieldLabel htmlFor="review-company-name" className="text-sm">Legal entity name</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-company-name" value={companyName} onChange={(event) => setCompanyName(event.target.value)} maxLength={255} required /></Field>}
-        <Choice id="review-type" label="Document type" value={documentType} onChange={setDocumentType} items={[{ value: "none", label: "Choose document type" }, ...DOCUMENT_TYPES.map(([value, label]) => ({ value, label }))]} />
+        <Choice id="review-company" label="Company or entity" value={companyId} onChange={(next) => { setCompanyId(next); setError(""); setErrorField(null); }} error={errorField === "company" ? error : undefined} items={[{ value: "none", label: "Choose company or entity" }, { value: "external", label: "External entity" }, ...options.companies.map((item) => ({ value: item.id, label: item.name }))]} />
+        {companyId === "external" && <Field data-invalid={errorField === "companyName"}><FieldLabel htmlFor="review-company-name" className="text-sm">Legal entity name</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-company-name" aria-invalid={errorField === "companyName"} aria-describedby={errorField === "companyName" ? "review-company-name-error" : undefined} value={companyName} onChange={(event) => { setCompanyName(event.target.value); setError(""); setErrorField(null); }} maxLength={255} required />{errorField === "companyName" && <FieldError id="review-company-name-error">{error}</FieldError>}</Field>}
+        <Choice id="review-type" label="Document type" value={documentType} onChange={(next) => { setDocumentType(next); setError(""); setErrorField(null); }} error={errorField === "documentType" ? error : undefined} items={[{ value: "none", label: "Choose document type" }, ...DOCUMENT_TYPES.map(([value, label]) => ({ value, label }))]} />
         <Field><FieldLabel htmlFor="review-reference" className="text-sm">Reference number</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-reference" value={reference} onChange={(event) => setReference(event.target.value)} /></Field>
         <Field><FieldLabel htmlFor="review-expiry" className="text-sm">Expiry date</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-expiry" type="date" value={expiry} onChange={(event) => setExpiry(event.target.value)} /></Field>
         <Field><FieldLabel htmlFor="review-renewal" className="text-sm">Renewal date</FieldLabel><Input className="h-10 text-sm md:text-sm" id="review-renewal" type="date" value={renewal} onChange={(event) => setRenewal(event.target.value)} /></Field>
@@ -363,8 +406,7 @@ function ReviewDialog({ document, options, onClose, onSaved }: { document: Compl
       </FieldGroup>{facts?.termination_notice?.days && <p className="text-sm text-muted-foreground">AI found a {facts.termination_notice.days}-day notice period. Confirm it against the contract.</p>}</section>
       <ActionDates actions={facts?.required_actions} />
       <section className="space-y-3 border-t border-border pt-4"><div><h3 className="text-base font-semibold">Ownership and review</h3><p className="text-sm text-muted-foreground">Choose an owner, or use the configured assignment rules and fallback.</p></div><FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Choice id="review-owner-kind" label="Assign to" value={ownerKind} onChange={(next) => { setOwnerKind(next); setOwnerId("none"); }} items={[{ value: "user", label: "Person" }, { value: "department", label: "Department" }]} /><Choice id="review-owner" label="Owner" value={ownerId} onChange={setOwnerId} items={[{ value: "none", label: "Use assignment rule" }, ...(ownerKind === "user" ? options.users : options.departments).map((item) => ({ value: item.id, label: item.name }))]} /><Field className="sm:col-span-2"><FieldLabel htmlFor="review-note" className="text-sm">Review note (optional)</FieldLabel><Textarea className="min-h-24 text-sm md:text-sm" id="review-note" placeholder="Add context if you corrected or confirmed something important" value={note} onChange={(event) => setNote(event.target.value)} /></Field></FieldGroup></section>
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" className="text-sm" onClick={onClose}>Cancel</Button><Button type="submit" className="text-sm" disabled={busy}>{busy ? "Saving…" : "Verify and create tasks"}</Button></div>
+      <div className="sticky bottom-[-1rem] z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-border bg-popover p-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" className="text-sm" onClick={onClose}>Cancel</Button><Button type="submit" className="text-sm" disabled={busy}>{busy ? "Saving…" : "Verify and create tasks"}</Button></div>
     </form>}
   </DialogContent></Dialog>;
 }

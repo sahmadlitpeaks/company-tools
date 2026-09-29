@@ -189,6 +189,47 @@ def _grounded_labeled_actions(result, segments):
 
 def validate_evidence(result, segments):
     norm_source = {s["id"]: re.sub(r"\s+", " ", s["text"]) for s in segments}
+    compliance = result.compliance
+
+    def cited(items):
+        return bool(items) and all(
+            evidence.segment_id in norm_source and
+            bool(evidence.quote.strip()) and
+            re.sub(r"\s+", " ", evidence.quote).strip() in norm_source[evidence.segment_id]
+            for evidence in items
+        )
+
+    # Reject unsupported claims individually. One inaccurate optional quote or
+    # owner must not discard all readable, independently cited document facts.
+    if not cited(result.summary_evidence):
+        result.summary = ""
+        result.summary_evidence = []
+        compliance.validation_issues.append("summary")
+    for name in ("tasks", "deadlines", "risks", "blockers", "contacts", "commercials"):
+        findings = getattr(result, name)
+        grounded = [finding for finding in findings if cited(finding.evidence)]
+        if len(grounded) != len(findings):
+            compliance.validation_issues.append(name)
+        setattr(result, name, grounded)
+    grounded_expiries = [expiry for expiry in result.expiries if cited(expiry.evidence)]
+    if len(grounded_expiries) != len(result.expiries):
+        compliance.validation_issues.append("expiry_date")
+    result.expiries = grounded_expiries
+    if compliance.type_evidence and not cited(compliance.type_evidence):
+        compliance.type_evidence = []
+        compliance.validation_issues.append("document_type")
+    for field in ("company", "reference_number", "document_status", "issue_date", "effective_date", "expiry_date", "renewal_date", "termination_notice"):
+        fact = getattr(compliance, field)
+        if fact is not None and not cited(fact.evidence):
+            setattr(compliance, field, None)
+            compliance.validation_issues.append(field)
+    for field in ("parties", "obligations", "required_actions"):
+        findings = getattr(compliance, field)
+        grounded = [finding for finding in findings if cited(finding.evidence)]
+        if len(grounded) != len(findings):
+            compliance.validation_issues.append(field)
+        setattr(compliance, field, grounded)
+
     evidence = list(result.summary_evidence)
     for name in ("tasks", "deadlines", "risks", "blockers", "contacts"):
         for finding in getattr(result, name):
@@ -196,8 +237,9 @@ def validate_evidence(result, segments):
             if finding.owner:
                 owner_norm = re.sub(r"\s+", " ", finding.owner).strip()
                 evidence_text = " ".join(norm_source.get(e.segment_id, "") for e in finding.evidence)
-                if owner_norm not in evidence_text:
-                    raise SharePointError("unsupported_owner", 422)
+                if owner_norm.casefold() not in evidence_text.casefold():
+                    finding.owner = None
+                    compliance.validation_issues.append("owner")
             if finding.deadline:
                 supported = _supported_date(finding.deadline, finding.evidence)
                 if supported:
@@ -211,8 +253,9 @@ def validate_evidence(result, segments):
         if expiry.responsible:
             resp_norm = re.sub(r"\s+", " ", expiry.responsible).strip()
             evidence_text = " ".join(norm_source.get(e.segment_id, "") for e in expiry.evidence)
-            if resp_norm not in evidence_text:
-                raise SharePointError("unsupported_responsible", 422)
+            if resp_norm.casefold() not in evidence_text.casefold():
+                expiry.responsible = None
+                compliance.validation_issues.append("owner")
         supported = _supported_date(expiry.date, expiry.evidence)
         if supported:
             expiry.date = supported
@@ -222,7 +265,6 @@ def validate_evidence(result, segments):
     result.expiries = grounded_expiries
     for comm in getattr(result, "commercials", []):
         evidence.extend(comm.evidence)
-    compliance = result.compliance
     if compliance.document_type != "unknown" and not compliance.type_evidence:
         compliance.document_type = "unknown"
         compliance.validation_issues.append("document_type")

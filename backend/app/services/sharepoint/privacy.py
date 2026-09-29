@@ -17,7 +17,8 @@ from pypdf.errors import PdfReadError
 from app.services.sharepoint.common import SharePointError
 
 PLACEHOLDER = re.compile(r"\[(?:[A-Z0-9]+_)?[A-Z]+_\d+\]")
-PIPELINE_VERSION = "direct-extraction-v1"
+PIPELINE_VERSION = "direct-extraction-v2"
+VISUAL_REVIEW_LOCATION = "Unverified embedded visual"
 
 
 def normalize(text):
@@ -116,11 +117,15 @@ def extract(data, extension, maximum):
             entries = archive.infolist()
             if len(entries) > 4000 or sum(e.file_size for e in entries) > 80 * 1024 * 1024:
                 raise SharePointError("archive_limit", 422)
+            visual_review = False
             for entry in entries:
                 if entry.file_size > 20 * 1024 * 1024 or entry.file_size > max(1, entry.compress_size) * 200:
                     raise SharePointError("archive_limit", 422)
-                if any(part in entry.filename.lower() for part in ("/media/", "/embeddings/", "vbaproject", "/charts/", "/drawings/")):
-                    raise SharePointError("incomplete_visual_content", 422)
+                if any(part in entry.filename.lower() for part in ("/media/", "/embeddings/", "/charts/", "/drawings/")):
+                    if extension == "xlsx":
+                        raise SharePointError("incomplete_visual_content", 422)
+                    if any(part in entry.filename.lower() for part in ("/embeddings/", "/charts/", "/drawings/")):
+                        visual_review = True
                 if entry.filename.endswith((".xml", ".rels")):
                     fromstring(archive.read(entry))
             if extension == "docx":
@@ -132,6 +137,39 @@ def extract(data, extension, maximum):
                     root = fromstring(archive.read(part))
                     for index, paragraph in enumerate(root.iter(namespace + "p")):
                         add(f"{part.removeprefix('word/').removesuffix('.xml')} paragraph {index + 1}", "".join(n.text or "" for n in paragraph.iter(namespace + "t")))
+                media = [entry for entry in entries if entry.filename.lower().startswith("word/media/") and not entry.is_dir()]
+                if len(media) > 100:
+                    raise SharePointError("image_limit", 422)
+                ocr_cache = {}
+                for entry in media:
+                    image_data = archive.read(entry)
+                    try:
+                        from PIL import Image, UnidentifiedImageError
+                        with Image.open(io.BytesIO(image_data)) as image:
+                            width, height = image.size
+                    except (UnidentifiedImageError, OSError):
+                        visual_review = True
+                        continue
+                    if width * height > 10_000_000:
+                        raise SharePointError("image_limit", 422)
+                    key = hashlib.sha256(image_data).digest()
+                    if key not in ocr_cache:
+                        try:
+                            ocr_cache[key] = _ocr_image(image_data)
+                        except SharePointError as error:
+                            if error.code != "ocr_unavailable":
+                                raise
+                            visual_review = True
+                            continue
+                    value = ocr_cache[key]
+                    if value:
+                        add(entry.filename, value)
+                    elif width * height > 22_500:
+                        visual_review = True
+                if visual_review:
+                    if not rows:
+                        raise SharePointError("needs_ocr", 422)
+                    add(VISUAL_REVIEW_LOCATION, "Some embedded visual content needs verification against the original.")
             else:
                 from openpyxl import load_workbook
                 book = load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)

@@ -13,7 +13,7 @@ from app.services.sharepoint.analysis import analyze, payload_hash
 from app.services.sharepoint.common import SharePointError, digest, now
 from app.services.sharepoint.compliance import apply_analysis, archive_prior_version, event
 from app.services.sharepoint.graph import GraphClient, application_token, graph_url, item_path
-from app.services.sharepoint.privacy import PIPELINE_VERSION, preprocess
+from app.services.sharepoint.privacy import PIPELINE_VERSION, VISUAL_REVIEW_LOCATION, preprocess
 from app.services.sharepoint.store import (
     enqueue,
     in_live_scope,
@@ -287,7 +287,11 @@ async def process_document(source_id, owner, document_id, graph):
             doc.segments, doc.mapping_cipher, doc.languages = segments, None, languages
             doc.payload_hash, doc.fingerprint = hashed, fingerprint
             await db.commit()
-        analysis, usage = await analyze(segments)
+        visual_review = any(segment["location"] == VISUAL_REVIEW_LOCATION for segment in segments)
+        model_segments = [segment for segment in segments if segment["location"] != VISUAL_REVIEW_LOCATION]
+        analysis, usage = await analyze(model_segments)
+        if visual_review:
+            analysis["extraction_warnings"] = ["visual_content"]
         metadata = await graph.item(drive, item)
         if metadata.get("eTag") != version or not await in_live_scope(graph, source, metadata):
             raise SharePointError("document_changed_sync_required", 409)

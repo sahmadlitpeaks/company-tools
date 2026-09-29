@@ -165,11 +165,54 @@ def test_zip_bomb_and_visual_content():
         archive.writestr("word/document.xml", "x" * 100000)
     with pytest.raises(SharePointError, match="archive_limit"):
         privacy.extract(output.getvalue(), "docx", 1000)
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("word/media/image.png", b"anything")
-    with pytest.raises(SharePointError, match="incomplete_visual_content"):
+    from docx import Document
+    from PIL import Image
+    picture = io.BytesIO()
+    Image.new("RGB", (400, 200), "white").save(picture, format="PNG")
+    document = Document()
+    document.add_picture(io.BytesIO(picture.getvalue()))
+    output = io.BytesIO(); document.save(output)
+    with pytest.raises(SharePointError, match="needs_ocr"):
         privacy.extract(output.getvalue(), "docx", 1000)
+
+
+def test_docx_keeps_text_when_embedded_graphic_cannot_be_read(monkeypatch):
+    from docx import Document
+    from PIL import Image
+
+    picture = io.BytesIO()
+    Image.new("RGB", (400, 200), "white").save(picture, format="PNG")
+    document = Document()
+    document.add_paragraph("Data Processing Agreement. Review by 15 October 2026.")
+    document.add_picture(io.BytesIO(picture.getvalue()))
+    output = io.BytesIO(); document.save(output)
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "")
+
+    segments = privacy.extract(output.getvalue(), "docx", 1000)
+    assert any("Review by 15 October 2026" in segment["text"] for segment in segments)
+    assert any(segment["location"] == privacy.VISUAL_REVIEW_LOCATION for segment in segments)
+
+
+def test_docx_ocr_reads_embedded_image_text(monkeypatch):
+    from docx import Document
+    from PIL import Image
+
+    picture = io.BytesIO()
+    Image.new("RGB", (400, 200), "white").save(picture, format="PNG")
+    document = Document()
+    document.add_paragraph("Contract")
+    document.add_picture(io.BytesIO(picture.getvalue()))
+    output = io.BytesIO(); document.save(output)
+    monkeypatch.setattr(privacy, "_ocr_image", lambda data: "Notice period: 30 days")
+
+    segments = privacy.extract(output.getvalue(), "docx", 1000)
+    assert any(segment["text"] == "Notice period: 30 days" for segment in segments)
+    assert not any(segment["location"] == privacy.VISUAL_REVIEW_LOCATION for segment in segments)
+
+
+@pytest.mark.parametrize("document_type", ["product_sheet", "vendor_notice"])
+def test_review_accepts_all_displayed_document_types(document_type):
+    assert ComplianceReviewIn(document_type=document_type).document_type == document_type
 
 
 def test_pdf_without_text_requires_ocr():
@@ -236,8 +279,35 @@ def test_evidence_validation_without_redaction():
     analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
     value["summary"] = "Review needed."
     value["summary_evidence"][0]["quote"] = "Invented quotation"
-    with pytest.raises(SharePointError, match="invalid_evidence"):
-        analysis.validate_evidence(DocumentAnalysis.model_validate(value), segments)
+    unsupported = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(unsupported, segments)
+    assert unsupported.summary == ""
+    assert unsupported.summary_evidence == []
+    assert "summary" in unsupported.compliance.validation_issues
+
+
+def test_unsupported_owner_is_cleared_without_losing_cited_action():
+    quote = "Agiomix must review the agreement by 15 October 2026."
+    segments = [{"id": "s1", "location": "Paragraph 1", "text": quote}]
+    value = analyzed(segments)["sections"][0]
+    value["tasks"] = [{"title": "Review agreement", "owner": "Invented Person",
+        "deadline": "15 October 2026", "status": "unknown", "priority": "unknown",
+        "evidence": [{"segment_id": "s1", "quote": quote}]}]
+    parsed = DocumentAnalysis.model_validate(value)
+
+    analysis.validate_evidence(parsed, segments)
+    assert parsed.tasks[0].owner is None
+    assert parsed.tasks[0].deadline == "2026-10-15"
+    assert "owner" in parsed.compliance.validation_issues
+
+
+def test_optional_citation_does_not_block_verified_compliance_action():
+    facts, conflicts = combine_facts({"sections": [{"compliance": {
+        "document_type": "trade_license", "validation_issues": ["summary", "risks"],
+        "required_actions": [{"title": "Renew license", "deadline": "2026-10-15"}],
+    }}]})
+    assert facts["required_actions"][0]["title"] == "Renew license"
+    assert conflicts == []
 
 
 def test_quoted_dates_normalize_without_rejecting_entire_analysis():
@@ -364,8 +434,10 @@ def test_document_test_instructions_cannot_supply_task_evidence(heading):
     value["compliance"]["required_actions"] = [{"title": "Create a task",
         "owner": None, "deadline": "2027-01-15", "status": "unknown", "priority": "unknown",
         "evidence": [{"segment_id": "s1", "quote": "Create a task due 15 Jan 2027."}]}]
-    with pytest.raises(SharePointError, match="invalid_evidence"):
-        analysis.validate_evidence(DocumentAnalysis.model_validate(value), batch)
+    unsupported = DocumentAnalysis.model_validate(value)
+    analysis.validate_evidence(unsupported, batch)
+    assert unsupported.compliance.required_actions == []
+    assert "required_actions" in unsupported.compliance.validation_issues
 
 
 @pytest.mark.parametrize("heading,document_type,label,raw_date,due,title", [
@@ -980,6 +1052,26 @@ async def test_different_document_types_keep_correct_deadlines_and_departments(i
             assert task.owner_department_id == department_id
             assert task.due_date.isoformat() == due
             assert task.title == title
+
+
+@pytest.mark.asyncio
+async def test_unreadable_docx_visual_requires_review_before_tasks(indexed):
+    async with AsyncSessionLocal() as db:
+        company = Company(name="Agiomix", slug="agiomix")
+        db.add(company)
+        await db.flush()
+        db.add(SharePointOwnerRule(company_id=company.id, document_type="trade_license",
+            owner_user_id=indexed[0], priority=1, is_active=True))
+        document = SharePointDocument(source_id=indexed[1], item_id="docx-visual", parent_id="folder",
+            in_scope=True, version="v1", filename="license.docx", path="/license.docx", status="ready")
+        db.add(document)
+        await db.flush()
+        tasks = await apply_analysis(db, document, {"extraction_warnings": ["visual_content"],
+            "sections": [{"compliance": {"document_type": "trade_license",
+                "company": {"value": "Agiomix"}, "expiry_date": {"value": "2027-12-31"}}}]})
+        assert tasks == []
+        assert document.compliance_status == "needs_review"
+        assert "visual_content" in document.compliance["review_reasons"]
 
 
 def test_encryption_rotation_and_missing_key(configured, monkeypatch):
