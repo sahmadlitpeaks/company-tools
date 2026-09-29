@@ -27,6 +27,7 @@ from app.services.sharepoint.compliance import (
 )
 from app.services.sharepoint.common import SharePointError, decrypt, digest, encrypt, now
 from app.services.sharepoint.store import enqueue, source_for
+from helpers import make_member
 
 TENANT = "11111111-1111-4111-8111-111111111111"
 CLIENT = "22222222-2222-4222-8222-222222222222"
@@ -870,7 +871,8 @@ async def test_compliance_dashboard_permission_and_completion_stop_reminders(cli
         notices = (await db.scalars(select(Notification).where(
             Notification.user_id == indexed[0],
             Notification.category == "compliance"))).all()
-        assert len(notices) == 1 and notices[0].link == "/sharepoint/compliance"
+        reminder_notices = [notice for notice in notices if notice.dedup_key.startswith("sp:")]
+        assert len(reminder_notices) == 1 and reminder_notices[0].link == "/sharepoint/compliance"
         assert due.status == "pending" and due.attempts == 0
         sent_cards = []
         monkeypatch.setattr(settings, "TEAMS_WEBHOOK_URL", "https://example.invalid/teams-test")
@@ -993,6 +995,94 @@ async def test_finance_admin_folder_routing_and_manual_reassignment(client, auth
     forbidden = await client.post(f"/api/sharepoint/compliance/tasks/{task_id}/assign", headers=auth,
         json={"owner_department_id": str(finance_id), "note": "Attempted change"})
     assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_department_folder_routes_manager_queue_and_limits_person_assignment(client, auth, indexed, monkeypatch):
+    from app.models.notification import Notification
+    from app.services.sharepoint.reminders import populate_task_reminders
+
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    manager_auth, manager_id = await make_member(client, auth, "marketing.manager@example.com", role="manager")
+    finance_auth, finance_manager_id = await make_member(client, auth, "finance.manager@example.com", role="manager")
+    async with AsyncSessionLocal() as db:
+        marketing = (await db.scalars(select(Department).where(Department.name == "Marketing"))).one()
+        marketing.permissions = ["dashboard", "sharepoint_intelligence"]
+        finance = (await db.scalars(select(Department).where(Department.name == "Finance"))).one()
+        finance.permissions = ["dashboard", "sharepoint_intelligence"]
+        manager = await db.get(User, uuid.UUID(manager_id))
+        manager.department_id = marketing.id
+        finance_manager = await db.get(User, uuid.UUID(finance_manager_id))
+        finance_manager.department_id = finance.id
+        member = User(email="marketing.member@example.com", display_name="Marketing Member",
+            role="member", status="active", is_active=True, department_id=marketing.id)
+        db.add(member)
+        db.add(SharePointConnection(user_id=manager.id, tenant_id=TENANT, client_id=CLIENT,
+            object_id=str(uuid.uuid4()), token_cipher=encrypt({"access_token": "marketing-token",
+                "refresh_token": "refresh", "expires_at": time.time() + 3600})))
+        db.add(SharePointConnection(user_id=finance_manager.id, tenant_id=TENANT, client_id=CLIENT,
+            object_id=str(uuid.uuid4()), token_cipher=encrypt({"access_token": "finance-token",
+                "refresh_token": "refresh", "expires_at": time.time() + 3600})))
+        document = await db.get(SharePointDocument, indexed[2])
+        document.path = "/Shared Documents/Marketing/Campaigns/licence.pdf"
+        document.compliance_status = "needs_review"
+        await db.commit()
+        marketing_id, finance_id, member_id = marketing.id, finance.id, member.id
+
+    manager_dashboard = await client.get("/api/sharepoint/compliance/dashboard", headers=manager_auth)
+    assert manager_dashboard.status_code == 200, manager_dashboard.text
+    routed = manager_dashboard.json()["documents"][0]
+    assert routed["folder_department_id"] == str(marketing_id)
+    assert routed["can_review"] is True
+    assert manager_dashboard.json()["summary"]["needs_review"] == 1
+    unrelated = await client.get("/api/sharepoint/compliance/dashboard", headers=finance_auth)
+    assert unrelated.status_code == 200 and unrelated.json()["summary"]["needs_review"] == 0
+    assert (await client.get("/api/sharepoint/compliance/options", headers=manager_auth)).status_code == 200
+    assert (await client.post(f"/api/sharepoint/compliance/documents/{indexed[2]}/review",
+        headers=finance_auth, json={"company_name": "External", "document_type": "trade_license"})).status_code == 403
+
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "trade_license", "company": {"value": "Marketing Vendor"},
+            "reference_number": {"value": "MKT-1"}, "expiry_date": {"value": "2027-07-31"}}}]})
+        task, leads = plans[0]
+        assert task.owner_department_id == marketing_id
+        await populate_task_reminders(db, task, leads)
+        await db.commit()
+        reminders = (await db.scalars(select(SharePointReminder).where(
+            SharePointReminder.task_id == task.id, SharePointReminder.lead_days == 60))).all()
+        assert {row.recipient_email for row in reminders} == {"marketing.manager@example.com"}
+        notices = (await db.scalars(select(Notification).where(
+            Notification.user_id == uuid.UUID(manager_id), Notification.category == "compliance"))).all()
+        assert len(notices) == 1 and notices[0].title == "Compliance task needs assignment"
+        task_id = task.id
+
+    dashboard = await client.get("/api/sharepoint/compliance/dashboard", headers=manager_auth)
+    assert dashboard.json()["tasks"][0]["can_assign"] is True
+    assert (await client.get("/api/sharepoint/compliance/dashboard", headers=finance_auth)).json()["tasks"] == []
+    path = f"/api/sharepoint/compliance/tasks/{task_id}/assign"
+    outside = await client.post(path, headers=manager_auth, json={
+        "owner_user_id": str(member_id), "department_id": str(finance_id), "note": "Incorrect group"})
+    assert outside.status_code == 422 and outside.json()["detail"] == "owner_outside_department"
+    assigned = await client.post(path, headers=manager_auth, json={
+        "owner_user_id": str(member_id), "department_id": str(marketing_id), "note": "Campaign owner"})
+    assert assigned.status_code == 200, assigned.text
+    async with AsyncSessionLocal() as db:
+        person_notices = (await db.scalars(select(Notification).where(
+            Notification.user_id == member_id, Notification.category == "compliance"))).all()
+        assert len(person_notices) == 1 and person_notices[0].title == "Compliance task assigned to you"
+        manager_notices = (await db.scalars(select(Notification).where(
+            Notification.user_id == uuid.UUID(manager_id), Notification.category == "compliance"))).all()
+        assert all(notice.is_read for notice in manager_notices)
+    assert (await client.post(path, headers=finance_auth, json={
+        "owner_department_id": str(finance_id), "department_id": str(finance_id),
+        "note": "Not my department"})).status_code == 403
+    moved = await client.post(path, headers=manager_auth, json={
+        "owner_department_id": str(finance_id), "department_id": str(finance_id),
+        "note": "Finance must handle the renewal"})
+    assert moved.status_code == 200, moved.text
 
 
 @pytest.mark.asyncio

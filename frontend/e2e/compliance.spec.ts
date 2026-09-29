@@ -7,12 +7,14 @@ const document = {
   reference_number: "TL-123", expiry_date: "2026-12-15", renewal_date: null,
   action_date: "2026-11-30",
   notice_days: null, status: "active", processing_status: "ready", review_reasons: [],
+  folder_department_id: "finance-1", folder_department: "Finance", can_review: true,
   modified_at: null, uploaded_at: null, uploaded_by_email: null,
 };
 const task = {
   id: "task-1", document_id: "doc-1", document_name: document.name,
   title: "Renew Trade License", company: "Agiomix", document_type: "trade_license",
   due_date: "2026-12-15", basis: "expiry", status: "active", owner: "Alex Admin",
+  can_assign: true, can_complete: true,
   owner_user_id: "admin-1", owner_department_id: null,
 };
 
@@ -55,7 +57,8 @@ test.beforeEach(async ({ page }) => {
     else if (path === "/api/sharepoint/compliance/options") body = {
       companies: [{ id: "company-1", name: "Agiomix" }],
       departments: [{ id: "finance-1", name: "Finance" }, { id: "admin-dept-1", name: "Admin" }],
-      users: [{ id: "admin-1", name: "Alex Admin" }],
+      users: [{ id: "admin-1", name: "Alex Admin", department_id: "admin-dept-1" },
+        { id: "finance-user-1", name: "Fatima Finance", department_id: "finance-1" }],
     };
     else if (path === "/api/sharepoint/compliance/rules") body = [];
     else if (path === "/api/sharepoint/documents/doc-1") body = {
@@ -132,16 +135,50 @@ test("a reviewer can change an active task owner with an audit reason", async ({
   const dialog = page.getByRole("dialog", { name: "Change task owner" });
   await expect(dialog.getByText("Current owner: Alex Admin")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await dialog.getByRole("combobox", { name: "Assign to" }).click();
-  await page.getByRole("option", { name: "Department" }).click();
-  await dialog.getByRole("combobox", { name: "New owner" }).click();
+  await dialog.getByRole("combobox", { name: "Department", exact: true }).click();
   await page.getByRole("option", { name: "Finance" }).click();
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toHaveCount(0);
+  await page.getByRole("option", { name: "Fatima Finance" }).click();
+  await dialog.getByRole("combobox", { name: "Assign to" }).click();
+  await page.getByRole("option", { name: "Department inbox" }).click();
   await dialog.getByRole("textbox", { name: "Reason for change" }).fill("Finance handles this renewal.");
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/tasks/task-1/assign") && item.method() === "POST");
   await dialog.getByRole("button", { name: "Save owner" }).click();
-  expect((await request).postDataJSON()).toEqual({ owner_user_id: null, owner_department_id: "finance-1", note: "Finance handles this renewal." });
+  expect((await request).postDataJSON()).toEqual({ owner_user_id: null, owner_department_id: "finance-1", department_id: "finance-1", note: "Finance handles this renewal." });
   await expect(dialog).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test("a department manager sees only that department's assignment candidates until switching", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: {
+    id: "finance-manager-1", email: "manager@example.com", display_name: "Finance Manager",
+    is_active: true, is_admin: false, role: "manager", status: "active",
+    department_id: "finance-1", effective_permissions: ["sharepoint_intelligence"],
+    managed_company_ids: [], created_at: "2026-01-01T00:00:00Z",
+  } }));
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 0, unassigned: 0, tasks_by_owner: { Finance: 1 }, documents_by_company: { Agiomix: 1 } },
+    documents: [document], tasks: [{ ...task, owner: "Finance", owner_user_id: null,
+      owner_department_id: "finance-1" }],
+  } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Tasks");
+  await expect(page.getByText("Needs assignment", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Assign person" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change task owner" });
+  await expect(dialog.getByRole("combobox", { name: "Department", exact: true })).toContainText("Finance");
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await dialog.getByRole("combobox", { name: "Department", exact: true }).click();
+  await page.getByRole("option", { name: "Admin" }).click();
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toHaveCount(0);
 });
 
 test("governance edits a folder rule and shows real notification channel state", async ({ page }) => {

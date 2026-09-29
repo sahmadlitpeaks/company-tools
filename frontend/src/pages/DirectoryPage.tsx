@@ -131,9 +131,9 @@ function AccessModal({
             <SelectContent><SelectGroup><SelectItem value="pending">Pending approval</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="disabled">Disabled</SelectItem></SelectGroup></SelectContent>
           </Select>
         </Field>
-        <Field data-disabled={isAdminRole}>
+        <Field>
           <FieldLabel htmlFor="directory-access-department">Department</FieldLabel>
-          <Select items={[{ value: null, label: "None" }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name }))]} value={deptId || null} onValueChange={(value) => setDeptId(value ?? "")} disabled={isAdminRole}>
+          <Select items={[{ value: null, label: "None" }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name }))]} value={deptId || null} onValueChange={(value) => setDeptId(value ?? "")}>
             <SelectTrigger className="w-full" id="directory-access-department"><SelectValue /></SelectTrigger>
             <SelectContent><SelectGroup><SelectItem value={null}>None</SelectItem>{(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectGroup></SelectContent>
           </Select>
@@ -142,7 +142,7 @@ function AccessModal({
 
       {isAdminRole ? (
         <p className="mt-3 text-sm text-muted-foreground">
-          Admins have full access to every module and settings.
+          Admins have full access to every module and settings. A department can still route work and reminders to them.
         </p>
       ) : (
         <>

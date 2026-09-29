@@ -57,6 +57,59 @@ async def test_departments_admin_only(client, auth):
     assert (await client.post("/api/departments", headers=hdr, json={"name": "X"})).status_code == 403
 
 
+async def test_manage_existing_department_members_and_access(client, auth):
+    first = (await client.post("/api/departments", headers=auth,
+        json={"name": "Compliance Team", "permissions": ["dashboard", "sharepoint_intelligence"]})).json()
+    second = (await client.post("/api/departments", headers=auth,
+        json={"name": "Finance Review", "permissions": ["dashboard", "crm"]})).json()
+    member_auth, user_id = await make_member(client, auth, "dept-member@agholding.net")
+    await client.patch(f"/api/users/{user_id}", headers=auth,
+        json={"role": "manager", "permissions": ["dashboard", "cards"]})
+
+    path = f"/api/departments/{first['id']}/members"
+    assert (await client.get(path, headers=member_auth)).status_code == 403
+    assert (await client.post(path, headers=member_auth, json={"user_id": user_id})).status_code == 403
+    added = await client.post(path, headers=auth, json={"user_id": user_id})
+    assert added.status_code == 201
+    assert added.json()["email"] == "dept-member@agholding.net"
+    assert [user["id"] for user in (await client.get(path, headers=auth)).json()] == [user_id]
+    access = (await client.get("/api/auth/me", headers=member_auth)).json()
+    assert access["department_name"] == "Compliance Team"
+    assert {"sharepoint_intelligence", "cards"} <= set(access["effective_permissions"])
+    assert (await client.post(path, headers=auth, json={"user_id": user_id})).status_code == 409
+
+    moved = await client.post(f"/api/departments/{second['id']}/members", headers=auth,
+        json={"user_id": user_id})
+    assert moved.status_code == 201
+    assert (await client.get(path, headers=auth)).json() == []
+    access = (await client.get("/api/auth/me", headers=member_auth)).json()
+    assert access["department_name"] == "Finance Review"
+    assert {"crm", "cards"} <= set(access["effective_permissions"])
+
+    remove_path = f"/api/departments/{second['id']}/members/{user_id}"
+    assert (await client.delete(remove_path, headers=member_auth)).status_code == 403
+    assert (await client.delete(remove_path, headers=auth)).status_code == 204
+    assert (await client.delete(remove_path, headers=auth)).status_code == 404
+    access = (await client.get("/api/auth/me", headers=member_auth)).json()
+    assert access["department_id"] is None
+    assert "cards" in access["effective_permissions"]
+    assert "asset_tracker" not in access["effective_permissions"]  # No manager-default expansion.
+    assert "crm" not in access["effective_permissions"]
+
+
+async def test_admin_membership_and_missing_records(client, auth):
+    dept = (await client.post("/api/departments", headers=auth,
+        json={"name": "Access Team", "permissions": ["dashboard"]})).json()
+    admin_id = (await client.get("/api/auth/me", headers=auth)).json()["id"]
+    assert (await client.post(f"/api/departments/{dept['id']}/members", headers=auth,
+        json={"user_id": admin_id})).status_code == 201
+    assert (await client.get("/api/auth/me", headers=auth)).json()["department_name"] == "Access Team"
+    missing = "00000000-0000-4000-8000-000000000001"
+    assert (await client.get(f"/api/departments/{missing}/members", headers=auth)).status_code == 404
+    assert (await client.post(f"/api/departments/{dept['id']}/members", headers=auth,
+        json={"user_id": missing})).status_code == 404
+
+
 async def test_department_duplicate_and_validation(client, auth):
     await client.post("/api/departments", headers=auth, json={"name": "Dupe", "permissions": []})
     dup = await client.post("/api/departments", headers=auth, json={"name": "Dupe"})

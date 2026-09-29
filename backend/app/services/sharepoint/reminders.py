@@ -240,24 +240,12 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
 
 async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTask, leads: list[int]):
     """Materialize each notification date once; task completion cancels the rest."""
-    from app.models.department import Department
     document = await db.get(SharePointDocument, task.document_id)
     sent_stages = {(row.recipient_email, row.lead_days) for row in
         (await db.scalars(select(SharePointReminder).where(
             SharePointReminder.task_id == task.id,
             SharePointReminder.status == "sent"))).all()}
-    recipients: list[User] = []
-    if task.owner_user_id:
-        owner = await db.get(User, task.owner_user_id)
-        if owner and owner.is_active and owner.status == "active" and owner.email:
-            recipients = [owner]
-    elif task.owner_department_id:
-        department = await db.get(Department, task.owner_department_id)
-        if department:
-            recipients = list((await db.scalars(select(User).where(
-                User.department_id == department.id,
-                User.is_active.is_(True), User.status == "active", User.email.is_not(None),
-                func.length(func.trim(User.email)) > 0))).all())
+    recipients = await compliance_task_recipients(db, task)
     for recipient in recipients:
         for lead in sorted(set(leads), reverse=True):
             if not isinstance(lead, int) or lead < -365 or lead > 730:
@@ -281,6 +269,42 @@ async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTa
                 recipient_email=destination.email.lower(), status="pending", attempts=0,
                 dedup_key=dedup,
             ).on_conflict_do_nothing(index_elements=["document_id", "dedup_key"]))
+
+
+async def compliance_task_recipients(db: AsyncSession, task: SharePointComplianceTask) -> list[User]:
+    """Send group-owned task reminders to its managers until a person is assigned."""
+    if task.owner_user_id:
+        owner = await db.get(User, task.owner_user_id)
+        return [owner] if owner and owner.is_active and owner.status == "active" and owner.email else []
+    if not task.owner_department_id:
+        return []
+    members = list((await db.scalars(select(User).where(
+        User.department_id == task.owner_department_id,
+        User.is_active.is_(True), User.status == "active", User.email.is_not(None),
+        func.length(func.trim(User.email)) > 0))).all())
+    managers = [member for member in members if member.role == "manager" or member.is_admin]
+    return managers or members
+
+
+async def notify_task_assignment(db: AsyncSession, task: SharePointComplianceTask) -> None:
+    """Prompt the department lead or selected owner as soon as work is created."""
+    for recipient in await compliance_task_recipients(db, task):
+        if task.owner_department_id:
+            title = "Compliance task needs assignment"
+            body = "A document task is in your department inbox. Open Compliance to assign a responsible person."
+        else:
+            title = "Compliance task assigned to you"
+            body = "Open Compliance to review your new document task and its due date."
+        key = f"sp_assignment:{task.id}:{task.owner_user_id or task.owner_department_id}:{recipient.id}"
+        existing = (await db.scalars(select(Notification.id).where(
+            Notification.user_id == recipient.id, Notification.dedup_key == key,
+            Notification.is_read.is_(False)))).first()
+        if not existing:
+            db.add(Notification(user_id=recipient.id, title=title, body=body,
+                link="/sharepoint/compliance", category="compliance", dedup_key=key))
+            from app.services.sharepoint.compliance import event
+            event(db, task.document_id, "assignment_notification_created", task_id=task.id,
+                details={"recipient_id": str(recipient.id)})
 
 
 def reminder_email_html(reminder: SharePointReminder, document: SharePointDocument) -> str:
