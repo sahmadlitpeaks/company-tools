@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Link2,
 } from "lucide-react";
+import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
 import { api } from "@/api/client";
 import {
   type SharePointDocument,
@@ -355,6 +356,7 @@ export default function SharePointPage({
 
   return (
     <div className="space-y-5">
+      <MicrosoftConnectionFeedback />
       {(!value || !value.enabled || !value.configured) && (
         <PageHead
           title="SharePoint Intelligence"

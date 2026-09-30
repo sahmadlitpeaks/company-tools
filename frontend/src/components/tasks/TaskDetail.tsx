@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { ArrowUpRight, Check, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
+import { TaskAccessAction } from "./TaskAccessAction";
 import { api } from "@/api/client";
 import type { BoardTask, TaskOptions } from "@/api/tasks";
 import { dateLabel, TASK_STATUSES, taskError } from "@/api/tasks";
@@ -95,6 +97,7 @@ function ComplianceTaskDetail({ task, options, onClose, onReload, onStatus }: {
   }
   return <Dialog open onOpenChange={(open) => !open && !state.busy && onClose()}><DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto">
     <DialogHeader><DialogTitle className="break-words">{task.title}</DialogTitle><DialogDescription>Document compliance action · {task.company || "External entity"}</DialogDescription></DialogHeader>
+    <MicrosoftConnectionFeedback />
     <Badge variant="info">Document compliance</Badge>
     <AssignmentEmailRetry task={task} onReload={onReload} />
     {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}
@@ -117,9 +120,11 @@ function RestrictedTaskDetail({ task, onClose, onReload }: {
   task: BoardTask; onClose: () => void; onReload: () => void;
 }) {
   const checking = task.access_state === "checking";
-  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-w-lg">
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
     <DialogHeader><DialogTitle>Document task assigned</DialogTitle><DialogDescription>Assigned to {task.assignee_name || "your department"}</DialogDescription></DialogHeader>
+    <MicrosoftConnectionFeedback />
     <Alert><AlertDescription>{task.access_message || "Document details require SharePoint access."}</AlertDescription></Alert>
+    <TaskAccessAction task={task} />
     <AssignmentEmailRetry task={task} onReload={onReload} />
     <p className="text-sm text-muted-foreground">Your assignment is saved. The original file's permissions must be verified before its title, deadline, and contents can be shown.</p>
     {checking ? <p role="status" className="text-sm text-muted-foreground">Checking document access…</p> : <Button variant="outline" onClick={onReload}>Check access again</Button>}

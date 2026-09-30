@@ -13,7 +13,7 @@ from app.services.task_assignment_email import assignment_states
 ACCESS_MESSAGES = {
     "checking": "Checking your access to the original SharePoint file.",
     "module_required": "Your workspace Compliance access is off. Ask an administrator to enable SharePoint Intelligence in Directory → your account → Access. Microsoft file permissions are separate.",
-    "microsoft_connection_required": "Connect your Microsoft account in Compliance to view this task.",
+    "microsoft_connection_required": "Connect Microsoft to verify access to the original file and enable task status changes.",
     "document_access_denied": "Your Microsoft account cannot read the original file. Ask the file owner to grant access in SharePoint.",
     "document_not_found": "The original file is unavailable or outside the configured SharePoint folder.",
     "document_changed_sync_required": "The original file changed. Its details will be available after processing finishes.",

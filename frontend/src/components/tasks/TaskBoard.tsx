@@ -43,7 +43,12 @@ function DraggableTask({ task, busy, onOpen, onStatus, onDelete }: Omit<Props, "
   const { onKeyDown, ...pointerListeners } = listeners ?? {};
   const handle = <Button ref={setActivatorNodeRef} variant="ghost" size="icon" className="touch-none shrink-0" disabled={disabled}
     {...attributes} {...pointerListeners} onKeyDownCapture={(event) => onKeyDown?.(event)} aria-label={`Move task: ${task.title}`}><GripVertical /></Button>;
-  return <div ref={setNodeRef} className={isDragging ? "opacity-40" : undefined}>
+  return <div ref={setNodeRef} className={isDragging ? "opacity-40" : disabled ? undefined : "cursor-grab active:cursor-grabbing"}
+    onPointerDown={(event) => {
+      // Keep controls clickable and touch scrolling natural; touch uses the handle.
+      if (!disabled && event.pointerType === "mouse" && event.target instanceof Element &&
+          !event.target.closest("button, a, input, textarea, select, [role=combobox]")) pointerListeners.onPointerDown?.(event);
+    }}>
     <TaskCard task={task} busy={Boolean(busy)} dragHandle={handle} onOpen={() => onOpen(task)}
       onStatus={(status) => void onStatus(task, status).catch(() => undefined)} onDelete={() => onDelete(task)} />
   </div>;
@@ -66,7 +71,7 @@ export function TaskBoard(props: Props) {
     if (task && status && !props.busy && task.can_change_status !== false) void props.onStatus(task, status).catch(() => undefined);
   }
   return <div className="space-y-3">
-    <p className="text-sm text-muted-foreground">Use the handle to move cards, or choose Status. Keyboard: Space to pick up, arrows to move, Space to drop; Escape cancels.</p>
+    <p className="text-sm text-muted-foreground">Drag a card or its handle to change status. On a phone, use the handle. You can also choose Status. Keyboard: Space to pick up, arrows to move, Space to drop; Escape cancels.</p>
     <DndContext sensors={sensors} collisionDetection={(args) => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args)} onDragStart={({ active: item }) => { setActiveId(String(item.id)); props.onDragging?.(true); }} onDragCancel={() => { setActiveId(null); props.onDragging?.(false); }} onDragEnd={drop}
       accessibility={{ screenReaderInstructions: { draggable: "Press Space to pick up a task. Use arrow keys to move to a status column, then Space to drop. Press Escape to cancel." },
         announcements: {

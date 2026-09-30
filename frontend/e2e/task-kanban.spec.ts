@@ -66,12 +66,13 @@ test("keyboard Kanban move persists and admin automatically sees employee progre
 test("pointer drag moves ordinary task and cancellation leaves state unchanged", async ({page}) => {
   const state = await setup(page);
   const handle = page.getByRole("button",{name:"Move task: Renew lab accreditation"});
+  const body = page.getByRole("region",{name:"Tasks for To do"}).getByText("Maya",{exact:true});
   const target = page.getByRole("region",{name:"Tasks for In progress"});
   await target.scrollIntoViewIfNeeded();
   // Mouse events also exercise the pointer sensor in the configured mobile layout.
-  const from = await handle.boundingBox();
-  await handle.scrollIntoViewIfNeeded();
-  const start = await handle.boundingBox();
+  const from = await body.boundingBox();
+  await body.scrollIntoViewIfNeeded();
+  const start = await body.boundingBox();
   const end = await target.boundingBox();
   expect(from).not.toBeNull();
   await page.mouse.move(start!.x+start!.width/2,start!.y+start!.height/2);

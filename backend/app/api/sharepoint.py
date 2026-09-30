@@ -1,7 +1,8 @@
 """Company module authorization + live delegated SharePoint authorization."""
+import logging
 import time
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import delete, select
@@ -69,19 +70,53 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
         "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
 
 
+def connection_return(value):
+    """Only known workspace destinations, never caller-provided origins."""
+    try:
+        target = urlsplit(value or "/sharepoint")
+        if target.scheme or target.netloc or target.path not in {"/tasks", "/sharepoint", "/sharepoint/compliance"}:
+            return "/sharepoint"
+        params = parse_qs(target.query)
+        query = {}
+        if target.path == "/tasks" and params.get("task"):
+            try:
+                query["task"] = str(uuid.UUID(params["task"][0]))
+            except ValueError:
+                pass
+        return target.path + ("?" + urlencode(query) if query else "")
+    except (TypeError, ValueError):
+        return "/sharepoint"
+
+
+def connection_redirect(target, error=None):
+    target = urlsplit(connection_return(target))
+    query = parse_qs(target.query)
+    query["microsoft_error" if error else "connected"] = [error or "1"]
+    return RedirectResponse(target.path + "?" + urlencode(query, doseq=True), status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
 @router.get("/connect")
-async def connect(request: Request, user=Depends(get_current_user)):
+async def connect(request: Request, return_to: str = "/sharepoint", user=Depends(get_current_user)):
     require_config()
-    request.session["sharepoint_user"] = {"id": str(user.id), "scope": scope_key()}
-    return await oauth_client().authorize_redirect(request, settings.SHAREPOINT_REDIRECT_URI, prompt="select_account")
+    target = connection_return(return_to)
+    request.session["sharepoint_user"] = {"id": str(user.id), "scope": scope_key(), "return_to": target}
+    try:
+        return await oauth_client().authorize_redirect(request, settings.SHAREPOINT_REDIRECT_URI, prompt="select_account")
+    except Exception:
+        request.session.pop("sharepoint_user", None)
+        return connection_redirect(target, "microsoft_connection_failed")
 
 
 @router.get("/callback")
 async def callback(request: Request, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     require_config()
     context = request.session.pop("sharepoint_user", None)
-    if context != {"id": str(user.id), "scope": scope_key()}:
-        raise SharePointError("microsoft_connection_state_invalid", 403)
+    if not isinstance(context, dict) or context.get("id") != str(user.id) or context.get("scope") != scope_key():
+        return connection_redirect("/sharepoint", "microsoft_connection_state_invalid")
+    target = connection_return(context.get("return_to"))
+    user_id = user.id
+    stage = "exchange"
     try:
         token = await oauth_client().authorize_access_token(request)
         identity = token.get("userinfo") or {}
@@ -90,27 +125,35 @@ async def callback(request: Request, user=Depends(get_current_user), db: AsyncSe
             raise SharePointError("microsoft_account_mismatch", 403)
         if user.azure_oid and oid.lower() != user.azure_oid.lower():
             raise SharePointError("microsoft_account_mismatch", 403)
-        if not user.azure_oid:
-            user.azure_oid = oid
         if not token.get("access_token") or not token.get("refresh_token"):
             raise SharePointError("microsoft_consent_required", 403)
         secret = {k: token[k] for k in ("access_token", "refresh_token", "expires_at") if k in token}
         if "expires_at" not in secret:
             secret["expires_at"] = time.time() + int(token.get("expires_in", 3600))
-    except SharePointError:
-        raise
-    except Exception:
-        raise SharePointError("microsoft_connection_failed", 403) from None
-    connection = await db.get(SharePointConnection, user.id)
-    if not connection:
-        connection = SharePointConnection(user_id=user.id, version=0)
-        db.add(connection)
-    connection.tenant_id, connection.object_id, connection.client_id = settings.SHAREPOINT_TENANT_ID, oid, settings.SHAREPOINT_CLIENT_ID
-    connection.token_cipher = encrypt(secret)
-    connection.version += 1
-    record(db, user=user, action="connect", entity_type="sharepoint", summary="Connected Microsoft document access")
-    await db.commit()
-    return RedirectResponse("/sharepoint?connected=1", status_code=303)
+        stage = "save"
+        connection = await db.get(SharePointConnection, user_id)
+        if connection and connection.tenant_id == settings.SHAREPOINT_TENANT_ID and connection.client_id == settings.SHAREPOINT_CLIENT_ID and connection.object_id.lower() != oid.lower():
+            raise SharePointError("microsoft_account_mismatch", 403)
+        if not connection:
+            connection = SharePointConnection(user_id=user_id, version=0)
+            db.add(connection)
+        # SharePoint credentials belong to this connection. Connecting must not
+        # rewrite the employee's unique SSO identity or turn a local account into a synced one.
+        connection.tenant_id, connection.object_id, connection.client_id = settings.SHAREPOINT_TENANT_ID, oid, settings.SHAREPOINT_CLIENT_ID
+        connection.token_cipher = encrypt(secret)
+        connection.version += 1
+        record(db, user=user, action="connect", entity_type="sharepoint", summary="Connected Microsoft document access")
+        await db.commit()
+    except SharePointError as error:
+        await db.rollback()
+        return connection_redirect(target, error.code)
+    except Exception as error:
+        await db.rollback()
+        # Log only the stage/type and internal user ID; token/code/SQL values stay private.
+        logging.getLogger(__name__).warning("Microsoft connection %s failed (%s), user=%s",
+            stage, type(error).__name__, user_id)
+        return connection_redirect(target, "microsoft_connection_save_failed" if stage == "save" else "microsoft_connection_failed")
+    return connection_redirect(target)
 
 
 @router.delete("/connection", status_code=204)

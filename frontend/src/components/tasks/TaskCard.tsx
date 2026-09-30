@@ -5,6 +5,7 @@ import { dateLabel, daysUntil, TASK_STATUSES } from "@/api/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TaskAccessAction } from "./TaskAccessAction";
 import { TaskChoice } from "./TaskChoice";
 
 const EMAIL_LABELS: Record<string, string> = { pending: "Assignment email queued", sent: "Assignment email sent", failed: "Assignment email failed", cancelled: "Assignment email cancelled" };
@@ -24,6 +25,7 @@ export function TaskCard({ task, busy, onOpen, onStatus, onDelete, dragHandle }:
       </div>
     </CardHeader>
     <CardContent className="flex flex-col gap-3">
+      {restricted && <TaskAccessAction task={task} />}
       {restricted && <p className="break-words text-sm text-muted-foreground">{task.access_message}</p>}
       {task.description && <p className="line-clamp-2 break-words text-sm text-muted-foreground">{task.description}</p>}
       <dl className="space-y-2 text-sm">
