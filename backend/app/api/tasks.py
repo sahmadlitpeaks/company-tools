@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.deps import get_current_user
+from app.api.sharepoint import same_origin
 from app.core.database import get_db
 from app.models.user import User
 from app.models.department import Department
@@ -235,7 +236,7 @@ async def _enrich_tasks(db, outputs):
     people = (await db.scalars(select(User).where(User.id.in_(owner_ids)))).all() if owner_ids else []
     departments = {row.id: row.name for row in (await db.scalars(select(Department))).all()}
     owners = {row.id: row for row in people}
-    states = await assignment_states(db)
+    states = await assignment_states(db, task_ids=[item.id for item in outputs])
     for item in outputs:
         owner = owners.get(item.assignee_id)
         item.assignee_department_id = owner.department_id if owner else None
@@ -257,51 +258,47 @@ async def task_options(db: AsyncSession = Depends(get_db), user: User = Depends(
 
 
 @router.get("/compliance")
-async def compliance_tasks(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    if "sharepoint_intelligence" not in user.effective_permissions:
-        return {"tasks": [], "available": False, "message": None}
-    from app.api.sharepoint_compliance import dashboard
-    from app.services.sharepoint.common import SharePointError
-    try:
-        data = await dashboard(user=user, db=db)
-    except SharePointError as error:
-        messages = {
-            "microsoft_connection_required": "Connect Microsoft in Compliance to see your document tasks.",
-            "sharepoint_disabled": None,
-            "sharepoint_not_configured": "Document tasks are waiting for SharePoint setup.",
-        }
-        if error.code not in messages:
-            raise
-        return {"tasks": [], "available": False, "message": messages[error.code]}
+async def compliance_tasks(
+    preview: bool = Query(False),
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user),
+):
+    from app.services.compliance_task_view import task_board
+    return await task_board(db, user, preview=preview)
+
+
+@router.post("/compliance/{task_id}/email/retry", dependencies=[Depends(same_origin)])
+async def retry_compliance_assignment_email(
+    task_id: uuid.UUID, background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user),
+):
     from app.models.sharepoint import SharePointComplianceTask
-    rows = {row.id: row for row in (await db.scalars(select(SharePointComplianceTask).where(
-        SharePointComplianceTask.id.in_([uuid.UUID(item["id"]) for item in data["tasks"]])))).all()}
-    people = {row.id: row for row in (await db.scalars(select(User))).all()}
-    departments = {row.id: row.name for row in (await db.scalars(select(Department))).all()}
-    states = await assignment_states(db, compliance=True)
-    documents = {item["id"]: item for item in data["documents"]}
-    results = []
-    for item in data["tasks"]:
-        if item["status"] not in {"active", "completed"}:
-            continue
-        row = rows[uuid.UUID(item["id"])]
-        owner = people.get(row.owner_user_id)
-        dept_id = row.owner_department_id or (owner.department_id if owner else None)
-        results.append({
-            **item, "document_url": documents[item["document_id"]]["url"],
-            "document_expiry_date": documents[item["document_id"]]["expiry_date"],
-            "reference_number": documents[item["document_id"]]["reference_number"],
-            "source": "compliance", "status": "done" if row.status == "completed" else row.work_status,
-            "lifecycle_status": row.status, "priority": "high",
-            "description": f'{item["document_name"]} · {item["company"] or "External entity"}',
-            "assignee_id": item["owner_user_id"], "assignee_name": item["owner"],
-            "assignee_department_id": str(dept_id) if dept_id else None,
-            "assignee_department_name": departments.get(dept_id),
-            "can_change_status": item["can_complete"], "can_delete": False,
-            "assignment_email_status": states.get(row.id), "created_at": row.created_at.isoformat(),
-            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-            "subtasks_total": 0, "subtasks_done": 0, "comment_count": 0})
-    return {"tasks": results, "available": True, "message": None}
+    from app.models.task_assignment_email import TaskAssignmentEmail
+    from app.services.compliance_task_view import task_board
+    # Generic assignment visibility is sufficient; no source facts are returned.
+    board = await task_board(db, user, preview=True)
+    if not any(item["id"] == str(task_id) for item in board["tasks"]):
+        raise HTTPException(404, "Assigned task not found")
+    task = await db.get(SharePointComplianceTask, task_id)
+    if task.status != "active":
+        raise HTTPException(409, "Completed tasks do not need assignment emails")
+    from app.services.sharepoint.reminders import compliance_task_recipients
+    recipient_ids = {person.id for person in await compliance_task_recipients(db, task)}
+    # Retrying cannot change the recipient or send a completed/stale assignment.
+    rows = (await db.scalars(select(TaskAssignmentEmail).where(
+        TaskAssignmentEmail.compliance_task_id == task_id,
+        TaskAssignmentEmail.recipient_id.in_(recipient_ids)).order_by(
+        TaskAssignmentEmail.created_at.desc(), TaskAssignmentEmail.id.desc()).with_for_update())).all()
+    latest = {}
+    for row in rows:
+        latest.setdefault(row.recipient_id, row)
+    retrying = [row for row in latest.values() if row.status in {"pending", "failed"}]
+    if not retrying:
+        raise HTTPException(409, "No queued or failed assignment email to retry")
+    for row in retrying:
+        row.status, row.attempts, row.next_attempt_at, row.last_error = "pending", 0, None, None
+    await db.commit()
+    background_tasks.add_task(deliver_assignment_emails)
+    return {"ok": True}
 
 
 @router.get("", response_model=list[TaskOut])

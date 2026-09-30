@@ -51,8 +51,8 @@ async def notify_assignment(db, task, *, actor_id=None):
     await queue_assignment_email(db, task, recipient, notification=note, actor_id=actor_id)
 
 def assignment_email_html(*, title, description, due_date, owner, department, assigned_by, link,
-                          document_name=None, company=None):
-    rows = [("Due date", due_date.strftime("%d %B %Y") if due_date else "Not set"),
+                          document_name=None, company=None, details_available=True):
+    rows = [("Due date", "Available after SharePoint access is verified" if not details_available else due_date.strftime("%d %B %Y") if due_date else "Not set"),
             ("Assigned to", owner), ("Department", department or "Not set"),
             ("Assigned by", assigned_by or "Document automation")]
     if document_name:
@@ -69,10 +69,15 @@ def assignment_email_html(*, title, description, due_date, owner, department, as
     {description_html}<table style="border-collapse:collapse;width:100%">{details}</table>{button}
     <p style="font-size:12px;color:#52525b">The latest task status and deadline are available in the workspace.</p></div>"""
 
-async def assignment_states(db, *, compliance=False):
-    rows = (await db.scalars(select(TaskAssignmentEmail).where(
-        TaskAssignmentEmail.compliance_task_id.is_not(None) if compliance else TaskAssignmentEmail.task_id.is_not(None)
-    ).order_by(TaskAssignmentEmail.created_at.desc(), TaskAssignmentEmail.id.desc()))).all()
+async def assignment_states(db, *, compliance=False, task_ids=None):
+    column = TaskAssignmentEmail.compliance_task_id if compliance else TaskAssignmentEmail.task_id
+    query = select(TaskAssignmentEmail).where(column.is_not(None))
+    if task_ids is not None:
+        if not task_ids:
+            return {}
+        query = query.where(column.in_(task_ids))
+    rows = (await db.scalars(query.order_by(
+        TaskAssignmentEmail.created_at.desc(), TaskAssignmentEmail.id.desc()))).all()
     result = {}
     for row in rows:
         result.setdefault(row.compliance_task_id if compliance else row.task_id, row.status)
@@ -87,6 +92,7 @@ async def _deliver(db, row):
         row.status = "cancelled"
         return False
     document_name = company_name = None
+    details_available = True
     description = getattr(task, "description", None)
     if row.compliance_task_id:
         if not task or task.status != "active":
@@ -103,26 +109,34 @@ async def _deliver(db, row):
             return False
         from app.services.sharepoint.store import authorize_document
         from app.services.sharepoint.common import SharePointError
-        try:
-            await authorize_document(db, recipient, source, document)
-        except SharePointError as error:
-            row.last_error = error.code
-            return False
-        document_name = document.filename
-        facts = document.compliance or {}
-        company = await db.get(Company, document.company_id) if document.company_id else None
-        company_name = company.name if company else (facts.get("company") or {}).get("value")
-        description = f"Complete the action required by {document.filename}. Deadline basis: {task.basis.replace('_', ' ')}."
+        reason = "module_required"
+        details_available = "sharepoint_intelligence" in recipient.effective_permissions
+        if details_available:
+            try:
+                await authorize_document(db, recipient, source, document)
+            except SharePointError as error:
+                details_available = False
+                reason = error.code
+        if details_available:
+            document_name = document.filename
+            facts = document.compliance or {}
+            company = await db.get(Company, document.company_id) if document.company_id else None
+            company_name = company.name if company else (facts.get("company") or {}).get("value")
+            description = f"Complete the action required by {document.filename}. Deadline basis: {task.basis.replace('_', ' ')}."
+        else:
+            from app.services.compliance_task_view import ACCESS_MESSAGES
+            description = ACCESS_MESSAGES.get(reason, "Open the workspace to check access to your assigned document task.")
     elif not task or task.assignee_id != recipient.id or task.status == "done":
         row.status = "cancelled"
         return False
     department = await db.get(Department, recipient.department_id) if recipient.department_id else None
     actor = await db.get(User, row.actor_id) if row.actor_id else None
-    content = assignment_email_html(title=task.title, description=description, due_date=task.due_date,
+    title = task.title if details_available else "Document task assigned"
+    content = assignment_email_html(title=title, description=description, due_date=task.due_date if details_available else None,
         owner=recipient.display_name or recipient.email, department=department.name if department else None,
         assigned_by=actor.display_name or actor.email if actor else None,
-        link=task_link(task.id), document_name=document_name, company=company_name)
-    subject = f"Task assigned: {task.title}".replace("\r", " ").replace("\n", " ")[:200]
+        link=task_link(task.id), document_name=document_name, company=company_name, details_available=details_available)
+    subject = f"Task assigned: {title}".replace("\r", " ").replace("\n", " ")[:200]
     if not await asyncio.to_thread(send_email, to=recipient.email, subject=subject, html=content):
         row.last_error = "Email delivery unavailable"
         return False
@@ -130,7 +144,7 @@ async def _deliver(db, row):
     if row.compliance_task_id:
         from app.services.sharepoint.compliance import event
         event(db, task.document_id, "assignment_email_sent", task_id=task.id,
-            details={"recipient_id": str(recipient.id)})
+            details={"recipient_id": str(recipient.id), "document_details_available": details_available})
     return True
 
 async def run_assignment_emails(db):

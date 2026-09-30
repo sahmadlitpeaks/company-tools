@@ -29,6 +29,47 @@ def smtp_configured() -> bool:
     return True
 
 
+def smtp_diagnostics():
+    """Safe configuration summary: never return credentials or server responses."""
+    host = settings.SMTP_HOST.strip().casefold()
+    missing = []
+    if not host:
+        missing.append("SMTP_HOST")
+    if host in {"smtp-relay.brevo.com", "smtp.office365.com"}:
+        for key in ("SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
+            if not getattr(settings, key).strip():
+                missing.append(key)
+    issues = []
+    if host == "smtp.office365.com" and (settings.SMTP_PORT not in (25, 587) or not settings.SMTP_STARTTLS):
+        issues.append("Microsoft 365 requires STARTTLS on port 587 or 25.")
+    if host == "smtp-relay.brevo.com" and settings.SMTP_FROM and settings.SMTP_FROM.casefold() == settings.SMTP_USER.casefold():
+        issues.append("Brevo needs a verified sender address, separate from the SMTP login.")
+    if bool(settings.SMTP_USER) != bool(settings.SMTP_PASSWORD):
+        issues.append("Set both SMTP_USER and SMTP_PASSWORD for authenticated delivery.")
+    return {"configured": smtp_configured(), "missing": missing, "issues": issues}
+
+
+def check_smtp_connection():
+    diagnostics = smtp_diagnostics()
+    if not diagnostics["configured"] or diagnostics["issues"]:
+        return {"ok": False, "message": "Email settings are incomplete. Resolve the configuration issues first.", **diagnostics}
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+            smtp.ehlo()
+            if settings.SMTP_STARTTLS:
+                smtp.starttls()
+                smtp.ehlo()
+            if settings.SMTP_USER:
+                smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+    except smtplib.SMTPAuthenticationError:
+        return {"ok": False, "message": "The mail server rejected the login. Check the SMTP credentials and mailbox authentication settings."}
+    except smtplib.SMTPException:
+        return {"ok": False, "message": "The mail server rejected the connection or encryption settings."}
+    except (OSError, TimeoutError):
+        return {"ok": False, "message": "The mail server could not be reached. Check the host, port, and deployment network access."}
+    return {"ok": True, "message": "Mail server connection and configured login succeeded. No email was sent. Sender permission and inbox delivery still need to be verified."}
+
+
 def send_email(to: str, subject: str, html: str) -> bool:
     if not smtp_configured():
         return False

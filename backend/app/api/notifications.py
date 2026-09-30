@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,7 +6,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_admin, get_current_user
+from app.api.sharepoint import same_origin
 from app.core.database import get_db
 from app.models.notification import Notification
 from app.models.user import User
@@ -89,14 +91,16 @@ async def check_warranties(
 
 
 @router.get("/channels")
-async def channel_status(_: User = Depends(get_current_user)):
+async def channel_status(user: User = Depends(get_current_user)):
     """Which outbound notification channels are configured/enabled."""
     from app.core.config import settings
     from app.services.dispatch import email_enabled, slack_enabled, teams_enabled
+    from app.services.email import smtp_diagnostics
 
     return {
         "outbound_enabled": settings.NOTIFY_OUTBOUND,
         "email_configured": email_enabled(),
+        "email_diagnostics": smtp_diagnostics() if user.is_admin else None,
         "slack_configured": slack_enabled(),
         "teams_configured": teams_enabled(),
     }
@@ -150,3 +154,10 @@ async def test_outbound(
         link="/",
     )
     return {"in_app": True, "external_channels": attempted}
+
+
+@router.post("/email/check", dependencies=[Depends(same_origin)])
+async def email_connection_check(_: User = Depends(get_current_admin)):
+    """Check SMTP connectivity and authentication without sending an email."""
+    from app.services.email import check_smtp_connection
+    return await asyncio.to_thread(check_smtp_connection)

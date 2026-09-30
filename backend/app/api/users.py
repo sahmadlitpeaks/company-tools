@@ -6,10 +6,12 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.azure import fetch_graph_users, get_app_token
+from app.api.sharepoint import same_origin
+from app.services.employee_deletion import deletion_blockers, remove_personal_data
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
@@ -423,6 +425,47 @@ async def sync_bamboo(
     return {"ok": True, "bamboo_id": user.bamboo_id}
 
 
+async def _deletion_status(db, target, admin):
+    blockers = await deletion_blockers(db, target.id)
+    reason = None
+    if target.id == admin.id:
+        reason = "You cannot delete your own account."
+    elif target.azure_oid or target.bamboo_id:
+        reason = "This employee is linked to Azure or BambooHR. Manage them in that directory and disable local access here; synced accounts cannot be permanently deleted here."
+    elif blockers:
+        reason = "This employee has linked business records. Reassign their work and resolve the records below, or disable the account to preserve its history."
+    return {"can_delete": reason is None, "reason": reason, "blockers": blockers}
+
+
+@router.get("/{user_id}/deletion")
+async def employee_deletion_status(
+    user_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(404, "Employee not found")
+    return await _deletion_status(db, target, admin)
+
+
+@router.delete("/{user_id}", status_code=204, dependencies=[Depends(same_origin)])
+async def delete_employee(
+    user_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    target = await db.scalar(select(User).where(User.id == user_id).with_for_update(of=User))
+    if not target:
+        raise HTTPException(404, "Employee not found")
+    status = await _deletion_status(db, target, admin)
+    if not status["can_delete"]:
+        raise HTTPException(409, {"message": status["reason"], "blockers": status["blockers"]})
+    record(db, user=admin, action="deleted", entity_type="user", entity_id=target.id,
+           summary=f"Deleted employee {target.display_name or ''} ({target.email or target.personal_email or ''})")
+    await remove_personal_data(db, target.id)
+    await db.execute(delete(User).where(User.id == target.id))
+    await db.commit()
+
+
 @router.get("/{user_id}", response_model=UserOut)
 async def get_user(
     user_id: uuid.UUID,
@@ -446,6 +489,18 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     data = payload.model_dump(exclude_unset=True)
+    for field in ("email", "personal_email"):
+        if field in data:
+            data[field] = (data[field] or "").strip().lower() or None
+            if data[field] and not _valid_email(data[field]):
+                raise HTTPException(422, "Enter a valid email address")
+    if {"email", "personal_email"} & data.keys() and not data.get("email", user.email) and not data.get("personal_email", user.personal_email):
+        raise HTTPException(422, "An official or personal email is required")
+    if data.get("email"):
+        clash = await db.scalar(select(User.id).where(
+            func.lower(User.email) == data["email"], User.id != user.id))
+        if clash:
+            raise HTTPException(409, "That official email is already used by another employee")
     if "role" in data:
         if data["role"] not in ROLES:
             raise HTTPException(status_code=422, detail="Invalid role")
