@@ -286,22 +286,25 @@ async def compliance_task_recipients(db: AsyncSession, task: SharePointComplianc
     return managers or members
 
 
-async def notify_task_assignment(db: AsyncSession, task: SharePointComplianceTask) -> None:
+async def notify_task_assignment(db: AsyncSession, task: SharePointComplianceTask, *, actor_id=None) -> None:
     """Prompt the department lead or selected owner as soon as work is created."""
     for recipient in await compliance_task_recipients(db, task):
         if task.owner_department_id:
             title = "Compliance task needs assignment"
-            body = "A document task is in your department inbox. Open Compliance to assign a responsible person."
+            body = "A document task is in your department inbox. Open Tasks to assign a responsible person."
         else:
             title = "Compliance task assigned to you"
-            body = "Open Compliance to review your new document task and its due date."
+            body = "Open Tasks to review your new document task and its due date."
         key = f"sp_assignment:{task.id}:{task.owner_user_id or task.owner_department_id}:{recipient.id}"
         existing = (await db.scalars(select(Notification.id).where(
             Notification.user_id == recipient.id, Notification.dedup_key == key,
             Notification.is_read.is_(False)))).first()
         if not existing:
-            db.add(Notification(user_id=recipient.id, title=title, body=body,
-                link="/sharepoint/compliance", category="compliance", dedup_key=key))
+            notification = Notification(user_id=recipient.id, title=title, body=body,
+                link=f"/tasks?task={task.id}", category="compliance", dedup_key=key)
+            db.add(notification)
+            from app.services.task_assignment_email import queue_assignment_email
+            await queue_assignment_email(db, task, recipient, notification=notification, actor_id=actor_id, compliance=True)
             from app.services.sharepoint.compliance import event
             event(db, task.document_id, "assignment_notification_created", task_id=task.id,
                 details={"recipient_id": str(recipient.id)})

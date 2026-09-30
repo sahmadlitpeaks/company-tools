@@ -16,6 +16,10 @@ and now also includes:
   analysis, owner assignment, tasks, reminders, review, and audit history with
   live Microsoft access checks. See [setup and limits](docs/SHAREPOINT_INTELLIGENCE.md).
 
+- A combined Tasks page for assigned work and document actions, manager views by
+  member, department-filtered assignment, and queued assignment emails. See
+  [task workflow and delivery setup](docs/TASKS.md).
+
 - Simple time tracking with two primary actions (clock and break), a live
   `HH:MM:SS` timer that retains exact seconds after clock-out, a daily
   work/break timeline, weekly timesheets, corrections,

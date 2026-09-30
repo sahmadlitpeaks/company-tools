@@ -24,6 +24,7 @@ from app.models.tracked_asset import (  # noqa: F401
     TrackedAsset,
 )
 from app.models.activity import ActivityLog  # noqa: F401
+from app.models.task_assignment_email import TaskAssignmentEmail  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.saved_view import SavedView  # noqa: F401
 from app.models.phone_line import PhoneBill, PhoneLine, PhoneLineEvent  # noqa: F401

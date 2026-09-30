@@ -398,15 +398,18 @@ export function PageHead({
   title,
   subtitle,
   action,
+  headingLevel = 2,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  headingLevel?: 1 | 2;
 }) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row">
       <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="m-0">{title}</h2>
+        <Heading className={headingLevel === 1 ? "m-0 text-2xl font-semibold" : "m-0"}>{title}</Heading>
         {subtitle ? (
           <p className="m-0 text-sm text-muted-foreground">{subtitle}</p>
         ) : null}

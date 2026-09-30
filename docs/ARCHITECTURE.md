@@ -74,6 +74,15 @@ ownership checks in their handlers. The frontend uses matching module keys for
 module-scoped route and navigation visibility, but hidden UI is never the
 authorization boundary.
 
+## Task assignment and oversight
+
+Ordinary task routes share an ownership/team boundary with their attachments.
+The Tasks page also adapts authorized compliance tasks without duplicating
+records. Assignment notifications and email delivery entries commit together;
+a retry worker checks current ownership and live SharePoint access before
+sending document details. See [Tasks](TASKS.md) for permissions, progress,
+email configuration, and delivery guarantees.
+
 ## Modules & key endpoints
 
 | Feature | Module | Auth endpoints | Public endpoints |

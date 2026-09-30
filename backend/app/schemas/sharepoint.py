@@ -234,3 +234,7 @@ class ComplianceTaskAssignIn(StrictModel):
         if len(value) < 3:
             raise ValueError("Explain why the task owner is changing")
         return value
+
+
+class ComplianceTaskProgressIn(StrictModel):
+    status: Literal["todo", "in_progress", "blocked"]

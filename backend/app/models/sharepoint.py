@@ -132,6 +132,7 @@ class SharePointOwnerRule(UUIDMixin, TimestampMixin, Base):
 class SharePointComplianceTask(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "sharepoint_compliance_tasks"
     __table_args__ = (
+        CheckConstraint("work_status IN ('todo', 'in_progress', 'blocked')", name="ck_sp_task_work_status"),
         UniqueConstraint("document_id", "action_key", name="uq_sharepoint_task_action"),
         CheckConstraint("status <> 'active' OR (owner_user_id IS NOT NULL) <> (owner_department_id IS NOT NULL)",
                         name="ck_sp_active_task_one_owner"),
@@ -142,6 +143,7 @@ class SharePointComplianceTask(UUIDMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(512))
     due_date: Mapped[date] = mapped_column(Date, index=True)
     basis: Mapped[str] = mapped_column(String(32))
+    work_status: Mapped[str] = mapped_column(String(24), default="todo", server_default="todo")
     status: Mapped[str] = mapped_column(String(24), default="active", index=True)
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     owner_department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), index=True)

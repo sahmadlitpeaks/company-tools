@@ -1008,9 +1008,9 @@ async def test_department_folder_routes_manager_queue_and_limits_person_assignme
     finance_auth, finance_manager_id = await make_member(client, auth, "finance.manager@example.com", role="manager")
     async with AsyncSessionLocal() as db:
         marketing = (await db.scalars(select(Department).where(Department.name == "Marketing"))).one()
-        marketing.permissions = ["dashboard", "sharepoint_intelligence"]
+        marketing.permissions = ["dashboard", "tasks", "sharepoint_intelligence"]
         finance = (await db.scalars(select(Department).where(Department.name == "Finance"))).one()
-        finance.permissions = ["dashboard", "sharepoint_intelligence"]
+        finance.permissions = ["dashboard", "tasks", "sharepoint_intelligence"]
         manager = await db.get(User, uuid.UUID(manager_id))
         manager.department_id = marketing.id
         finance_manager = await db.get(User, uuid.UUID(finance_manager_id))
@@ -1079,6 +1079,13 @@ async def test_department_folder_routes_manager_queue_and_limits_person_assignme
     assert (await client.post(path, headers=finance_auth, json={
         "owner_department_id": str(finance_id), "department_id": str(finance_id),
         "note": "Not my department"})).status_code == 403
+    board = await client.get("/api/tasks/compliance", headers=manager_auth)
+    assert board.status_code == 200, board.text
+    assert board.json()["tasks"][0]["assignee_id"] == str(member_id)
+    assert board.json()["tasks"][0]["can_change_status"] is True
+    assert (await client.get("/api/tasks/compliance", headers=finance_auth)).json()["tasks"] == []
+    assert (await client.patch(f"/api/sharepoint/compliance/tasks/{task_id}/progress",
+        headers=manager_auth, json={"status": "blocked"})).status_code == 200
     moved = await client.post(path, headers=manager_auth, json={
         "owner_department_id": str(finance_id), "department_id": str(finance_id),
         "note": "Finance must handle the renewal"})
@@ -2992,3 +2999,73 @@ async def test_reminder_update_recipient_email(client, auth, indexed, monkeypatc
     async with AsyncSessionLocal() as db:
         updated = await db.get(SharePointReminder, uuid.UUID(rem_id))
         assert updated.recipient_email == "admin@agholding.net"
+
+@pytest.mark.asyncio
+async def test_tasks_page_compliance_adapter_progress_completion_and_acl(client, auth, indexed, monkeypatch):
+    from app.services.sharepoint.reminders import populate_task_reminders
+    from app.models.task_assignment_email import TaskAssignmentEmail
+    from app.services import task_assignment_email as delivery
+
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "contract", "company": {"value": "Vendor LLC"},
+            "reference_number": {"value": "REF-1"}, "expiry_date": {"value": "2027-12-31"},
+            "termination_notice": {"days": 60}}}]}, override_owner_user_id=indexed[0])
+        task, leads = plans[0]
+        await populate_task_reminders(db, task, leads)
+        await db.commit()
+        tid = str(task.id)
+    board = await client.get("/api/tasks/compliance", headers=auth)
+    assert board.status_code == 200, board.text
+    item = board.json()["tasks"][0]
+    assert item["id"] == tid and item["source"] == "compliance" and item["status"] == "todo"
+    assert item["due_date"] == "2027-11-01" and item["assignment_email_status"] == "pending"
+    progress = await client.patch(f"/api/sharepoint/compliance/tasks/{tid}/progress",
+        headers=auth, json={"status": "in_progress"})
+    assert progress.status_code == 200, progress.text
+    assert (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"][0]["status"] == "in_progress"
+    for body in [{"status": []}, {"status": "done"}, {"status": "todo", "other": "invalid"}]:
+        assert (await client.patch(f"/api/sharepoint/compliance/tasks/{tid}/progress",
+            headers=auth, json=body)).status_code == 422
+    sent = []
+    monkeypatch.setattr(delivery, "smtp_configured", lambda: True)
+    monkeypatch.setattr(delivery, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    async with AsyncSessionLocal() as db:
+        assert (await delivery.run_assignment_emails(db))["sent"] == 1
+        assert (await db.scalars(select(TaskAssignmentEmail))).one().status == "sent"
+    assert len(sent) == 1 and "Vendor LLC" in sent[0]["html"] and "01 November 2027" in sent[0]["html"]
+    await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth, json={"status": "completed"})
+    assert (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"][0]["status"] == "done"
+    async with AsyncSessionLocal() as db:
+        assert all(row.status == "dismissed" for row in (await db.scalars(
+            select(SharePointReminder).where(SharePointReminder.task_id == uuid.UUID(tid)))).all())
+    async def denied(*args): raise SharePointError("document_access_denied", 403)
+    monkeypatch.setattr(graph.GraphClient, "can_read", denied)
+    assert (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"] == []
+    assert (await client.patch(f"/api/sharepoint/compliance/tasks/{tid}/progress", headers=auth,
+        json={"status": "blocked"})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_assignment_email_never_sends_document_details_without_sharepoint_access(client, auth, indexed, monkeypatch):
+    from app.services import task_assignment_email as delivery
+    from app.models.task_assignment_email import TaskAssignmentEmail
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "trade_license", "company": {"value": "Private Vendor"},
+            "expiry_date": {"value": "2027-01-20"}}}]}, override_owner_user_id=indexed[0])
+        await db.commit()
+    async def denied(*args): raise SharePointError("document_access_denied", 403)
+    monkeypatch.setattr(graph.GraphClient, "can_read", denied)
+    monkeypatch.setattr(delivery, "smtp_configured", lambda: True)
+    sent = []
+    monkeypatch.setattr(delivery, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    async with AsyncSessionLocal() as db:
+        assert (await delivery.run_assignment_emails(db))["sent"] == 0
+        queued = (await db.scalars(select(TaskAssignmentEmail))).one()
+        assert queued.status == "pending" and queued.last_error == "document_access_denied"
+    assert sent == []

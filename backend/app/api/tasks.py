@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,6 +9,9 @@ from sqlalchemy.orm import selectinload
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
+from app.models.department import Department
+from app.services.task_access import can_access_task, team_ids
+from app.services.task_assignment_email import assignment_states, deliver_assignment_emails, notify_assignment
 from app.models.workplace import Project, Task, TaskComment, TaskItem
 from app.schemas.workplace import (
     ProjectCreate,
@@ -214,20 +217,91 @@ def _serialize(task: Task, names: dict, agg: dict | None = None) -> TaskOut:
     return out
 
 
-def _can_access_task(user: User, task: Task) -> bool:
-    """Who may view or mutate a specific task.
+async def _can_access_task(db, user: User, task: Task) -> bool:
+    return await can_access_task(db, user, task)
 
-    Admins and managers (oversight), plus the task's creator and current
-    assignee. Everyone else is denied — a task's title, description and comment
-    thread can be confidential, and the mutation handlers must not let an
-    unrelated employee reassign or delete work that isn't theirs.
-    """
-    return (
-        user.is_admin
-        or user.role == "manager"
-        or task.created_by_id == user.id
-        or task.assignee_id == user.id
-    )
+
+async def _validate_assignee(db, assignee_id, department_id=None):
+    if assignee_id:
+        owner = await db.get(User, assignee_id)
+        if not owner or not owner.is_active or owner.status != "active":
+            raise HTTPException(422, "Choose an active team member.")
+        if department_id and owner.department_id != department_id:
+            raise HTTPException(422, "Choose a person from the selected department.")
+
+
+async def _enrich_tasks(db, outputs):
+    owner_ids = {item.assignee_id for item in outputs if item.assignee_id}
+    people = (await db.scalars(select(User).where(User.id.in_(owner_ids)))).all() if owner_ids else []
+    departments = {row.id: row.name for row in (await db.scalars(select(Department))).all()}
+    owners = {row.id: row for row in people}
+    states = await assignment_states(db)
+    for item in outputs:
+        owner = owners.get(item.assignee_id)
+        item.assignee_department_id = owner.department_id if owner else None
+        item.assignee_department_name = departments.get(owner.department_id) if owner else None
+        item.assignment_email_status = states.get(item.id)
+    return outputs
+
+
+@router.get("/options")
+async def task_options(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    people = (await db.scalars(select(User).where(User.is_active.is_(True),
+        User.status == "active").order_by(User.display_name, User.email))).all()
+    departments = (await db.scalars(select(Department).order_by(Department.name))).all()
+    own_team = await team_ids(db, user)
+    return {"users": [{"id": str(row.id), "name": row.display_name or row.email,
+        "department_id": str(row.department_id) if row.department_id else None,
+        "in_team": user.is_admin or row.id in own_team} for row in people],
+        "departments": [{"id": str(row.id), "name": row.name} for row in departments]}
+
+
+@router.get("/compliance")
+async def compliance_tasks(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    if "sharepoint_intelligence" not in user.effective_permissions:
+        return {"tasks": [], "available": False, "message": None}
+    from app.api.sharepoint_compliance import dashboard
+    from app.services.sharepoint.common import SharePointError
+    try:
+        data = await dashboard(user=user, db=db)
+    except SharePointError as error:
+        messages = {
+            "microsoft_connection_required": "Connect Microsoft in Compliance to see your document tasks.",
+            "sharepoint_disabled": None,
+            "sharepoint_not_configured": "Document tasks are waiting for SharePoint setup.",
+        }
+        if error.code not in messages:
+            raise
+        return {"tasks": [], "available": False, "message": messages[error.code]}
+    from app.models.sharepoint import SharePointComplianceTask
+    rows = {row.id: row for row in (await db.scalars(select(SharePointComplianceTask).where(
+        SharePointComplianceTask.id.in_([uuid.UUID(item["id"]) for item in data["tasks"]])))).all()}
+    people = {row.id: row for row in (await db.scalars(select(User))).all()}
+    departments = {row.id: row.name for row in (await db.scalars(select(Department))).all()}
+    states = await assignment_states(db, compliance=True)
+    documents = {item["id"]: item for item in data["documents"]}
+    results = []
+    for item in data["tasks"]:
+        if item["status"] not in {"active", "completed"}:
+            continue
+        row = rows[uuid.UUID(item["id"])]
+        owner = people.get(row.owner_user_id)
+        dept_id = row.owner_department_id or (owner.department_id if owner else None)
+        results.append({
+            **item, "document_url": documents[item["document_id"]]["url"],
+            "document_expiry_date": documents[item["document_id"]]["expiry_date"],
+            "reference_number": documents[item["document_id"]]["reference_number"],
+            "source": "compliance", "status": "done" if row.status == "completed" else row.work_status,
+            "lifecycle_status": row.status, "priority": "high",
+            "description": f'{item["document_name"]} · {item["company"] or "External entity"}',
+            "assignee_id": item["owner_user_id"], "assignee_name": item["owner"],
+            "assignee_department_id": str(dept_id) if dept_id else None,
+            "assignee_department_name": departments.get(dept_id),
+            "can_change_status": item["can_complete"], "can_delete": False,
+            "assignment_email_status": states.get(row.id), "created_at": row.created_at.isoformat(),
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "subtasks_total": 0, "subtasks_done": 0, "comment_count": 0})
+    return {"tasks": results, "available": True, "message": None}
 
 
 @router.get("", response_model=list[TaskOut])
@@ -251,12 +325,11 @@ async def list_tasks(
     if not include_runs:
         stmt = stmt.where(Task.template_id.is_(None))
     # Members only see tasks they created or are assigned to; admins and
-    # managers retain a full-board view for oversight. Without this any member
+    # managers see their department and direct reports. Without this any member
     # could read every task in the company.
-    if not (user.is_admin or user.role == "manager"):
-        stmt = stmt.where(
-            or_(Task.assignee_id == user.id, Task.created_by_id == user.id)
-        )
+    if not user.is_admin:
+        scope_ids = await team_ids(db, user)
+        stmt = stmt.where(or_(Task.assignee_id.in_(scope_ids), Task.created_by_id.in_(scope_ids)))
     if status:
         stmt = stmt.where(Task.status == status)
     if priority:
@@ -286,12 +359,13 @@ async def list_tasks(
         db, {t.assignee_id for t in tasks} | {t.created_by_id for t in tasks}
     )
     agg = await _aggregates(db, {t.id for t in tasks})
-    return [_serialize(t, names, agg) for t in tasks]
+    return await _enrich_tasks(db, [_serialize(t, names, agg) for t in tasks])
 
 
 @router.post("", response_model=TaskOut, status_code=201)
 async def create_task(
     payload: TaskCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -301,17 +375,14 @@ async def create_task(
         raise HTTPException(status_code=422, detail="Invalid priority")
     if payload.recurrence and payload.recurrence not in RECURRENCES:
         raise HTTPException(status_code=422, detail="Invalid recurrence")
-    task = Task(**payload.model_dump(), created_by_id=user.id)
+    if not payload.title.strip():
+        raise HTTPException(422, "Enter a task title.")
+    await _validate_assignee(db, payload.assignee_id, payload.department_id)
+    data = payload.model_dump(exclude={"department_id"})
+    data["title"] = payload.title.strip()
+    task = Task(**data, created_by_id=user.id)
     db.add(task)
-    if task.assignee_id and task.assignee_id != user.id:
-        await notify_user(
-            db,
-            user_id=task.assignee_id,
-            title="A task was assigned to you",
-            body=task.title,
-            link="/tasks",
-            category="task",
-        )
+    await notify_assignment(db, task, actor_id=user.id)
     record(
         db,
         user=user,
@@ -323,7 +394,8 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
     names = await user_names(db, {task.assignee_id, task.created_by_id})
-    return _serialize(task, names)
+    background_tasks.add_task(deliver_assignment_emails)
+    return (await _enrich_tasks(db, [_serialize(task, names)]))[0]
 
 
 @router.get("/{task_id}", response_model=TaskDetail)
@@ -338,7 +410,7 @@ async def get_task(
     )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not _can_access_task(user, task):
+    if not await _can_access_task(db, user, task):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     ids = {task.assignee_id, task.created_by_id} | {c.author_id for c in task.comments}
     names = await user_names(db, ids)
@@ -354,20 +426,21 @@ async def get_task(
         co = TaskCommentOut.model_validate(c)
         co.author_name = names.get(c.author_id) if c.author_id else None
         detail.comments.append(co)
-    return detail
+    return (await _enrich_tasks(db, [detail]))[0]
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
 async def update_task(
     task_id: uuid.UUID,
     payload: TaskUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not _can_access_task(user, task):
+    if not await _can_access_task(db, user, task):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     if task.template_id:
         raise HTTPException(
@@ -375,7 +448,15 @@ async def update_task(
             detail="This is a checklist run — use /api/checklist-runs to respond, "
             "submit or verify it",
         )
-    data = payload.model_dump(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True, exclude={"department_id"})
+    if "title" in data:
+        if not (data["title"] or "").strip():
+            raise HTTPException(422, "Enter a task title.")
+        data["title"] = data["title"].strip()
+    if "assignee_id" in data:
+        await _validate_assignee(db, data["assignee_id"], payload.department_id)
+    if any(data.get(key) is None for key in ("status", "priority") if key in data):
+        raise HTTPException(422, "Status and priority are required.")
     if "status" in data and data["status"] not in STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
     if "priority" in data and data["priority"] not in PRIORITIES:
@@ -448,26 +529,20 @@ async def update_task(
                 )
             )
         db.add(nxt)
+        await notify_assignment(db, nxt, actor_id=user.id)
         record(
             db, user=user, action="created", entity_type="task", entity_id=nxt.id,
             summary=f"Recurring task '{nxt.title}' scheduled for {nxt.due_date}",
         )
 
-    # Notify a newly-assigned person.
-    if task.assignee_id and task.assignee_id not in (prev_assignee, user.id):
-        await notify_user(
-            db,
-            user_id=task.assignee_id,
-            title="A task was assigned to you",
-            body=task.title,
-            link="/tasks",
-            category="task",
-        )
+    if task.assignee_id and task.assignee_id != prev_assignee:
+        await notify_assignment(db, task, actor_id=user.id)
     await db.commit()
     await db.refresh(task)
     names = await user_names(db, {task.assignee_id, task.created_by_id})
     agg = await _aggregates(db, {task.id})
-    return _serialize(task, names, agg)
+    background_tasks.add_task(deliver_assignment_emails)
+    return (await _enrich_tasks(db, [_serialize(task, names, agg)]))[0]
 
 
 @router.delete("/{task_id}", status_code=204)
@@ -479,7 +554,7 @@ async def delete_task(
     task = await db.get(Task, task_id)
     if not task:
         return
-    if not _can_access_task(user, task):
+    if not await _can_access_task(db, user, task):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     await db.delete(task)
     await db.commit()
@@ -496,7 +571,7 @@ async def add_item(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not _can_access_task(user, task):
+    if not await _can_access_task(db, user, task):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     nxt = (
         await db.execute(
@@ -523,7 +598,7 @@ async def update_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     parent = await db.get(Task, item.task_id)
-    if parent and not _can_access_task(user, parent):
+    if parent and not await _can_access_task(db, user, parent):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
@@ -546,7 +621,7 @@ async def delete_item(
     if not item:
         return
     parent = await db.get(Task, item.task_id)
-    if parent and not _can_access_task(user, parent):
+    if parent and not await _can_access_task(db, user, parent):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     await db.delete(item)
     await db.commit()
@@ -563,7 +638,7 @@ async def add_comment(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not _can_access_task(user, task):
+    if not await _can_access_task(db, user, task):
         raise HTTPException(status_code=403, detail="You don't have access to this task")
     comment = TaskComment(task_id=task_id, author_id=user.id, body=payload.body)
     db.add(comment)

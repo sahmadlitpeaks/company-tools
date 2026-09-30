@@ -674,6 +674,9 @@ export interface Task {
   recurrence?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
+  assignee_department_id?: string | null;
+  assignee_department_name?: string | null;
+  assignment_email_status?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   company_id?: string | null;
