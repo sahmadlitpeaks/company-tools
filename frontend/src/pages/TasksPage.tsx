@@ -27,11 +27,12 @@ import SavedViews from "@/components/SavedViews";
 const DEFAULT_FILTERS = { scope: "all", search: "", priority: "all", owner: "all", department: "all", due: "all", source: "all" };
 const EMPTY_OPTIONS: TaskOptions = { users: [], departments: [] };
 export default function TasksPage() {
-  const { user, can } = useAuth();
+  const { user } = useAuth();
   const { notify } = useToast();
   const [params, setParams] = useSearchParams();
   const ordinary = useFetch<Task[]>("/api/tasks");
-  const compliance = useFetch<ComplianceWork>(can("sharepoint_intelligence") ? "/api/tasks/compliance" : null);
+  const preview = useFetch<ComplianceWork>("/api/tasks/compliance?preview=true");
+  const compliance = useFetch<ComplianceWork>(preview.data ? "/api/tasks/compliance" : null);
   const options = useFetch<TaskOptions>("/api/tasks/options");
   const isMobile = useIsMobile();
   const [showFilters, setShowFilters] = useState(false);
@@ -41,7 +42,7 @@ export default function TasksPage() {
   const [action, setAction] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
   const [deleting, setDeleting] = useState<BoardTask | null>(null);
   const [adding, setAdding] = useState(() => params.has("new"));
-  const data = useMemo<BoardTask[]>(() => [...(ordinary.data ?? []), ...(compliance.data?.tasks ?? [])], [ordinary.data, compliance.data]);
+  const data = useMemo<BoardTask[]>(() => [...(ordinary.data ?? []), ...(compliance.loading || compliance.error ? preview.data?.tasks ?? [] : compliance.data?.tasks ?? preview.data?.tasks ?? [])], [ordinary.data, compliance.data, compliance.loading, compliance.error, preview.data]);
   const allOptions = options.data ?? EMPTY_OPTIONS;
   const teamPeople = allOptions.users.filter((person) => person.in_team || data.some((task) => task.assignee_id === person.id));
   const visible = useMemo(() => data.filter((task) => {
@@ -61,7 +62,7 @@ export default function TasksPage() {
   const selected = data.find((task) => task.id === params.get("task"));
   const qs = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== "all" && value !== "")).toString();
   function setFilter(key: keyof typeof filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); }
-  function reload() { ordinary.reload(); compliance.reload(); }
+  function reload() { ordinary.reload(); preview.reload(); compliance.reload(); }
   function close() { const next = new URLSearchParams(params); next.delete("task"); next.delete("new"); setParams(next, { replace: true }); setAdding(false); }
   async function changeStatus(task: BoardTask, state: string) {
     if (state === task.status) return;
@@ -92,7 +93,9 @@ export default function TasksPage() {
     {action.error && !deleting && <Alert variant="destructive" role="alert"><AlertDescription>{action.error}</AlertDescription></Alert>}
     {ordinary.error && <ErrorState message={ordinary.error} onRetry={ordinary.reload} />}
     {options.error && <ErrorState message={options.error} onRetry={options.reload} />}
-    {(compliance.error || compliance.data?.message) && <Alert role="alert"><AlertDescription>Document tasks: {compliance.error ? taskError(new Error(compliance.error)) : compliance.data?.message} <Button variant="link" nativeButton={false} render={<Link to="/sharepoint/compliance" />} className="h-auto p-0">Open Compliance</Button></AlertDescription></Alert>}
+    {(preview.error || compliance.error || preview.data?.message || compliance.data?.message) && <Alert role="alert"><AlertDescription>Document tasks: {preview.error || compliance.error ? taskError(new Error(preview.error || compliance.error!)) : preview.data?.message || compliance.data?.message} <Button variant="link" nativeButton={false} render={<Link to="/sharepoint/compliance" />} className="h-auto p-0">Open Compliance</Button></AlertDescription></Alert>}
+    {(preview.loading || compliance.loading) && <p role="status" className="text-sm text-muted-foreground">Checking document tasks. Other tasks are ready to use.</p>}
+    {data.some((task) => task.access_state && task.access_state !== "ready") && <p className="text-sm text-muted-foreground">Some document details require an access check. Deadline counts include only visible dates.</p>}
     <Card><CardHeader><CardTitle className="text-base">Find work</CardTitle></CardHeader><CardContent className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <Field className="w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-md"><FieldLabel htmlFor="task-search">Search tasks</FieldLabel><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="task-search" className="pl-9" placeholder="Title, owner, or document…" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} /></div></Field>
@@ -110,7 +113,7 @@ export default function TasksPage() {
       </FieldGroup></CollapsibleContent></Collapsible>
       <div className="flex flex-wrap items-center justify-between gap-2"><SavedViews surface="tasks" currentParams={qs} onApply={(value) => { const saved = new URLSearchParams(value); setFilters({ ...DEFAULT_FILTERS, ...Object.fromEntries(saved) }); }} /><Button variant="ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear filters</Button></div>
     </CardContent></Card>
-    {((ordinary.loading && !ordinary.data) || (compliance.loading && !compliance.data)) ? <Loading /> :
+    {(data.length === 0 && ((ordinary.loading && !ordinary.data) || (preview.loading && !preview.data))) ? <Loading /> :
       visible.length === 0 ? ordinary.error ? null : <Empty message={data.length ? "No tasks match these filters." : "No tasks yet."} hint={data.length ? "Clear the filters to see all accessible work." : "Create a task or assign a document action to get started."} /> :
       <div className={grouping === "status" ? "grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-4" : "grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3"}>
         {groups.map((group) => <section key={group.key} aria-label={`Tasks for ${group.label}`} className="min-w-0 space-y-3">
@@ -119,7 +122,7 @@ export default function TasksPage() {
           {group.tasks.map((task) => <TaskCard key={task.id} task={task} busy={action.busy === task.id} onOpen={() => { const next = new URLSearchParams(params); next.set("task", task.id); setParams(next); }} onStatus={(value) => void changeStatus(task, value).catch(() => undefined)} onDelete={() => { setAction({ busy: null, error: "" }); setDeleting(task); }} />)}
         </section>)}
       </div>}
-    {params.has("task") && !selected && !ordinary.loading && !compliance.loading && <Alert role="alert"><AlertDescription>This task is no longer available or you do not have access to it.<Button variant="link" onClick={close}>Close task link</Button></AlertDescription></Alert>}
+    {params.has("task") && !selected && !ordinary.loading && !preview.loading && !compliance.loading && !ordinary.error && !preview.error && !compliance.error && <Alert role="alert"><AlertDescription>This task is no longer available or you do not have access to it.<Button variant="link" onClick={close}>Close task link</Button></AlertDescription></Alert>}
     {selected && <TaskDetail key={selected.id} task={selected} options={allOptions} onClose={close} onReload={reload} onStatus={(state) => changeStatus(selected, state)} />}
     {adding && <TaskForm options={allOptions} defaultDepartment={user?.department_id} onClose={close} onSaved={() => { close(); reload(); notify("Task created."); }} />}
     <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && !action.busy && setDeleting(null)}><AlertDialogContent>

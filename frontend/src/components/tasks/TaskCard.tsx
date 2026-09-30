@@ -10,6 +10,7 @@ const EMAIL_LABELS: Record<string, string> = { pending: "Assignment email queued
 export function TaskCard({ task, busy, onOpen, onStatus, onDelete }: {
   task: BoardTask; busy: boolean; onOpen: () => void; onStatus: (state: string) => void; onDelete: () => void;
 }) {
+  const restricted = Boolean(task.access_state && task.access_state !== "ready");
   const days = daysUntil(task.due_date);
   const overdue = task.status !== "done" && days !== null && days < 0;
   return <Card size="sm" className="min-w-0" aria-label={task.title}>
@@ -21,10 +22,11 @@ export function TaskCard({ task, busy, onOpen, onStatus, onDelete }: {
       </div>
     </CardHeader>
     <CardContent className="flex flex-col gap-3">
+      {restricted && <p className="break-words text-sm text-muted-foreground">{task.access_message}</p>}
       {task.description && <p className="line-clamp-2 break-words text-sm text-muted-foreground">{task.description}</p>}
       <dl className="space-y-2 text-sm">
         <div className="flex items-start gap-2"><UserRound className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><dt className="sr-only">Owner</dt><dd className="break-words">{task.assignee_name || "Unassigned"}{task.assignee_department_name && <span className="block text-xs text-muted-foreground">{task.assignee_department_name}</span>}</dd></div>
-        <div className={`flex items-center gap-2 ${overdue ? "text-destructive" : "text-muted-foreground"}`}><CalendarClock className="size-4 shrink-0" aria-hidden="true" /><dt className="sr-only">Due date</dt><dd>{dateLabel(task.due_date)}{overdue ? " · Overdue" : task.status !== "done" && days === 0 ? " · Today" : ""}</dd></div>
+        <div className={`flex items-center gap-2 ${overdue ? "text-destructive" : "text-muted-foreground"}`}><CalendarClock className="size-4 shrink-0" aria-hidden="true" /><dt className="sr-only">Due date</dt><dd>{restricted ? "Deadline available after access is verified" : dateLabel(task.due_date)}{overdue ? " · Overdue" : task.status !== "done" && days === 0 ? " · Today" : ""}</dd></div>
       </dl>
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         {task.subtasks_total > 0 && <span>{task.subtasks_done}/{task.subtasks_total} checklist items</span>}

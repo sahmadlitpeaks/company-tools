@@ -23,6 +23,7 @@ export function TaskDetail({ task, options, onClose, onReload, onStatus }: {
 }) {
   const [editing, setEditing] = useState(false);
   if (editing) return <TaskForm task={task} options={options} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onReload(); }} />;
+  if (task.source === "compliance" && task.access_state && task.access_state !== "ready") return <RestrictedTaskDetail task={task} onClose={onClose} onReload={onReload} />;
   if (task.source === "compliance") return <ComplianceTaskDetail task={task} options={options} onClose={onClose} onReload={onReload} onStatus={onStatus} />;
   return <OrdinaryTaskDetail task={task} onClose={onClose} onReload={onReload} onStatus={onStatus} onEdit={() => setEditing(true)} />;
 }
@@ -95,6 +96,7 @@ function ComplianceTaskDetail({ task, options, onClose, onReload, onStatus }: {
   return <Dialog open onOpenChange={(open) => !open && !state.busy && onClose()}><DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto">
     <DialogHeader><DialogTitle className="break-words">{task.title}</DialogTitle><DialogDescription>Document compliance action · {task.company || "External entity"}</DialogDescription></DialogHeader>
     <Badge variant="info">Document compliance</Badge>
+    <AssignmentEmailRetry task={task} onReload={onReload} />
     {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}
     <dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">Action deadline</dt><dd className="font-medium">{dateLabel(task.due_date)}</dd></div><div><dt className="text-muted-foreground">Responsible owner</dt><dd>{task.assignee_name || "Unassigned"}</dd></div><div className="sm:col-span-2"><dt className="text-muted-foreground">Source document</dt><dd className="break-words">{task.document_name}</dd></div><div><dt className="text-muted-foreground">Deadline based on</dt><dd>{task.basis?.replace(/_/g, " ") || "Document action"}</dd></div>{task.document_expiry_date && <div><dt className="text-muted-foreground">Document expiry</dt><dd>{dateLabel(task.document_expiry_date)}</dd></div>}{task.reference_number && <div><dt className="text-muted-foreground">Reference</dt><dd>{task.reference_number}</dd></div>}</dl>
     {task.document_url && <Button variant="outline" nativeButton={false} render={<a aria-label="Open original in SharePoint" href={task.document_url} target="_blank" rel="noreferrer" />}>Open original in SharePoint<ArrowUpRight data-icon="inline-end" /></Button>}
@@ -109,4 +111,35 @@ function ComplianceTaskDetail({ task, options, onClose, onReload, onStatus }: {
     </form>}
     <Button variant="outline" nativeButton={false} render={<Link to="/sharepoint/compliance" />}>View document and audit history<ArrowUpRight data-icon="inline-end" /></Button>
   </DialogContent></Dialog>;
+}
+
+function RestrictedTaskDetail({ task, onClose, onReload }: {
+  task: BoardTask; onClose: () => void; onReload: () => void;
+}) {
+  const checking = task.access_state === "checking";
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-w-lg">
+    <DialogHeader><DialogTitle>Document task assigned</DialogTitle><DialogDescription>Assigned to {task.assignee_name || "your department"}</DialogDescription></DialogHeader>
+    <Alert><AlertDescription>{task.access_message || "Document details require SharePoint access."}</AlertDescription></Alert>
+    <AssignmentEmailRetry task={task} onReload={onReload} />
+    <p className="text-sm text-muted-foreground">Your assignment is saved. The original file's permissions must be verified before its title, deadline, and contents can be shown.</p>
+    {checking ? <p role="status" className="text-sm text-muted-foreground">Checking document access…</p> : <Button variant="outline" onClick={onReload}>Check access again</Button>}
+    {!checking && task.access_state !== "module_required" && <Button nativeButton={false} render={<Link to="/sharepoint/compliance" />}>Open Compliance</Button>}
+    <Button variant="outline" onClick={onClose}>Close</Button>
+  </DialogContent></Dialog>;
+}
+
+function AssignmentEmailRetry({ task, onReload }: { task: BoardTask; onReload: () => void }) {
+  const [state, setState] = useState({ busy: false, error: "" });
+  if (task.status === "done" || !["pending", "failed"].includes(task.assignment_email_status ?? "")) return null;
+  async function retry() {
+    setState({ busy: true, error: "" });
+    try {
+      await api("/api/tasks/compliance/" + task.id + "/email/retry", { method: "POST" });
+      setState({ busy: false, error: "" }); onReload();
+    } catch (cause) { setState({ busy: false, error: taskError(cause) }); }
+  }
+  return <div className="space-y-2">
+    <Button variant="outline" disabled={state.busy} onClick={() => void retry()}>{state.busy ? "Retrying…" : "Retry assignment email"}</Button>
+    {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}
+  </div>;
 }

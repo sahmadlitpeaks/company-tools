@@ -1,3 +1,4 @@
+import { DeleteEmployeeDialog } from "@/components/DeleteEmployeeDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ function AccessModal({
   const { notify } = useToast();
   const { data: cat } = useFetch<ModuleCatalogue>("/api/users/modules");
   const { data: departments } = useFetch<Department[]>("/api/departments");
+  const [email, setEmail] = useState(u.email ?? "");
   const [role, setRole] = useState(u.role);
   const [status, setRecordStatus] = useState(u.status);
   const [deptId, setDeptId] = useState(u.department_id ?? "");
@@ -89,6 +91,7 @@ function AccessModal({
       await api(`/api/users/${u.id}`, {
         method: "PATCH",
         body: {
+          ...(email.trim() !== (u.email ?? "") ? { email: email.trim() || null } : {}),
           role,
           status,
           department_id: deptId || null,
@@ -97,7 +100,7 @@ function AccessModal({
           revoked_permissions: revoked,
         },
       });
-      notify("Access updated.");
+      notify("Employee access and email updated.");
       onSaved();
       onClose();
     } catch (e) {
@@ -116,6 +119,7 @@ function AccessModal({
       onClose={onClose}
       maxWidth={580}
     >
+      <FieldGroup className="mb-4"><Field><FieldLabel htmlFor="directory-login-email">Official / login email</FieldLabel><Input id="directory-login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /><FieldDescription>Correcting this address keeps the employee's existing assignments. Use Reset password to send fresh sign-in details afterward.</FieldDescription></Field></FieldGroup>
       <FieldGroup className="grid gap-3 sm:grid-cols-3">
         <Field>
           <FieldLabel htmlFor="directory-access-role">Role</FieldLabel>
@@ -287,6 +291,7 @@ export default function DirectoryPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const [managing, setManaging] = useState<User | null>(null);
   const [editingAccess, setEditingAccess] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   // Set when a reset couldn't be emailed, so the admin can read the password out.
   const [resetShown, setResetShown] = useState<{ who: string; password: string } | null>(null);
@@ -503,6 +508,7 @@ export default function DirectoryPage() {
                           <Button type="button" size="sm" onClick={() => approve(u)}>Approve</Button>
                         )}
                         <Button type="button" variant="outline" size="sm" onClick={() => setEditingAccess(u)}>Access</Button>
+                        <Button type="button" variant="outline" size="sm" aria-label={`Delete employee: ${u.display_name || u.email}`} disabled={u.id === user?.id} onClick={() => setDeleting(u)}>Delete</Button>
                         {(u.email || u.personal_email) && (
                           <Button
                             type="button"
@@ -581,6 +587,7 @@ export default function DirectoryPage() {
                         <Button type="button" variant="outline" size="sm" onClick={() => setEditingAccess(u)}>
                           Access
                         </Button>
+                        <Button type="button" variant="outline" size="sm" aria-label={`Delete employee: ${u.display_name || u.email}`} disabled={u.id === user?.id} onClick={() => setDeleting(u)}>Delete</Button>
                         {(u.email || u.personal_email) && (
                           <Button
                             type="button"
@@ -610,6 +617,8 @@ export default function DirectoryPage() {
           onSaved={reload}
         />
       )}
+
+      {deleting && <DeleteEmployeeDialog employee={deleting} onClose={() => setDeleting(null)} onDeleted={reload} />}
 
       {editingAccess && (
         <AccessModal

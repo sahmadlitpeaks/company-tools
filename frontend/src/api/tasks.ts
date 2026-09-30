@@ -4,6 +4,8 @@ export type TaskPerson = { id: string; name: string; department_id: string | nul
 export type TaskOptions = { users: TaskPerson[]; departments: Array<{ id: string; name: string }> };
 export type BoardTask = Task & {
   source?: "compliance";
+  access_state?: string;
+  access_message?: string | null;
   document_id?: string;
   document_name?: string;
   document_url?: string;
