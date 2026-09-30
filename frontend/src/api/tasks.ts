@@ -41,6 +41,7 @@ export function taskError(cause: unknown) {
   const message = cause instanceof Error ? cause.message : "The task could not be saved. Try again.";
   return ({
     reviewer_required: "Only the responsible department manager or an administrator can reassign this task.",
+    active_owner_required: "This task needs an active owner before it can be reopened. Ask an administrator to review its assignment.",
     task_owner_required: "Only the owner or responsible manager can change this task.",
     owner_outside_department: "Choose a member of the selected department.",
     department_required: "Choose a department.",

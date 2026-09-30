@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Search } from "lucide-react";
 import { api } from "@/api/client";
@@ -18,6 +18,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTaskRefresh } from "@/hooks/useTaskRefresh";
+import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { TaskCard } from "@/components/tasks/TaskCard";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
 import { TaskDetail } from "@/components/tasks/TaskDetail";
@@ -40,6 +42,7 @@ export default function TasksPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [grouping, setGrouping] = useState(oversight ? "member" : "status");
   const [action, setAction] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
+  const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState<BoardTask | null>(null);
   const [adding, setAdding] = useState(() => params.has("new"));
   const data = useMemo<BoardTask[]>(() => [...(ordinary.data ?? []), ...(compliance.loading || compliance.error ? preview.data?.tasks ?? [] : compliance.data?.tasks ?? preview.data?.tasks ?? [])], [ordinary.data, compliance.data, compliance.loading, compliance.error, preview.data]);
@@ -64,15 +67,25 @@ export default function TasksPage() {
   function setFilter(key: keyof typeof filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); }
   function reload() { ordinary.reload(); preview.reload(); compliance.reload(); }
   function close() { const next = new URLSearchParams(params); next.delete("task"); next.delete("new"); setParams(next, { replace: true }); setAdding(false); }
+  const backgroundRefresh = useCallback(() => {
+    void ordinary.refresh(); void preview.refresh(); void compliance.refresh();
+  }, [ordinary.refresh, preview.refresh, compliance.refresh]);
+  useTaskRefresh(backgroundRefresh, dragging || Boolean(action.busy) || ordinary.loading || compliance.loading || Boolean(selected) || adding);
+  function openTask(task: BoardTask) { const next = new URLSearchParams(params); next.set("task", task.id); setParams(next); }
+  function deleteTask(task: BoardTask) { setAction({ busy: null, error: "" }); setDeleting(task); }
   async function changeStatus(task: BoardTask, state: string) {
-    if (state === task.status) return;
+    if (state === task.status || action.busy || task.can_change_status === false) return;
     setAction({ busy: task.id, error: "" });
     try {
       if (task.source === "compliance") {
-        if (state === "done" || task.status === "done") await api(`/api/sharepoint/compliance/tasks/${task.id}`, { method: "PATCH", body: { status: state === "done" ? "completed" : "active" } });
-        if (state !== "done") await api(`/api/sharepoint/compliance/tasks/${task.id}/progress`, { method: "PATCH", body: { status: state } });
+        if (state === "done" || task.status === "done") await api(`/api/sharepoint/compliance/tasks/${task.id}`, { method: "PATCH", body: { status: state === "done" ? "completed" : "active", ...(state !== "done" ? { work_status: state } : {}) } });
+        if (state !== "done" && task.status !== "done") await api(`/api/sharepoint/compliance/tasks/${task.id}/progress`, { method: "PATCH", body: { status: state } });
       } else await api(`/api/tasks/${task.id}`, { method: "PATCH", body: { status: state } });
-      reload(); setAction({ busy: null, error: "" }); notify(state === "done" ? "Task completed." : "Task status updated.");
+      if (task.source === "compliance") {
+        const update = (current: ComplianceWork | null) => current && ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status: state } : item) });
+        preview.setData(update); compliance.setData(update);
+      } else ordinary.setData((current) => current?.map((item) => item.id === task.id ? { ...item, status: state as Task["status"] } : item) ?? null);
+      backgroundRefresh(); setAction({ busy: null, error: "" }); notify(state === "done" ? "Task completed." : "Task status updated.");
     } catch (cause) { reload(); const error = taskError(cause); setAction({ busy: null, error }); throw cause; }
   }
   async function remove() {
@@ -115,7 +128,8 @@ export default function TasksPage() {
     </CardContent></Card>
     {(data.length === 0 && ((ordinary.loading && !ordinary.data) || (preview.loading && !preview.data))) ? <Loading /> :
       visible.length === 0 ? ordinary.error ? null : <Empty message={data.length ? "No tasks match these filters." : "No tasks yet."} hint={data.length ? "Clear the filters to see all accessible work." : "Create a task or assign a document action to get started."} /> :
-      <div className={grouping === "status" ? "grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-4" : "grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3"}>
+      grouping === "status" ? <TaskBoard tasks={visible} busy={action.busy} onDragging={setDragging} onOpen={openTask} onStatus={changeStatus} onDelete={deleteTask} /> :
+      <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         {groups.map((group) => <section key={group.key} aria-label={`Tasks for ${group.label}`} className="min-w-0 space-y-3">
           <div className="flex items-center justify-between gap-2 border-b border-border pb-2"><h2 className="break-words font-semibold">{group.label}</h2><Badge variant="secondary">{group.tasks.length}</Badge></div>
           {group.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks in this status.</p>}

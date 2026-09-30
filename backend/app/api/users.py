@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.azure import fetch_graph_users, get_app_token
 from app.api.sharepoint import same_origin
-from app.services.employee_deletion import deletion_blockers, remove_personal_data
+from sqlalchemy.exc import IntegrityError
+from app.services.employee_deletion import ActiveComplianceWorkError, deletion_blockers, remove_personal_data
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
@@ -461,9 +462,13 @@ async def delete_employee(
         raise HTTPException(409, {"message": status["reason"], "blockers": status["blockers"]})
     record(db, user=admin, action="deleted", entity_type="user", entity_id=target.id,
            summary=f"Deleted employee {target.display_name or ''} ({target.email or target.personal_email or ''})")
-    await remove_personal_data(db, target.id)
-    await db.execute(delete(User).where(User.id == target.id))
-    await db.commit()
+    try:
+        await remove_personal_data(db, target.id, actor=admin)
+        await db.execute(delete(User).where(User.id == target.id))
+        await db.commit()
+    except (ActiveComplianceWorkError, IntegrityError):
+        await db.rollback()
+        raise HTTPException(409, "This employee's linked work changed. Refresh the deletion check and reassign active work before trying again.")
 
 
 @router.get("/{user_id}", response_model=UserOut)
