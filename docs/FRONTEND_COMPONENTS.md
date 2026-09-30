@@ -183,7 +183,7 @@ For a select:
 `frontend/src/components/ui.tsx` contains shadcn-backed compatibility and
 product-level helpers used by older pages:
 
-- `PageHead`: page title, subtitle, and responsive action area.
+- `PageHead`: page title, subtitle, and responsive action area. Use `headingLevel={1}` for a page main heading; the compatibility default remains level 2.
 - `Modal`: existing always-open dialog composition.
 - `ConfirmDialog`: async confirmation with error handling.
 - `PromptModal`: one-input prompt replacement.

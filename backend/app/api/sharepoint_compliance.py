@@ -3,7 +3,7 @@
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from app.models.sharepoint import (SharePointComplianceEvent, SharePointComplian
     SharePointDocument, SharePointDocumentVersion, SharePointOwnerRule, SharePointReminder)
 from app.models.user import User
 from app.schemas.sharepoint import (ComplianceReviewIn, ComplianceTaskAssignIn,
-    ComplianceTaskUpdateIn, OwnerRuleIn)
+    ComplianceTaskUpdateIn, ComplianceTaskProgressIn, OwnerRuleIn)
 from app.services.sharepoint.common import SharePointError, digest, is_reviewer, now
 from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_department_owner,
     apply_analysis, candidate_actions, department_for_path, event)
@@ -25,6 +25,7 @@ from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.reminders import (compliance_task_recipients,
     notify_task_assignment, populate_task_reminders)
 from app.services.sharepoint.store import authorize_document, source_for
+from app.services.task_assignment_email import deliver_assignment_emails
 
 router = APIRouter(prefix="/sharepoint/compliance", tags=["sharepoint-compliance"],
                    dependencies=[Depends(same_origin)])
@@ -43,7 +44,7 @@ async def _can_manage(db, user, task):
     if task.owner_department_id and task.owner_department_id == user.department_id:
         return any(recipient.id == user.id for recipient in await compliance_task_recipients(db, task))
     owner = await db.get(User, task.owner_user_id) if task.owner_user_id else None
-    return bool(owner and owner.manager_id == user.id)
+    return bool(owner and (owner.manager_id == user.id or _department_manager(user, owner.department_id)))
 
 
 def _department_manager(user: User, department_id: uuid.UUID | None) -> bool:
@@ -192,6 +193,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
             "document_type": (document.compliance or {}).get("document_type"),
             "due_date": task.due_date.isoformat(), "basis": task.basis,
             "status": task.status, "owner": name,
+            "work_status": task.work_status,
             "can_assign": await _can_assign(db, user, task),
             "can_complete": await _can_manage(db, user, task),
             "owner_user_id": str(task.owner_user_id) if task.owner_user_id else None,
@@ -283,7 +285,7 @@ async def delete_rule(rule_id: uuid.UUID, user=Depends(get_current_admin), db: A
 
 
 @router.post("/documents/{document_id}/review")
-async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
+async def review(document_id: uuid.UUID, body: ComplianceReviewIn, background_tasks: BackgroundTasks,
                  user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     document, _ = await _authorized(db, user, document_id)
     routed = department_for_path(document.path, (await db.scalars(select(Department))).all())
@@ -341,6 +343,7 @@ async def review(document_id: uuid.UUID, body: ComplianceReviewIn,
     for task, leads in tasks:
         await populate_task_reminders(db, task, leads)
     await db.commit()
+    background_tasks.add_task(deliver_assignment_emails)
     return {"status": document.compliance_status, "tasks_created": len(tasks)}
 
 
@@ -391,8 +394,29 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
     return {"id": str(task.id), "status": task.status}
 
 
+@router.patch("/tasks/{task_id}/progress")
+async def update_task_progress(task_id: uuid.UUID, body: ComplianceTaskProgressIn,
+                              user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    state = body.status
+    task = await db.get(SharePointComplianceTask, task_id)
+    if not task:
+        raise SharePointError("task_not_found", 404)
+    await _authorized(db, user, task.document_id)
+    if not await _can_manage(db, user, task):
+        raise SharePointError("task_owner_required", 403)
+    if task.status != "active":
+        raise SharePointError("task_not_active", 409)
+    if task.work_status != state:
+        old = task.work_status
+        task.work_status = state
+        event(db, task.document_id, "task_progress_changed", task_id=task.id, actor_id=user.id,
+              details={"from": old, "to": state})
+        await db.commit()
+    return {"id": str(task.id), "work_status": task.work_status}
+
+
 @router.post("/tasks/{task_id}/assign")
-async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
+async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn, background_tasks: BackgroundTasks,
                       user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if bool(body.owner_user_id) == bool(body.owner_department_id):
         raise SharePointError("exactly_one_owner_required", 422)
@@ -441,7 +465,7 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
     task.owner_department_id = body.owner_department_id
     task.assignment_source = "manual"
     await db.flush()
-    await notify_task_assignment(db, task)
+    await notify_task_assignment(db, task, actor_id=user.id)
     await populate_task_reminders(db, task, leads)
 
     # A task can return to an earlier owner. Re-arm only that owner's current
@@ -473,6 +497,7 @@ async def assign_task(task_id: uuid.UUID, body: ComplianceTaskAssignIn,
                  "changed_by": user.display_name or user.email,
                  "note": body.note})
     await db.commit()
+    background_tasks.add_task(deliver_assignment_emails)
     return {"id": str(task.id), "owner_user_id": str(task.owner_user_id) if task.owner_user_id else None,
             "owner_department_id": str(task.owner_department_id) if task.owner_department_id else None}
 

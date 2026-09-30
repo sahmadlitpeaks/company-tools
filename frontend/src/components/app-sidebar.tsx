@@ -92,7 +92,7 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" aria-label="Primary" {...props}>
+    <Sidebar collapsible="icon" role="navigation" aria-label="Primary" {...props}>
       <SidebarHeader>
         <VersionSwitcher />
       </SidebarHeader>
