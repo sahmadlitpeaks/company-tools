@@ -24,7 +24,7 @@ export function useFetch<T>(path: string | null) {
   const requestIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
 
-  const reload = useCallback(async () => {
+  const fetchData = useCallback(async (background = false) => {
     const requestId = ++requestIdRef.current;
     controllerRef.current?.abort();
 
@@ -39,7 +39,7 @@ export function useFetch<T>(path: string | null) {
     setState((current) => ({
       path,
       data: current.path === path ? current.data : null,
-      loading: true,
+      loading: background && current.path === path && current.data !== null ? current.loading : true,
       error: null,
     }));
 
@@ -59,6 +59,9 @@ export function useFetch<T>(path: string | null) {
       if (controllerRef.current === controller) controllerRef.current = null;
     }
   }, [path]);
+
+  const reload = useCallback(() => fetchData(), [fetchData]);
+  const refresh = useCallback(() => fetchData(true), [fetchData]);
 
   useEffect(() => {
     void reload();
@@ -90,6 +93,7 @@ export function useFetch<T>(path: string | null) {
     loading: path !== null && (!isCurrentPath || state.loading),
     error: isCurrentPath ? state.error : null,
     reload,
+    refresh,
     setData,
   };
 }

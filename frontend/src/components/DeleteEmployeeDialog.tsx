@@ -34,6 +34,7 @@ export function DeleteEmployeeDialog({ employee, onClose, onDeleted }: {
     {status.loading ? <Loading /> : status.error ? <ErrorState message={status.error} onRetry={status.reload} /> : status.data && <>
       {!status.data.can_delete && <Alert><AlertDescription>{status.data.reason}</AlertDescription></Alert>}
       {status.data.blockers.length > 0 && <ul className="list-inside list-disc text-sm">{status.data.blockers.map((item) => <li key={item.label}>{item.label}: {item.count}</li>)}</ul>}
+      {status.data.blockers.some((item) => item.label === "Active Compliance owner rules") && <p className="text-sm text-muted-foreground">In Compliance → Governance, reassign, disable, or remove this employee\u0027s active owner rules. Deleting a source file does not remove its ownership rules.</p>}
       {status.data.can_delete && <Field><FieldLabel className="break-all" htmlFor="delete-employee-confirm">Type {expected} to confirm</FieldLabel><Input id="delete-employee-confirm" autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} disabled={state.busy} /></Field>}
     </>}
     {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}

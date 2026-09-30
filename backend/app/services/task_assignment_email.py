@@ -51,10 +51,15 @@ async def notify_assignment(db, task, *, actor_id=None):
     await queue_assignment_email(db, task, recipient, notification=note, actor_id=actor_id)
 
 def assignment_email_html(*, title, description, due_date, owner, department, assigned_by, link,
-                          document_name=None, company=None, details_available=True):
-    rows = [("Due date", "Available after SharePoint access is verified" if not details_available else due_date.strftime("%d %B %Y") if due_date else "Not set"),
+                          document_name=None, company=None, details_available=True, task_type="Assigned task",
+                          document_type=None, priority=None, status=None, deadline_basis=None, reference=None, expiry_date=None):
+    rows = [("Task type", task_type), ("Status", status or "To do"), ("Priority", priority or "Normal"), ("Due date", "Available after SharePoint access is verified" if not details_available else due_date.strftime("%d %B %Y") if due_date else "Not set"),
             ("Assigned to", owner), ("Department", department or "Not set"),
             ("Assigned by", assigned_by or "Document automation")]
+    for label, value in [("Document type", document_type), ("Reference", reference),
+                         ("Deadline basis", deadline_basis), ("Document expiry", expiry_date)]:
+        if value:
+            rows.append((label, value))
     if document_name:
         rows.append(("Document", document_name))
     if company:
@@ -91,7 +96,7 @@ async def _deliver(db, row):
     if not recipient or not recipient.is_active or recipient.status != "active" or not recipient.email or category in (recipient.notify_muted or []):
         row.status = "cancelled"
         return False
-    document_name = company_name = None
+    document_name = company_name = document_type = reference = expiry_date = deadline_basis = None
     details_available = True
     description = getattr(task, "description", None)
     if row.compliance_task_id:
@@ -121,8 +126,18 @@ async def _deliver(db, row):
             document_name = document.filename
             facts = document.compliance or {}
             company = await db.get(Company, document.company_id) if document.company_id else None
-            company_name = company.name if company else (facts.get("company") or {}).get("value")
-            description = f"Complete the action required by {document.filename}. Deadline basis: {task.basis.replace('_', ' ')}."
+            def fact_text(key):
+                value = facts.get(key)
+                value = value.get("value") if isinstance(value, dict) else value
+                return value if isinstance(value, str) else None
+            company_name = company.name if company else fact_text("company")
+            kind = fact_text("document_type")
+            document_type = {"iso_cap_certificate": "ISO / CAP certificate", "dpa": "Data processing agreement",
+                "it_software_agreement": "IT / software agreement"}.get(kind, kind.replace("_", " ").capitalize() if kind else None)
+            reference, expiry_date = fact_text("reference_number"), fact_text("expiry_date")
+            deadline_basis = {"notice_period": "Termination notice deadline", "notice": "Termination notice deadline", "expiry": "Document expiry",
+                "renewal": "Renewal date"}.get(task.basis, task.basis.replace("_", " ").capitalize())
+            description = f"Complete the action required by {document.filename}. The action must be completed by the task due date; this may be earlier than the document expiry."
         else:
             from app.services.compliance_task_view import ACCESS_MESSAGES
             description = ACCESS_MESSAGES.get(reason, "Open the workspace to check access to your assigned document task.")
@@ -135,7 +150,12 @@ async def _deliver(db, row):
     content = assignment_email_html(title=title, description=description, due_date=task.due_date if details_available else None,
         owner=recipient.display_name or recipient.email, department=department.name if department else None,
         assigned_by=actor.display_name or actor.email if actor else None,
-        link=task_link(task.id), document_name=document_name, company=company_name, details_available=details_available)
+        link=task_link(task.id), document_name=document_name, company=company_name, details_available=details_available,
+        task_type="Document compliance" if row.compliance_task_id else "Assigned task",
+        document_type=document_type, reference=reference, expiry_date=expiry_date, deadline_basis=deadline_basis,
+        priority="High" if row.compliance_task_id and details_available else getattr(task, "priority", "normal").capitalize(),
+        status="To do" if row.compliance_task_id and task.work_status == "todo" else
+            (task.work_status if row.compliance_task_id else task.status).replace("_", " ").capitalize())
     subject = f"Task assigned: {title}".replace("\r", " ").replace("\n", " ")[:200]
     if not await asyncio.to_thread(send_email, to=recipient.email, subject=subject, html=content):
         row.last_error = "Email delivery unavailable"

@@ -218,6 +218,7 @@ class ComplianceReviewIn(StrictModel):
 
 class ComplianceTaskUpdateIn(StrictModel):
     status: Literal["active", "completed"]
+    work_status: Literal["todo", "in_progress", "blocked"] | None = None
     note: str | None = Field(default=None, max_length=2000)
 
 

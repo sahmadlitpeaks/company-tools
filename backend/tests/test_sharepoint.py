@@ -3037,11 +3037,19 @@ async def test_tasks_page_compliance_adapter_progress_completion_and_acl(client,
         assert (await delivery.run_assignment_emails(db))["sent"] == 1
         assert (await db.scalars(select(TaskAssignmentEmail))).one().status == "sent"
     assert len(sent) == 1 and "Vendor LLC" in sent[0]["html"] and "01 November 2027" in sent[0]["html"]
+    for detail in ["Document compliance", "Contract", "REF-1", "2027-12-31", "Termination notice deadline"]:
+        assert detail in sent[0]["html"]
     await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth, json={"status": "completed"})
     assert (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"][0]["status"] == "done"
     async with AsyncSessionLocal() as db:
         assert all(row.status == "dismissed" for row in (await db.scalars(
             select(SharePointReminder).where(SharePointReminder.task_id == uuid.UUID(tid)))).all())
+    reopened = await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth,
+        json={"status": "active", "work_status": "blocked"})
+    assert reopened.status_code == 200, reopened.text
+    assert (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"][0]["status"] == "blocked"
+    assert (await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth,
+        json={"status":"completed","work_status":"todo"})).status_code == 422
     async def denied(*args): raise SharePointError("document_access_denied", 403)
     monkeypatch.setattr(graph.GraphClient, "can_read", denied)
     restricted = (await client.get("/api/tasks/compliance", headers=auth)).json()["tasks"]
@@ -3178,3 +3186,23 @@ async def test_retry_assignment_email_is_scoped_and_retries_latest_only(client, 
         task = await db.get(SharePointComplianceTask, uuid.UUID(tid)); task.status="completed"
         await db.commit()
     assert (await client.post(f"/api/tasks/compliance/{tid}/email/retry",headers=owner_headers)).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_completed_task_without_owner_cannot_reactivate(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        document = await db.get(SharePointDocument, indexed[2])
+        plans = await apply_analysis(db, document, {"sections": [{"compliance": {
+            "document_type": "trade_license", "company": {"value": "Vendor LLC"},
+            "expiry_date": {"value": "2027-01-20"}}}]}, override_owner_user_id=indexed[0])
+        task = plans[0][0]
+        task.status, task.owner_user_id = "completed", None
+        await db.commit()
+        tid = str(task.id)
+    result = await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth,
+        json={"status":"active","work_status":"in_progress"})
+    assert result.status_code == 409
+    async with AsyncSessionLocal() as db:
+        assert (await db.get(SharePointComplianceTask, uuid.UUID(tid))).status == "completed"

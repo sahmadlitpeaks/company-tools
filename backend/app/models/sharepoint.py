@@ -119,6 +119,9 @@ class SharePointReminder(UUIDMixin, TimestampMixin, Base):
 
 class SharePointOwnerRule(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "sharepoint_owner_rules"
+    __table_args__ = (CheckConstraint(
+        "(owner_user_id IS NULL OR owner_department_id IS NULL) AND (NOT is_active OR owner_user_id IS NOT NULL OR owner_department_id IS NOT NULL)",
+        name="ck_sp_rule_one_owner"),)
     company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     document_type: Mapped[str | None] = mapped_column(String(80), index=True)
     folder_name: Mapped[str | None] = mapped_column(String(128), index=True)

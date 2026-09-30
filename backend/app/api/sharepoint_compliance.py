@@ -358,6 +358,20 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
         raise SharePointError("task_owner_required", 403)
     if task.status not in {"active", "completed"}:
         raise SharePointError("task_not_active", 409)
+    if body.status == "active":
+        owner = await db.get(User, task.owner_user_id) if task.owner_user_id else None
+        valid_owner = bool(owner and owner.is_active and owner.status == "active")
+        valid_group = bool(task.owner_department_id and await _active_department_owner(db, task.owner_department_id))
+        if valid_owner == valid_group:
+            raise SharePointError("active_owner_required", 409)
+    if body.work_status is not None:
+        if body.status != "active":
+            raise SharePointError("progress_requires_active_task", 422)
+        old = task.work_status
+        task.work_status = body.work_status
+        if old != body.work_status:
+            event(db, task.document_id, "task_progress_changed", task_id=task.id, actor_id=user.id,
+                  details={"from": old, "to": body.work_status})
     task.status = body.status
     task.completed_by = user.id if body.status == "completed" else None
     task.completed_at = now() if body.status == "completed" else None

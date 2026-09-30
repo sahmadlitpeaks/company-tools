@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { CalendarClock, FileText, Mail, MessageSquare, Repeat, Trash2, UserRound } from "lucide-react";
 import type { BoardTask } from "@/api/tasks";
 import { dateLabel, daysUntil, TASK_STATUSES } from "@/api/tasks";
@@ -7,14 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TaskChoice } from "./TaskChoice";
 
 const EMAIL_LABELS: Record<string, string> = { pending: "Assignment email queued", sent: "Assignment email sent", failed: "Assignment email failed", cancelled: "Assignment email cancelled" };
-export function TaskCard({ task, busy, onOpen, onStatus, onDelete }: {
+export function TaskCard({ task, busy, onOpen, onStatus, onDelete, dragHandle }: {
+  dragHandle?: ReactNode;
   task: BoardTask; busy: boolean; onOpen: () => void; onStatus: (state: string) => void; onDelete: () => void;
 }) {
   const restricted = Boolean(task.access_state && task.access_state !== "ready");
   const days = daysUntil(task.due_date);
   const overdue = task.status !== "done" && days !== null && days < 0;
   return <Card size="sm" className="min-w-0" aria-label={task.title}>
-    <CardHeader><CardTitle><Button variant="link" className="h-auto w-full justify-start whitespace-normal break-words p-0 text-left text-base" onClick={onOpen} aria-label={`Open task: ${task.title}`}>{task.title}</Button></CardTitle>
+    <CardHeader><CardTitle className="flex items-start gap-1">{dragHandle}<Button variant="link" className="h-auto w-full justify-start whitespace-normal break-words p-0 text-left text-base" onClick={onOpen} aria-label={`Open task: ${task.title}`}>{task.title}</Button></CardTitle>
       <div className="flex flex-wrap gap-2">
         {task.source === "compliance" && <Badge variant="info"><FileText data-icon="inline-start" />Document compliance</Badge>}
         {task.priority !== "normal" && <Badge variant={task.priority === "urgent" ? "destructive" : task.priority === "high" ? "warning" : "secondary"}>{task.priority[0].toUpperCase() + task.priority.slice(1)}</Badge>}

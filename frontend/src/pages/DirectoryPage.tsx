@@ -178,6 +178,7 @@ function AccessModal({
         </>
       )}
 
+      <p className="mt-3 text-sm text-muted-foreground">SharePoint Intelligence enables Compliance in this workspace. The employee must also connect Microsoft in Compliance and have permission to read the original SharePoint files.</p>
       <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel

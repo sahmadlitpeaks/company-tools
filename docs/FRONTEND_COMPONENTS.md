@@ -251,3 +251,7 @@ React Doctor is required after substantial frontend changes and before a
 substantial frontend commit or pull request. Read
 `.agents/skills/company-tools-react-doctor/SKILL.md`; do not merely record the
 score without reviewing diagnostics.
+
+### Background refresh of existing data
+
+The shared useFetch hook exposes refresh() for quiet background revalidation; reload() keeps its existing explicit loading behavior. Both use the same abort and latest-request guards. Tasks uses refresh() for the 15-second visible-page/focus checks, keeps an already displayed board during the request, and switches to private workflow previews when a full document check fails. Pause periodic refresh during editing and dragging to avoid replacing active controls.
