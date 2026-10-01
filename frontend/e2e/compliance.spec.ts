@@ -305,3 +305,39 @@ test("failed document shows a readable reason in queue and audit history", async
   await expect(dialog.getByText("A cited passage did not match the document. Retry analysis and verify the source.")).toHaveCount(2);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
+
+test("manager scope refresh closes a transferred document and clears denied dashboard data", async ({ page }) => {
+  await page.clock.install();
+  let visible = true;
+  let denied = false;
+  await page.route("**/api/auth/me", route => route.fulfill({json:{
+    id:"manager",email:"manager@example.com",display_name:"Finance Manager",role:"manager",
+    is_admin:false,is_active:true,status:"active",department_id:"finance-1",
+    effective_permissions:["sharepoint_intelligence"],managed_company_ids:[],
+  }}));
+  await page.route("**/api/sharepoint/compliance/dashboard", route => {
+    if (denied) return route.fulfill({status:403,json:{detail:"manager_required"}});
+    return route.fulfill({json:{
+      summary:{expiring_60:0,expiring_30:0,due_this_week:0,overdue:0,needs_review:0,unassigned:0,
+        tasks_by_owner:{},documents_by_company:{}},
+      documents:visible?[document]:[],tasks:visible?[task]:[],
+    }});
+  });
+  await page.goto("/sharepoint/compliance");
+  await openView(page,"Tasks");
+  await page.getByRole("button",{name:document.name,exact:true}).click();
+  await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  visible = false;
+  await page.clock.fastForward(31_000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button",{name:document.name,exact:true})).toHaveCount(0);
+
+  visible = true;
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  denied = true;
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("manager_required")).toBeVisible();
+  await expect(page.getByRole("button",{name:document.name,exact:true})).toHaveCount(0);
+});

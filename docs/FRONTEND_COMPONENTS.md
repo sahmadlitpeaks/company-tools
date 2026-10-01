@@ -257,3 +257,16 @@ score without reviewing diagnostics.
 ### Background refresh of existing data
 
 The shared useFetch hook exposes refresh() for quiet background revalidation; reload() keeps its existing explicit loading behavior. Both use the same abort and latest-request guards. Tasks uses refresh() for the 15-second visible-page/focus checks, keeps an already displayed board during the request, and switches to private workflow previews when a full document check fails. Pause periodic refresh during editing and dragging to avoid replacing active controls.
+
+
+## Refreshing permission-sensitive data
+
+For reads that must remove saved results when access is revoked, use
+useFetch(path, true). The second argument clears data after a failed request;
+the default preserves existing behavior for other pages. Use refresh() for a
+background check and reload() for an explicit loading state. SharePoint lists,
+reminders, document dialogs, and the Compliance dashboard recheck current
+workspace/Microsoft access on focus and while visible. Document search also
+clears failed results. Role-specific document labels come from
+documentLibraryLabel in navigation.ts so the sidebar, breadcrumb, browser
+title, and library heading agree.

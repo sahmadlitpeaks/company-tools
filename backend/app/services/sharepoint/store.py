@@ -11,6 +11,7 @@ from app.services.sharepoint.analysis import payload_hash
 from app.services.sharepoint.common import SharePointError, decrypt, digest, now, require_config
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.privacy import restore
+from app.services.sharepoint.visibility import document_scope
 
 
 def scope_key():
@@ -124,8 +125,11 @@ def set_cached_authorization(user_id: uuid.UUID, doc_id: uuid.UUID, version: str
     _AUTH_CACHE[key] = (time.monotonic() + ttl, meta)
 
 
-async def authorize_document(db, user, source, document, graph=None, use_cache: bool = False):
+async def authorize_document(db, user, source, document, graph=None, use_cache: bool = False, workspace=None):
     if not document or document.source_id != source.id or document.deleted or not document.in_scope or document.is_folder:
+        raise SharePointError("document_not_found", 404)
+    workspace = workspace or await document_scope(db, user, source)
+    if not workspace.contains(document.id):
         raise SharePointError("document_not_found", 404)
     if use_cache:
         cached = get_cached_authorization(user.id, document.id, document.version)

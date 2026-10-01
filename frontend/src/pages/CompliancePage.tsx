@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowRight, ArrowUpRight, Bell, CalendarClock, Check,
   ChevronRight, CircleCheck, FileCheck2, FileText, ListFilter, RefreshCw,
@@ -317,8 +317,8 @@ function ReviewQueue({ documents, canReview, canRetry, onOpen, onReview, onRetry
 }
 
 function DetailDialog({ document, onClose }: { document: ComplianceDocument; onClose: () => void }) {
-  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${document.id}`);
-  const history = useFetch<{ versions: Array<{ source_version: string; modified_at: string | null; status: string }>; events: Array<{ id: string; action: string; at: string; details: Record<string, unknown> | null }> }>(`/api/sharepoint/compliance/documents/${document.id}/history`);
+  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${document.id}`, true);
+  const history = useFetch<{ versions: Array<{ source_version: string; modified_at: string | null; status: string }>; events: Array<{ id: string; action: string; at: string; details: Record<string, unknown> | null }> }>(`/api/sharepoint/compliance/documents/${document.id}/history`, true);
   const facts = detail.data?.compliance ?? detail.data?.analysis?.sections?.[0]?.compliance;
   const fields = [
     ["Company", document.company_id ? document.company : factValue(facts?.company) || "Unclassified"],
@@ -358,7 +358,7 @@ function ActionDates({ actions }: { actions?: Array<{ title: string; deadline: s
 }
 
 function ReviewDialog({ document, options, onClose, onSaved }: { document: ComplianceDocument; options: ComplianceOptions; onClose: () => void; onSaved: () => void }) {
-  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${document.id}`);
+  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${document.id}`, true);
   const facts = detail.data?.compliance ?? detail.data?.analysis?.sections?.[0]?.compliance;
   const [companyId, setCompanyId] = useState(document.company_id ?? (document.company !== "Unclassified" ? "external" : "none"));
   const [companyName, setCompanyName] = useState(document.company_id ? "" : document.company === "Unclassified" ? "" : document.company);
@@ -532,11 +532,28 @@ export default function CompliancePage() {
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const status = useFetch<SharePointStatus>("/api/sharepoint/status");
-  const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? "/api/sharepoint/compliance/dashboard" : null);
+  const status = useFetch<SharePointStatus>("/api/sharepoint/status", true);
+  const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? "/api/sharepoint/compliance/dashboard" : null, true);
   const canReview = Boolean(user?.is_admin || status.data?.can_review || (user?.role === "manager" && user.department_id));
-  const options = useFetch<ComplianceOptions>(status.data?.connected && canReview ? "/api/sharepoint/compliance/options" : null);
-  const data = dashboard.data;
+  const options = useFetch<ComplianceOptions>(status.data?.connected && canReview ? "/api/sharepoint/compliance/options" : null, true);
+  const data = dashboard.error ? null : dashboard.data;
+  const { refresh: refreshDashboard } = dashboard;
+  const { refresh: refreshStatus } = status;
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void refreshStatus();
+      void refreshDashboard();
+    };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [refreshDashboard, refreshStatus]);
   const filteredDocuments = useMemo(() => data?.documents.filter((doc) => {
     const query = documentFilter.search.trim().toLowerCase();
     if (query && ![doc.name, doc.company, documentTypeLabel(doc.document_type), doc.reference_number || ""].some((value) => value.toLowerCase().includes(query))) return false;

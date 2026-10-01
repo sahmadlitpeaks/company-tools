@@ -38,12 +38,12 @@ export function useDocumentSearch(q: string, cursor: string) {
       }
     } catch (error) {
       if (!request.signal.aborted) {
-        setState((prev) => ({
+        setState({
           key: requestKey,
           loading: false,
-          data: prev.data,
+          data: null,
           error: error instanceof Error ? error.message : "Search failed",
-        }));
+        });
       }
     }
   }, [q, cursor]);
