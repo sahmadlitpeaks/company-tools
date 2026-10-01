@@ -22,7 +22,7 @@ async function setup(page: Page, full: "delay" | "connection" | "error") {
       if (url.searchParams.has("preview")) json = { tasks: [preview], available: true, message: null };
       else if (full === "error") return route.fulfill({ status: 503, json: { detail: "SharePoint unavailable" } });
       else if (full === "delay") { await new Promise((resolve) => setTimeout(resolve, 5000)); json = { tasks: [preview], available: true, message: null }; }
-      else json = { tasks: [{ ...preview, access_state: "microsoft_connection_required", access_message: "Connect your Microsoft account in Compliance to view this task." }], available: true, message: null };
+      else json = { tasks: [{ ...preview, access_state: "microsoft_connection_required", access_message: "Connect Microsoft to verify access to the original file and enable task status changes." }], available: true, message: null };
     }
     await route.fulfill({ json });
   });
@@ -39,7 +39,7 @@ test("Compliance deep link explains connection and allows email retry without fi
   await setup(page, "connection");
   await page.goto("/tasks?task=assigned");
   const dialog=page.getByRole("dialog");
-  await expect(dialog.getByText("Connect your Microsoft account in Compliance to view this task.")).toBeVisible();
+  await expect(dialog.getByText("Connect Microsoft to verify access to the original file and enable task status changes.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Retry assignment email" })).toBeVisible();
   await dialog.getByRole("button", { name: "Retry assignment email" }).click();
   await expect(dialog.getByRole("button", { name: "Open Compliance" })).toBeVisible();

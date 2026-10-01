@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus, RefreshCw, Search } from "lucide-react";
+import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
 import { api } from "@/api/client";
 import type { BoardTask, ComplianceWork, TaskOptions } from "@/api/tasks";
 import { daysUntil, TASK_PRIORITIES, TASK_STATUSES, taskError } from "@/api/tasks";
@@ -100,7 +101,7 @@ export default function TasksPage() {
     { label: "Due in 7 days", count: data.filter((task) => { const days = daysUntil(task.due_date); return task.status !== "done" && days !== null && days >= 0 && days <= 7; }).length },
     { label: "Completed", count: data.filter((task) => task.status === "done").length },
   ];
-  return <div className="flex flex-col gap-5">
+  return <div className="flex flex-col gap-5">{(!selected || selected.source !== "compliance") && <MicrosoftConnectionFeedback />}
     <PageHead headingLevel={1} title="Tasks" subtitle={oversight ? "See your team's work, assign responsibility, and follow each deadline." : "Your assigned work and document actions, together in one place."} action={<div className="flex gap-2"><Button variant="outline" onClick={reload} aria-label="Refresh tasks"><RefreshCw /></Button><Button onClick={() => setAdding(true)} disabled={options.loading || Boolean(options.error)}><Plus data-icon="inline-start" />New task</Button></div>} />
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{metrics.map((metric) => <Card key={metric.label} size="sm"><CardHeader><CardTitle className="text-sm font-normal text-muted-foreground">{metric.label}</CardTitle></CardHeader><CardContent className="text-2xl font-semibold">{ordinary.loading ? "…" : metric.count}</CardContent></Card>)}</div>
     {action.error && !deleting && <Alert variant="destructive" role="alert"><AlertDescription>{action.error}</AlertDescription></Alert>}

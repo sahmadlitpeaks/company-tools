@@ -1736,7 +1736,8 @@ async def test_refresh_token_rotation_persists_encrypted(indexed, monkeypatch):
 async def test_module_is_explicitly_granted_and_callback_requires_session(client, auth, indexed):
     from app.core.permissions import resolve_permissions
     assert "sharepoint_intelligence" not in resolve_permissions(role="manager", is_admin=False)
-    assert (await client.get("/api/sharepoint/callback?code=fake&state=fake", headers=auth)).status_code == 403
+    invalid = await client.get("/api/sharepoint/callback?code=fake&state=fake", headers=auth, follow_redirects=False)
+    assert invalid.status_code == 303 and "microsoft_connection_state_invalid" in invalid.headers["location"]
     async with AsyncSessionLocal() as db:
         user = await db.get(User, indexed[0]); user.is_admin = False; user.role = "member"; await db.commit()
     assert (await client.get("/api/sharepoint/status", headers=auth)).status_code == 403
