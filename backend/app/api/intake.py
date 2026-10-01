@@ -13,9 +13,10 @@ import hmac
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +62,8 @@ from app.schemas.intake import (
     SubmissionUpdate,
 )
 from app.services import intake_routing
+from app.schemas.pagination import Page
+from app.services.list_filters import received_range, search_pattern
 from app.services.activity import record
 from app.services.app_settings import decrypt, encrypt
 from app.services.intake_convert import make_candidate, make_lead
@@ -744,6 +747,60 @@ async def _serialize(db: AsyncSession, subs: list[Submission]) -> list[Submissio
     return out
 
 
+@router.get("/submission-sources")
+async def submission_sources(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
+):
+    """Non-secret source labels for CRM users; source management stays admin-only."""
+    rows = (await db.execute(select(IntakeSource.id, IntakeSource.name).order_by(IntakeSource.name, IntakeSource.id))).all()
+    return [{"id": row.id, "name": row.name} for row in rows]
+
+
+def _submission_query(status=None, type=None, source_id=None, q=None):
+    stmt = select(Submission)
+    if status:
+        stmt = stmt.where(Submission.status == status)
+    if type:
+        stmt = stmt.where(Submission.type == type)
+    if source_id:
+        stmt = stmt.where(Submission.source_id == source_id)
+    if q and q.strip():
+        like = search_pattern(q)
+        stmt = stmt.where(
+            Submission.name.ilike(like, escape="\\") | Submission.email.ilike(like, escape="\\")
+            | Submission.subject.ilike(like, escape="\\") | Submission.message.ilike(like, escape="\\")
+            | Submission.phone.ilike(like, escape="\\") | Submission.company.ilike(like, escape="\\")
+        )
+    return stmt
+
+
+@router.get("/submissions/page", response_model=Page[SubmissionOut])
+async def submission_page(
+    scope: Literal["inbox", "quarantine", "archived"] = "inbox",
+    status: Literal["new", "in_progress", "resolved", "quarantined", "spam", "archived"] | None = None,
+    type: str | None = None,
+    source_id: uuid.UUID | None = None,
+    q: str | None = Query(None, max_length=300),
+    after: date | None = None,
+    before: date | None = None,
+    sort: Literal["newest", "oldest"] = "newest",
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if type and type not in SUBMISSION_TYPES:
+        raise HTTPException(status_code=422, detail="Invalid type")
+    statuses = {"inbox": {"new", "in_progress", "resolved"}, "quarantine": {"quarantined", "spam"}, "archived": {"archived"}}[scope]
+    stmt = _submission_query(status, type, source_id, q).where(Submission.status.in_(statuses))
+    stmt = received_range(stmt, Submission.created_at, after, before)
+    total = int((await db.scalar(select(func.count()).select_from(stmt.subquery()))) or 0)
+    offset = min(offset // limit, max(0, (total - 1) // limit)) * limit
+    order = Submission.created_at.asc() if sort == "oldest" else Submission.created_at.desc()
+    subs = (await db.execute(stmt.order_by(order, Submission.id).offset(offset).limit(limit))).scalars().all()
+    return Page(items=await _serialize(db, subs), total=total, limit=limit, offset=offset)
+
+
 @router.get("/submissions", response_model=list[SubmissionOut])
 async def list_submissions(
     status: str | None = None,
@@ -753,19 +810,7 @@ async def list_submissions(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(Submission).order_by(Submission.created_at.desc())
-    if status:
-        stmt = stmt.where(Submission.status == status)
-    if type:
-        stmt = stmt.where(Submission.type == type)
-    if source_id:
-        stmt = stmt.where(Submission.source_id == source_id)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(
-            Submission.name.ilike(like) | Submission.email.ilike(like)
-            | Submission.subject.ilike(like) | Submission.message.ilike(like)
-        )
+    stmt = _submission_query(status, type, source_id, q).order_by(Submission.created_at.desc(), Submission.id)
     subs = (await db.execute(stmt.limit(500))).scalars().all()
     return await _serialize(db, subs)
 

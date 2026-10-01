@@ -3,9 +3,11 @@ import io
 import uuid
 from collections import Counter
 from decimal import Decimal, InvalidOperation
+from datetime import date
+from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -15,6 +17,8 @@ from app.models.crm import CrmLead
 from app.models.landing import LandingLead, LandingPage
 from app.models.user import User
 from app.schemas.crm import CrmLeadCreate, CrmLeadOut, CrmLeadUpdate, CrmSummary
+from app.schemas.pagination import Page
+from app.services.list_filters import received_range, search_pattern
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
@@ -40,6 +44,63 @@ def _serialize(lead: CrmLead, names: dict[uuid.UUID, str]) -> CrmLeadOut:
     return out
 
 
+def _lead_query(status=None, source=None, company_id=None, q=None):
+    stmt = select(CrmLead)
+    if status:
+        stmt = stmt.where(CrmLead.status == status)
+    if source:
+        stmt = stmt.where(CrmLead.source == source)
+    if company_id:
+        stmt = stmt.where(CrmLead.company_id == company_id)
+    if q and q.strip():
+        like = search_pattern(q)
+        stmt = stmt.where(
+            CrmLead.name.ilike(like, escape="\\")
+            | CrmLead.email.ilike(like, escape="\\")
+            | CrmLead.company.ilike(like, escape="\\")
+            | CrmLead.phone.ilike(like, escape="\\")
+            | CrmLead.notes.ilike(like, escape="\\")
+        )
+    return stmt
+
+
+@router.get("/leads/page", response_model=Page[CrmLeadOut])
+async def lead_page(
+    status: Literal["new", "contacted", "qualified", "won", "lost"] | None = None,
+    source: str | None = None,
+    company_id: uuid.UUID | None = None,
+    owner_id: uuid.UUID | None = None,
+    unassigned: bool = False,
+    q: str | None = Query(None, max_length=300),
+    after: date | None = None,
+    before: date | None = None,
+    sort: Literal["newest", "oldest", "value_high", "value_low"] = "newest",
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if owner_id and unassigned:
+        raise HTTPException(status_code=422, detail="Choose an owner or unassigned, not both")
+    stmt = received_range(_lead_query(status, source, company_id, q), CrmLead.created_at, after, before)
+    if owner_id:
+        stmt = stmt.where(CrmLead.owner_id == owner_id)
+    elif unassigned:
+        stmt = stmt.where(CrmLead.owner_id.is_(None))
+    total = int((await db.scalar(select(func.count()).select_from(stmt.subquery()))) or 0)
+    # Clamp after deleting the final row of a page, so the UI never gets stranded.
+    offset = min(offset // limit, max(0, (total - 1) // limit)) * limit
+    order = {
+        "newest": CrmLead.created_at.desc(),
+        "oldest": CrmLead.created_at.asc(),
+        "value_high": CrmLead.value.desc().nulls_last(),
+        "value_low": CrmLead.value.asc().nulls_last(),
+    }[sort]
+    leads = (await db.execute(stmt.order_by(order, CrmLead.id).offset(offset).limit(limit))).scalars().all()
+    names = await _owner_names(db, {x.owner_id for x in leads})
+    return Page(items=[_serialize(x, names) for x in leads], total=total, limit=limit, offset=offset)
+
+
 @router.get("/leads", response_model=list[CrmLeadOut])
 async def list_leads(
     status: str | None = None,
@@ -49,20 +110,7 @@ async def list_leads(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(CrmLead).order_by(CrmLead.created_at.desc())
-    if status:
-        stmt = stmt.where(CrmLead.status == status)
-    if source:
-        stmt = stmt.where(CrmLead.source == source)
-    if company_id:
-        stmt = stmt.where(CrmLead.company_id == company_id)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(
-            CrmLead.name.ilike(like)
-            | CrmLead.email.ilike(like)
-            | CrmLead.company.ilike(like)
-        )
+    stmt = _lead_query(status, source, company_id, q).order_by(CrmLead.created_at.desc(), CrmLead.id)
     leads = (await db.execute(stmt.limit(1000))).scalars().all()
     names = await _owner_names(db, {x.owner_id for x in leads})
     return [_serialize(x, names) for x in leads]
