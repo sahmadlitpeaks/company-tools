@@ -627,6 +627,18 @@ export interface CrmLead {
   created_at: string;
 }
 
+export interface RecordPage<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SubmissionSource {
+  id: string;
+  name: string;
+}
+
 export interface LeadField {
   key: string;
   label: string;

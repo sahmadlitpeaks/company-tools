@@ -105,6 +105,7 @@ The source files are authoritative. When this list may have changed, run
 | Date selection | `Calendar`, `CalendarDayButton` | Use for a visible calendar/date-picker composition. Date formatting and date math use `date-fns`. |
 | Content surface | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter` | Use full composition; do not put the title and actions loose in `CardContent`. |
 | Data table | `TableSurface`, `Table`, `TableHeader`, `TableBody`, `TableHead`, `TableRow`, `TableCell`, `TableFooter`, `TableCaption`, `TableEmptyRow` | Use `TableSurface` for the bordered container. Provide a mobile card/list alternative when columns do not fit. |
+| Pagination | `Pagination`, `PaginationContent`, `PaginationItem`, `PaginationLink`, `PaginationPrevious`, `PaginationNext` | Use the installed button-based controls for page navigation. `ListControls.tsx` composes result ranges, page sizes and accessible previous/next controls for server-paginated lists. |
 | Identity | `Avatar`, `AvatarImage`, `AvatarFallback`, `AvatarBadge`, `AvatarGroup`, `AvatarGroupCount` | Always provide fallback initials/text. Rounded avatar shape is intentional. |
 | Tabs | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | Triggers always live in `TabsList`; preserve keyboard selection. |
 | Disclosure | `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent` | Use for a simple expandable section. |
@@ -121,7 +122,7 @@ The source files are authoritative. When this list may have changed, run
 | Navigation shell | `Sidebar` family | Used by `app-sidebar.tsx`; extend that composition rather than creating another shell. |
 
 Components not currently installed include chart, scroll area, accordion,
-drawer, pagination, radio group, slider, and combobox. Do not import them by
+drawer, radio group, slider, and combobox. Do not import them by
 assumption. Use the tracked shadcn skill to inspect and deliberately add a
 component only when shipped code requires it.
 
@@ -171,6 +172,7 @@ For a select:
 | `Attachments.tsx` | Generic upload/list/delete and camera entry for supported entity types. Routine Check evidence uses `entityType="task_item"`, `camera`, `accept="image/*"`, and `capture="environment"`. |
 | `CameraCapture.tsx` | Live camera viewfinder, downscale, review, retake, and upload. Normally use it through `Attachments`, not in parallel with another file input. |
 | `SavedViews.tsx` | Saved filter/view state for list surfaces. |
+| `ListControls.tsx` | Labelled filter selects, inclusive UTC date fields, result counts and server page navigation. Filters reset the requested offset; navigation uses the server-returned offset after deletion clamps. |
 | `PdfThumb.tsx`, `FlipbookModal.tsx` | Authenticated PDF preview and document viewer. |
 | `VersionsModal.tsx` | Version history for versioned documents. |
 | `ShareControl.tsx` | Existing share-link lifecycle; do not duplicate share controls per page. |

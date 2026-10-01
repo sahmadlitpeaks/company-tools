@@ -28,6 +28,40 @@ Everything below is built on the existing intake pipeline
 
 ## Endpoints
 
+### Inbox and CRM lists
+
+The authenticated Inbox and CRM pages use `GET /api/intake/submissions/page`
+and `GET /api/crm/leads/page`. Both remain behind the `crm` module gate and
+return `{ items, total, limit, offset }`. `total` counts the entire filtered
+query, rather than only the current page. `limit` defaults to 25 and accepts
+1–100; `offset` must be nonnegative. The API clamps offsets to the last valid
+page after deletion. The original array-returning `/submissions` and `/leads`
+routes remain available for existing consumers.
+
+- Inbox: `scope=inbox|quarantine|archived`, plus `status`, `type`, `source_id`,
+  `q`, `after`, `before` and `sort=newest|oldest`. Scope filtering happens before
+  counting and pagination, so quarantine cannot crowd real submissions out of
+  the inbox. Archived submissions can be retrieved and reopened through the
+  existing detail workflow.
+- CRM: `status`, `source`, `company_id`, `owner_id` or `unassigned=true`, `q`,
+  `after`, `before`, and `sort=newest|oldest|value_high|value_low`. Owner and
+  unassigned are mutually exclusive. Leads without a value sort last.
+- Date bounds are inclusive UTC calendar days. Reversed ranges return 422.
+  Both lists search contact details and company; Inbox also searches subject
+  and message, while CRM searches notes. Search text is literal, including `%`
+  and `_`. Sorting uses the record ID as a stable tie breaker.
+- `GET /api/intake/submission-sources` supplies only website IDs and labels to
+  CRM users. Source credentials and source configuration remain admin-only.
+
+The UI resets to page one when filters or page size change, distinguishes API
+failures from empty results, and keeps actions visible using sticky desktop
+action columns and mobile cards. CRM overview and stage counts cover all leads;
+the matching count and pagination range reflect the current filters. Website
+fields and source provenance are visible in the lead editor and are preserved
+when editable fields are saved.
+
+### Public ingestion
+
 All three are public in the routing sense but require the site's API token.
 
 | Method | Path | Purpose |

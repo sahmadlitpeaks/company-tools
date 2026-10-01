@@ -66,6 +66,9 @@ test.beforeEach(async ({ page }) => {
     else if (/^\/api\/custom-fields\/values\/[^/]+$/.test(path)) body = { fields: [], tables: [], can_edit: false };
     else if (path === "/api/phone-lines/summary") body = { total: 0, assigned: 0, monthly_cost: "0", by_status: {} };
     else if (path === "/api/subscriptions/summary") body = { total: 0, monthly_spend: "0", renewing_soon: 0, by_status: {} };
+    else if (path === "/api/crm/leads/page" || path === "/api/intake/submissions/page") body = { items: [], total: 0, limit: 25, offset: 0 };
+    else if (path === "/api/intake/summary") body = { by_status: {} };
+    else if (path === "/api/crm/summary") body = { total: 0, by_status: {}, by_source: {}, won_value: "0", open_value: "0" };
     else if (path === "/api/audit") body = { items: [], actions: [], entity_types: [], has_more: false };
     else if (path === "/api/reports/catalog") body = [];
 
