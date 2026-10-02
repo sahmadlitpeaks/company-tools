@@ -78,6 +78,17 @@ ownership checks in their handlers. The frontend uses matching module keys for
 module-scoped route and navigation visibility, but hidden UI is never the
 authorization boundary.
 
+Department membership mutations lock only the employee row (`FOR UPDATE OF
+users`), including when an admin changes their own membership. The optional
+manager is eagerly loaded through an outer join and must not be locked with
+the employee. Permission changes and their audit entry share one transaction.
+SQLite does not exercise PostgreSQL row locks. To run the membership regression
+tests, set `DEPARTMENT_TEST_DATABASE_URL` to a disposable local PostgreSQL URL
+using the `postgresql+psycopg` driver and database name `department_lock_test`,
+then run `python -m pytest tests/test_departments_postgres.py` from `backend/`.
+The tests use a temporary schema, clean it up afterwards, and reject remote
+hosts or other database names.
+
 ## Task assignment and oversight
 
 Ordinary task routes share an ownership/team boundary with their attachments.

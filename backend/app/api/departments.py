@@ -50,6 +50,13 @@ def _member(user: User) -> DepartmentMemberOut:
     return DepartmentMemberOut.model_validate(user, from_attributes=True)
 
 
+async def _lock_member(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    # User eagerly joins its optional manager. PostgreSQL cannot lock the
+    # nullable side of that outer join; lock only the employee being changed.
+    return await db.scalar(select(User).where(User.id == user_id)
+        .with_for_update(of=User).execution_options(populate_existing=True))
+
+
 @router.get("", response_model=list[DepartmentOut])
 async def list_departments(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
@@ -82,7 +89,7 @@ async def add_member(
     dept = await db.get(Department, department_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
-    member = await db.get(User, payload.user_id, with_for_update=True)
+    member = await _lock_member(db, payload.user_id)
     if not member:
         raise HTTPException(status_code=404, detail="User not found")
     if member.department_id == department_id:
@@ -110,7 +117,7 @@ async def remove_member(
     dept = await db.get(Department, department_id)
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found")
-    member = await db.get(User, user_id, with_for_update=True)
+    member = await _lock_member(db, user_id)
     if not member or member.department_id != department_id:
         raise HTTPException(status_code=404, detail="Department member not found")
     # An ungrouped user otherwise falls back to role defaults, which can grant
