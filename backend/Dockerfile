@@ -19,6 +19,10 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel \
 
 RUN if [ "$SHAREPOINT_NLP" = "true" ]; then python -m pip install --no-cache-dir -r requirements-sharepoint-nlp.txt; fi
 
+# Migrations and the API both require SQLAlchemy's async bridge.
+# Catch a missing runtime dependency during the build, before deployment.
+RUN python -c "import greenlet; from sqlalchemy.ext.asyncio import async_engine_from_config"
+
 COPY . .
 
 EXPOSE 8000
