@@ -14,7 +14,7 @@ interface FetchState<T> {
   error: string | null;
 }
 
-export function useFetch<T>(path: string | null) {
+export function useFetch<T>(path: string | null, clearOnError = false) {
   const [state, setState] = useState<FetchState<T>>({
     path,
     data: null,
@@ -51,14 +51,14 @@ export function useFetch<T>(path: string | null) {
       if (requestId !== requestIdRef.current || controller.signal.aborted) return;
       setState((current) => ({
         path,
-        data: current.path === path ? current.data : null,
+        data: !clearOnError && current.path === path ? current.data : null,
         loading: false,
         error: e instanceof Error ? e.message : "Request failed",
       }));
     } finally {
       if (controllerRef.current === controller) controllerRef.current = null;
     }
-  }, [path]);
+  }, [path, clearOnError]);
 
   const reload = useCallback(() => fetchData(), [fetchData]);
   const refresh = useCallback(() => fetchData(true), [fetchData]);

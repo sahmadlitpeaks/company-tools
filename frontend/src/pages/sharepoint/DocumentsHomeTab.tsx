@@ -289,7 +289,7 @@ export function DocumentsHomeTab({
             {greeting}, {userName}
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            You have access to {safeDocuments.length} documents.
+            {user?.is_admin ? "Documents across the workspace." : user?.role === "manager" ? "Your team’s documents and assigned actions." : "Documents assigned to you."}
           </p>
         </div>
         <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5 self-start sm:self-auto">

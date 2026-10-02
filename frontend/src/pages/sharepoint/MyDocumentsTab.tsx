@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/auth/AuthContext";
+import { documentLibraryLabel } from "@/components/navigation";
 import type { SharePointDocument } from "@/api/sharepoint";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -321,6 +323,8 @@ export function MyDocumentsTab({
   onAskAboutDoc,
   onRefresh,
 }: MyDocumentsTabProps) {
+  const { user } = useAuth();
+  const title = documentLibraryLabel(Boolean(user?.is_admin), user?.role === "manager");
   const [viewMode, setViewMode] = useState<"table" | "cards">(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       return "cards";
@@ -399,11 +403,11 @@ export function MyDocumentsTab({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
-            My documents
-          </h2>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            {title}
+          </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {documents.length} documents you have access to in SharePoint.
+            {documents.length} {documents.length === 1 ? "document" : "documents"} {user?.is_admin ? "available in the workspace" : user?.role === "manager" ? "available to your team" : "assigned to you"}.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-center text-xs text-muted-foreground">

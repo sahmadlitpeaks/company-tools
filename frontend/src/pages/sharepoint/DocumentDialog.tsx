@@ -44,8 +44,8 @@ export default function DocumentDialog({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${id}`);
-  const reminders = useFetch<SharePointReminder[]>(`/api/sharepoint/documents/${id}/reminders`);
+  const detail = useFetch<SharePointDocument>(`/api/sharepoint/documents/${id}`, true);
+  const reminders = useFetch<SharePointReminder[]>(`/api/sharepoint/documents/${id}/reminders`, true);
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("analysis");
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
@@ -89,18 +89,26 @@ export default function DocumentDialog({
     setActiveTab("segments");
   }
 
-  const { reload: reloadDetail } = detail;
-  const { reload: reloadReminders } = reminders;
+  const { refresh: refreshDetail } = detail;
+  const { refresh: refreshReminders } = reminders;
   const docStatus = doc?.status;
 
   useEffect(() => {
-    if (!docStatus || (docStatus !== "processing" && docStatus !== "approved" && docStatus !== "queued")) return;
-    const interval = window.setInterval(() => {
-      void reloadDetail();
-      void reloadReminders();
-    }, 3000);
-    return () => window.clearInterval(interval);
-  }, [docStatus, reloadDetail, reloadReminders]);
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void refreshDetail();
+      void refreshReminders();
+    };
+    const processing = docStatus === "processing" || docStatus === "approved" || docStatus === "queued";
+    const interval = window.setInterval(refresh, processing ? 3000 : 30000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [docStatus, refreshDetail, refreshReminders]);
 
   return (
     <Modal
@@ -293,7 +301,7 @@ export default function DocumentDialog({
                   <TabsContent value="expiries" className="space-y-4">
                     <ExpiriesTab
                       sections={doc.analysis.sections}
-                      reminders={reminders.data || []}
+                      reminders={reminders.error ? [] : reminders.data || []}
                       onViewSource={handleViewSource}
                     />
                   </TabsContent>

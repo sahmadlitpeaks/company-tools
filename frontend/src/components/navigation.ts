@@ -66,6 +66,7 @@ export type NavItem = {
   icon: LucideIcon;
   end?: boolean;
   adminOnly?: boolean;
+  managerOnly?: boolean;
   module?: string;
   keywords?: string[];
 };
@@ -105,7 +106,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: FolderOpen,
     items: [
       { to: "/sharepoint", label: "Home", icon: LayoutDashboard, end: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "home", "recent", "greeting"] },
-      { to: "/sharepoint/compliance", label: "Compliance", icon: ShieldCheck, module: "sharepoint_intelligence", keywords: ["documents", "compliance", "review", "tasks", "renewal", "ownership"] },
+      { to: "/sharepoint/compliance", label: "Compliance", icon: ShieldCheck, managerOnly: true, module: "sharepoint_intelligence", keywords: ["documents", "compliance", "review", "tasks", "renewal", "ownership"] },
       { to: "/sharepoint/documents", label: "My documents", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "files", "library", "contracts", "licences"] },
       { to: "/sharepoint/assistant", label: "Assistant", icon: Bot, module: "sharepoint_intelligence", keywords: ["sharepoint", "assistant", "ai", "ask", "chat", "questions"] },
       { to: "/sharepoint/alerts", label: "Alerts", icon: Calendar, module: "sharepoint_intelligence", keywords: ["sharepoint", "alerts", "reminders", "deadlines", "tasks", "overdue"] },
@@ -237,8 +238,13 @@ export function findNavItem(pathname: string): NavItem | undefined {
     .sort((left, right) => right.to.length - left.to.length)[0];
 }
 
-export function currentNavTitle(pathname: string): string {
-  return findNavItem(pathname)?.label ?? "Internal Platform";
+export function documentLibraryLabel(isAdmin: boolean, isManager: boolean): string {
+  return isAdmin ? "Documents" : isManager ? "Team documents" : "My documents";
+}
+
+export function currentNavTitle(pathname: string, isAdmin = false, isManager = false): string {
+  const item = findNavItem(pathname);
+  return item?.to === "/sharepoint/documents" ? documentLibraryLabel(isAdmin, isManager) : item?.label ?? "Internal Platform";
 }
 
 export function currentNavSection(pathname: string): string | undefined {
@@ -248,14 +254,16 @@ export function currentNavSection(pathname: string): string | undefined {
 export function visibleNavGroups(
   isAdmin: boolean,
   can: (module: string) => boolean,
+  isManager = false,
 ): NavGroup[] {
   return NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
         if ((item.adminOnly || group.adminOnly) && !isAdmin) return false;
+        if (item.managerOnly && !isAdmin && !isManager) return false;
         return !item.module || can(item.module);
-      }),
+      }).map((item) => item.to === "/sharepoint/documents" ? { ...item, label: documentLibraryLabel(isAdmin, isManager) } : item),
     }))
     .filter((group) => group.items.length > 0);
 }

@@ -26,6 +26,7 @@ from app.services.sharepoint.reminders import (compliance_task_recipients,
     notify_task_assignment, populate_task_reminders)
 from app.services.sharepoint.store import authorize_document, source_for
 from app.services.task_assignment_email import deliver_assignment_emails
+from app.services.sharepoint.visibility import document_scope
 
 router = APIRouter(prefix="/sharepoint/compliance", tags=["sharepoint-compliance"],
                    dependencies=[Depends(same_origin)])
@@ -68,9 +69,12 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
                     owner_id: uuid.UUID | None = None, department_id: uuid.UUID | None = None,
                     status: str | None = None, due_from: date | None = None, due_to: date | None = None,
                     user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not (user.is_admin or user.role == "manager"):
+        raise SharePointError("manager_required", 403)
     source = await source_for(db)
     graph = GraphClient(await delegated_token(db, user))
-    candidates = (await db.scalars(select(SharePointDocument).where(
+    workspace = await document_scope(db, user, source)
+    candidates = (await db.scalars(select(SharePointDocument).where(workspace.document_filter(),
         SharePointDocument.source_id == source.id,
         SharePointDocument.in_scope.is_(True), SharePointDocument.deleted.is_(False),
         SharePointDocument.is_folder.is_(False)).order_by(SharePointDocument.created_at.desc()))).all()
@@ -80,7 +84,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
     accessible = []
     for document in candidates:
         try:
-            metadata = await authorize_document(db, user, source, document, graph)
+            metadata = await authorize_document(db, user, source, document, graph, workspace=workspace)
         except SharePointError as error:
             if error.code in {"document_access_denied", "document_not_found", "document_changed_sync_required"}:
                 continue
@@ -96,18 +100,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
     ids = [document.id for document, _ in accessible]
     tasks = (await db.scalars(select(SharePointComplianceTask).where(
         SharePointComplianceTask.document_id.in_(ids)).order_by(SharePointComplianceTask.due_date.asc()))).all() if ids else []
-    if not (user.is_admin or is_reviewer(user)):
-        owner_ids_for_scope = {task.owner_user_id for task in tasks if task.owner_user_id}
-        owner_departments = {owner.id: owner.department_id for owner in (await db.scalars(
-            select(User).where(User.id.in_(owner_ids_for_scope)))).all()} if owner_ids_for_scope else {}
-        led_departments = {lead.department_id for lead in (await db.scalars(select(User).where(
-            User.department_id.is_not(None), User.is_active.is_(True), User.status == "active",
-            or_(User.role == "manager", User.is_admin.is_(True))))).all()}
-        tasks = [task for task in tasks if task.owner_user_id == user.id or (
-            user.department_id and (
-                (task.owner_department_id == user.department_id and (
-                    user.role == "manager" or user.department_id not in led_departments)) or
-                (user.role == "manager" and owner_departments.get(task.owner_user_id) == user.department_id)))]
+    tasks = [task for task in tasks if workspace.tasks is None or task.id in workspace.tasks]
     if owner_id:
         tasks = [task for task in tasks if task.owner_user_id == owner_id]
     if department_id:

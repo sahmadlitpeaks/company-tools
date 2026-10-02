@@ -1040,7 +1040,7 @@ async def test_department_folder_routes_manager_queue_and_limits_person_assignme
     assert unrelated.status_code == 200 and unrelated.json()["summary"]["needs_review"] == 0
     assert (await client.get("/api/sharepoint/compliance/options", headers=manager_auth)).status_code == 200
     assert (await client.post(f"/api/sharepoint/compliance/documents/{indexed[2]}/review",
-        headers=finance_auth, json={"company_name": "External", "document_type": "trade_license"})).status_code == 403
+        headers=finance_auth, json={"company_name": "External", "document_type": "trade_license"})).status_code == 404
 
     async with AsyncSessionLocal() as db:
         document = await db.get(SharePointDocument, indexed[2])
@@ -1078,7 +1078,7 @@ async def test_department_folder_routes_manager_queue_and_limits_person_assignme
         assert all(notice.is_read for notice in manager_notices)
     assert (await client.post(path, headers=finance_auth, json={
         "owner_department_id": str(finance_id), "department_id": str(finance_id),
-        "note": "Not my department"})).status_code == 403
+        "note": "Not my department"})).status_code == 404
     board = await client.get("/api/tasks/compliance", headers=manager_auth)
     assert board.status_code == 200, board.text
     assert board.json()["tasks"][0]["assignee_id"] == str(member_id)

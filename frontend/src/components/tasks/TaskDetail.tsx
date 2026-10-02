@@ -7,6 +7,7 @@ import { api } from "@/api/client";
 import type { BoardTask, TaskOptions } from "@/api/tasks";
 import { dateLabel, TASK_STATUSES, taskError } from "@/api/tasks";
 import type { TaskDetail as TaskDetailData } from "@/api/types";
+import { useAuth } from "@/auth/AuthContext";
 import { useFetch } from "@/hooks/useApi";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +76,8 @@ function OrdinaryTaskDetail({ task, onClose, onReload, onStatus, onEdit }: {
 function ComplianceTaskDetail({ task, options, onClose, onReload, onStatus }: {
   task: BoardTask; options: TaskOptions; onClose: () => void; onReload: () => void; onStatus: (state: string) => Promise<void>;
 }) {
+  const { user } = useAuth();
+  const management = user?.is_admin || user?.role === "manager";
   const [form, setForm] = useState({ department: task.assignee_department_id ?? "none", owner: task.assignee_id ?? "inbox", note: "" });
   const [state, setState] = useState({ busy: false, error: "" });
   const members = options.users.filter((person) => person.department_id === form.department);
@@ -112,13 +115,15 @@ function ComplianceTaskDetail({ task, options, onClose, onReload, onStatus }: {
         <Field className="sm:col-span-2"><FieldLabel htmlFor="document-task-note">Assignment reason</FieldLabel><Textarea id="document-task-note" value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} required minLength={3} maxLength={2000} /></Field>
       </FieldGroup><Button type="submit" disabled={state.busy}>{state.busy ? "Saving…" : "Save assignment"}</Button>
     </form>}
-    <Button variant="outline" nativeButton={false} render={<Link to="/sharepoint/compliance" />}>View document and audit history<ArrowUpRight data-icon="inline-end" /></Button>
+    <Button variant="outline" nativeButton={false} render={<Link to={management ? "/sharepoint/compliance" : "/sharepoint/documents"} />}>{management ? "View document and audit history" : "Open my documents"}<ArrowUpRight data-icon="inline-end" /></Button>
   </DialogContent></Dialog>;
 }
 
 function RestrictedTaskDetail({ task, onClose, onReload }: {
   task: BoardTask; onClose: () => void; onReload: () => void;
 }) {
+  const { user } = useAuth();
+  const management = user?.is_admin || user?.role === "manager";
   const checking = task.access_state === "checking";
   return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
     <DialogHeader><DialogTitle>Document task assigned</DialogTitle><DialogDescription>Assigned to {task.assignee_name || "your department"}</DialogDescription></DialogHeader>
@@ -128,7 +133,7 @@ function RestrictedTaskDetail({ task, onClose, onReload }: {
     <AssignmentEmailRetry task={task} onReload={onReload} />
     <p className="text-sm text-muted-foreground">Your assignment is saved. The original file's permissions must be verified before its title, deadline, and contents can be shown.</p>
     {checking ? <p role="status" className="text-sm text-muted-foreground">Checking document access…</p> : <Button variant="outline" onClick={onReload}>Check access again</Button>}
-    {!checking && task.access_state !== "module_required" && <Button nativeButton={false} render={<Link to="/sharepoint/compliance" />}>Open Compliance</Button>}
+    {!checking && task.access_state !== "module_required" && <Button nativeButton={false} render={<Link to={management ? "/sharepoint/compliance" : "/sharepoint/documents"} />}>{management ? "Open Compliance" : "Open my documents"}</Button>}
     <Button variant="outline" onClick={onClose}>Close</Button>
   </DialogContent></Dialog>;
 }

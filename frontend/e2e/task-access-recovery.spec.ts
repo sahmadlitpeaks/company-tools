@@ -42,7 +42,7 @@ test("Compliance deep link explains connection and allows email retry without fi
   await expect(dialog.getByText("Connect Microsoft to verify access to the original file and enable task status changes.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Retry assignment email" })).toBeVisible();
   await dialog.getByRole("button", { name: "Retry assignment email" }).click();
-  await expect(dialog.getByRole("button", { name: "Open Compliance" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Open my documents" })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({path: "test-results/task-access-" + page.viewportSize()!.width + ".png", fullPage:true});
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

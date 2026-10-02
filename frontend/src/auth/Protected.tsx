@@ -7,15 +7,17 @@ import { useAuth } from "./AuthContext";
 export default function Protected({
   module,
   adminOnly,
+  managerOnly,
   children,
 }: {
   module?: string;
   adminOnly?: boolean;
+  managerOnly?: boolean;
   children: ReactNode;
 }) {
   const { user, can } = useAuth();
   const ok =
-    !!user && (user.is_admin || ((!adminOnly || false) && (!module || can(module))));
+    !!user && (user.is_admin || (!adminOnly && (!managerOnly || user.role === "manager") && (!module || can(module))));
 
   if (!ok)
     return (

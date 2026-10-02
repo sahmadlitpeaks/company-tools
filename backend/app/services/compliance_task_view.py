@@ -1,14 +1,15 @@
 """Fast assignment previews and scoped, live-authorized document task details."""
 import asyncio
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from app.models.company import Company
 from app.models.department import Department
 from app.models.sharepoint import SharePointComplianceTask, SharePointDocument
 from app.models.user import User
-from app.services.sharepoint.common import SharePointError, is_reviewer
+from app.services.sharepoint.common import SharePointError
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.store import authorize_document, public_document, source_for
 from app.services.task_assignment_email import assignment_states
+from app.services.sharepoint.visibility import document_scope
 
 ACCESS_MESSAGES = {
     "checking": "Checking your access to the original SharePoint file.",
@@ -29,29 +30,17 @@ async def task_board(db, user, *, preview=False):
         if error.code in {"sharepoint_disabled", "sharepoint_not_configured"}:
             return {"tasks": [], "available": False, "message": "Document tasks are waiting for SharePoint setup."}
         raise
+    workspace = await document_scope(db, user, source)
+    task_filter = SharePointComplianceTask.id.in_(workspace.tasks) if workspace.tasks is not None else True
     pairs = (await db.execute(select(SharePointComplianceTask, SharePointDocument).join(
         SharePointDocument, SharePointDocument.id == SharePointComplianceTask.document_id).where(
-        SharePointComplianceTask.source_id == source.id,
+        task_filter, SharePointComplianceTask.source_id == source.id,
         SharePointComplianceTask.status.in_(["active", "completed"]),
         SharePointDocument.deleted.is_(False), SharePointDocument.in_scope.is_(True),
         SharePointDocument.is_folder.is_(False)).order_by(SharePointComplianceTask.due_date))).all()
     owner_ids = {task.owner_user_id for task, _ in pairs if task.owner_user_id}
     owners = {person.id: person for person in (await db.scalars(select(User).where(
         User.id.in_(owner_ids)))).all()} if owner_ids else {}
-    if not (user.is_admin or is_reviewer(user)):
-        leads = set((await db.scalars(select(User.department_id).where(
-            User.department_id.is_not(None), User.is_active.is_(True), User.status == "active",
-            or_(User.role == "manager", User.is_admin.is_(True))))).all())
-        def visible(task):
-            if task.owner_user_id == user.id:
-                return True
-            if user.department_id and task.owner_department_id == user.department_id:
-                return user.role == "manager" or user.department_id not in leads
-            owner = owners.get(task.owner_user_id)
-            return bool(user.role == "manager" and owner and (
-                owner.manager_id == user.id or user.department_id and
-                owner.department_id == user.department_id))
-        pairs = [(task, doc) for task, doc in pairs if visible(task)]
     departments = {dept.id: dept.name for dept in (await db.scalars(select(Department))).all()}
     states = await assignment_states(db, compliance=True, task_ids=[task.id for task, _ in pairs])
     access = {}
@@ -65,7 +54,7 @@ async def task_board(db, user, *, preview=False):
             async def check(document):
                 async with semaphore:
                     try:
-                        return await authorize_document(db, user, source, document, graph=graph)
+                        return await authorize_document(db, user, source, document, graph=graph, workspace=workspace)
                     except SharePointError as error:
                         return error.code
 

@@ -182,13 +182,12 @@ test("revoked access never leaves a stale document body visible", async ({ page 
   await page.goto("/sharepoint");
   await page.getByRole("button", { name: /View (document|خطة)/ }).first().click();
   await expect(page.getByRole("dialog").getByText("Alice", { exact: true })).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
 
   await page.route("**/api/sharepoint/documents/doc-1", (route) =>
     route.fulfill({ status: 403, json: { detail: "document_access_denied" } })
   );
 
-  await page.getByRole("button", { name: /View (document|خطة)/ }).first().click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByRole("dialog").getByText(/document access denied/)).toBeVisible();
   await expect(page.getByRole("dialog").getByText("Alice", { exact: true })).toHaveCount(0);
 });
@@ -361,10 +360,10 @@ test("Documents sidebar group renders navigation items and urgent badge", async 
     : page.locator('[data-slot="sidebar-inner"]');
 
   const documentsGroup = navigation.locator('[data-slot="sidebar-group"]', { hasText: "Documents" });
-  await expect(documentsGroup.getByText("Documents", { exact: true })).toBeVisible();
+  await expect(documentsGroup.getByRole("button", { name: "Documents", exact: true })).toBeVisible();
   await expect(documentsGroup.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(documentsGroup.getByRole("link", { name: "Compliance" })).toBeVisible();
-  await expect(documentsGroup.getByRole("link", { name: "My documents", exact: true })).toBeVisible();
+  await expect(documentsGroup.getByRole("link", { name: "Documents", exact: true })).toBeVisible();
   await expect(documentsGroup.getByRole("link", { name: "Assistant" })).toBeVisible();
   await expect(documentsGroup.getByRole("link", { name: "Alerts" })).toBeVisible();
   await expect(documentsGroup.getByRole("link", { name: "Document sources" })).toBeVisible();
@@ -373,9 +372,9 @@ test("Documents sidebar group renders navigation items and urgent badge", async 
   await expect(documentsGroup.getByText("1")).toBeVisible();
 
   // Clicking My documents navigates to /sharepoint/documents
-  await documentsGroup.getByRole("link", { name: "My documents", exact: true }).click();
+  await documentsGroup.getByRole("link", { name: "Documents", exact: true }).click();
   await expect(page).toHaveURL(/\/sharepoint\/documents/);
-  await expect(page.getByRole("heading", { name: "My documents", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible();
 });
 
 
