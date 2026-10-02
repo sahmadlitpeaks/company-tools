@@ -123,6 +123,13 @@ serves a **built** SPA and reverse-proxies the API on the same origin. Alembic
 migrations run automatically when the backend starts. Use this for a release-like
 smoke test; use Vite for iterative UI work.
 
+If login returns 502 and backend startup reports a missing greenlet package,
+the API has not started: Alembic requires SQLAlchemy's asyncio dependencies.
+The backend requirements must install sqlalchemy[asyncio]. Rebuild and
+redeploy the backend image after updating dependencies; restarting the old
+image does not install them. The Docker build checks the required async
+imports before producing an image.
+
 A live deployment with `ENVIRONMENT=production` must be exposed to browsers over
 HTTPS, with TLS terminated by a reverse proxy or load balancer. Production marks
 both authentication cookies as `Secure`, so browsers will not send them over
