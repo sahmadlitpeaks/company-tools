@@ -18,6 +18,15 @@ async function setModule(
   on: boolean,
 ) {
   await page.goto("/settings");
+  // Wait for the settings card buttons to be ready.
+  const manageBtn = page.getByRole("button", { name: /Manage modules and features/i });
+  const collapseBtn = page.getByRole("button", { name: /Collapse modules and features/i });
+  await expect(manageBtn.or(collapseBtn)).toBeVisible();
+  if (await manageBtn.isVisible()) {
+    await manageBtn.click();
+    await expect(collapseBtn).toBeVisible();
+  }
+
   // The switch offers the opposite of its current state, so its name tells us
   // where we are. Wait for whichever of the two rendered before deciding.
   const either = page.getByRole("switch", {
@@ -41,6 +50,30 @@ async function setModule(
 }
 
 test.describe.configure({ mode: "serial" });
+
+test("the modules card is collapsed by default and can be toggled", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/settings");
+
+  await expect(page.getByText("Modules & features")).toBeVisible();
+  // Should have Manage button and content should be hidden initially
+  const manageBtn = page.getByRole("button", { name: /Manage modules and features/i });
+  await expect(manageBtn).toBeVisible();
+  await expect(page.getByLabel("Search modules and features")).not.toBeVisible();
+
+  // Clicking Manage expands the card
+  await manageBtn.click();
+  await expect(page.getByLabel("Search modules and features")).toBeVisible();
+
+  // Clicking Collapse collapses it back
+  const collapseBtn = page.getByRole("button", { name: /Collapse modules and features/i });
+  await expect(collapseBtn).toBeVisible();
+  await collapseBtn.click();
+  await expect(page.getByLabel("Search modules and features")).not.toBeVisible();
+});
+
 
 test("a switched-off module leaves the menu and its page stops loading", async ({
   page,
@@ -91,6 +124,13 @@ test("the settings list stays usable at mobile width", async ({ page }) => {
   await expect(
     page.getByText("Modules & features", { exact: true }),
   ).toBeVisible();
+  const manageBtn = page.getByRole("button", { name: /Manage modules and features/i });
+  const collapseBtn = page.getByRole("button", { name: /Collapse modules and features/i });
+  await expect(manageBtn.or(collapseBtn)).toBeVisible();
+  if (await manageBtn.isVisible()) {
+    await manageBtn.click();
+    await expect(collapseBtn).toBeVisible();
+  }
   await page.getByLabel("Search modules and features").fill("payroll");
   await expect(
     page.getByRole("switch", { name: "Turn Payroll off for everyone" }),
