@@ -20,8 +20,12 @@
 ## Authentication flow
 
 SharePoint Intelligence has a separate delegated Microsoft connection. Its
-module gate does not grant document access: every content response checks live
-delegated Graph metadata/content access and the configured folder scope. An
+module gate does not grant document access: every content response checks current
+workspace assignments/team scope, live delegated Graph metadata/content access,
+and the configured folder scope. Employees see their assigned documents,
+managers see their team's documents and department review inbox, and admins
+have global workspace scope. The Assistant uses the same boundary and never
+falls back to raw indexed records when Microsoft access is unavailable. An
 app-only read grant powers ingestion only. Microsoft tokens are encrypted,
 direct AI analysis creates owned compliance tasks when facts are clear, and a
 database lease owns durable sync runs. See [SharePoint setup and architecture](SHAREPOINT_INTELLIGENCE.md)
@@ -116,6 +120,26 @@ The SPA learns the state from `/api/auth/me`, which adds `disabled_modules` and
 `AuthContext` subtracts them for navigation and route guards. Reads are cached
 in-process for 30 seconds and invalidated on write, so a single-process
 deployment sees a change at once and additional replicas within the TTL.
+
+Department membership mutations lock only the employee row (`FOR UPDATE OF
+users`), including when an admin changes their own membership. The optional
+manager is eagerly loaded through an outer join and must not be locked with
+the employee. Permission changes and their audit entry share one transaction.
+SQLite does not exercise PostgreSQL row locks. To run the membership regression
+tests, set `DEPARTMENT_TEST_DATABASE_URL` to a disposable local PostgreSQL URL
+using the `postgresql+psycopg` driver and database name `department_lock_test`,
+then run `python -m pytest tests/test_departments_postgres.py` from `backend/`.
+The tests use a temporary schema, clean it up afterwards, and reject remote
+hosts or other database names.
+
+## Task assignment and oversight
+
+Ordinary task routes share an ownership/team boundary with their attachments.
+The Tasks page also adapts authorized compliance tasks without duplicating
+records. Assignment notifications and email delivery entries commit together;
+a retry worker checks current ownership and live SharePoint access before
+sending document details. See [Tasks](TASKS.md) for permissions, progress,
+email configuration, and delivery guarantees.
 
 ## Modules & key endpoints
 

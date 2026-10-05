@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.people import JourneyTaskOut
 
@@ -47,7 +47,8 @@ class ProjectOut(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    title: str
+    department_id: uuid.UUID | None = None
+    title: str = Field(min_length=1, max_length=512)
     description: str | None = None
     status: str = "todo"
     priority: str = "normal"
@@ -59,7 +60,8 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = None
+    department_id: uuid.UUID | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=512)
     description: str | None = None
     status: str | None = None
     priority: str | None = None
@@ -116,6 +118,9 @@ class TaskOut(BaseModel):
     recurrence: str | None = None
     assignee_id: uuid.UUID | None = None
     assignee_name: str | None = None
+    assignee_department_id: uuid.UUID | None = None
+    assignee_department_name: str | None = None
+    assignment_email_status: str | None = None
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
     company_id: uuid.UUID | None = None

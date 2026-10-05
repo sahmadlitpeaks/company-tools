@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Link2,
 } from "lucide-react";
+import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
 import { api } from "@/api/client";
 import {
   type SharePointDocument,
@@ -94,8 +95,8 @@ function ConnectedSource({
   const docs = searchResult.data?.items ?? [];
   const { reload: reloadDocs } = searchResult;
 
-  const remindersFetch = useFetch<SharePointReminder[]>("/api/sharepoint/reminders");
-  const remindersData = remindersFetch.data;
+  const remindersFetch = useFetch<SharePointReminder[]>("/api/sharepoint/reminders", true);
+  const remindersData = remindersFetch.error ? null : remindersFetch.data;
   const reminders = useMemo(
     () => (Array.isArray(remindersData) ? remindersData : []),
     [remindersData]
@@ -214,14 +215,21 @@ function ConnectedSource({
   }
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
       void reload();
-      if (status.active_run) {
-        void reloadDocs();
-      }
-    }, status.active_run ? 10000 : 30000);
-    return () => window.clearInterval(timer);
-  }, [status.active_run, reload, reloadDocs]);
+      void reloadDocs();
+      void reloadReminders();
+    };
+    const timer = window.setInterval(refresh, status.active_run ? 10000 : 30000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [status.active_run, reload, reloadDocs, reloadReminders]);
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
@@ -312,7 +320,7 @@ function ConnectedSource({
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Sign in with your work Microsoft account to allow Company Tools to index and extract intelligence from your accessible SharePoint documents.
+              Connect your work Microsoft account to verify access to the documents assigned to you or your team.
             </p>
             <Button
               nativeButton={false}
@@ -349,12 +357,13 @@ export default function SharePointPage({
 }: {
   tab?: "home" | "documents" | "assistant" | "alerts" | "admin";
 }) {
-  const status = useFetch<SharePointStatus>("/api/sharepoint/status");
+  const status = useFetch<SharePointStatus>("/api/sharepoint/status", true);
   const { user } = useAuth();
   const value = !status.error ? (status.data ?? null) : null;
 
   return (
     <div className="space-y-5">
+      <MicrosoftConnectionFeedback />
       {(!value || !value.enabled || !value.configured) && (
         <PageHead
           title="SharePoint Intelligence"

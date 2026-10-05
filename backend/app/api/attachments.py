@@ -76,6 +76,13 @@ async def _authorize_entity(
     """
     if entity_type in _SHARED_ENTITY_TYPES:
         return
+    if entity_type in ("task", "task_item"):
+        task = obj if entity_type == "task" else await db.get(Task, obj.task_id)
+        if task and not task.template_id:
+            from app.services.task_access import can_access_task
+            if not await can_access_task(db, user, task):
+                raise HTTPException(403, "You don't have access to this item")
+            return
     if user.is_admin or user.role == "manager":
         return
     if entity_type in ("task", "task_item"):

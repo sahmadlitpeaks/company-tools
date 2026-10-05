@@ -18,10 +18,15 @@ export type ComplianceDocument = {
   document_type: string;
   reference_number: string | null;
   expiry_date: string | null;
+  action_date: string | null;
   renewal_date: string | null;
   notice_days: number | null;
   status: string;
   processing_status: string;
+  error_code: string | null;
+  folder_department_id: string | null;
+  folder_department: string | null;
+  can_review: boolean;
   review_reasons: string[];
   modified_at: string | null;
   uploaded_at: string | null;
@@ -39,6 +44,8 @@ export type ComplianceTask = {
   basis: string;
   status: string;
   owner: string;
+  can_assign: boolean;
+  can_complete: boolean;
   owner_user_id: string | null;
   owner_department_id: string | null;
 };
@@ -50,10 +57,11 @@ export type ComplianceDashboard = {
 };
 
 export type ComplianceOption = { id: string; name: string };
+export type ComplianceUserOption = ComplianceOption & { department_id: string | null };
 export type ComplianceOptions = {
   companies: ComplianceOption[];
   departments: ComplianceOption[];
-  users: ComplianceOption[];
+  users: ComplianceUserOption[];
 };
 
 export type OwnerRule = {
@@ -83,10 +91,13 @@ export const DOCUMENT_TYPES = [
   ["vendor_agreement", "Vendor agreement"],
   ["laboratory_accreditation", "Laboratory accreditation"],
   ["it_software_agreement", "IT / software agreement"],
+  ["product_sheet", "Product information sheet"],
+  ["vendor_notice", "Vendor price notice"],
   ["other", "Other compliance document"],
 ] as const;
 
 export function documentTypeLabel(value: string) {
+  if (!value || value === "unknown") return "Not classified";
   return DOCUMENT_TYPES.find(([key]) => key === value)?.[1] ?? value.replace(/_/g, " ");
 }
 

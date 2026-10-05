@@ -156,7 +156,7 @@ function OpenCommandPalette({
   );
 
   const navGroups = useMemo(() => {
-    const groups = visibleNavGroups(!!user?.is_admin, can);
+    const groups = visibleNavGroups(!!user?.is_admin, can, user?.role === "manager");
     const knownPaths = new Set(
       groups.flatMap((group) => group.items.map((item) => item.to)),
     );
@@ -189,7 +189,7 @@ function OpenCommandPalette({
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [q, user?.is_admin, can]);
+  }, [q, user?.is_admin, user?.role, can]);
 
   const navCount = navGroups.reduce((total, group) => total + group.items.length, 0);
 

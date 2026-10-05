@@ -11,6 +11,29 @@ export class ApiError extends Error {
   }
 }
 
+function errorDetail(value: unknown, fallback: string): string {
+  if (typeof value === "string") return value.trim() || fallback;
+  if (Array.isArray(value)) {
+    const messages = value.map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const { loc, msg } = item as { loc?: unknown; msg?: unknown };
+      if (typeof msg !== "string") return "";
+      const fields = Array.isArray(loc) ? loc.filter((part): part is string => typeof part === "string" && part !== "body") : [];
+      const field = fields[fields.length - 1];
+      const label = field?.replace(/_/g, " ");
+      return label ? `${label}: ${msg}` : msg;
+    }).filter(Boolean);
+    return messages.length ? messages.join("; ") : fallback;
+  }
+  if (value && typeof value === "object") {
+    const item = value as { message?: unknown; error?: unknown; errors?: unknown };
+    if (typeof item.message === "string") return item.message;
+    if (typeof item.error === "string") return item.error;
+    if (item.errors) return errorDetail(item.errors, fallback);
+  }
+  return fallback;
+}
+
 type Options = {
   method?: string;
   body?: unknown;
@@ -41,14 +64,14 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   });
 
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail = res.statusText || `Request failed (${res.status})`;
     try {
       const data = await res.json();
-      detail = data.detail ?? detail;
+      detail = errorDetail(data.detail, detail);
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, String(detail));
+    throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get("content-type") ?? "";
@@ -72,13 +95,13 @@ export async function apiBlob(path: string, auth = true): Promise<Blob> {
     credentials: "include",
   });
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail = res.statusText || `Request failed (${res.status})`;
     try {
-      detail = (await res.json()).detail ?? detail;
+      detail = errorDetail((await res.json()).detail, detail);
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, String(detail));
+    throw new ApiError(res.status, detail);
   }
   return res.blob();
 }

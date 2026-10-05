@@ -1,646 +1,149 @@
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import {
-  CalendarClock,
-  CheckSquare,
-  ListChecks,
-  MessageSquare,
-  Plus,
-  Repeat,
-  Trash2,
-  User as UserIcon,
-} from "lucide-react";
-import { api } from "../api/client";
-import type { Task, TaskComment, TaskDetail, TaskItem, User } from "../api/types";
-import { useFetch } from "../hooks/useApi";
-import { Loading, Modal, PageHead, useToast } from "../components/ui";
-import SavedViews from "../components/SavedViews";
+import { useCallback, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Plus, RefreshCw, Search } from "lucide-react";
+import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
+import { api } from "@/api/client";
+import type { BoardTask, ComplianceWork, TaskOptions } from "@/api/tasks";
+import { daysUntil, TASK_PRIORITIES, TASK_STATUSES, taskError } from "@/api/tasks";
+import type { Task } from "@/api/types";
+import { useAuth } from "@/auth/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useFetch } from "@/hooks/useApi";
+import { Empty, ErrorState, Loading, PageHead, useToast } from "@/components/ui";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTaskRefresh } from "@/hooks/useTaskRefresh";
+import { TaskBoard } from "@/components/tasks/TaskBoard";
+import { TaskCard } from "@/components/tasks/TaskCard";
+import { TaskChoice } from "@/components/tasks/TaskChoice";
+import { TaskDetail } from "@/components/tasks/TaskDetail";
+import { TaskForm } from "@/components/tasks/TaskForm";
+import SavedViews from "@/components/SavedViews";
 
-const COLUMNS = [
-  { key: "todo", label: "To do" },
-  { key: "in_progress", label: "In progress" },
-  { key: "blocked", label: "Blocked" },
-  { key: "done", label: "Done" },
-];
-const PRIORITIES = ["low", "normal", "high", "urgent"];
-const RECURRENCES = ["", "daily", "weekly", "monthly"];
-const PRIO_BADGE: Record<string, "destructive" | "warning" | "secondary" | "info"> = {
-  urgent: "destructive",
-  high: "warning",
-  normal: "secondary",
-  low: "info",
-};
-
-function dueMeta(due?: string | null, status?: string): { label: string; cls: string } | null {
-  if (!due) return null;
-  if (status === "done") return { label: due, cls: "text-muted-foreground" };
-  const d = new Date(due);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (days < 0) return { label: `${due} · overdue`, cls: "text-destructive font-medium" };
-  if (days === 0) return { label: `${due} · today`, cls: "text-warning-foreground font-medium" };
-  if (days <= 3) return { label: `${due} · ${days}d`, cls: "text-warning-foreground" };
-  return { label: due, cls: "text-muted-foreground" };
-}
-
+const DEFAULT_FILTERS = { scope: "all", search: "", priority: "all", owner: "all", department: "all", due: "all", source: "all" };
+const EMPTY_OPTIONS: TaskOptions = { users: [], departments: [] };
 export default function TasksPage() {
+  const { user } = useAuth();
   const { notify } = useToast();
-  const [mine, setMine] = useState(false);
-  const [priority, setPriority] = useState("");
-  const [assignee, setAssignee] = useState("");
-  const [due, setDue] = useState("");
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (mine) p.set("mine", "true");
-    if (priority) p.set("priority", priority);
-    if (assignee) p.set("assignee_id", assignee);
-    if (due) p.set("due", due);
-    return p.toString();
-  }, [mine, priority, assignee, due]);
-  const tasks = useFetch<Task[]>(`/api/tasks${qs ? `?${qs}` : ""}`);
-  const users = useFetch<User[]>("/api/users");
-  const [adding, setAdding] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropCol, setDropCol] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
-  useEffect(() => {
-    if (params.get("new")) {
-      setAdding(true);
-      setParams({}, { replace: true });
-    }
-  }, [params, setParams]);
-
-  const byStatus = useMemo(() => {
-    const map: Record<string, Task[]> = { todo: [], in_progress: [], blocked: [], done: [] };
-    (tasks.data ?? []).forEach((t) => (map[t.status] ?? map.todo).push(t));
-    return map;
-  }, [tasks.data]);
-
-  async function move(id: string, status: string) {
-    const t = (tasks.data ?? []).find((x) => x.id === id);
-    if (!t || t.status === status) return;
-    await api(`/api/tasks/${id}`, { method: "PATCH", body: { status } });
-    tasks.reload();
-  }
-  async function remove(t: Task) {
-    await api(`/api/tasks/${t.id}`, { method: "DELETE" });
-    notify("Task deleted.");
-    tasks.reload();
-  }
-
-  function applyView(p: string) {
-    const u = new URLSearchParams(p);
-    setMine(u.get("mine") === "true");
-    setPriority(u.get("priority") || "");
-    setAssignee(u.get("assignee_id") || "");
-    setDue(u.get("due") || "");
-  }
-
-  return (
-    <div>
-      <PageHead
-        title="Tasks"
-        subtitle="Assign work, track progress and hit deadlines."
-        action={
-          <Button onClick={() => setAdding(true)}>
-            <Plus data-icon="inline-start" /> New task
-          </Button>
-        }
-      />
-
-      {/* Filters */}
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <SavedViews surface="tasks" currentParams={qs} onApply={applyView} />
-          <FieldGroup className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Field>
-              <FieldLabel>View</FieldLabel>
-              <Button variant={mine ? "default" : "outline"} onClick={() => setMine((m) => !m)}>
-                {mine ? "My tasks" : "All tasks"}
-              </Button>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="tasks-filter-priority">Priority</FieldLabel>
-              <Select
-                items={[{ value: null, label: "All" }, ...PRIORITIES.map((p) => ({ value: p, label: p }))]}
-                value={priority || null}
-                onValueChange={(value) => setPriority(value ?? "")}
-              >
-                <SelectTrigger id="tasks-filter-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value={null}>All</SelectItem>
-                  {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="tasks-filter-assignee">Assignee</FieldLabel>
-              <Select
-                items={[{ value: null, label: "Anyone" }, ...(users.data ?? []).map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]}
-                value={assignee || null}
-                onValueChange={(value) => setAssignee(value ?? "")}
-              >
-                <SelectTrigger id="tasks-filter-assignee" aria-label="Assignee" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value={null}>Anyone</SelectItem>
-                  {(users.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="tasks-filter-due">Due</FieldLabel>
-              <Select
-                items={[{ value: null, label: "Any time" }, { value: "overdue", label: "Overdue" }, { value: "week", label: "Due this week" }]}
-                value={due || null}
-                onValueChange={(value) => setDue(value ?? "")}
-              >
-                <SelectTrigger id="tasks-filter-due" aria-label="Due" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value={null}>Any time</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                  <SelectItem value="week">Due this week</SelectItem>
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
-        </CardContent>
-      </Card>
-
-      {tasks.loading ? (
-        <Loading />
-      ) : (
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
-          {COLUMNS.map((col) => (
-            <Card
-              key={col.key}
-              className={cn("bg-muted/40 transition-colors", dropCol === col.key && "ring-2 ring-primary")}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (dropCol !== col.key) setDropCol(col.key);
-              }}
-              onDragLeave={() => setDropCol((c) => (c === col.key ? null : c))}
-              onDrop={() => {
-                if (dragId) void move(dragId, col.key);
-                setDragId(null);
-                setDropCol(null);
-              }}
-            >
-              <CardHeader className="grid grid-cols-[1fr_auto] items-center">
-                <CardTitle>{col.label}</CardTitle>
-                <Badge variant="secondary">{byStatus[col.key].length}</Badge>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                {byStatus[col.key].length === 0 && <p className="text-xs text-muted-foreground">Nothing here.</p>}
-                {byStatus[col.key].map((t) => {
-                  const dm = dueMeta(t.due_date, t.status);
-                  return (
-                    <Card
-                      key={t.id}
-                      draggable
-                      onDragStart={() => setDragId(t.id)}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setDropCol(null);
-                      }}
-                      size="sm"
-                      className={cn("cursor-grab select-none transition-opacity", dragId === t.id && "opacity-50")}
-                    >
-                      <CardHeader className="grid grid-cols-[1fr_auto] items-start">
-                        <CardTitle>
-                          <Button
-                            type="button"
-                            variant="link"
-                            className="h-auto max-w-full justify-start whitespace-normal p-0 text-left text-sm"
-                            aria-label={`Open task: ${t.title}`}
-                            onClick={() => setOpenId(t.id)}
-                          >
-                            {t.title}
-                          </Button>
-                        </CardTitle>
-                        {t.priority !== "normal" && (
-                          <Badge variant={PRIO_BADGE[t.priority] ?? "secondary"}>{t.priority}</Badge>
-                        )}
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-2">
-                      {t.onboarding_task_id && <Badge variant="info">checklist</Badge>}
-
-                      {t.subtasks_total > 0 && (
-                        <div>
-                          <div className="h-1.5 w-full overflow-hidden bg-muted">
-                            <div
-                              className="h-full bg-primary"
-                              style={{ width: `${Math.round((t.subtasks_done / t.subtasks_total) * 100)}%` }}
-                            />
-                          </div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            {t.subtasks_done}/{t.subtasks_total} subtasks
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        {t.assignee_name && (
-                          <span className="inline-flex items-center gap-1">
-                            <UserIcon size={12} /> {t.assignee_name}
-                          </span>
-                        )}
-                        {dm && (
-                          <span className={`inline-flex items-center gap-1 ${dm.cls}`}>
-                            <CalendarClock size={12} /> {dm.label}
-                          </span>
-                        )}
-                        {t.recurrence && (
-                          <span className="inline-flex items-center gap-1">
-                            <Repeat size={12} /> {t.recurrence}
-                          </span>
-                        )}
-                        {t.comment_count > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <MessageSquare size={12} /> {t.comment_count}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Select
-                          items={COLUMNS.map((c) => ({ value: c.key, label: c.label }))}
-                          value={t.status}
-                          onValueChange={(value) => value !== null && move(t.id, value)}
-                        >
-                          <SelectTrigger
-                            id={`task-card-status-${t.id}`}
-                            aria-label="Task status"
-                            className="w-full"
-                            size="sm"
-                            onClick={(e) => e.stopPropagation()}
-                          ><SelectValue /></SelectTrigger>
-                          <SelectContent><SelectGroup>
-                            {COLUMNS.map((c) => <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>)}
-                          </SelectGroup></SelectContent>
-                        </Select>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            remove(t);
-                          }}
-                          title="Delete"
-                          aria-label="Delete task"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {adding && (
-        <TaskModal
-          users={users.data ?? []}
-          onClose={() => setAdding(false)}
-          onSaved={() => {
-            tasks.reload();
-            setAdding(false);
-          }}
-        />
-      )}
-      {openId && (
-        <TaskDetailModal
-          id={openId}
-          users={users.data ?? []}
-          onClose={() => setOpenId(null)}
-          onChanged={tasks.reload}
-        />
-      )}
-    </div>
-  );
-}
-
-function TaskModal({ users, onClose, onSaved }: { users: User[]; onClose: () => void; onSaved: () => void }) {
-  const { notify } = useToast();
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    priority: "normal",
-    due_date: "",
-    recurrence: "",
-    assignee_id: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const ordinary = useFetch<Task[]>("/api/tasks");
+  const preview = useFetch<ComplianceWork>("/api/tasks/compliance?preview=true");
+  const compliance = useFetch<ComplianceWork>(preview.data ? "/api/tasks/compliance" : null);
+  const options = useFetch<TaskOptions>("/api/tasks/options");
+  const isMobile = useIsMobile();
+  const [showFilters, setShowFilters] = useState(false);
+  const oversight = Boolean(user?.is_admin || user?.role === "manager");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [grouping, setGrouping] = useState(oversight ? "member" : "status");
+  const [action, setAction] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
+  const [dragging, setDragging] = useState(false);
+  const [deleting, setDeleting] = useState<BoardTask | null>(null);
+  const [adding, setAdding] = useState(() => params.has("new"));
+  const data = useMemo<BoardTask[]>(() => [...(ordinary.data ?? []), ...(compliance.loading || compliance.error ? preview.data?.tasks ?? [] : compliance.data?.tasks ?? preview.data?.tasks ?? [])], [ordinary.data, compliance.data, compliance.loading, compliance.error, preview.data]);
+  const allOptions = options.data ?? EMPTY_OPTIONS;
+  const teamPeople = allOptions.users.filter((person) => person.in_team || data.some((task) => task.assignee_id === person.id));
+  const visible = useMemo(() => data.filter((task) => {
+    const days = daysUntil(task.due_date);
+    return (filters.scope !== "mine" || task.assignee_id === user?.id) &&
+      (filters.priority === "all" || task.priority === filters.priority) &&
+      (filters.owner === "all" || (filters.owner === "unassigned" ? !task.assignee_id : task.assignee_id === filters.owner)) &&
+      (filters.department === "all" || task.assignee_department_id === filters.department) &&
+      (filters.source === "all" || (task.source === "compliance" ? "compliance" : "ordinary") === filters.source) &&
+      (filters.due === "all" || task.status !== "done" && days !== null && (filters.due === "overdue" ? days < 0 : days >= 0 && days <= 7)) &&
+      (!filters.search.trim() || [task.title, task.description, task.assignee_name, task.document_name].some((text) => text?.toLowerCase().includes(filters.search.trim().toLowerCase())));
+  }).sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || a.title.localeCompare(b.title)), [data, filters, user?.id]);
+  const groups = grouping === "status" ? TASK_STATUSES.map((state) => ({ key: state.value, label: state.label, tasks: visible.filter((task) => task.status === state.value) })) :
+    [...new Map(visible.map((task) => [task.assignee_id ?? task.owner_department_id ?? "unassigned", task.assignee_name || "Unassigned"])).entries()].map(([key, label]) => ({
+      key, label, tasks: visible.filter((task) => (task.assignee_id ?? task.owner_department_id ?? "unassigned") === key),
+    }));
+  const selected = data.find((task) => task.id === params.get("task"));
+  const qs = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== "all" && value !== "")).toString();
+  function setFilter(key: keyof typeof filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); }
+  function reload() { ordinary.reload(); preview.reload(); compliance.reload(); }
+  function close() { const next = new URLSearchParams(params); next.delete("task"); next.delete("new"); setParams(next, { replace: true }); setAdding(false); }
+  const backgroundRefresh = useCallback(() => {
+    void ordinary.refresh(); void preview.refresh(); void compliance.refresh();
+  }, [ordinary.refresh, preview.refresh, compliance.refresh]);
+  useTaskRefresh(backgroundRefresh, dragging || Boolean(action.busy) || ordinary.loading || compliance.loading || Boolean(selected) || adding);
+  function openTask(task: BoardTask) { const next = new URLSearchParams(params); next.set("task", task.id); setParams(next); }
+  function deleteTask(task: BoardTask) { setAction({ busy: null, error: "" }); setDeleting(task); }
+  async function changeStatus(task: BoardTask, state: string) {
+    if (state === task.status || action.busy || task.can_change_status === false) return;
+    setAction({ busy: task.id, error: "" });
     try {
-      await api("/api/tasks", {
-        method: "POST",
-        body: {
-          title: form.title,
-          description: form.description || null,
-          priority: form.priority,
-          due_date: form.due_date || null,
-          recurrence: form.recurrence || null,
-          assignee_id: form.assignee_id || null,
-        },
-      });
-      notify("Task created.");
-      onSaved();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (task.source === "compliance") {
+        if (state === "done" || task.status === "done") await api(`/api/sharepoint/compliance/tasks/${task.id}`, { method: "PATCH", body: { status: state === "done" ? "completed" : "active", ...(state !== "done" ? { work_status: state } : {}) } });
+        if (state !== "done" && task.status !== "done") await api(`/api/sharepoint/compliance/tasks/${task.id}/progress`, { method: "PATCH", body: { status: state } });
+      } else await api(`/api/tasks/${task.id}`, { method: "PATCH", body: { status: state } });
+      if (task.source === "compliance") {
+        const update = (current: ComplianceWork | null) => current && ({ ...current, tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status: state } : item) });
+        preview.setData(update); compliance.setData(update);
+      } else ordinary.setData((current) => current?.map((item) => item.id === task.id ? { ...item, status: state as Task["status"] } : item) ?? null);
+      backgroundRefresh(); setAction({ busy: null, error: "" }); notify(state === "done" ? "Task completed." : "Task status updated.");
+    } catch (cause) { reload(); const error = taskError(cause); setAction({ busy: null, error }); throw cause; }
   }
-
-  return (
-    <Modal title="New task" onClose={onClose}>
-      <form onSubmit={submit} aria-busy={isSubmitting || undefined}>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="task-title">Title *</FieldLabel>
-            <Input id="task-title" required minLength={1} value={form.title} onChange={(e) => set("title", e.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="task-description">Description</FieldLabel>
-            <Textarea id="task-description" rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} />
-          </Field>
-          <FieldGroup className="grid gap-3 sm:grid-cols-3">
-            <Field>
-              <FieldLabel htmlFor="task-priority">Priority</FieldLabel>
-              <Select items={PRIORITIES.map((p) => ({ value: p, label: p }))} value={form.priority} onValueChange={(value) => set("priority", value ?? "")}>
-                <SelectTrigger id="task-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="task-due">Due date</FieldLabel>
-              <Input id="task-due" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="task-recurrence">Repeat</FieldLabel>
-              <Select
-                items={RECURRENCES.map((r) => ({ value: r || null, label: r || "Don't repeat" }))}
-                value={form.recurrence || null}
-                onValueChange={(value) => set("recurrence", value ?? "")}
-              >
-                <SelectTrigger id="task-recurrence" aria-label="Repeat" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {RECURRENCES.map((r) => <SelectItem key={r} value={r || null}>{r || "Don't repeat"}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="task-assignee">Assign to</FieldLabel>
-            <Select
-              items={[{ value: null, label: "Unassigned" }, ...users.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]}
-              value={form.assignee_id || null}
-              onValueChange={(value) => set("assignee_id", value ?? "")}
-            >
-              <SelectTrigger id="task-assignee" aria-label="Assign to" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                <SelectItem value={null}>Unassigned</SelectItem>
-                {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}
-              </SelectGroup></SelectContent>
-            </Select>
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Create task"}
-            </Button>
-          </div>
-        </FieldGroup>
-      </form>
-    </Modal>
-  );
-}
-
-function TaskDetailModal({
-  id,
-  users,
-  onClose,
-  onChanged,
-}: {
-  id: string;
-  users: User[];
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const { notify } = useToast();
-  const detail = useFetch<TaskDetail>(`/api/tasks/${id}`);
-  const [newItem, setNewItem] = useState("");
-  const [comment, setComment] = useState("");
-  const t = detail.data;
-
-  async function patch(body: Record<string, unknown>) {
-    await api(`/api/tasks/${id}`, { method: "PATCH", body });
-    detail.reload();
-    onChanged();
+  async function remove() {
+    if (!deleting) return;
+    setAction({ busy: deleting.id, error: "" });
+    try { await api(`/api/tasks/${deleting.id}`, { method: "DELETE" }); setDeleting(null); reload(); setAction({ busy: null, error: "" }); notify("Task deleted."); }
+    catch (cause) { setAction({ busy: null, error: taskError(cause) }); }
   }
-  async function addItem() {
-    if (!newItem.trim()) return;
-    await api(`/api/tasks/${id}/items`, { method: "POST", body: { title: newItem.trim() } });
-    setNewItem("");
-    detail.reload();
-    onChanged();
-  }
-  async function toggleItem(it: TaskItem) {
-    await api(`/api/tasks/items/${it.id}`, { method: "PATCH", body: { done: !it.done } });
-    detail.reload();
-    onChanged();
-  }
-  async function delItem(it: TaskItem) {
-    await api(`/api/tasks/items/${it.id}`, { method: "DELETE" });
-    detail.reload();
-    onChanged();
-  }
-  async function send() {
-    if (!comment.trim()) return;
-    await api(`/api/tasks/${id}/comments`, { method: "POST", body: { body: comment } });
-    setComment("");
-    detail.reload();
-    onChanged();
-    notify("Comment added.");
-  }
-
-  const pct = t && t.subtasks_total > 0 ? Math.round((t.subtasks_done / t.subtasks_total) * 100) : 0;
-
-  return (
-    <Modal title={t?.title ?? "Task"} onClose={onClose} maxWidth={620}>
-      {!t ? (
-        <Loading />
-      ) : (
-        <>
-          {t.description && (
-            <Card size="sm" className="mb-3 bg-muted/40"><CardContent>{t.description}</CardContent></Card>
-          )}
-
-          <FieldGroup className="mb-3 grid gap-3 sm:grid-cols-3">
-            <Field>
-              <FieldLabel htmlFor="task-detail-status">Status</FieldLabel>
-              <Select items={COLUMNS.map((c) => ({ value: c.key, label: c.label }))} value={t.status} onValueChange={(value) => value !== null && patch({ status: value })}>
-                <SelectTrigger id="task-detail-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {COLUMNS.map((c) => <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="task-detail-priority">Priority</FieldLabel>
-              <Select items={PRIORITIES.map((p) => ({ value: p, label: p }))} value={t.priority} onValueChange={(value) => value !== null && patch({ priority: value })}>
-                <SelectTrigger id="task-detail-priority" aria-label="Priority" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="task-detail-assignee">Assignee</FieldLabel>
-              <Select
-                items={[{ value: null, label: "Unassigned" }, ...users.map((u) => ({ value: u.id, label: u.display_name ?? u.email }))]}
-                value={t.assignee_id ?? null}
-                onValueChange={(value) => patch({ assignee_id: value ?? null })}
-              >
-                <SelectTrigger id="task-detail-assignee" aria-label="Assignee" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value={null}>Unassigned</SelectItem>
-                  {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.display_name ?? u.email}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
-          <FieldGroup className="mb-3 grid gap-3 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="task-detail-due">Due date</FieldLabel>
-              <Input id="task-detail-due" type="date" value={t.due_date ?? ""} onChange={(e) => patch({ due_date: e.target.value || null })} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="task-detail-recurrence">Repeat</FieldLabel>
-              <Select
-                items={RECURRENCES.map((r) => ({ value: r || null, label: r || "Don't repeat" }))}
-                value={t.recurrence ?? null}
-                onValueChange={(value) => patch({ recurrence: value ?? null })}
-              >
-                <SelectTrigger id="task-detail-recurrence" aria-label="Repeat" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {RECURRENCES.map((r) => <SelectItem key={r} value={r || null}>{r || "Don't repeat"}</SelectItem>)}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
-
-          {/* Checklist */}
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h4 className="inline-flex items-center gap-1.5">
-              <ListChecks /> Checklist
-            </h4>
-            {t.subtasks_total > 0 && <Badge variant="info">{pct}%</Badge>}
-          </div>
-          {t.subtasks_total > 0 && (
-            <div className="mb-2 h-1.5 w-full overflow-hidden bg-muted">
-              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-            </div>
-          )}
-          <div className="mb-2 flex flex-col gap-1">
-            {t.items.map((it) => (
-              <div key={it.id} className="group flex items-center gap-2">
-                <Checkbox
-                  checked={it.done}
-                  onCheckedChange={() => toggleItem(it)}
-                  aria-label={`Mark "${it.title}" ${it.done ? "incomplete" : "done"}`}
-                />
-                <span className={cn("flex-1 text-sm", it.done && "text-muted-foreground line-through")}>{it.title}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                  onClick={() => delItem(it)}
-                  title="Remove"
-                  aria-label={`Remove "${it.title}"`}
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="mb-4 flex items-end gap-2">
-            <Field>
-              <FieldLabel htmlFor="task-checklist-new" className="sr-only">Checklist item</FieldLabel>
-              <Input
-                id="task-checklist-new"
-                aria-label="Add a checklist item"
-                placeholder="Add a checklist item…"
-                value={newItem}
-                onChange={(e) => setNewItem(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addItem())}
-              />
-            </Field>
-            <Button type="button" variant="outline" onClick={addItem}>
-              <Plus data-icon="inline-start" /> Add
-            </Button>
-          </div>
-
-          {/* Comments */}
-          <h4 className="mb-2 inline-flex items-center gap-1.5">
-            <MessageSquare /> Comments
-          </h4>
-          <div className="mb-3 flex max-h-56 flex-col gap-2 overflow-auto">
-            {t.comments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
-            {t.comments.map((c: TaskComment) => (
-              <Card key={c.id} size="sm" className="bg-muted/40">
-                <CardHeader className="grid grid-cols-[1fr_auto] items-center">
-                  <span className="text-sm font-semibold">{c.author_name ?? "—"}</span>
-                  <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
-                </CardHeader>
-                <CardContent className="text-sm">{c.body}</CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="flex items-end gap-2">
-            <Field>
-              <FieldLabel htmlFor="task-comment" className="sr-only">Comment</FieldLabel>
-              <Input
-                id="task-comment"
-                aria-label="Write a comment"
-                placeholder="Write a comment…"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && send()}
-              />
-            </Field>
-            <Button type="button" onClick={send}>
-              <CheckSquare data-icon="inline-start" /> Post
-            </Button>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
+  const metrics = [
+    { label: "Open tasks", count: data.filter((task) => task.status !== "done").length },
+    { label: "Overdue", count: data.filter((task) => task.status !== "done" && (daysUntil(task.due_date) ?? 1) < 0).length },
+    { label: "Due in 7 days", count: data.filter((task) => { const days = daysUntil(task.due_date); return task.status !== "done" && days !== null && days >= 0 && days <= 7; }).length },
+    { label: "Completed", count: data.filter((task) => task.status === "done").length },
+  ];
+  return <div className="flex flex-col gap-5">{(!selected || selected.source !== "compliance") && <MicrosoftConnectionFeedback />}
+    <PageHead headingLevel={1} title="Tasks" subtitle={oversight ? "See your team's work, assign responsibility, and follow each deadline." : "Your assigned work and document actions, together in one place."} action={<div className="flex gap-2"><Button variant="outline" onClick={reload} aria-label="Refresh tasks"><RefreshCw /></Button><Button onClick={() => setAdding(true)} disabled={options.loading || Boolean(options.error)}><Plus data-icon="inline-start" />New task</Button></div>} />
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{metrics.map((metric) => <Card key={metric.label} size="sm"><CardHeader><CardTitle className="text-sm font-normal text-muted-foreground">{metric.label}</CardTitle></CardHeader><CardContent className="text-2xl font-semibold">{ordinary.loading ? "…" : metric.count}</CardContent></Card>)}</div>
+    {action.error && !deleting && <Alert variant="destructive" role="alert"><AlertDescription>{action.error}</AlertDescription></Alert>}
+    {ordinary.error && <ErrorState message={ordinary.error} onRetry={ordinary.reload} />}
+    {options.error && <ErrorState message={options.error} onRetry={options.reload} />}
+    {(preview.error || compliance.error || preview.data?.message || compliance.data?.message) && <Alert role="alert"><AlertDescription>Document tasks: {preview.error || compliance.error ? taskError(new Error(preview.error || compliance.error!)) : preview.data?.message || compliance.data?.message} <Button variant="link" nativeButton={false} render={<Link to="/sharepoint/compliance" />} className="h-auto p-0">Open Compliance</Button></AlertDescription></Alert>}
+    {(preview.loading || compliance.loading) && <p role="status" className="text-sm text-muted-foreground">Checking document tasks. Other tasks are ready to use.</p>}
+    {data.some((task) => task.access_state && task.access_state !== "ready") && <p className="text-sm text-muted-foreground">Some document details require an access check. Deadline counts include only visible dates.</p>}
+    <Card><CardHeader><CardTitle className="text-base">Find work</CardTitle></CardHeader><CardContent className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <Field className="w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-md"><FieldLabel htmlFor="task-search">Search tasks</FieldLabel><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="task-search" className="pl-9" placeholder="Title, owner, or document…" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} /></div></Field>
+        <ToggleGroup value={[grouping]} onValueChange={(values) => values[0] && setGrouping(values[0])} aria-label="Group tasks"><ToggleGroupItem value="status">By status</ToggleGroupItem><ToggleGroupItem value="member">By member</ToggleGroupItem></ToggleGroup>
+      </div>
+      <Collapsible open={!isMobile || showFilters} onOpenChange={setShowFilters}>
+        <CollapsibleTrigger render={<Button variant="outline" className="md:hidden" />}>{showFilters ? "Hide filters" : "Show filters"}</CollapsibleTrigger>
+        <CollapsibleContent className="pt-3 md:pt-0"><FieldGroup className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <TaskChoice id="task-filter-scope" label="View" value={filters.scope} items={[{ value: "all", label: user?.is_admin ? "All tasks" : oversight ? "Team tasks" : "My work" }, { value: "mine", label: "Assigned to me" }]} onChange={(value) => setFilter("scope", value)} />
+        <TaskChoice id="task-filter-owner" label="Member" value={filters.owner} items={[{ value: "all", label: "All members" }, { value: "unassigned", label: "Needs assignment" }, ...teamPeople.map((person) => ({ value: person.id, label: person.name }))]} onChange={(value) => setFilter("owner", value)} />
+        <TaskChoice id="task-filter-due" label="Deadline" value={filters.due} items={[{ value: "all", label: "Any date" }, { value: "overdue", label: "Overdue" }, { value: "week", label: "Next 7 days" }]} onChange={(value) => setFilter("due", value)} />
+        <TaskChoice id="task-filter-source" label="Task source" value={filters.source} items={[{ value: "all", label: "All work" }, { value: "ordinary", label: "Assigned tasks" }, { value: "compliance", label: "Document compliance" }]} onChange={(value) => setFilter("source", value)} />
+        <TaskChoice id="task-filter-department" label="Department" value={filters.department} items={[{ value: "all", label: "All accessible departments" }, ...allOptions.departments.map((dept) => ({ value: dept.id, label: dept.name }))]} onChange={(value) => setFilter("department", value)} />
+        <TaskChoice id="task-filter-priority" label="Priority" value={filters.priority} items={[{ value: "all", label: "All priorities" }, ...TASK_PRIORITIES.map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))]} onChange={(value) => setFilter("priority", value)} />
+      </FieldGroup></CollapsibleContent></Collapsible>
+      <div className="flex flex-wrap items-center justify-between gap-2"><SavedViews surface="tasks" currentParams={qs} onApply={(value) => { const saved = new URLSearchParams(value); setFilters({ ...DEFAULT_FILTERS, ...Object.fromEntries(saved) }); }} /><Button variant="ghost" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear filters</Button></div>
+    </CardContent></Card>
+    {(data.length === 0 && ((ordinary.loading && !ordinary.data) || (preview.loading && !preview.data))) ? <Loading /> :
+      visible.length === 0 ? ordinary.error ? null : <Empty message={data.length ? "No tasks match these filters." : "No tasks yet."} hint={data.length ? "Clear the filters to see all accessible work." : "Create a task or assign a document action to get started."} /> :
+      grouping === "status" ? <TaskBoard tasks={visible} busy={action.busy} onDragging={setDragging} onOpen={openTask} onStatus={changeStatus} onDelete={deleteTask} /> :
+      <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        {groups.map((group) => <section key={group.key} aria-label={`Tasks for ${group.label}`} className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between gap-2 border-b border-border pb-2"><h2 className="break-words font-semibold">{group.label}</h2><Badge variant="secondary">{group.tasks.length}</Badge></div>
+          {group.tasks.length === 0 && <p className="text-sm text-muted-foreground">No tasks in this status.</p>}
+          {group.tasks.map((task) => <TaskCard key={task.id} task={task} busy={action.busy === task.id} onOpen={() => { const next = new URLSearchParams(params); next.set("task", task.id); setParams(next); }} onStatus={(value) => void changeStatus(task, value).catch(() => undefined)} onDelete={() => { setAction({ busy: null, error: "" }); setDeleting(task); }} />)}
+        </section>)}
+      </div>}
+    {params.has("task") && !selected && !ordinary.loading && !preview.loading && !compliance.loading && !ordinary.error && !preview.error && !compliance.error && <Alert role="alert"><AlertDescription>This task is no longer available or you do not have access to it.<Button variant="link" onClick={close}>Close task link</Button></AlertDescription></Alert>}
+    {selected && <TaskDetail key={selected.id} task={selected} options={allOptions} onClose={close} onReload={reload} onStatus={(state) => changeStatus(selected, state)} />}
+    {adding && <TaskForm options={allOptions} defaultDepartment={user?.department_id} onClose={close} onSaved={() => { close(); reload(); notify("Task created."); }} />}
+    <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && !action.busy && setDeleting(null)}><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>Delete task?</AlertDialogTitle><AlertDialogDescription>This removes “{deleting?.title}” and its checklist and comments.</AlertDialogDescription></AlertDialogHeader>
+      {action.error && <Alert variant="destructive" role="alert"><AlertDescription>{action.error}</AlertDescription></Alert>}
+      <AlertDialogFooter><Button variant="outline" onClick={() => setDeleting(null)} disabled={Boolean(action.busy)}>Cancel</Button><Button variant="destructive" onClick={() => void remove()} disabled={Boolean(action.busy)}>{action.busy ? "Deleting…" : "Delete task"}</Button></AlertDialogFooter>
+    </AlertDialogContent></AlertDialog>
+  </div>;
 }

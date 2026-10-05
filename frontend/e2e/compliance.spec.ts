@@ -5,13 +5,16 @@ const document = {
   id: "doc-1", name: "Agiomix Trade Licence.pdf", url: "https://example.sharepoint.com/doc",
   company_id: "company-1", company: "Agiomix", document_type: "trade_license",
   reference_number: "TL-123", expiry_date: "2026-12-15", renewal_date: null,
+  action_date: "2026-11-30",
   notice_days: null, status: "active", processing_status: "ready", review_reasons: [],
+  folder_department_id: "finance-1", folder_department: "Finance", can_review: true,
   modified_at: null, uploaded_at: null, uploaded_by_email: null,
 };
 const task = {
   id: "task-1", document_id: "doc-1", document_name: document.name,
   title: "Renew Trade License", company: "Agiomix", document_type: "trade_license",
   due_date: "2026-12-15", basis: "expiry", status: "active", owner: "Alex Admin",
+  can_assign: true, can_complete: true,
   owner_user_id: "admin-1", owner_department_id: null,
 };
 
@@ -54,13 +57,17 @@ test.beforeEach(async ({ page }) => {
     else if (path === "/api/sharepoint/compliance/options") body = {
       companies: [{ id: "company-1", name: "Agiomix" }],
       departments: [{ id: "finance-1", name: "Finance" }, { id: "admin-dept-1", name: "Admin" }],
-      users: [{ id: "admin-1", name: "Alex Admin" }],
+      users: [{ id: "admin-1", name: "Alex Admin", department_id: "admin-dept-1" },
+        { id: "finance-user-1", name: "Fatima Finance", department_id: "finance-1" }],
     };
     else if (path === "/api/sharepoint/compliance/rules") body = [];
     else if (path === "/api/sharepoint/documents/doc-1") body = {
       ...document, analysis: null, segments: [], compliance: {
         document_type: "trade_license", reference_number: { value: "TL-123" },
         expiry_date: { value: "2026-12-15" }, obligations: [],
+        required_actions: [{ title: "Review renewal application", deadline: "2026-11-30",
+          owner: null, status: "unknown", priority: "unknown",
+          evidence: [{ segment_id: "s1", quote: "Renewal application deadline\n30 Nov 2026" }] }],
       },
     };
     else if (path === "/api/sharepoint/compliance/documents/doc-1/history") body = {
@@ -83,6 +90,8 @@ test("compliance overview, register, tasks and detail work at desktop and mobile
   await expect(page.getByText("Compliance tasks · 1")).toBeVisible();
   await page.getByRole("button", { name: document.name }).first().click();
   await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Action dates found in the document")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Renewal application deadline")).toBeVisible();
   await expect(page.getByRole("dialog").getByText("Action created")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -126,16 +135,50 @@ test("a reviewer can change an active task owner with an audit reason", async ({
   const dialog = page.getByRole("dialog", { name: "Change task owner" });
   await expect(dialog.getByText("Current owner: Alex Admin")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await dialog.getByRole("combobox", { name: "Assign to" }).click();
-  await page.getByRole("option", { name: "Department" }).click();
-  await dialog.getByRole("combobox", { name: "New owner" }).click();
+  await dialog.getByRole("combobox", { name: "Department", exact: true }).click();
   await page.getByRole("option", { name: "Finance" }).click();
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toHaveCount(0);
+  await page.getByRole("option", { name: "Fatima Finance" }).click();
+  await dialog.getByRole("combobox", { name: "Assign to" }).click();
+  await page.getByRole("option", { name: "Department inbox" }).click();
   await dialog.getByRole("textbox", { name: "Reason for change" }).fill("Finance handles this renewal.");
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/tasks/task-1/assign") && item.method() === "POST");
   await dialog.getByRole("button", { name: "Save owner" }).click();
-  expect((await request).postDataJSON()).toEqual({ owner_user_id: null, owner_department_id: "finance-1", note: "Finance handles this renewal." });
+  expect((await request).postDataJSON()).toEqual({ owner_user_id: null, owner_department_id: "finance-1", department_id: "finance-1", note: "Finance handles this renewal." });
   await expect(dialog).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});
+
+test("a department manager sees only that department's assignment candidates until switching", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: {
+    id: "finance-manager-1", email: "manager@example.com", display_name: "Finance Manager",
+    is_active: true, is_admin: false, role: "manager", status: "active",
+    department_id: "finance-1", effective_permissions: ["sharepoint_intelligence"],
+    managed_company_ids: [], created_at: "2026-01-01T00:00:00Z",
+  } }));
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 0, unassigned: 0, tasks_by_owner: { Finance: 1 }, documents_by_company: { Agiomix: 1 } },
+    documents: [document], tasks: [{ ...task, owner: "Finance", owner_user_id: null,
+      owner_department_id: "finance-1" }],
+  } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Tasks");
+  await expect(page.getByText("Needs assignment", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Assign person" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change task owner" });
+  await expect(dialog.getByRole("combobox", { name: "Department", exact: true })).toContainText("Finance");
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await dialog.getByRole("combobox", { name: "Department", exact: true }).click();
+  await page.getByRole("option", { name: "Admin" }).click();
+  await dialog.getByRole("combobox", { name: "Department member" }).click();
+  await expect(page.getByRole("option", { name: "Alex Admin" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Fatima Finance" })).toHaveCount(0);
 });
 
 test("governance edits a folder rule and shows real notification channel state", async ({ page }) => {
@@ -187,9 +230,114 @@ test("uncertain extraction waits for a reviewer before activating tasks", async 
   }
   await openView(page, "Review");
   await expect(page.getByText("Needs review · 1")).toBeVisible();
+  await expect(page.getByText("Action due: Nov 30, 2026")).toBeVisible();
   await page.getByRole("button", { name: "Verify" }).click();
   await expect(page.getByLabel("Review note (optional)")).toBeVisible();
   const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
   await page.getByRole("button", { name: "Verify and create tasks" }).click();
   expect((await request).postDataJSON()).toMatchObject({ company_id: "company-1", document_type: "trade_license", review_note: null });
+});
+
+test("reviewer can confirm a named external entity without adding a company brand", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 0, tasks_by_owner: {}, documents_by_company: { "External Vendor LLC": 1 } },
+    documents: [{ ...document, company_id: null, company: "External Vendor LLC",
+      status: "needs_review", review_reasons: ["notice_period"] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/review", (route) => route.fulfill({ json: { status: "active", tasks_created: 1 } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await page.getByRole("button", { name: "Verify" }).click();
+  await expect(page.getByRole("dialog").getByText("Action dates found in the document")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Company or entity" })).toContainText("External entity");
+  await expect(page.getByRole("textbox", { name: "Legal entity name" })).toHaveValue("External Vendor LLC");
+  const request = page.waitForRequest((item) => item.url().endsWith("/api/sharepoint/compliance/documents/doc-1/review") && item.method() === "POST");
+  await page.getByRole("button", { name: "Verify and create tasks" }).click();
+  expect((await request).postDataJSON()).toMatchObject({ company_id: null, company_name: "External Vendor LLC" });
+});
+
+test("review errors identify the field and show readable server validation", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 1, tasks_by_owner: {}, documents_by_company: { Unclassified: 1 } },
+    documents: [{ ...document, company_id: null, company: "Unclassified", document_type: "product_sheet",
+      status: "needs_review", review_reasons: ["company"] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/review", (route) => route.fulfill({
+    status: 422, json: { detail: [{ loc: ["body", "document_type"], msg: "Choose a supported document type", type: "value_error" }] },
+  }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await page.getByRole("button", { name: "Verify" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Verify and create tasks" }).click();
+  const fieldError = dialog.getByText("Choose an internal company or an external entity.");
+  await expect(fieldError).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Company or entity" })).toHaveAttribute("aria-invalid", "true");
+  await dialog.getByRole("combobox", { name: "Company or entity" }).click();
+  await page.getByRole("option", { name: "External entity" }).click();
+  await dialog.getByRole("textbox", { name: "Legal entity name" }).fill("Example Vendor LLC");
+  await dialog.getByRole("button", { name: "Verify and create tasks" }).click();
+  await expect(dialog.getByText("document type: Choose a supported document type")).toBeVisible();
+  await expect(dialog.getByText("[object Object]")).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("failed document shows a readable reason in queue and audit history", async ({ page }) => {
+  await page.route("**/api/sharepoint/compliance/dashboard", (route) => route.fulfill({ json: {
+    summary: { expiring_60: 0, expiring_30: 0, due_this_week: 0, overdue: 0,
+      needs_review: 1, unassigned: 0, tasks_by_owner: {}, documents_by_company: { Unclassified: 1 } },
+    documents: [{ ...document, name: "Agreement.docx", company: "Unclassified",
+      document_type: "unknown", status: "needs_review", processing_status: "failed",
+      error_code: "invalid_evidence", review_reasons: [] }], tasks: [],
+  } }));
+  await page.route("**/api/sharepoint/compliance/documents/doc-1/history", (route) => route.fulfill({ json: {
+    versions: [], events: [{ id: "event-1", action: "processing_failed", at: "2026-09-24T10:00:00Z",
+      details: { error_code: "invalid_evidence" } }],
+  } }));
+  await page.goto("/sharepoint/compliance");
+  await openView(page, "Review");
+  await expect(page.getByText("A cited passage did not match the document. Retry analysis and verify the source.")).toBeVisible();
+  await page.getByRole("button", { name: "Details" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Analysis failed")).toBeVisible();
+  await expect(dialog.getByText("A cited passage did not match the document. Retry analysis and verify the source.")).toHaveCount(2);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("manager scope refresh closes a transferred document and clears denied dashboard data", async ({ page }) => {
+  await page.clock.install();
+  let visible = true;
+  let denied = false;
+  await page.route("**/api/auth/me", route => route.fulfill({json:{
+    id:"manager",email:"manager@example.com",display_name:"Finance Manager",role:"manager",
+    is_admin:false,is_active:true,status:"active",department_id:"finance-1",
+    effective_permissions:["sharepoint_intelligence"],managed_company_ids:[],
+  }}));
+  await page.route("**/api/sharepoint/compliance/dashboard", route => {
+    if (denied) return route.fulfill({status:403,json:{detail:"manager_required"}});
+    return route.fulfill({json:{
+      summary:{expiring_60:0,expiring_30:0,due_this_week:0,overdue:0,needs_review:0,unassigned:0,
+        tasks_by_owner:{},documents_by_company:{}},
+      documents:visible?[document]:[],tasks:visible?[task]:[],
+    }});
+  });
+  await page.goto("/sharepoint/compliance");
+  await openView(page,"Tasks");
+  await page.getByRole("button",{name:document.name,exact:true}).click();
+  await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  visible = false;
+  await page.clock.fastForward(31_000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button",{name:document.name,exact:true})).toHaveCount(0);
+
+  visible = true;
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("dialog").getByText("TL-123")).toBeVisible();
+  denied = true;
+  await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("manager_required")).toBeVisible();
+  await expect(page.getByRole("button",{name:document.name,exact:true})).toHaveCount(0);
 });

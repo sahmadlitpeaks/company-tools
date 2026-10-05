@@ -15,6 +15,7 @@ from app.services.sharepoint.common import SharePointError, decrypt
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.privacy import restore
 from app.services.sharepoint.store import authorize_document, source_for
+from app.services.sharepoint.visibility import document_scope
 
 log = logging.getLogger("sharepoint_chat")
 
@@ -637,15 +638,11 @@ async def ask_central(
     document_ids: list[str] | None = None,
 ) -> dict:
     source = await source_for(db)
-    graph = None
-    try:
-        token = await delegated_token(db, user)
-        graph = GraphClient(token)
-    except SharePointError:
-        graph = None
+    graph = GraphClient(await delegated_token(db, user))
+    workspace = await document_scope(db, user, source)
 
     query = select(SharePointDocument).where(
-        SharePointDocument.source_id == source.id,
+        workspace.document_filter(), SharePointDocument.source_id == source.id,
         SharePointDocument.in_scope.is_(True),
         SharePointDocument.deleted.is_(False),
         SharePointDocument.is_folder.is_(False),
@@ -733,10 +730,7 @@ async def ask_central(
         if len(authorized_docs) >= max_candidates:
             break
         try:
-            if graph:
-                metadata = await authorize_document(db, user, source, doc, graph, use_cache=True)
-            else:
-                metadata = {"id": doc.item_id or str(doc.id), "name": doc.filename, "webUrl": doc.web_url or ""}
+            metadata = await authorize_document(db, user, source, doc, graph, workspace=workspace)
             # DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
             # Pass sanitized segments and analysis
             authorized_docs.append((doc, metadata, source_segments(doc.segments or []), doc.analysis))

@@ -27,16 +27,18 @@ import { currentNavSection, isNavItemActive, visibleNavGroups } from "./navigati
 
 export function AppSidebar({
   isAdmin,
+  isManager = false,
   can,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   isAdmin: boolean;
+  isManager?: boolean;
   can: (key: string) => boolean;
 }) {
   const location = useLocation();
   const groups = React.useMemo(
-    () => visibleNavGroups(isAdmin, can),
-    [isAdmin, can],
+    () => visibleNavGroups(isAdmin, can, isManager),
+    [isAdmin, can, isManager],
   );
   const activeSection = currentNavSection(location.pathname);
   const [openSections, setOpenSections] = React.useState<Set<string>>(
@@ -92,7 +94,7 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" aria-label="Primary" {...props}>
+    <Sidebar collapsible="icon" role="navigation" aria-label="Primary" {...props}>
       <SidebarHeader>
         <VersionSwitcher />
       </SidebarHeader>

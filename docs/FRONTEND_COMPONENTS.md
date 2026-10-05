@@ -105,6 +105,7 @@ The source files are authoritative. When this list may have changed, run
 | Date selection | `Calendar`, `CalendarDayButton` | Use for a visible calendar/date-picker composition. Date formatting and date math use `date-fns`. |
 | Content surface | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter` | Use full composition; do not put the title and actions loose in `CardContent`. |
 | Data table | `TableSurface`, `Table`, `TableHeader`, `TableBody`, `TableHead`, `TableRow`, `TableCell`, `TableFooter`, `TableCaption`, `TableEmptyRow` | Use `TableSurface` for the bordered container. Provide a mobile card/list alternative when columns do not fit. |
+| Pagination | `Pagination`, `PaginationContent`, `PaginationItem`, `PaginationLink`, `PaginationPrevious`, `PaginationNext` | Use the installed button-based controls for page navigation. `ListControls.tsx` composes result ranges, page sizes and accessible previous/next controls for server-paginated lists. |
 | Identity | `Avatar`, `AvatarImage`, `AvatarFallback`, `AvatarBadge`, `AvatarGroup`, `AvatarGroupCount` | Always provide fallback initials/text. Rounded avatar shape is intentional. |
 | Tabs | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | Triggers always live in `TabsList`; preserve keyboard selection. |
 | Disclosure | `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent` | Use for a simple expandable section. |
@@ -121,7 +122,7 @@ The source files are authoritative. When this list may have changed, run
 | Navigation shell | `Sidebar` family | Used by `app-sidebar.tsx`; extend that composition rather than creating another shell. |
 
 Components not currently installed include chart, scroll area, accordion,
-drawer, pagination, radio group, slider, and combobox. Do not import them by
+drawer, radio group, slider, and combobox. Do not import them by
 assumption. Use the tracked shadcn skill to inspect and deliberately add a
 component only when shipped code requires it.
 
@@ -171,6 +172,7 @@ For a select:
 | `Attachments.tsx` | Generic upload/list/delete and camera entry for supported entity types. Routine Check evidence uses `entityType="task_item"`, `camera`, `accept="image/*"`, and `capture="environment"`. |
 | `CameraCapture.tsx` | Live camera viewfinder, downscale, review, retake, and upload. Normally use it through `Attachments`, not in parallel with another file input. |
 | `SavedViews.tsx` | Saved filter/view state for list surfaces. |
+| `ListControls.tsx` | Labelled filter selects, inclusive UTC date fields, result counts and server page navigation. Filters reset the requested offset; navigation uses the server-returned offset after deletion clamps. |
 | `PdfThumb.tsx`, `FlipbookModal.tsx` | Authenticated PDF preview and document viewer. |
 | `VersionsModal.tsx` | Version history for versioned documents. |
 | `ShareControl.tsx` | Existing share-link lifecycle; do not duplicate share controls per page. |
@@ -183,7 +185,7 @@ For a select:
 `frontend/src/components/ui.tsx` contains shadcn-backed compatibility and
 product-level helpers used by older pages:
 
-- `PageHead`: page title, subtitle, and responsive action area.
+- `PageHead`: page title, subtitle, and responsive action area. Use `headingLevel={1}` for a page main heading; the compatibility default remains level 2.
 - `Modal`: existing always-open dialog composition.
 - `ConfirmDialog`: async confirmation with error handling.
 - `PromptModal`: one-input prompt replacement.
@@ -251,3 +253,20 @@ React Doctor is required after substantial frontend changes and before a
 substantial frontend commit or pull request. Read
 `.agents/skills/company-tools-react-doctor/SKILL.md`; do not merely record the
 score without reviewing diagnostics.
+
+### Background refresh of existing data
+
+The shared useFetch hook exposes refresh() for quiet background revalidation; reload() keeps its existing explicit loading behavior. Both use the same abort and latest-request guards. Tasks uses refresh() for the 15-second visible-page/focus checks, keeps an already displayed board during the request, and switches to private workflow previews when a full document check fails. Pause periodic refresh during editing and dragging to avoid replacing active controls.
+
+
+## Refreshing permission-sensitive data
+
+For reads that must remove saved results when access is revoked, use
+useFetch(path, true). The second argument clears data after a failed request;
+the default preserves existing behavior for other pages. Use refresh() for a
+background check and reload() for an explicit loading state. SharePoint lists,
+reminders, document dialogs, and the Compliance dashboard recheck current
+workspace/Microsoft access on focus and while visible. Document search also
+clears failed results. Role-specific document labels come from
+documentLibraryLabel in navigation.ts so the sidebar, breadcrumb, browser
+title, and library heading agree.

@@ -56,6 +56,15 @@ export interface Department {
   created_at: string;
 }
 
+export interface DepartmentMember {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+  role: string;
+  status: string;
+  is_active: boolean;
+}
+
 export interface ModuleInfo {
   key: string;
   label: string;
@@ -626,6 +635,18 @@ export interface CrmLead {
   created_at: string;
 }
 
+export interface RecordPage<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SubmissionSource {
+  id: string;
+  name: string;
+}
+
 export interface LeadField {
   key: string;
   label: string;
@@ -673,6 +694,9 @@ export interface Task {
   recurrence?: string | null;
   assignee_id?: string | null;
   assignee_name?: string | null;
+  assignee_department_id?: string | null;
+  assignee_department_name?: string | null;
+  assignment_email_status?: string | null;
   created_by_id?: string | null;
   created_by_name?: string | null;
   company_id?: string | null;

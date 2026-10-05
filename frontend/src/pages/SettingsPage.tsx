@@ -1,3 +1,5 @@
+import { useFetch } from "@/hooks/useApi";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -521,14 +523,19 @@ function BackupsCard() {
 
 function NotificationsCard() {
   const { notify } = useToast();
-  const [status, setRecordStatus] = useState<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean } | null>(null);
+  const [check, setCheck] = useState<{ busy: boolean; ok?: boolean; message: string }>({ busy: false, message: "" });
+  const { data: status, error: channelsError, loading: channelsLoading, reload: reloadChannels } = useFetch<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean; email_diagnostics?: { configured: boolean; missing: string[]; issues: string[] } | null }>("/api/notifications/channels");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    void api<{ outbound_enabled: boolean; email_configured: boolean; slack_configured: boolean; teams_configured: boolean }>("/api/notifications/channels")
-      .then(setRecordStatus)
-      .catch(() => {});
-  }, []);
+  async function checkEmail() {
+    setCheck({ busy: true, message: "" });
+    try {
+      const result = await api<{ ok: boolean; message: string }>("/api/notifications/email/check", { method: "POST" });
+      setCheck({ busy: false, ...result });
+    } catch (cause) {
+      setCheck({ busy: false, ok: false, message: cause instanceof Error ? cause.message : "Email connection could not be checked." });
+    }
+  }
 
   async function sendTest() {
     setIsSubmitting(true);
@@ -547,7 +554,7 @@ function NotificationsCard() {
     <Card>
       <CardHeader>
          <CardTitle className="flex items-center gap-2"><Bell aria-hidden="true" /> Notifications</CardTitle>
-        <CardAction><Badge variant={status?.outbound_enabled ? "success" : "warning"}>{status?.outbound_enabled ? "Outbound on" : "In-app only"}</Badge></CardAction>
+        <CardAction><Badge variant={status?.outbound_enabled ? "success" : "warning"}>{channelsLoading ? "Checking…" : !status ? "Status unavailable" : status.outbound_enabled ? "Outbound on" : "In-app only"}</Badge></CardAction>
         <CardDescription>
         In-app notifications always work. Configure SMTP, a Slack webhook and/or a Microsoft
         Teams webhook (env vars <code>SMTP_HOST</code>, <code>SLACK_WEBHOOK_URL</code>,
@@ -556,11 +563,18 @@ function NotificationsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+      {channelsError && <Alert variant="destructive" role="alert"><AlertDescription>{channelsError} <Button variant="link" onClick={reloadChannels}>Retry status</Button></AlertDescription></Alert>}
       <div className="flex flex-wrap gap-2 text-sm">
-        <Badge variant={status?.email_configured ? "success" : "secondary"}>Email {status?.email_configured ? "configured" : "off"}</Badge>
-        <Badge variant={status?.slack_configured ? "success" : "secondary"}>Slack {status?.slack_configured ? "configured" : "off"}</Badge>
-        <Badge variant={status?.teams_configured ? "success" : "secondary"}>Teams {status?.teams_configured ? "configured" : "off"}</Badge>
+        <Badge variant={status?.email_configured ? "success" : "secondary"}>Email {channelsLoading ? "checking…" : !status ? "unknown" : status.email_configured ? "configured" : "off"}</Badge>
+        <Badge variant={status?.slack_configured ? "success" : "secondary"}>Slack {channelsLoading ? "checking…" : !status ? "unknown" : status.slack_configured ? "configured" : "off"}</Badge>
+        <Badge variant={status?.teams_configured ? "success" : "secondary"}>Teams {channelsLoading ? "checking…" : !status ? "unknown" : status.teams_configured ? "configured" : "off"}</Badge>
       </div>
+      {status?.email_diagnostics && <>
+        <p className="text-sm text-muted-foreground">Account invitations and task assignment emails use these email settings. They do not require outbound notification mirroring.</p>
+        {(status.email_diagnostics.missing.length > 0 || status.email_diagnostics.issues.length > 0) && <Alert><AlertDescription>{status.email_diagnostics.missing.length > 0 && <p>Missing deployment settings: {status.email_diagnostics.missing.join(", ")}.</p>}{status.email_diagnostics.issues.map((issue) => <p key={issue}>{issue}</p>)}</AlertDescription></Alert>}
+        <Button type="button" variant="outline" disabled={check.busy} onClick={() => void checkEmail()}>{check.busy ? "Checking…" : "Check email connection"}</Button>
+        {check.message && <Alert variant={check.ok ? "default" : "destructive"} role="status"><AlertDescription>{check.message}</AlertDescription></Alert>}
+      </>}
       <Button type="button" variant="outline" disabled={isSubmitting} onClick={sendTest}>{isSubmitting ? "Sending…" : "Send test notification"}</Button>
       </CardContent>
     </Card>

@@ -15,16 +15,21 @@ export default function Protected({
   module,
   feature,
   adminOnly,
+  managerOnly,
   children,
 }: {
   module?: string;
   feature?: string;
   adminOnly?: boolean;
+  managerOnly?: boolean;
   children: ReactNode;
 }) {
-  const { user, can } = useAuth();
   const key = feature ?? module;
-  const ok = !!user && (!adminOnly || user.is_admin) && (!key || can(key));
+  const ok =
+    !!user &&
+    (!adminOnly || user.is_admin) &&
+    (!managerOnly || user.is_admin || user.role === "manager") &&
+    (!key || can(key));
 
   if (!ok)
     return (

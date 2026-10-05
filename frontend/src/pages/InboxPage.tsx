@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { DateRangeFields, FilterSelect, ListPagination } from "@/components/ListControls";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field as FormField, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -9,17 +10,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Cable, Copy, FileInput, Inbox, Plus, Trash2, UserPlus, Ticket as TicketIcon } from "lucide-react";
+import { Cable, Copy, Eye, FileInput, Inbox, Plus, Trash2, UserPlus, Ticket as TicketIcon } from "lucide-react";
 import { api, apiUrl } from "../api/client";
-import type { IntakeForm, IntakeSource, Submission } from "../api/types";
+import type { IntakeForm, IntakeSource, RecordPage, Submission, SubmissionSource } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
-import { ConfirmDialog, Empty, Loading, Modal, PageHead, PromptModal, useToast } from "../components/ui";
+import { ConfirmDialog, Empty, ErrorState, Loading, Modal, PageHead, PromptModal, useToast } from "../components/ui";
 import { useAuth } from "../auth/AuthContext";
 import { numericInput } from "../utils/numbers";
 import { cn } from "@/lib/utils";
 
-const TYPES = ["lead", "complaint", "support", "inquiry", "feedback", "other"];
+const TYPES = ["lead", "complaint", "support", "inquiry", "feedback", "job_application", "other"];
 const STATUSES = ["quarantined", "new", "in_progress", "resolved", "spam", "archived"];
 const TYPE_BADGE: Record<string, "success" | "destructive" | "warning" | "info" | "secondary"> = {
   lead: "success", complaint: "destructive", support: "warning", inquiry: "info", feedback: "secondary", other: "secondary",
@@ -28,35 +29,37 @@ const STATUS_BADGE: Record<string, "warning" | "info" | "success" | "destructive
   quarantined: "warning", new: "info", in_progress: "info", resolved: "success", spam: "destructive", archived: "secondary",
 };
 
-const INBOX_STATUSES = new Set(["new", "in_progress", "resolved"]);
-const QUARANTINE_STATUSES = new Set(["quarantined", "spam"]);
-
 export default function InboxPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"inbox" | "quarantine" | "forms" | "sources">("inbox");
-  const [type, setType] = useState("");
-  const [q, setQ] = useState("");
-  const debouncedQ = useDebouncedValue(q);
+  const [tab, setTab] = useState<"inbox" | "quarantine" | "archived" | "forms" | "sources">("inbox");
+  const [filters, setFilters] = useState({ type: "", status: "", source_id: "", q: "", after: "", before: "", sort: "newest" });
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(25);
+  const debouncedQ = useDebouncedValue(filters.q);
+  const filter = (key: keyof typeof filters, value: string) => { setFilters((current) => ({ ...current, [key]: value })); setOffset(0); };
+  const clearFilters = () => { setFilters({ type: "", status: "", source_id: "", q: "", after: "", before: "", sort: "newest" }); setOffset(0); };
   const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (type) p.set("type", type);
-    if (debouncedQ) p.set("q", debouncedQ);
+    const p = new URLSearchParams({ scope: tab, limit: String(limit), offset: String(offset), sort: filters.sort });
+    for (const key of ["type", "status", "source_id", "after", "before"] as const) if (filters[key]) p.set(key, filters[key]);
+    if (debouncedQ.trim()) p.set("q", debouncedQ.trim());
     return p.toString();
-  }, [type, debouncedQ]);
-  const subs = useFetch<Submission[]>(`/api/intake/submissions${qs ? `?${qs}` : ""}`);
+  }, [tab, filters, debouncedQ, limit, offset]);
+  const listTab = tab === "inbox" || tab === "quarantine" || tab === "archived";
+  const subs = useFetch<RecordPage<Submission>>(listTab ? `/api/intake/submissions/page?${qs}` : null);
+  const sources = useFetch<SubmissionSource[]>("/api/intake/submission-sources");
+  const summary = useFetch<{ by_status: Record<string, number> }>("/api/intake/summary");
   const [open, setOpen] = useState<Submission | null>(null);
-
-  const all = subs.data ?? [];
-  const quarantineCount = all.filter((s) => QUARANTINE_STATUSES.has(s.status)).length;
-  const rows = all.filter((s) =>
-    tab === "quarantine" ? QUARANTINE_STATUSES.has(s.status) : INBOX_STATUSES.has(s.status),
-  );
+  const quarantineCount = (summary.data?.by_status.quarantined ?? 0) + (summary.data?.by_status.spam ?? 0);
+  const rows = subs.data?.items ?? [];
+  const statuses = tab === "quarantine" ? ["quarantined", "spam"] : tab === "archived" ? ["archived"] : ["new", "in_progress", "resolved"];
+  const hasFilters = Boolean(filters.type || filters.status || filters.source_id || filters.q || filters.after || filters.before || filters.sort !== "newest");
+  const changed = () => { void subs.reload(); void summary.reload(); };
 
   return (
-    <div>
+    <div className="flex min-w-0 flex-col gap-4">
       <PageHead title="Web Inbox" subtitle="Website submissions are spam-screened in quarantine; real leads land in the inbox." />
 
-      <ToggleGroup value={[tab]} onValueChange={(value) => value[0] && setTab(value[0] as typeof tab)} variant="outline" spacing={0} className="mb-4"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem><ToggleGroupItem value="forms">Forms</ToggleGroupItem>{user?.is_admin && <ToggleGroupItem value="sources">Connected websites</ToggleGroupItem>}</ToggleGroup>
+      <ToggleGroup aria-label="Inbox views" value={[tab]} onValueChange={(value) => { if (value[0]) { setTab(value[0] as typeof tab); filter("status", ""); } }} variant="outline" spacing={0} className="max-w-full flex-wrap justify-start"><ToggleGroupItem value="inbox">Inbox</ToggleGroupItem><ToggleGroupItem value="quarantine">Quarantine{quarantineCount ? ` (${quarantineCount})` : ""}</ToggleGroupItem><ToggleGroupItem value="archived">Archived</ToggleGroupItem><ToggleGroupItem value="forms">Forms</ToggleGroupItem>{user?.is_admin && <ToggleGroupItem value="sources">Connected websites</ToggleGroupItem>}</ToggleGroup>
 
       {tab === "forms" ? (
         <FormsTab />
@@ -68,21 +71,32 @@ export default function InboxPage() {
           {tab === "quarantine" && (
             <p className="text-sm text-muted-foreground">Held for review by the spam screen. Release real ones to the inbox, or delete spam.</p>
           )}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input aria-label="Search name, email, message…" className="flex-1" placeholder="Search name, email, message…" value={q} onChange={(e) => setQ(e.target.value)} />
-            <Select items={[{ value: null, label: "All types" }, ...TYPES.map((t) => ({ value: t, label: t }))]} value={type || null} onValueChange={(value) => setType(value ?? "")}>
-              <SelectTrigger id="inbox-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value={null}>All types</SelectItem>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent>
-            </Select>
-          </div>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <FormField className="sm:col-span-2"><FieldLabel htmlFor="inbox-search">Search submissions</FieldLabel><Input id="inbox-search" placeholder="Name, email, phone, company or message…" maxLength={300} value={filters.q} onChange={(event) => filter("q", event.target.value)} /></FormField>
+            <FilterSelect id="inbox-type" label="Type" value={filters.type} options={[{ value: "", label: "All types" }, ...TYPES.map((value) => ({ value, label: value.replace(/_/g, " ") }))]} onChange={(value) => filter("type", value)} />
+            <FilterSelect id="inbox-status" label="Status" value={filters.status} options={[{ value: "", label: "All statuses" }, ...statuses.map((value) => ({ value, label: value.replace(/_/g, " ") }))]} onChange={(value) => filter("status", value)} />
+            <FilterSelect id="inbox-source" label="Website" value={filters.source_id} options={[{ value: "", label: "All websites" }, ...(sources.data ?? []).map((item) => ({ value: item.id, label: item.name }))]} onChange={(value) => filter("source_id", value)} />
+            <div className="sm:col-span-2"><DateRangeFields id="inbox" after={filters.after} before={filters.before} onChange={filter} /></div>
+            <FilterSelect id="inbox-sort" label="Sort" value={filters.sort} options={[{ value: "newest", label: "Newest first" }, { value: "oldest", label: "Oldest first" }]} onChange={(value) => filter("sort", value)} />
+          </FieldGroup>
+          {sources.error && <p role="status" className="text-sm text-destructive">Website filters could not load. <Button type="button" variant="outline" size="sm" onClick={sources.reload}>Retry websites</Button></p>}
+          <div className="flex items-center justify-between gap-2"><span className="text-sm text-muted-foreground">{subs.data ? `${subs.data.total} matching submissions` : "Website submissions"}</span>{hasFilters && <Button type="button" variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button>}</div>
           </CardHeader>
 
           <CardContent className={rows.length > 0 ? "p-0" : undefined}>
-          {subs.loading ? (
+          {subs.error ? <ErrorState message={subs.error} onRetry={subs.reload} /> : subs.loading ? (
             <Loading />
           ) : rows.length === 0 ? (
-            <Empty icon={<Inbox />} message={tab === "quarantine" ? "Nothing in quarantine" : "No submissions yet"} hint={tab === "inbox" && user?.is_admin ? "Connect a website under 'Connected websites' and point its form here." : undefined} />
+            <Empty icon={<Inbox />} message={hasFilters ? "No matching submissions" : tab === "quarantine" ? "Nothing in quarantine" : tab === "archived" ? "No archived submissions" : "No submissions yet"} hint={hasFilters ? "Try changing or clearing your filters." : tab === "inbox" && user?.is_admin ? "Connect a website under 'Connected websites' and point its form here." : undefined} action={hasFilters ? <Button variant="outline" onClick={clearFilters}>Clear filters</Button> : undefined} />
           ) : (
-           <Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>From</TableHead><TableHead>Subject</TableHead><TableHead>Source</TableHead>{tab === "quarantine" && <TableHead className="text-right">Spam</TableHead>}<TableHead>Status</TableHead><TableHead>Received</TableHead></TableRow></TableHeader><TableBody>
+          <>
+            <div className="grid gap-3 p-4 md:hidden">{rows.map((s) => <Card key={s.id} className="py-3"><CardContent className="flex flex-col gap-3 px-3">
+              <div className="flex flex-wrap gap-2"><Badge variant={TYPE_BADGE[s.type] ?? "secondary"}>{s.type.replace(/_/g, " ")}</Badge><Badge variant={STATUS_BADGE[s.status] ?? "secondary"}>{s.status.replace(/_/g, " ")}</Badge>{tab === "quarantine" && <Badge variant="warning">Spam score: {s.spam_score}</Badge>}</div>
+              <div className="min-w-0"><p className="break-words font-semibold">{s.name ?? s.email ?? "Unknown sender"}</p>{s.email && <p className="break-all text-xs text-muted-foreground">{s.email}</p>}<p className="mt-2 line-clamp-2 break-words text-sm">{s.subject ?? s.message ?? "No subject"}</p></div>
+              <p className="break-words text-xs text-muted-foreground">{s.source_name ?? "Unknown website"} · {new Date(s.created_at).toLocaleDateString()}</p>
+              <Button variant="outline" onClick={() => setOpen(s)} aria-label={`View submission from ${s.name ?? s.email ?? "unknown sender"}`}><Eye data-icon="inline-start" />View submission</Button>
+            </CardContent></Card>)}</div>
+            <div className="hidden md:block"><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>From</TableHead><TableHead>Subject</TableHead><TableHead>Source</TableHead>{tab === "quarantine" && <TableHead className="text-right">Spam</TableHead>}<TableHead>Status</TableHead><TableHead>Received</TableHead><TableHead className="sticky right-0 z-10 bg-table-header text-right">Actions</TableHead></TableRow></TableHeader><TableBody>
                 {rows.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell><Badge variant={TYPE_BADGE[s.type] ?? "secondary"}>{s.type}</Badge></TableCell>
@@ -107,14 +121,18 @@ export default function InboxPage() {
                     )}
                     <TableCell><Badge variant={STATUS_BADGE[s.status] ?? "secondary"}>{s.status.replace("_", " ")}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{new Date(s.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="sticky right-0 bg-card text-right"><Button type="button" variant="outline" size="sm" onClick={() => setOpen(s)} aria-label={`View submission from ${s.name ?? s.email ?? "unknown sender"}`}><Eye data-icon="inline-start" />View</Button></TableCell>
                   </TableRow>
                 ))}
-              </TableBody></Table>
+              </TableBody></Table></div>
+          </>
           )}
-          </CardContent></Card>
+          </CardContent>
+          {!subs.error && <ListPagination id="inbox" total={subs.data?.total ?? 0} offset={subs.data?.offset ?? offset} limit={limit} loading={subs.loading || filters.q !== debouncedQ} onPage={setOffset} onPageSize={(size) => { setLimit(size); setOffset(0); }} />}
+        </Card>
       )}
 
-      {open && <SubmissionModal sub={open} onClose={() => setOpen(null)} onChanged={() => subs.reload()} />}
+      {open && <SubmissionModal sub={open} onClose={() => setOpen(null)} onChanged={changed} />}
     </div>
   );
 }
@@ -123,22 +141,28 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
   const { notify } = useToast();
   const detail = useFetch<Submission>(`/api/intake/submissions/${sub.id}`);
   const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
   const s = detail.data ?? sub;
 
   async function patch(body: Record<string, unknown>) {
-    await api(`/api/intake/submissions/${sub.id}`, { method: "PATCH", body });
-    detail.reload();
-    onChanged();
+    setBusy(true);
+    try {
+      await api(`/api/intake/submissions/${sub.id}`, { method: "PATCH", body });
+      await detail.reload();
+      onChanged();
+    } catch (err) { notify(err instanceof Error ? err.message : "Could not save submission", "error"); }
+    finally { setBusy(false); }
   }
   async function convert(kind: "lead" | "ticket") {
+    setBusy(true);
     try {
       await api(`/api/intake/submissions/${sub.id}/convert-${kind}`, { method: "POST" });
       notify(`Converted to ${kind}.`);
-      detail.reload();
+      await detail.reload();
       onChanged();
     } catch (err) {
       notify(err instanceof Error ? err.message : "Failed", "error");
-    }
+    } finally { setBusy(false); }
   }
   async function remove() {
     await api(`/api/intake/submissions/${sub.id}`, { method: "DELETE" });
@@ -146,16 +170,22 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
     onClose();
   }
   async function release() {
-    await api(`/api/intake/submissions/${sub.id}/release`, { method: "POST" });
-    notify("Released to inbox.");
-    detail.reload();
-    onChanged();
+    setBusy(true);
+    try {
+      await api(`/api/intake/submissions/${sub.id}/release`, { method: "POST" });
+      notify("Released to inbox.");
+      await detail.reload();
+      onChanged();
+    } catch (err) { notify(err instanceof Error ? err.message : "Could not release submission", "error"); }
+    finally { setBusy(false); }
   }
 
   const held = s.status === "quarantined" || s.status === "spam";
 
   return (
     <Modal title={s.subject || `${s.type} from ${s.name ?? s.email ?? "website"}`} onClose={onClose} maxWidth={560}>
+      {detail.error && <ErrorState message={detail.error} onRetry={detail.reload} />}
+      {busy && <p role="status" className="mb-3 text-sm text-muted-foreground">Saving submission…</p>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Badge variant={TYPE_BADGE[s.type] ?? "secondary"}>{s.type}</Badge>
         <Badge variant={STATUS_BADGE[s.status] ?? "secondary"}>{s.status.replace("_", " ")}</Badge>
@@ -170,7 +200,7 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
             <span className="font-medium">
               Spam score: <Badge variant={s.spam_score >= 60 ? "destructive" : s.spam_score > 25 ? "warning" : "success"}>{s.spam_score}/100</Badge>
             </span>
-            <Button type="button" size="sm" onClick={release}>Release to inbox</Button>
+            <Button type="button" size="sm" disabled={busy || detail.loading || Boolean(detail.error)} onClick={release}>Release to inbox</Button>
           </div>
           {s.spam_reasons && s.spam_reasons.length > 0 && (
             <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
@@ -239,16 +269,16 @@ function SubmissionModal({ sub, onClose, onChanged }: { sub: Submission; onClose
         </p>
       )}
 
-      <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2"><FormField><FieldLabel htmlFor="submission-status">Status</FieldLabel><Select items={STATUSES.map((st) => ({ value: st, label: st.replace("_", " ") }))} value={s.status} onValueChange={(value) => value !== null && patch({ status: value })}><SelectTrigger id="submission-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STATUSES.map((st) => <SelectItem key={st} value={st}>{st.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField><FormField><FieldLabel htmlFor="submission-type">Type</FieldLabel><Select items={TYPES.map((t) => ({ value: t, label: t }))} value={s.type} onValueChange={(value) => value !== null && patch({ type: value })}><SelectTrigger id="submission-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField></FieldGroup>
+      <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2"><FormField><FieldLabel htmlFor="submission-status">Status</FieldLabel><Select items={STATUSES.map((st) => ({ value: st, label: st.replace("_", " ") }))} value={s.status} disabled={busy || detail.loading || Boolean(detail.error)} onValueChange={(value) => value !== null && patch({ status: value })}><SelectTrigger id="submission-status" aria-label="Status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STATUSES.map((st) => <SelectItem key={st} value={st}>{st.replace("_", " ")}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField><FormField><FieldLabel htmlFor="submission-type">Type</FieldLabel><Select items={TYPES.map((t) => ({ value: t, label: t }))} value={s.type} disabled={busy || detail.loading || Boolean(detail.error)} onValueChange={(value) => value !== null && patch({ type: value })}><SelectTrigger id="submission-type" aria-label="Type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectGroup></SelectContent></Select></FormField></FieldGroup>
 
-      <div className="mt-4 flex flex-col-reverse justify-between gap-2 sm:flex-row">
-        <Button type="button" variant="destructive" onClick={() => setDeleting(true)}>Delete</Button>
-        <span className="flex gap-2">
+      <div className="mt-4 flex flex-wrap justify-between gap-2">
+        <Button type="button" variant="destructive" className="border-destructive/40 bg-background hover:bg-background dark:bg-background dark:hover:bg-background" disabled={busy || detail.loading || Boolean(detail.error)} onClick={() => setDeleting(true)}><Trash2 data-icon="inline-start" />Delete</Button>
+        <span className="flex flex-wrap gap-2">
           {!s.converted_ticket_id && (
-            <Button type="button" variant="outline" onClick={() => convert("ticket")}><TicketIcon data-icon="inline-start" /> To ticket</Button>
+            <Button type="button" variant="outline" disabled={busy || detail.loading || Boolean(detail.error)} onClick={() => convert("ticket")}><TicketIcon data-icon="inline-start" />Create ticket</Button>
           )}
           {!s.converted_lead_id && (
-            <Button type="button" onClick={() => convert("lead")}><UserPlus data-icon="inline-start" /> To CRM lead</Button>
+            <Button type="button" disabled={busy || detail.loading || Boolean(detail.error)} onClick={() => convert("lead")}><UserPlus data-icon="inline-start" />Create CRM lead</Button>
           )}
         </span>
       </div>

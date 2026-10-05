@@ -25,3 +25,16 @@ class DepartmentOut(BaseModel):
     permissions: list[str] = []
     member_count: int = 0
     created_at: datetime
+
+
+class DepartmentMemberAdd(BaseModel):
+    user_id: uuid.UUID
+
+
+class DepartmentMemberOut(BaseModel):
+    id: uuid.UUID
+    display_name: str | None = None
+    email: str | None = None
+    role: str
+    status: str
+    is_active: bool

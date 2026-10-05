@@ -129,6 +129,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    if (!path.startsWith("/api/")) { await route.continue(); return; }
     let body: unknown = {};
 
     if (path === "/api/auth/me") body = user;
@@ -160,6 +161,9 @@ test.beforeEach(async ({ page }) => {
     else if (path === "/api/intake/blocklist") body = [blockEntry];
     else if (path === "/api/intake/sources") body = [];
     else if (path === "/api/intake/submissions") body = [];
+    else if (path === "/api/intake/submissions/page") body = { items: [], total: 0, limit: 25, offset: 0 };
+    else if (path === "/api/intake/summary") body = { by_status: {} };
+    else if (path === "/api/intake/submission-sources") body = [];
 
     await route.fulfill({ json: body as object });
   });
@@ -199,8 +203,11 @@ test("the forms tab lists each website form and its mapping state", async ({ pag
   await page.goto("/inbox");
   await page.getByRole("button", { name: "Forms" }).click();
 
-  await expect(shown(page.getByRole("link", { name: "Contact form 1" }))).toBeVisible();
+  const formAction = shown(page.getByRole("button", { name: "Contact form 1", exact: true }));
+  await expect(formAction).toBeVisible();
   await expect(shown(page.getByText("Acme Website"))).toBeVisible();
+  await formAction.click();
+  await expect(page.getByRole("heading", { name: "Contact form 1", exact: true })).toBeVisible();
 });
 
 test("routing rules read as plain English", async ({ page }) => {

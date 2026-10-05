@@ -103,7 +103,7 @@ export default function Layout() {
 
   const isDark = theme.mode === "dark";
 
-  const title = currentNavTitle(location.pathname);
+  const title = currentNavTitle(location.pathname, Boolean(user?.is_admin), user?.role === "manager");
   const sectionLabel = currentNavSection(location.pathname) ?? APP_NAME;
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export default function Layout() {
         >
           Skip to main content
         </a>
-        <AppSidebar isAdmin={!!user?.is_admin} can={can} />
+        <AppSidebar isAdmin={!!user?.is_admin} isManager={user?.role === "manager"} can={can} />
 
         <SidebarInset>
           <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">

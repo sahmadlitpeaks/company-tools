@@ -61,7 +61,7 @@ class NoticeFact(StrictModel):
 
 
 class ComplianceExtraction(StrictModel):
-    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other", "unknown"]
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "product_sheet", "vendor_notice", "other", "unknown"]
     type_evidence: list[Evidence] = Field(default_factory=list, max_length=5)
     company: TextFact | None = None
     reference_number: TextFact | None = None
@@ -194,14 +194,16 @@ class OwnerRuleIn(StrictModel):
 
 
 class ComplianceReviewIn(StrictModel):
-    company_id: uuid.UUID
-    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "other"]
+    company_id: uuid.UUID | None = None
+    company_name: str | None = Field(default=None, max_length=255)
+    document_type: Literal["trade_license", "contract", "iso_cap_certificate", "insurance", "dpa", "regulatory_license", "vendor_agreement", "laboratory_accreditation", "it_software_agreement", "product_sheet", "vendor_notice", "other"]
     reference_number: str | None = Field(default=None, max_length=255)
     expiry_date: str | None = None
     renewal_date: str | None = None
     termination_notice_days: int | None = Field(default=None, ge=1, le=730)
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
     review_note: str | None = Field(default=None, max_length=2000)
 
     @field_validator("expiry_date", "renewal_date")
@@ -216,12 +218,14 @@ class ComplianceReviewIn(StrictModel):
 
 class ComplianceTaskUpdateIn(StrictModel):
     status: Literal["active", "completed"]
+    work_status: Literal["todo", "in_progress", "blocked"] | None = None
     note: str | None = Field(default=None, max_length=2000)
 
 
 class ComplianceTaskAssignIn(StrictModel):
     owner_user_id: uuid.UUID | None = None
     owner_department_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
     note: str = Field(min_length=3, max_length=2000)
 
     @field_validator("note")
@@ -231,3 +235,7 @@ class ComplianceTaskAssignIn(StrictModel):
         if len(value) < 3:
             raise ValueError("Explain why the task owner is changing")
         return value
+
+
+class ComplianceTaskProgressIn(StrictModel):
+    status: Literal["todo", "in_progress", "blocked"]
