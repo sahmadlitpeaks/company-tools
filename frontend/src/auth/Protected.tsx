@@ -24,6 +24,7 @@ export default function Protected({
   managerOnly?: boolean;
   children: ReactNode;
 }) {
+  const { user, can } = useAuth();
   const key = feature ?? module;
   const ok =
     !!user &&
