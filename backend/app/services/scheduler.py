@@ -17,6 +17,7 @@ from app.services.hr_reminders import run_hr_reminders
 from app.services.sla_alerts import run_sla_alerts
 from app.services.time_reminders import run_time_reminders
 from app.services.backups import run_scheduled_backup
+from app.services.sharepoint.reminders import run_sharepoint_reminders
 
 log = logging.getLogger("scheduler")
 
@@ -69,5 +70,6 @@ def start_scheduler() -> list[asyncio.Task[Any]]:
         ),
         _periodic("time reminders", run_time_reminders, TIME_INTERVAL_SECONDS, 90),
         _periodic("backups", run_scheduled_backup, BACKUP_INTERVAL_SECONDS, 120),
+        _periodic("sharepoint reminders", run_sharepoint_reminders, 60 * 60, 45),
     ]
     return [asyncio.create_task(job) for job in jobs]

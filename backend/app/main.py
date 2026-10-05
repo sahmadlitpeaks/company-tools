@@ -64,6 +64,8 @@ from app.api import (
     service_desk,
     settings as settings_api,
     shares,
+    sharepoint,
+    sharepoint_compliance,
     shortener,
     signatures,
     tasks,
@@ -105,12 +107,24 @@ async def lifespan(app: FastAPI):
         if settings.ENVIRONMENT != "production":
             await ensure_default_departments(db)
             await ensure_default_leave_types(db)
+        if settings.SHAREPOINT_ENABLED:
+            from app.services.sharepoint.compliance import (
+                reconcile_company_matches, reconcile_optional_fact_reviews,
+            )
+
+            await reconcile_company_matches(db)
+            await reconcile_optional_fact_reviews(db)
+            await db.commit()
 
     tasks: list[asyncio.Task] = []
     if settings.RUN_SCHEDULER:
         from app.services.scheduler import start_scheduler
 
         tasks = start_scheduler()
+    if settings.SHAREPOINT_ENABLED:
+        from app.services.sharepoint.worker import worker_loop
+
+        tasks.append(asyncio.create_task(worker_loop()))
     app.state.scheduler_tasks = tasks
     try:
         yield
@@ -127,6 +141,25 @@ app = FastAPI(
     description="Internal company platform with Azure SSO.",
     lifespan=lifespan,
 )
+
+
+from app.services.sharepoint.common import SharePointError
+from starlette.responses import JSONResponse
+
+
+@app.exception_handler(SharePointError)
+async def sharepoint_error_handler(request: Request, error: SharePointError):
+    return JSONResponse({"detail": error.code}, status_code=error.status, headers={"Cache-Control": "no-store"})
+
+
+@app.middleware("http")
+async def private_sharepoint_responses(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/sharepoint"):
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 app.add_middleware(
     SessionMiddleware,
@@ -279,6 +312,8 @@ app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("appro
 app.include_router(leave.router, prefix=api_prefix, dependencies=_feat("approvals.leave"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
 app.include_router(knowledge.router, prefix=api_prefix, dependencies=_mod("knowledge"))
+app.include_router(sharepoint.router, prefix=api_prefix, dependencies=_mod("sharepoint_intelligence"))
+app.include_router(sharepoint_compliance.router, prefix=api_prefix, dependencies=_mod("sharepoint_intelligence"))
 app.include_router(announcements.router, prefix=api_prefix, dependencies=_mod("announcements"))
 app.include_router(people.router, prefix=api_prefix, dependencies=_mod("people_ops"))
 app.include_router(worklog.router, prefix=api_prefix, dependencies=_mod("worklog"))

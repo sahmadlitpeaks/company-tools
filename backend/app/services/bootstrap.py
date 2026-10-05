@@ -52,6 +52,7 @@ DEFAULT_DEPARTMENTS: list[tuple[str, str, list[str]]] = [
     ("Finance", "Approvals and expense oversight.", _BASE + [
         "products", "shared", "subscriptions",
     ]),
+    ("Admin", "Administrative document and operations ownership.", _BASE),
     ("Operations", "Day-to-day running and assets.", _BASE + [
         "asset_tracker", "subscriptions", "products", "shared", "transfers", "qrcodes",
         "routine_checks",

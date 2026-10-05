@@ -53,5 +53,7 @@ class CompanyOut(CompanyBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    parent_company_id: uuid.UUID | None = None
+    aliases: list[str] | None = None
     is_default: bool
     created_at: datetime

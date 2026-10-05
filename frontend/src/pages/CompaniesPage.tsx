@@ -56,11 +56,13 @@ function websiteLabel(website: string): string {
 
 function CompanyCard({
   company,
+  parentName,
   isCurrent,
   onEdit,
   onDelete,
 }: {
   company: Company;
+  parentName: string | null;
   isCurrent: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -94,6 +96,7 @@ function CompanyCard({
               {company.is_active ? "Active" : "Inactive"}
             </Badge>
             {company.is_default ? <Badge variant="warning">Default</Badge> : null}
+            {parentName ? <Badge variant="outline">Part of {parentName}</Badge> : null}
           </div>
         </div>
       </CardHeader>
@@ -102,6 +105,9 @@ function CompanyCard({
         <p className="min-h-10 text-sm leading-5 text-muted-foreground">
           {company.tagline || "No tagline has been added for this company."}
         </p>
+        {company.aliases?.length ? (
+          <p className="text-xs text-muted-foreground">Also matched in documents as {company.aliases.join(", ")}</p>
+        ) : null}
 
         <div
           className="border p-3"
@@ -234,6 +240,7 @@ export default function CompaniesPage() {
             <CompanyCard
               key={company.id}
               company={company}
+              parentName={companies.data!.find((candidate) => candidate.id === company.parent_company_id)?.name ?? null}
               isCurrent={company.id === active?.id}
               onEdit={() => setEditing(company)}
               onDelete={() => setDeleteTarget(company)}
