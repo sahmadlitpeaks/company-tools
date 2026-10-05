@@ -147,6 +147,17 @@ async def get_status(db: AsyncSession) -> dict:
 # --------------------------------------------------------------------------
 async def run_hr_reminders(db: AsyncSession) -> dict:
     """Generate all enabled HR reminders. Idempotent; safe to run repeatedly."""
+    from app.core.permissions import disabled_keys, is_enabled
+
+    disabled = await disabled_keys(db)
+    if not is_enabled("hr.automations", disabled):
+        log.info("HR reminders skipped: hr.automations is disabled org-wide")
+        return {
+            "created": 0,
+            "by_type": {},
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+
     cfg = await get_config(db)
     today = date.today()
     by_type: dict[str, int] = {}

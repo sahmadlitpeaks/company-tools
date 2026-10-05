@@ -189,3 +189,107 @@ async def test_toggle_changes_are_recorded_in_the_activity_log(client, auth):
     summaries = [e["summary"] for e in log["items"]]
     assert "switched off tasks" in summaries
     assert "switched on tasks" in summaries
+
+
+@pytest.mark.asyncio
+async def test_attachments_gated_when_module_is_disabled(client, auth):
+    # Create an idea
+    idea_res = await client.post(
+        "/api/ideas",
+        headers=auth,
+        json={"title": "Test Idea", "description": "Idea description", "category": "general"},
+    )
+    assert idea_res.status_code == 201
+    idea_id = idea_res.json()["id"]
+
+    # Initially attachments for idea are accessible
+    r = await client.get(f"/api/attachments/by/idea/{idea_id}", headers=auth)
+    assert r.status_code == 200
+
+    # Disable ideas module
+    await _set_disabled(client, auth, ["ideas"])
+
+    # Now attachments list for idea returns 403
+    r = await client.get(f"/api/attachments/by/idea/{idea_id}", headers=auth)
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_checklist_template_editing_is_gated_while_listing_stays_open(client, auth):
+    # Listing templates is initially 200
+    assert (await client.get("/api/checklist-templates", headers=auth)).status_code == 200
+
+    # Disable routine_checks.templates
+    await _set_disabled(client, auth, ["routine_checks.templates"])
+
+    # Listing templates remains open (so daily rounds can still be run)
+    assert (await client.get("/api/checklist-templates", headers=auth)).status_code == 200
+
+    # Creating a template returns 403 turned off
+    r = await client.post(
+        "/api/checklist-templates",
+        headers=auth,
+        json={"name": "New Checklist", "schedule": "daily"},
+    )
+    assert r.status_code == 403
+    assert "turned off" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_feed_filters_disabled_modules(client, auth):
+    # Create a campaign
+    camp_res = await client.post(
+        "/api/campaigns",
+        headers=auth,
+        json={
+            "name": "Super Campaign",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-30",
+            "status": "planned",
+        },
+    )
+    assert camp_res.status_code == 201
+
+    r = await client.get(
+        "/api/calendar?start=2026-01-01&end=2026-12-31", headers=auth
+    )
+    assert r.status_code == 200
+    feed = r.json()
+    assert any(item["title"] == "Super Campaign" for item in feed)
+
+    # Disable campaigns module
+    await _set_disabled(client, auth, ["campaigns"])
+
+    r = await client.get(
+        "/api/calendar?start=2026-01-01&end=2026-12-31", headers=auth
+    )
+    assert r.status_code == 200
+    feed = r.json()
+    assert not any(item["title"] == "Super Campaign" for item in feed)
+
+
+@pytest.mark.asyncio
+async def test_hr_automations_gated_when_disabled(client, auth):
+    # Accessible initially
+    assert (await client.get("/api/hr/automations", headers=auth)).status_code == 200
+
+    # Disable hr.automations
+    await _set_disabled(client, auth, ["hr.automations"])
+
+    r = await client.get("/api/hr/automations", headers=auth)
+    assert r.status_code == 403
+    assert "turned off" in r.json()["detail"]
+
+    r = await client.post("/api/hr/automations/run", headers=auth)
+    assert r.status_code == 403
+    assert "turned off" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_sharepoint_intelligence_gated_when_disabled(client, auth):
+    # Disable sharepoint_intelligence
+    await _set_disabled(client, auth, ["sharepoint_intelligence"])
+
+    r = await client.get("/api/sharepoint/documents", headers=auth)
+    assert r.status_code == 403
+    assert "turned off" in r.json()["detail"]

@@ -512,6 +512,13 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
 
 
 async def run_sharepoint_reminders(db: AsyncSession) -> dict:
+    from app.core.permissions import disabled_keys, is_enabled
+
+    disabled = await disabled_keys(db)
+    if not is_enabled("sharepoint_intelligence", disabled):
+        log.info("SharePoint reminders skipped: sharepoint_intelligence is disabled org-wide")
+        return {"checked": 0, "created": 0}
+
     today_iso = date.today().isoformat()
 
     async def _run_batch() -> dict:

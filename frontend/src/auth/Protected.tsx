@@ -24,7 +24,7 @@ export default function Protected({
 }) {
   const { user, can } = useAuth();
   const key = feature ?? module;
-  const ok = !!user && (key ? can(key) : !adminOnly || user.is_admin);
+  const ok = !!user && (!adminOnly || user.is_admin) && (!key || can(key));
 
   if (!ok)
     return (

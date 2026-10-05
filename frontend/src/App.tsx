@@ -245,7 +245,7 @@ export default function App() {
           <Route path="/inbox" element={<Protected feature="crm.web_inbox"><InboxPage /></Protected>} />
           <Route
             path="/inbox/forms/:id"
-            element={<Protected module="crm"><IntakeFormPage /></Protected>}
+            element={<Protected feature="crm.web_inbox"><IntakeFormPage /></Protected>}
           />
           <Route
             path="/inbox/rules"
