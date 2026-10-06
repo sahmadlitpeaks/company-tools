@@ -43,9 +43,12 @@ routes remain available for existing consumers.
   counting and pagination, so quarantine cannot crowd real submissions out of
   the inbox. Archived submissions can be retrieved and reopened through the
   existing detail workflow.
-- CRM: `status`, `source`, `company_id`, `owner_id` or `unassigned=true`, `q`,
-  `after`, `before`, and `sort=newest|oldest|value_high|value_low`. Owner and
-  unassigned are mutually exclusive. Leads without a value sort last.
+- CRM: `status`, `source`, `company_id`, `owner_id` or `unassigned=true`,
+  `priority`, `tag`, `follow_up=overdue|today|upcoming|none`, `q`, `after`,
+  `before`, and `sort=newest|oldest|follow_up|value_high|value_low`. Owner and
+  unassigned are mutually exclusive. Leads without a value or follow-up date
+  sort last. See "CRM pipeline" in `docs/ARCHITECTURE.md` for stages, the
+  timeline, bulk actions, export and import.
 - Date bounds are inclusive UTC calendar days. Reversed ranges return 422.
   Both lists search contact details and company; Inbox also searches subject
   and message, while CRM searches notes. Search text is literal, including `%`

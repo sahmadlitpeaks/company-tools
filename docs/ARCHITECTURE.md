@@ -189,6 +189,41 @@ which also keeps CVs behind the HR-only `recruiting` module.
 
 Full payload contract, mapping model and plugin notes: `docs/INTAKE_CF7.md`.
 
+### CRM pipeline (`crm` module)
+
+`api/crm.py` serves leads (`CrmLead`) and their timeline (`CrmActivity`); every
+route sits behind the `crm` module gate.
+
+- Stages, in order: `new`, `contacted`, `qualified`, `proposal`, `negotiation`,
+  `won`, `lost` (`LEAD_STATUSES` in `models/crm.py`; the first five are open).
+  Moving a lead into `lost` requires `lost_reason`; leads lost before reasons
+  existed stay editable. Leaving `lost` clears the reason.
+- Qualification fields: `priority` (high/medium/low), `tags` (lowercase JSON
+  list, filtered as a whole quoted entry), `follow_up_date`, `next_step`,
+  `expected_close_date` and `last_contacted_at`, which is set when a call, email
+  or meeting is logged.
+- Timeline: `GET|POST /api/crm/leads/{id}/activities`. People log `note`,
+  `call`, `email` and `meeting` entries and may delete their own (admins any).
+  The API writes `created`, `change` (stage, owner, value, priority, follow-up)
+  and `import` entries itself; those can't be deleted.
+- Authorization: any CRM user can view and edit leads; only an admin or the
+  lead's owner can delete it (`can_delete` on each lead). `POST
+  /api/crm/leads/bulk` assigns, re-stages or deletes up to 500 leads all or
+  nothing. Assigning a lead to someone else sends them an in-app notification.
+- `GET /api/crm/leads/page` adds `priority`, `tag`, `follow_up=overdue|today|
+  upcoming|none` (open leads only) and `sort=follow_up`. `GET
+  /api/crm/leads/export` downloads the same filtered list as CSV (up to 20,000
+  rows), prefixing formula-like cells with `'` so spreadsheet apps don't run
+  text from public web forms; the import strips that prefix again.
+- Import: `POST /api/crm/import/preview` reads a CSV or XLSX (5 MB, 5,000 rows),
+  suggests a column mapping, picks the first sheet that looks like contacts, and
+  reports errors, warnings and duplicate emails without saving. `POST
+  /api/crm/import` takes the same file plus optional `mapping`, `sheet` and
+  `on_duplicate=skip|merge`. Duplicates match emails case-insensitively, against
+  the CRM and earlier rows of the file. Merge fills only empty fields, unions
+  tags and adds the row's notes to the timeline. Parsing lives in
+  `services/crm_import.py`.
+
 ### Routine checks (recurring checklists)
 
 Replaces paper daily rounds. A `ChecklistTemplate` describes the round —

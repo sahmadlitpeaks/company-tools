@@ -57,6 +57,7 @@ const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const CrmPage = lazy(() => import("./pages/CrmPage"));
+const CrmLeadPage = lazy(() => import("./pages/CrmLeadPage"));
 const CampaignsPage = lazy(() => import("./pages/CampaignsPage"));
 const QRCodesPage = lazy(() => import("./pages/QRCodesPage"));
 const LandingPagesPage = lazy(() => import("./pages/LandingPagesPage"));
@@ -242,6 +243,7 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
+          <Route path="/crm/:id" element={<Protected module="crm"><CrmLeadPage /></Protected>} />
           <Route path="/inbox" element={<Protected feature="crm.web_inbox"><InboxPage /></Protected>} />
           <Route
             path="/inbox/forms/:id"
