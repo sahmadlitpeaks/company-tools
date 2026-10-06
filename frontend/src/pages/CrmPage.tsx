@@ -143,8 +143,8 @@ export default function CrmPage() {
         { value: summary.data?.total ?? "—", label: "Total leads" },
         { value: summary.data ? money(summary.data.open_value) : "—", label: "Open pipeline" },
         { value: summary.data ? money(summary.data.won_value) : "—", label: "Won value" },
-        { value: summary.data?.overdue ?? "—", label: "Overdue follow-ups" },
-        { value: summary.data?.due_today ?? "—", label: "Follow-ups due today" },
+        // Four tiles keep the strip's rows full on phones (2×2) and desktop.
+        { value: summary.data ? summary.data.overdue ?? 0 : "—", label: summary.data ? `Overdue follow-ups · ${summary.data.due_today ?? 0} due today` : "Overdue follow-ups" },
       ]} />}
     </section>
     <Card>
