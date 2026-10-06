@@ -20,7 +20,7 @@ import { useAuth } from "../auth/AuthContext";
 import { Empty, Loading, MetricCard, PageHead } from "../components/ui";
 
 export default function HrDashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { data, loading, error } = useFetch<HrOverview>("/api/hr/overview");
   if (loading) return <Loading />;
   if (error || !data) return <Empty message="HR dashboard unavailable." />;
@@ -58,7 +58,7 @@ export default function HrDashboardPage() {
         title="HR Dashboard"
         subtitle="People operations at a glance."
         action={
-          user?.is_admin ? (
+          user?.is_admin && can("hr.automations") ? (
             <Link
               to="/hr/automations"
               className={buttonVariants({ variant: "outline" })}
@@ -72,7 +72,7 @@ export default function HrDashboardPage() {
       {/* KPI tiles */}
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi icon={Users} label="Headcount" value={data.headcount} to="/directory" />
-        <Kpi icon={CalendarOff} label="On leave today" value={data.on_leave_today} to="/leave" />
+        <Kpi icon={CalendarOff} label="On leave today" value={data.on_leave_today} to={can("approvals.leave") ? "/leave" : undefined} />
         <Kpi
           icon={ClipboardList}
           label="Open review cycles"
@@ -122,11 +122,15 @@ function Kpi({
   icon: React.ComponentType<{ size?: number | string }>;
   label: string;
   value: number;
-  to: string;
+  to?: string;
 }) {
+  const content = <MetricCard value={value} label={label} icon={<Icon />} />;
+  if (!to) {
+    return <div className="block h-full">{content}</div>;
+  }
   return (
     <Link to={to} aria-label={label} title={label} className="block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <MetricCard value={value} label={label} icon={<Icon />} />
+      {content}
     </Link>
   );
 }

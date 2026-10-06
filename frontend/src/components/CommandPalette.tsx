@@ -57,6 +57,7 @@ export const ROUTINE_NAV_ITEMS: NavItem[] = [
     label: "Checklists",
     icon: ClipboardList,
     module: "routine_checks",
+    feature: "routine_checks.templates",
     keywords: ["templates", "routine checks", "recurring"],
   },
 ];
@@ -159,10 +160,11 @@ function OpenCommandPalette({
     const knownPaths = new Set(
       groups.flatMap((group) => group.items.map((item) => item.to)),
     );
-    const routineItems = ROUTINE_NAV_ITEMS.filter(
-      (item) =>
-        !knownPaths.has(item.to) && (!item.module || can(item.module)),
-    );
+    const routineItems = ROUTINE_NAV_ITEMS.filter((item) => {
+      if (knownPaths.has(item.to)) return false;
+      const key = item.feature ?? item.module;
+      return !key || can(key);
+    });
     if (routineItems.length > 0) {
       const requestsIndex = groups.findIndex(
         (group) => group.section === "Requests & Support",

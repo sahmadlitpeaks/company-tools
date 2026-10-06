@@ -5,7 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.azure import get_app_token
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.database import get_db
+from app.core.permissions import (
+    ALWAYS_ENABLED,
+    FEATURES,
+    MODULES,
+    TOGGLEABLE,
+    is_enabled,
+)
 from app.models.user import User
+from app.services import feature_flags
+from app.services.activity import record
 from app.services.app_settings import (
     CAPTCHA_PROVIDERS,
     encrypt,
@@ -290,3 +299,92 @@ async def test_azure(
         return {"ok": True, "message": "Connected to Azure successfully."}
     except Exception as e:  # noqa: BLE001 — surface the provider error to the admin
         return {"ok": False, "error": str(e)[:300]}
+
+
+# --------------------------------------------------------------------------
+# Module & feature switches — org-wide on/off, applying to every team at once.
+# Not module-gated: an administrator must always be able to switch a module
+# back on after turning it off.
+# --------------------------------------------------------------------------
+class ModuleTogglesIn(BaseModel):
+    # The complete disabled set, sent whole so concurrent edits can't merge into
+    # a half-applied state. Anything absent is switched on.
+    disabled: list[str]
+
+
+async def _modules_payload(db: AsyncSession) -> dict:
+    disabled = await feature_flags.get_disabled(db)
+    return {
+        "modules": [
+            {
+                "key": key,
+                "label": label,
+                "enabled": is_enabled(key, disabled),
+                "locked": key in ALWAYS_ENABLED,
+                "features": [
+                    {
+                        "key": fkey,
+                        "label": flabel,
+                        # A feature reads as off whenever its module is off, so
+                        # the UI never shows a live child under a dead parent.
+                        "enabled": is_enabled(fkey, disabled),
+                        "self_disabled": fkey in disabled,
+                    }
+                    for fkey, flabel in FEATURES.get(key, [])
+                ],
+            }
+            for key, label in MODULES
+        ],
+        "disabled": sorted(disabled),
+    }
+
+
+@router.get("/modules")
+async def get_module_toggles(
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+):
+    """Catalogue of every module and its features, with current on/off state."""
+    return await _modules_payload(db)
+
+
+@router.put("/modules")
+async def put_module_toggles(
+    payload: ModuleTogglesIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Replace the disabled set. Turning a module off hides it from everyone."""
+    requested = set(payload.disabled)
+    locked = requested & ALWAYS_ENABLED
+    if locked:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot switch off: {', '.join(sorted(locked))}",
+        )
+    unknown = requested - TOGGLEABLE
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown module or feature: {', '.join(sorted(unknown))}",
+        )
+    before = await feature_flags.get_disabled(db)
+    turned_off = sorted(requested - before)
+    turned_on = sorted(before - requested)
+    if turned_off or turned_on:
+        # Hiding a module from the whole company is worth a trail of who did it.
+        # Added before the write so the entry shares its transaction.
+        parts = []
+        if turned_off:
+            parts.append(f"switched off {', '.join(turned_off)}")
+        if turned_on:
+            parts.append(f"switched on {', '.join(turned_on)}")
+        record(
+            db,
+            user=admin,
+            action="settings.modules",
+            entity_type="app_settings",
+            entity_id=feature_flags.SETTING_KEY,
+            summary="; ".join(parts),
+        )
+    await feature_flags.set_disabled(db, sorted(requested))
+    return await _modules_payload(db)

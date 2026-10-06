@@ -6,6 +6,7 @@ from sqlalchemy import or_,select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.core.database import get_db
+from app.core.permissions import active_permissions
 from app.models.campaign import Campaign
 from app.models.hr import Holiday
 from app.models.operations import CompanyEvent
@@ -41,10 +42,11 @@ async def feed(start:date=Query(...),end:date=Query(...),db:AsyncSession=Depends
  for e in events:out.append(item(e.id,"company",e.title,e.starts_at,e.ends_at,e.location,"/calendar"))
  assignments=(await db.execute(select(CourseAssignment,Course).join(Course,Course.id==CourseAssignment.course_id).where(CourseAssignment.due_date>=start,CourseAssignment.due_date<=end,CourseAssignment.user_id==user.id))).all()
  for a,c in assignments:out.append(item(a.id,"training",f"Training due: {c.title}",a.due_date,href="/training"))
- if "campaigns" in user.effective_permissions:
+ modules=await active_permissions(user,db)
+ if "campaigns" in modules:
   for c in(await db.execute(select(Campaign).where(or_(Campaign.start_date.between(start,end),Campaign.end_date.between(start,end))))).scalars():
    out.append(item(c.id,"campaign",c.name,c.start_date,c.end_date,href="/campaigns"))
- if "recruiting" in user.effective_permissions:
+ if "recruiting" in modules:
   begin=datetime.combine(start,time.min,tzinfo=timezone.utc);finish=datetime.combine(end,time.max,tzinfo=timezone.utc)
   for interview,candidate in(await db.execute(select(Interview,Candidate).join(Candidate,Candidate.id==Interview.candidate_id).where(Interview.scheduled_at>=begin,Interview.scheduled_at<=finish))).all():
    out.append(item(interview.id,"interview",f"Interview: {candidate.name}",interview.scheduled_at,subtitle=interview.mode,href="/recruiting"))

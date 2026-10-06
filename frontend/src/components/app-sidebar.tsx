@@ -33,7 +33,7 @@ export function AppSidebar({
 }: React.ComponentProps<typeof Sidebar> & {
   isAdmin: boolean;
   isManager?: boolean;
-  can: (module: string) => boolean;
+  can: (key: string) => boolean;
 }) {
   const location = useLocation();
   const groups = React.useMemo(

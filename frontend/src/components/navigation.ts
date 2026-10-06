@@ -68,6 +68,12 @@ export type NavItem = {
   adminOnly?: boolean;
   managerOnly?: boolean;
   module?: string;
+  /**
+   * One named part of a module ("hr.payroll"). Checked instead of `module`
+   * when present, so the item disappears when an administrator switches that
+   * feature off while the rest of its module stays.
+   */
+  feature?: string;
   keywords?: string[];
 };
 
@@ -135,10 +141,10 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Time & Pay",
     items: [
       { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance", keywords: ["attendance", "clock", "timesheet"] },
-      { to: "/leave", label: "Leave", icon: Plane, module: "approvals", keywords: ["holiday", "vacation", "time off"] },
+      { to: "/leave", label: "Leave", icon: Plane, module: "approvals", feature: "approvals.leave", keywords: ["holiday", "vacation", "time off"] },
       { to: "/expenses", label: "Expenses", icon: ReceiptText, keywords: ["claims", "receipts", "reimbursement"] },
-      { to: "/payroll", label: "Payroll", icon: Banknote, module: "hr", keywords: ["salary", "payslip"] },
-      { to: "/benefits", label: "Benefits", icon: HeartPulse, module: "hr", keywords: ["plans", "enrollment"] },
+      { to: "/payroll", label: "Payroll", icon: Banknote, module: "hr", feature: "hr.payroll", keywords: ["salary", "payslip"] },
+      { to: "/benefits", label: "Benefits", icon: HeartPulse, module: "hr", feature: "hr.benefits", keywords: ["plans", "enrollment"] },
     ],
   },
   {
@@ -172,7 +178,7 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Assets & Spend",
     items: [
       { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker", keywords: ["equipment", "inventory", "devices"] },
-      { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker", keywords: ["sim", "mobile", "numbers"] },
+      { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker", feature: "asset_tracker.phone_lines", keywords: ["sim", "mobile", "numbers"] },
       { to: "/subscriptions", label: "Subscriptions", icon: Wallet, module: "subscriptions", keywords: ["vendors", "renewals", "recurring costs"] },
     ],
   },
@@ -180,8 +186,8 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Sales",
     items: [
       { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm", keywords: ["customers", "pipeline", "sales"] },
-      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
-      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
+      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", feature: "crm.web_inbox", keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
+      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", feature: "crm.web_inbox", keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
     ],
   },
   {
@@ -208,9 +214,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     section: "HR Administration",
     items: [
-      { to: "/reports", label: "HR Reports", icon: BarChart3, module: "hr", keywords: ["analytics", "export"] },
+      { to: "/reports", label: "HR Reports", icon: BarChart3, module: "hr", feature: "hr.reports", keywords: ["analytics", "export"] },
       { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr", keywords: ["employee schema", "attributes"] },
-      { to: "/hr/automations", label: "HR Automations", icon: Zap, module: "hr", keywords: ["reminders", "rules"] },
+      { to: "/hr/automations", label: "HR Automations", icon: Zap, module: "hr", feature: "hr.automations", keywords: ["reminders", "rules"] },
     ],
   },
   {
@@ -253,7 +259,7 @@ export function currentNavSection(pathname: string): string | undefined {
 
 export function visibleNavGroups(
   isAdmin: boolean,
-  can: (module: string) => boolean,
+  can: (key: string) => boolean,
   isManager = false,
 ): NavGroup[] {
   return NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin)
@@ -262,7 +268,10 @@ export function visibleNavGroups(
       items: group.items.filter((item) => {
         if ((item.adminOnly || group.adminOnly) && !isAdmin) return false;
         if (item.managerOnly && !isAdmin && !isManager) return false;
-        return !item.module || can(item.module);
+        // `can` also subtracts modules and features switched off org-wide, so
+        // a disabled area leaves the navigation for everyone, admins included.
+        const key = item.feature ?? item.module;
+        return !key || can(key);
       }).map((item) => item.to === "/sharepoint/documents" ? { ...item, label: documentLibraryLabel(isAdmin, isManager) } : item),
     }))
     .filter((group) => group.items.length > 0);

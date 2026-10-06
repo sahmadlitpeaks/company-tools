@@ -18,8 +18,12 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
-  /** Whether the current user may access a permission module. */
-  can: (module: string) => boolean;
+  /**
+   * Whether the current user may reach a module key ("tasks") or one of its
+   * features ("hr.payroll"). False for anything an administrator has switched
+   * off org-wide, including for administrators themselves.
+   */
+  can: (key: string) => boolean;
 }
 
 const AuthCtx = createContext<AuthState | undefined>(undefined);
@@ -76,10 +80,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const can = useCallback(
-    (module: string) =>
-      !!user && (user.is_admin || user.effective_permissions.includes(module)),
+  // Modules and features the organisation has switched off. Applied to
+  // everyone: a disabled module is not an access question, so an admin does
+  // not see through it either. Settings is admin-only rather than
+  // module-gated, so it stays reachable to switch things back on.
+  const switchedOff = useMemo(
+    () =>
+      new Set([...(user?.disabled_modules ?? []), ...(user?.disabled_features ?? [])]),
     [user],
+  );
+
+  const can = useCallback(
+    (key: string) => {
+      if (!user) return false;
+      // A feature is unreachable when its own switch is off or its module's is.
+      const module = key.split(".")[0];
+      if (switchedOff.has(key) || switchedOff.has(module)) return false;
+      // Features narrow what a module offers; they are not granted separately,
+      // so the permission check is always against the parent module.
+      return user.is_admin || user.effective_permissions.includes(module);
+    },
+    [user, switchedOff],
   );
 
   const value = useMemo(
