@@ -20,6 +20,11 @@ and now also includes:
   member, department-filtered assignment, and queued assignment emails. See
   [task workflow and delivery setup](docs/TASKS.md).
 
+- A Jira-style project tracker: epics, stories, tasks, bugs and sub-tasks with
+  issue keys, story points, labels, links, watchers, comments, attachments and
+  field history, visible only to each project's members. See
+  [project tracker](docs/PROJECT_TRACKER.md).
+
 - Simple time tracking with two primary actions (clock and break), a live
   `HH:MM:SS` timer that retains exact seconds after clock-out, a daily
   work/break timeline, weekly timesheets, corrections,
@@ -199,5 +204,6 @@ refused.
 - [Coding-agent instructions](AGENTS.md)
 - [Architecture and API map](docs/ARCHITECTURE.md)
 - [Frontend components and AI usage](docs/FRONTEND_COMPONENTS.md)
+- [Project tracker](docs/PROJECT_TRACKER.md)
 - [Backup recovery](docs/backup-recovery.md)
 - [HR roadmap](docs/HR_ROADMAP.md)

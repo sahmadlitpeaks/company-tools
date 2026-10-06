@@ -16,6 +16,8 @@ const BrandingPage = lazy(() => import("./pages/BrandingPage"));
 const ProductsPage = lazy(() => import("./pages/ProductsPage"));
 const SharedPage = lazy(() => import("./pages/SharedPage"));
 const TasksPage = lazy(() => import("./pages/TasksPage"));
+const ProjectsPage = lazy(() => import("./pages/ProjectsPage"));
+const ProjectPage = lazy(() => import("./pages/ProjectPage"));
 const RoutineChecksPage = lazy(() => import("./pages/RoutineChecksPage"));
 const ChecklistTemplatesPage = lazy(() => import("./pages/ChecklistTemplatesPage"));
 const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage"));
@@ -184,6 +186,8 @@ export default function App() {
             path="/tasks"
             element={<Protected module="tasks"><TasksPage /></Protected>}
           />
+          <Route path="/projects" element={<Protected module="projects"><ProjectsPage /></Protected>} />
+          <Route path="/projects/:projectKey" element={<Protected module="projects"><ProjectPage /></Protected>} />
           <Route
             path="/routine-checks"
             element={<Protected module="routine_checks"><RoutineChecksPage /></Protected>}

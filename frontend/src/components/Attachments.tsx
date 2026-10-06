@@ -18,6 +18,7 @@ export default function Attachments({
   camera,
   label = "+ Attach file",
   heading = "Attachments",
+  readOnly = false,
   onChanged,
 }: {
   entityType:
@@ -26,7 +27,8 @@ export default function Attachments({
     | "task"
     | "task_item"
     | "idea"
-    | "lost_found";
+    | "lost_found"
+    | "pm_issue";
   entityId: string;
   compact?: boolean;
   /** Restrict the picker, e.g. "image/*" for photo evidence. */
@@ -37,6 +39,8 @@ export default function Attachments({
   camera?: boolean;
   label?: string;
   heading?: string;
+  /** List and download only, for people who may read but not change files. */
+  readOnly?: boolean;
   onChanged?: () => void;
 }) {
   const { notify } = useToast();
@@ -94,7 +98,7 @@ export default function Attachments({
         <h4 className="m-0 inline-flex items-center gap-1.5">
           <Paperclip data-icon="inline-start" /> {heading} {data?.length ? `(${data.length})` : ""}
         </h4>
-        <span className="flex flex-none items-center gap-1.5">
+        {!readOnly && <span className="flex flex-none items-center gap-1.5">
           {camera && (
             <Button
               type="button"
@@ -107,7 +111,7 @@ export default function Attachments({
           <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
             {label}
           </Button>
-        </span>
+        </span>}
         <Input
           aria-label={`Upload ${heading.toLowerCase()}`}
           ref={fileRef}
@@ -157,7 +161,7 @@ export default function Attachments({
                 >
                   <Download />
                 </Button>
-                <Button type="button"
+                {!readOnly && <Button type="button"
                   size="icon-sm"
                   variant="destructive"
                   title="Remove"
@@ -165,7 +169,7 @@ export default function Attachments({
                   onClick={() => setPendingRemove(a)}
                 >
                   <X />
-                </Button>
+                </Button>}
               </span>
             </div>
             );

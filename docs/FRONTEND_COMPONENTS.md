@@ -169,10 +169,11 @@ For a select:
 | `app-sidebar.tsx`, `navigation.ts` | Permission-aware main navigation and route titles. Add modules here rather than hardcoding links in the shell. |
 | `CommandPalette.tsx` | Global searchable navigation/actions. Extend its existing source model for globally searchable features. |
 | `NotificationBell.tsx` | Notification display and read actions. |
-| `Attachments.tsx` | Generic upload/list/delete and camera entry for supported entity types. Routine Check evidence uses `entityType="task_item"`, `camera`, `accept="image/*"`, and `capture="environment"`. |
+| `Attachments.tsx` | Generic upload/list/delete and camera entry for supported entity types. Routine Check evidence uses `entityType="task_item"`, `camera`, `accept="image/*"`, and `capture="environment"`. Pass `readOnly` for people who may download but not change files (project tracker viewers). |
 | `CameraCapture.tsx` | Live camera viewfinder, downscale, review, retake, and upload. Normally use it through `Attachments`, not in parallel with another file input. |
 | `SavedViews.tsx` | Saved filter/view state for list surfaces. |
 | `crm/LeadFormDialog.tsx`, `crm/CrmImportDialog.tsx`, `crm/crm.ts` | CRM lead add/edit form, spreadsheet import preview, and the shared stage, priority and follow-up helpers used by the CRM list and lead detail pages. Keep `STAGES` in step with `LEAD_STATUSES` in `backend/app/models/crm.py`. |
+| `pm/IssueDetail.tsx`, `pm/IssueForm.tsx`, `pm/ProjectMembers.tsx`, `pm/IssueBits.tsx` | Project tracker issue side panel (opened by `?issue=KEY-N`), create/edit issue dialog, project people and roles, and the issue type icon and status badge. Vocabulary and types live in `api/pm.ts`; see `docs/PROJECT_TRACKER.md`. |
 | `ListControls.tsx` | Labelled filter selects, inclusive UTC date fields, result counts and server page navigation. Filters reset the requested offset; navigation uses the server-returned offset after deletion clamps. |
 | `PdfThumb.tsx`, `FlipbookModal.tsx` | Authenticated PDF preview and document viewer. |
 | `VersionsModal.tsx` | Version history for versioned documents. |

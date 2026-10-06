@@ -141,6 +141,11 @@ a retry worker checks current ownership and live SharePoint access before
 sending document details. See [Tasks](TASKS.md) for permissions, progress,
 email configuration, and delivery guarantees.
 
+The project tracker (`/api/pm`, `app/api/pm.py`) is separate from ordinary
+tasks. It is gated by the `projects` module and then by per-project membership
+(`app/services/pm_access.py`); being a manager elsewhere grants nothing there.
+See [Project tracker](PROJECT_TRACKER.md).
+
 ## Modules & key endpoints
 
 | Feature | Module | Auth endpoints | Public endpoints |

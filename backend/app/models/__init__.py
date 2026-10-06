@@ -128,3 +128,12 @@ from app.models.training import (  # noqa: F401
 from app.models.api_token import ApiToken  # noqa: F401
 from app.models.preference import DashboardPreference  # noqa: F401
 from app.models.operations import BackupRecord, BookingSpace, CafeMenuItem, CafeOrder, CompanyEvent, Idea, IdeaComment, IdeaVote, LostFoundReport, PurchaseRequest, SpaceBooking, Visitor  # noqa: F401
+from app.models.pm import (  # noqa: F401
+    PmComment,
+    PmIssue,
+    PmIssueHistory,
+    PmIssueLink,
+    PmIssueWatcher,
+    PmProject,
+    PmProjectMember,
+)

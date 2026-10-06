@@ -59,6 +59,7 @@ from app.api import (
     reports,
     subscriptions,
     timekeeping,
+    pm,
     products,
     qrcodes,
     service_desk,
@@ -308,6 +309,7 @@ app.include_router(
     checklists.runs_router, prefix=api_prefix, dependencies=_mod("routine_checks")
 )
 app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
+app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(leave.router, prefix=api_prefix, dependencies=_feat("approvals.leave"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))
