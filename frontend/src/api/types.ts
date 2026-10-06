@@ -628,11 +628,62 @@ export interface CrmLead {
   owner_name?: string | null;
   value?: string | null;
   notes?: string | null;
+  priority?: CrmPriority | null;
+  tags?: string[] | null;
+  /** YYYY-MM-DD (UTC calendar day). */
+  follow_up_date?: string | null;
+  next_step?: string | null;
+  expected_close_date?: string | null;
+  lost_reason?: string | null;
+  last_contacted_at?: string | null;
   /** Website provenance, present on leads that arrived through a web form. */
   intake_form_id?: string | null;
   page_url?: string | null;
   fields?: LeadField[] | null;
   created_at: string;
+  updated_at?: string | null;
+  /** Admins and the lead's owner may delete it. */
+  can_delete?: boolean;
+}
+
+export type CrmPriority = "high" | "medium" | "low";
+
+export interface CrmActivity {
+  id: string;
+  lead_id: string;
+  /** note | call | email | meeting are logged by people; created | change | import are automatic. */
+  kind: string;
+  body: string;
+  author_id?: string | null;
+  author_name?: string | null;
+  created_at: string;
+  can_delete: boolean;
+}
+
+export interface CrmImportIssue {
+  row: number;
+  message: string;
+}
+
+export interface CrmImportPreview {
+  sheets: string[];
+  sheet?: string | null;
+  columns: string[];
+  mapping: Record<string, string | null>;
+  total_rows: number;
+  valid_rows: number;
+  duplicates_in_file: number;
+  existing_matches: number;
+  errors: CrmImportIssue[];
+  warnings: CrmImportIssue[];
+  sample: { row: number; name?: string | null; email?: string | null; phone?: string | null; company?: string | null; status: string; match: "new" | "duplicate_in_file" | "exists" }[];
+}
+
+export interface CrmImportResult {
+  created: number;
+  merged: number;
+  skipped: number;
+  errors: CrmImportIssue[];
 }
 
 export interface RecordPage<T> {
@@ -659,6 +710,9 @@ export interface CrmSummary {
   by_source: Record<string, number>;
   won_value: string;
   open_value: string;
+  /** Open leads whose follow-up date is before / on today (UTC). */
+  overdue?: number;
+  due_today?: number;
 }
 
 export interface AppNotification {

@@ -9,7 +9,7 @@ async function mockLists(page: Page) {
   const mutations: { path: string; body: Record<string, unknown> }[] = [];
   const leads = Array.from({ length: 61 }, (_, i) => ({
     id: `lead-${i}`, name: `Lead ${i}`, email: `lead${i}@example.com`, phone: `97150000${i}`, company: "A long company name for checking action visibility",
-    source: i % 2 ? "manual" : "web", source_detail: "Website / contact form", status: i % 3 ? "new" : "qualified", owner_id: i % 2 ? "user-1" : null, owner_name: i % 2 ? "Alex Admin" : null, company_id: "brand-1", value: String(i * 100), notes: "Needs follow-up", fields: [{ key: "budget", label: "Budget range", value: "10k+" }], created_at: "2026-09-30T12:00:00Z",
+    source: i % 2 ? "manual" : "web", source_detail: "Website / contact form", status: i % 3 ? "new" : "qualified", owner_id: i % 2 ? "user-1" : null, owner_name: i % 2 ? "Alex Admin" : null, company_id: "brand-1", value: String(i * 100), notes: "Needs follow-up", fields: [{ key: "budget", label: "Budget range", value: "10k+" }], created_at: "2026-09-30T12:00:00Z", can_delete: true,
   }));
   const submissions = Array.from({ length: 61 }, (_, i) => ({
     id: `sub-${i}`, name: `Sender ${i}`, email: `sender${i}@example.com`, subject: `Enquiry ${i}`, message: "Please send a quotation.", type: i % 2 ? "inquiry" : "lead", status: "new", source_id: "site-1", source_name: "Main website", spam_score: 0, mapping_status: "mapped", created_at: "2026-09-30T12:00:00Z",
@@ -145,7 +145,7 @@ test("CRM actions stay in view and edits preserve website fields", async ({ page
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   expect(mutations[0]).toMatchObject({ path: "/api/crm/leads/lead-0", body: { name: "Updated lead" } });
-  await choose(page, "Status for Updated lead", "won");
+  await choose(page, "Stage for Updated lead", "Won");
   await expect.poll(() => mutations.at(-1)?.body.status).toBe("won");
 });
 

@@ -172,6 +172,7 @@ For a select:
 | `Attachments.tsx` | Generic upload/list/delete and camera entry for supported entity types. Routine Check evidence uses `entityType="task_item"`, `camera`, `accept="image/*"`, and `capture="environment"`. |
 | `CameraCapture.tsx` | Live camera viewfinder, downscale, review, retake, and upload. Normally use it through `Attachments`, not in parallel with another file input. |
 | `SavedViews.tsx` | Saved filter/view state for list surfaces. |
+| `crm/LeadFormDialog.tsx`, `crm/CrmImportDialog.tsx`, `crm/crm.ts` | CRM lead add/edit form, spreadsheet import preview, and the shared stage, priority and follow-up helpers used by the CRM list and lead detail pages. Keep `STAGES` in step with `LEAD_STATUSES` in `backend/app/models/crm.py`. |
 | `ListControls.tsx` | Labelled filter selects, inclusive UTC date fields, result counts and server page navigation. Filters reset the requested offset; navigation uses the server-returned offset after deletion clamps. |
 | `PdfThumb.tsx`, `FlipbookModal.tsx` | Authenticated PDF preview and document viewer. |
 | `VersionsModal.tsx` | Version history for versioned documents. |
