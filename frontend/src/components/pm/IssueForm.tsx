@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { api } from "@/api/client";
 import {
-  ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, parentCandidates, pmError,
-  type IssuePriority, type IssueStatus, type IssueType, type PmIssue, type PmMember, type PmProject,
+  BOARD_TYPES, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, parentCandidates, pmError,
+  type IssuePriority, type IssueStatus, type IssueType, type PmIssue, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { useAuth } from "@/auth/AuthContext";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
@@ -17,12 +17,14 @@ import { Textarea } from "@/components/ui/textarea";
 const NONE = "none";
 
 /** Create or edit an issue. Field rules mirror the API (see backend/app/api/pm.py). */
-export function IssueForm({ project, members, issues, issue, defaults, onClose, onSaved }: {
+export function IssueForm({ project, members, issues, sprints = [], issue, defaults, onClose, onSaved }: {
   project: PmProject;
   members: PmMember[];
   issues: PmIssue[];
+  /** Open (active and future) sprints. */
+  sprints?: PmSprint[];
   issue?: PmIssue;
-  defaults?: { issue_type?: IssueType; parent_id?: string };
+  defaults?: { issue_type?: IssueType; parent_id?: string; sprint_id?: string };
   onClose: () => void;
   onSaved: (saved: PmIssue) => void;
 }) {
@@ -37,6 +39,7 @@ export function IssueForm({ project, members, issues, issue, defaults, onClose, 
     labels: (issue?.labels ?? []).join(", "),
     parent_id: issue?.parent_id ?? defaults?.parent_id ?? NONE,
     assignee_id: issue?.assignee_id ?? NONE,
+    sprint_id: issue?.sprint_id ?? defaults?.sprint_id ?? NONE,
     reporter_id: issue?.reporter_id ?? (members.some((m) => m.user_id === user?.id) ? user!.id : NONE),
     start_date: issue?.start_date ?? "",
     due_date: issue?.due_date ?? "",
@@ -47,6 +50,9 @@ export function IssueForm({ project, members, issues, issue, defaults, onClose, 
   const parents = parentCandidates(issues, type, issue?.id);
   const assignable = members.filter((member) => member.role !== "viewer");
   const parentRequired = type === "subtask";
+  const sprintable = project.sprints_enabled && BOARD_TYPES.includes(type);
+  // Keep showing a closed sprint the issue already belongs to, so editing doesn't silently move it.
+  const sprintChoices = [...sprints, ...(issue?.sprint_id && !sprints.some((s) => s.id === issue.sprint_id) ? [{ id: issue.sprint_id, name: issue.sprint_name ?? "Closed sprint" }] : [])];
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -64,6 +70,7 @@ export function IssueForm({ project, members, issues, issue, defaults, onClose, 
       labels: form.labels.split(",").map((label) => label.trim()).filter(Boolean),
       parent_id: type === "epic" || form.parent_id === NONE ? null : form.parent_id,
       assignee_id: form.assignee_id === NONE ? null : form.assignee_id,
+      ...(project.sprints_enabled ? { sprint_id: sprintable && form.sprint_id !== NONE ? form.sprint_id : null } : {}),
       ...(form.reporter_id !== NONE ? { reporter_id: form.reporter_id } : {}),
       start_date: form.start_date || null,
       due_date: form.due_date || null,
@@ -104,6 +111,8 @@ export function IssueForm({ project, members, issues, issue, defaults, onClose, 
             <Textarea id="pm-issue-description" rows={5} value={form.description} onChange={(event) => set("description", event.target.value)} />
             <FieldDescription>Requirements, acceptance criteria and links to supporting documents.</FieldDescription>
           </Field>
+          {sprintable && <TaskChoice id="pm-issue-sprint" label="Sprint" value={form.sprint_id}
+            items={[{ value: NONE, label: "Backlog" }, ...sprintChoices.map((s) => ({ value: s.id, label: s.name }))]} onChange={(value) => set("sprint_id", value)} />}
           <TaskChoice id="pm-issue-status" label="Status" value={form.status} items={ISSUE_STATUSES} onChange={(value) => set("status", value)} />
           <TaskChoice id="pm-issue-priority" label="Priority" value={form.priority} items={ISSUE_PRIORITIES} onChange={(value) => set("priority", value)} />
           <TaskChoice id="pm-issue-assignee" label="Assignee" value={form.assignee_id} items={[{ value: NONE, label: "Unassigned" }, ...assignable.map((m) => ({ value: m.user_id, label: m.name }))]} onChange={(value) => set("assignee_id", value)} />

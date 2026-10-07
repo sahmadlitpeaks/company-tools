@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import {
   canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, LINK_RELATIONS, pmError,
-  type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject,
+  type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
 import { useAuth } from "@/auth/AuthContext";
@@ -29,12 +29,13 @@ type Props = {
   project: PmProject;
   members: PmMember[];
   issues: PmIssue[];
+  sprints: PmSprint[];
   onClose: () => void;
   onChanged: () => void;
 };
 
 /** Jira-style issue view in a side panel, opened from `?issue=KEY-N`. */
-export function IssueDetail({ issueKey, project, members, issues, onClose, onChanged }: Props) {
+export function IssueDetail({ issueKey, project, members, issues, sprints, onClose, onChanged }: Props) {
   const { user } = useAuth();
   const detail = useFetch<PmIssueDetail>(`/api/pm/issues/${issueKey}`, true);
   const [mode, setMode] = useState<null | "edit" | "child" | "delete">(null);
@@ -97,6 +98,7 @@ export function IssueDetail({ issueKey, project, members, issues, onClose, onCha
               <Detail label="Reporter">{issue.reporter_name ?? "—"}</Detail>
               <Detail label="Priority">{labelOf(ISSUE_PRIORITIES, issue.priority)}</Detail>
               <Detail label="Story points">{pointsLabel(issue.story_points)}</Detail>
+              {project.sprints_enabled && <Detail label="Sprint">{issue.sprint_name ?? "Backlog"}</Detail>}
               <Detail label="Start date">{issue.start_date ? dateLabel(issue.start_date) : "—"}</Detail>
               <Detail label="Due date">{issue.due_date ? dateLabel(issue.due_date) : "—"}</Detail>
               <Detail label="Labels" wide>
@@ -150,8 +152,8 @@ export function IssueDetail({ issueKey, project, members, issues, onClose, onCha
       </SheetContent>
     </Sheet>
 
-    {issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
-    {issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
+    {issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
+    {issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
     <AlertDialog open={mode === "delete"} onOpenChange={(open) => !open && !state.busy && setMode(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>

@@ -35,6 +35,39 @@ Project (key LIMS)
 - **Attachments** use the shared `attachments` table with entity type
   `pm_issue`.
 
+## Sprints, backlog and board
+
+Projects use sprints by default (Scrum). A project administrator can switch
+them off in **Settings → Way of working** to run a plain Kanban board; that is
+refused while a sprint is active.
+
+- **Sprints** are `future`, `active` or `closed`. New sprints are numbered
+  automatically (`LIMS Sprint 3`) unless named.
+- Only stories, tasks and bugs go into sprints. Epics span sprints and
+  sub-tasks follow their parent. Converting an issue to an epic or sub-task
+  takes it out of its sprint.
+- **Starting** needs start and end dates and records the committed story
+  points. Only one sprint can be active per project; a partial unique index
+  enforces this in the database too.
+- **Completing** records the completed points, closes the sprint and moves
+  unfinished issues to the backlog or a chosen future sprint. Each move is
+  written to the issue's history. Closed sprints are read-only and can't
+  receive issues; reopening a finished issue from a closed sprint returns it
+  to the backlog.
+- Deleting a sprint is only possible before it starts; its issues return to
+  the backlog.
+- **Backlog** (Scrum only): open sprints above the backlog. Members drag issues
+  between sections and to reorder them (the issue's `rank`), or use each
+  issue's **Move** menu, which also works by keyboard and on phones. Finished
+  issues that are not in a sprint drop out of the backlog.
+- **Board**: one column per status. Scrum boards show the active sprint's
+  stories, tasks and bugs; Kanban boards show all of them, with Done limited to
+  the last 14 days. Members drag cards (mouse anywhere on the card, touch and
+  keyboard by the handle) to change status. "Only my issues" and search filter
+  the board.
+- Project administrators manage sprints; members plan and move issues;
+  viewers see the board and backlog read-only.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
@@ -80,20 +113,26 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET /projects/{id or key}`, `PATCH /projects/{id}` | Read; update or archive (project admin) |
 | `GET/POST /projects/{id}/members`, `PATCH/DELETE /projects/{id}/members/{user}` | Project people |
 | `GET /people` | Active people for project administrators to add |
-| `GET/POST /projects/{id}/issues` | List (filters: `issue_type`, `status`, `assignee=me|none|<id>`, `parent_id`, `label`, `q`); create |
+| `GET/POST /projects/{id}/issues` | List (filters: `issue_type`, `status`, `assignee=me|none|<id>`, `parent_id`, `sprint=backlog|active|<id>`, `label`, `q`); create |
 | `GET /issues/{id or KEY-N}` | Issue with children, links, watchers and the caller's role |
 | `PATCH/DELETE /issues/{id}` | Update (records history); delete (sub-tasks go with it, an epic's issues stay) |
 | `POST /issues/{id}/links`, `DELETE /links/{id}` | Issue links |
 | `POST /issues/{id}/watchers`, `DELETE /issues/{id}/watchers/{user}` | Watch and unwatch |
 | `GET/POST /issues/{id}/comments`, `PATCH/DELETE /comments/{id}` | Comments |
 | `GET /issues/{id}/history` | Field change history, newest first |
+| `GET/POST /projects/{id}/sprints` | List (`?state=open|closed|all`); create (project admin) |
+| `PATCH/DELETE /sprints/{id}` | Edit an open sprint; delete a future sprint |
+| `POST /sprints/{id}/start`, `POST /sprints/{id}/complete` | Start with dates; complete with `move_to` (`backlog` or a future sprint id) |
 
 ## Frontend
 
 - `pages/ProjectsPage.tsx`: project cards with progress; admins create projects.
-- `pages/ProjectPage.tsx` (`/projects/:projectKey`): **Issues** (grouped by epic
-  or as a list, with search and filters; table on desktop, cards on mobile),
-  **People**, and **Settings** for project administrators.
+- `pages/ProjectPage.tsx` (`/projects/:projectKey`): **Board** (default),
+  **Backlog** (Scrum projects), **Issues** (grouped by epic or as a list, with
+  search and filters; table on desktop, cards on mobile), **People**, and
+  **Settings** for project administrators.
+- `components/pm/IssueBoard.tsx`, `Backlog.tsx` and `SprintDialogs.tsx`: the
+  drag-and-drop board, backlog planning and sprint create/edit/start/complete.
 - `components/pm/IssueDetail.tsx`: the issue side panel, opened with
   `?issue=KEY-N` so issue links can be shared and come from notifications.
 - `components/pm/IssueForm.tsx`, `ProjectMembers.tsx`, `IssueBits.tsx`, and
@@ -101,11 +140,12 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Planned next steps: sprints and backlog planning, a drag-and-drop board, the
-timeline (Gantt), reports (burndown, velocity) and the team workload heat map.
+Planned next: the timeline (Gantt), reports (burndown, velocity) and the team
+workload heat map.
 
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
-- Migration `s5c6d7e8f9a0` (verified on PostgreSQL 16, including downgrade).
+- Migrations `s5c6d7e8f9a0` and `t6d7e8f9a0b1` (verified on PostgreSQL 16,
+  including downgrade).
 - Browser: `frontend/e2e/projects.spec.ts` (desktop and Pixel 5, with axe).

@@ -13,6 +13,7 @@ export interface PmProject {
   lead_id: string | null;
   lead_name: string | null;
   status: "active" | "archived";
+  sprints_enabled: boolean;
   start_date: string | null;
   target_date: string | null;
   created_at: string;
@@ -61,6 +62,8 @@ export interface PmIssue {
   assignee_name: string | null;
   parent_id: string | null;
   parent: PmIssueRef | null;
+  sprint_id: string | null;
+  sprint_name: string | null;
   start_date: string | null;
   due_date: string | null;
   resolved_at: string | null;
@@ -107,6 +110,27 @@ export interface PmHistory {
   new_value: string | null;
   created_at: string;
 }
+
+export interface PmSprint {
+  id: string;
+  project_id: string;
+  name: string;
+  goal: string | null;
+  status: "future" | "active" | "closed";
+  start_date: string | null;
+  end_date: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  committed_points: number | null;
+  completed_points: number | null;
+  issue_count: number;
+  done_count: number;
+  points: number;
+  done_points: number;
+}
+
+/** Issue types that sit in sprints and on the board; epics span sprints and sub-tasks follow their parent. */
+export const BOARD_TYPES: IssueType[] = ["story", "task", "bug"];
 
 export const ISSUE_TYPES: Array<{ value: IssueType; label: string }> = [
   { value: "epic", label: "Epic" },
@@ -165,6 +189,14 @@ export function parentCandidates(issues: PmIssue[], type: IssueType, selfId?: st
 
 export function issueLink(projectKey: string, issueKey: string) {
   return `/projects/${projectKey}?issue=${issueKey}`;
+}
+
+/** A rank that places an item between two neighbours (either may be missing). */
+export function rankBetween(before?: number, after?: number) {
+  if (before === undefined && after === undefined) return 1;
+  if (before === undefined) return after! - 1;
+  if (after === undefined) return before + 1;
+  return (before + after) / 2;
 }
 
 export function pmError(cause: unknown) {

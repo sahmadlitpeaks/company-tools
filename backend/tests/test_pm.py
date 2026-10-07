@@ -261,3 +261,85 @@ async def test_issue_attachments_follow_project_access(client, auth):
     assert (await client.post(url, headers=viewer, files=files)).status_code == 403
     assert (await client.get(url, headers=outsider)).status_code in (403, 404)
     assert (await client.get(f"/api/attachments/{up.json()['id']}/download", headers=outsider)).status_code in (403, 404)
+
+
+async def test_sprint_lifecycle_and_rules(client, auth):
+    project = await _project(client, auth)
+    pid = project["id"]
+    (dev, _), (viewer, _), _ = await _team(client, auth, pid)
+    assert project["sprints_enabled"] is True
+
+    # Only project administrators manage sprints.
+    assert (await client.post(f"/api/pm/projects/{pid}/sprints", headers=dev, json={})).status_code == 403
+    s1 = (await client.post(f"/api/pm/projects/{pid}/sprints", headers=auth, json={})).json()
+    s2 = (await client.post(f"/api/pm/projects/{pid}/sprints", headers=auth, json={"name": "Hardening"})).json()
+    assert s1["name"] == "LIMS Sprint 1" and s1["status"] == "future" and s2["name"] == "Hardening"
+
+    epic = await _issue(client, auth, pid, issue_type="epic", summary="Epic")
+    a = await _issue(client, dev, pid, summary="A", story_points=3, sprint_id=s1["id"])
+    b = await _issue(client, dev, pid, summary="B", story_points=5)
+    sub = await _issue(client, dev, pid, issue_type="subtask", summary="Sub", parent_id=a["id"])
+    assert a["sprint_name"] == "LIMS Sprint 1"
+    # Epics and sub-tasks don't go into sprints.
+    for target in (epic, sub):
+        r = await client.patch(f"/api/pm/issues/{target['id']}", headers=dev, json={"sprint_id": s1["id"]})
+        assert r.status_code == 422
+    # Members plan the backlog by moving issues into sprints.
+    r = await client.patch(f"/api/pm/issues/{b['id']}", headers=dev, json={"sprint_id": s1["id"], "rank": 0.5})
+    assert r.status_code == 200 and r.json()["sprint_id"] == s1["id"]
+    backlog = (await client.get(f"/api/pm/projects/{pid}/issues?sprint=backlog&issue_type=story,task,bug", headers=viewer)).json()
+    assert backlog == []
+    in_sprint = (await client.get(f"/api/pm/projects/{pid}/issues?sprint={s1['id']}", headers=viewer)).json()
+    assert [i["summary"] for i in in_sprint] == ["B", "A"]
+
+    # Starting needs valid dates and only one sprint runs at a time.
+    bad = await client.post(f"/api/pm/sprints/{s1['id']}/start", headers=auth, json={"start_date": "2026-10-14", "end_date": "2026-10-07"})
+    assert bad.status_code == 422
+    started = await client.post(f"/api/pm/sprints/{s1['id']}/start", headers=auth, json={"start_date": "2026-10-07", "end_date": "2026-10-21", "goal": "Ship upload"})
+    assert started.status_code == 200 and started.json()["committed_points"] == 8
+    second = await client.post(f"/api/pm/sprints/{s2['id']}/start", headers=auth, json={"start_date": "2026-10-07", "end_date": "2026-10-21"})
+    assert second.status_code == 409
+    active = (await client.get(f"/api/pm/projects/{pid}/issues?sprint=active", headers=viewer)).json()
+    assert {i["summary"] for i in active} == {"A", "B"}
+    assert (await client.delete(f"/api/pm/sprints/{s1['id']}", headers=auth)).status_code == 409
+    # Sprints can't be switched off mid-sprint.
+    assert (await client.patch(f"/api/pm/projects/{pid}", headers=auth, json={"sprints_enabled": False})).status_code == 409
+
+    await client.patch(f"/api/pm/issues/{a['id']}", headers=dev, json={"status": "done"})
+    r = await client.post(f"/api/pm/sprints/{s1['id']}/complete", headers=auth, json={"move_to": s2["id"]})
+    assert r.status_code == 200, r.text
+    closed = r.json()
+    assert closed["status"] == "closed" and closed["completed_points"] == 3 and closed["completed_at"]
+    moved = (await client.get(f"/api/pm/issues/{b['id']}", headers=auth)).json()
+    assert moved["sprint_id"] == s2["id"]
+    history = (await client.get(f"/api/pm/issues/{b['id']}/history", headers=auth)).json()
+    assert ("sprint", "LIMS Sprint 1", "Hardening") in {(h["field"], h["old_value"], h["new_value"]) for h in history}
+    # Closed sprints are read-only and can't receive issues.
+    assert (await client.patch(f"/api/pm/sprints/{s1['id']}", headers=auth, json={"name": "x"})).status_code == 409
+    r = await client.patch(f"/api/pm/issues/{b['id']}", headers=dev, json={"sprint_id": s1["id"]})
+    assert r.status_code == 422
+    # Reopening finished work from a closed sprint returns it to the backlog.
+    reopened = await client.patch(f"/api/pm/issues/{a['id']}", headers=dev, json={"status": "in_progress"})
+    assert reopened.json()["sprint_id"] is None
+
+    open_sprints = (await client.get(f"/api/pm/projects/{pid}/sprints", headers=viewer)).json()
+    assert [s["name"] for s in open_sprints] == ["Hardening"] and open_sprints[0]["issue_count"] == 1
+    all_sprints = (await client.get(f"/api/pm/projects/{pid}/sprints?state=all", headers=viewer)).json()
+    assert [s["status"] for s in all_sprints] == ["future", "closed"]
+
+    # Deleting a future sprint returns its issues to the backlog.
+    assert (await client.delete(f"/api/pm/sprints/{s2['id']}", headers=auth)).status_code == 204
+    assert (await client.get(f"/api/pm/issues/{b['id']}", headers=auth)).json()["sprint_id"] is None
+
+
+async def test_kanban_projects_reject_sprints(client, auth):
+    project = await _project(client, auth)
+    pid = project["id"]
+    r = await client.patch(f"/api/pm/projects/{pid}", headers=auth, json={"sprints_enabled": False})
+    assert r.status_code == 200 and r.json()["sprints_enabled"] is False
+    assert (await client.post(f"/api/pm/projects/{pid}/sprints", headers=auth, json={})).status_code == 409
+    other = await _project(client, auth, key="OPS")
+    sprint = (await client.post(f"/api/pm/projects/{other['id']}/sprints", headers=auth, json={})).json()
+    # A sprint from another project is rejected, as is any sprint on a Kanban project.
+    r = await client.post(f"/api/pm/projects/{pid}/issues", headers=auth, json={"summary": "x", "sprint_id": sprint["id"]})
+    assert r.status_code == 422

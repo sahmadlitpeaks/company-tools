@@ -1,42 +1,59 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Archive, ArchiveRestore, Plus, Search } from "lucide-react";
+import { differenceInCalendarDays, parseISO } from "date-fns";
+import { Archive, ArchiveRestore, Plus, Search, SquareCheckBig } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
-  canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, pmError,
-  type PmIssue, type PmMember, type PmProject,
+  BOARD_TYPES, canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, pmError,
+  type IssueStatus, type PmIssue, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
+import { useAuth } from "@/auth/AuthContext";
+import { Backlog } from "@/components/pm/Backlog";
+import { IssueBoard } from "@/components/pm/IssueBoard";
 import { IssueTypeIcon, pointsLabel, StatusBadge } from "@/components/pm/IssueBits";
 import { IssueDetail } from "@/components/pm/IssueDetail";
 import { IssueForm } from "@/components/pm/IssueForm";
 import { ProjectMembers } from "@/components/pm/ProjectMembers";
+import { CompleteSprintDialog, SprintDialog, StartSprintDialog } from "@/components/pm/SprintDialogs";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
 import { Empty, ErrorState, Loading, PageHead, useToast } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSurface } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useFetch } from "@/hooks/useApi";
 
 const FILTERS = { q: "", type: "all", status: "all", assignee: "all" };
+// A Kanban board keeps recently finished work visible, as Jira does.
+const KANBAN_DONE_DAYS = 14;
+
+type SprintAction = { kind: "create" | "edit" | "start" | "complete" | "delete"; sprint?: PmSprint };
 
 export default function ProjectPage() {
   const { projectKey = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  const { notify } = useToast();
   const project = useFetch<PmProject>(`/api/pm/projects/${encodeURIComponent(projectKey)}`, true);
   const projectId = project.data?.id;
+  const usesSprints = Boolean(project.data?.sprints_enabled);
   const members = useFetch<PmMember[]>(projectId ? `/api/pm/projects/${projectId}/members` : null);
   const issues = useFetch<PmIssue[]>(projectId ? `/api/pm/projects/${projectId}/issues` : null);
+  const sprints = useFetch<PmSprint[]>(projectId && usesSprints ? `/api/pm/projects/${projectId}/sprints` : null);
   const [creating, setCreating] = useState(false);
+  const [sprintAction, setSprintAction] = useState<SprintAction | null>(null);
+  const [mutation, setMutation] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
   const openKey = params.get("issue");
 
   function closeIssue() {
@@ -47,6 +64,44 @@ export default function ProjectPage() {
   function changed() {
     void issues.refresh();
     void project.refresh();
+    if (usesSprints) void sprints.refresh();
+  }
+  /** Save an issue change optimistically; the server's answer replaces the guess. */
+  async function patchIssue(issue: PmIssue, body: Partial<PmIssue>, guess: Partial<PmIssue>) {
+    setMutation({ busy: issue.id, error: "" });
+    issues.setData((list) => list?.map((item) => item.id === issue.id ? { ...item, ...guess } : item) ?? null);
+    try {
+      const saved = await api<PmIssue>(`/api/pm/issues/${issue.id}`, { method: "PATCH", body });
+      issues.setData((list) => list?.map((item) => item.id === saved.id ? saved : item) ?? null);
+      setMutation({ busy: null, error: "" });
+      if (usesSprints) void sprints.refresh();
+    } catch (cause) {
+      issues.setData((list) => list?.map((item) => item.id === issue.id ? issue : item) ?? null);
+      setMutation({ busy: null, error: `${issue.key}: ${pmError(cause)}` });
+    }
+  }
+  function moveStatus(issue: PmIssue, status: IssueStatus) {
+    void patchIssue(issue, { status }, { status });
+  }
+  function plan(issue: PmIssue, sprintId: string | null, rank: number) {
+    const sprintChanged = sprintId !== issue.sprint_id;
+    const sprintName = sprints.data?.find((sprint) => sprint.id === sprintId)?.name ?? null;
+    void patchIssue(issue, { rank, ...(sprintChanged ? { sprint_id: sprintId } : {}) }, { rank, sprint_id: sprintId, sprint_name: sprintName });
+  }
+  function sprintDone(message: string) {
+    setSprintAction(null);
+    notify(message);
+    changed();
+  }
+  async function deleteSprint(sprint: PmSprint) {
+    setMutation({ busy: sprint.id, error: "" });
+    try {
+      await api(`/api/pm/sprints/${sprint.id}`, { method: "DELETE" });
+      setMutation({ busy: null, error: "" });
+      sprintDone(`${sprint.name} deleted. Its issues are back in the backlog.`);
+    } catch (cause) {
+      setMutation({ busy: null, error: pmError(cause) });
+    }
   }
 
   if (project.error) return <div className="flex flex-col gap-4">
@@ -57,6 +112,11 @@ export default function ProjectPage() {
   if (!project.data) return <Loading />;
   const current = project.data;
   const editable = canEdit(current.my_role) && current.status === "active";
+  const manageSprints = current.my_role === "admin" && current.status === "active";
+  const openSprints = sprints.data ?? [];
+  const activeSprint = openSprints.find((sprint) => sprint.status === "active") ?? null;
+  const ready = issues.data && (!usesSprints || sprints.data);
+  const dataError = issues.error || (usesSprints && sprints.error);
 
   return <div className="flex flex-col gap-5">
     <PageHead
@@ -66,12 +126,31 @@ export default function ProjectPage() {
       action={editable ? <Button onClick={() => setCreating(true)} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
     />
     {current.status === "archived" && <Alert><AlertDescription>This project is archived. Its issues are read-only.</AlertDescription></Alert>}
-    <Tabs defaultValue="issues">
-      <TabsList>
+    {mutation.error && <Alert variant="destructive" role="alert"><AlertDescription>{mutation.error}</AlertDescription></Alert>}
+    <Tabs defaultValue="board">
+      <TabsList className="max-w-full overflow-x-auto">
+        <TabsTrigger value="board">Board</TabsTrigger>
+        {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="issues">Issues</TabsTrigger>
         <TabsTrigger value="people">People</TabsTrigger>
         {current.my_role === "admin" && <TabsTrigger value="settings">Settings</TabsTrigger>}
       </TabsList>
+      <TabsContent value="board" className="pt-4">
+        {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> : !ready ? <Loading /> :
+          <BoardTab project={current} issues={issues.data!} activeSprint={usesSprints ? activeSprint : null} usesSprints={usesSprints}
+            editable={editable} manageSprints={manageSprints} busy={mutation.busy} onMove={moveStatus}
+            onComplete={(sprint) => setSprintAction({ kind: "complete", sprint })} />}
+      </TabsContent>
+      {usesSprints && <TabsContent value="backlog" className="pt-4">
+        {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> : !ready ? <Loading /> :
+          <Backlog project={current} issues={issues.data!} sprints={openSprints} canPlan={editable} canManageSprints={manageSprints} busy={mutation.busy}
+            onPlan={plan}
+            onCreateSprint={() => setSprintAction({ kind: "create" })}
+            onEditSprint={(sprint) => setSprintAction({ kind: "edit", sprint })}
+            onDeleteSprint={(sprint) => setSprintAction({ kind: "delete", sprint })}
+            onStartSprint={(sprint) => setSprintAction({ kind: "start", sprint })}
+            onCompleteSprint={(sprint) => setSprintAction({ kind: "complete", sprint })} />}
+      </TabsContent>}
       <TabsContent value="issues" className="pt-4">
         {issues.error ? <ErrorState message={issues.error} onRetry={issues.reload} /> :
           !issues.data ? <Loading /> : <IssueList project={current} issues={issues.data} members={members.data ?? []} />}
@@ -85,14 +164,78 @@ export default function ProjectPage() {
       </TabsContent>}
     </Tabs>
     {creating && members.data && issues.data && <IssueForm
-      project={current} members={members.data} issues={issues.data}
+      project={current} members={members.data} issues={issues.data} sprints={openSprints}
       onClose={() => setCreating(false)}
       onSaved={(saved) => { setCreating(false); changed(); setParams((p) => { const next = new URLSearchParams(p); next.set("issue", saved.key); return next; }); }}
     />}
     {openKey && members.data && issues.data && <IssueDetail
-      key={openKey} issueKey={openKey} project={current} members={members.data} issues={issues.data}
+      key={openKey} issueKey={openKey} project={current} members={members.data} issues={issues.data} sprints={openSprints}
       onClose={closeIssue} onChanged={changed}
     />}
+    {sprintAction?.kind === "create" && <SprintDialog project={current} onClose={() => setSprintAction(null)} onSaved={(sprint) => sprintDone(`${sprint.name} created.`)} />}
+    {sprintAction?.kind === "edit" && sprintAction.sprint && <SprintDialog project={current} sprint={sprintAction.sprint} onClose={() => setSprintAction(null)} onSaved={() => sprintDone("Sprint saved.")} />}
+    {sprintAction?.kind === "start" && sprintAction.sprint && <StartSprintDialog sprint={sprintAction.sprint} onClose={() => setSprintAction(null)} onStarted={(sprint) => sprintDone(`${sprint.name} started.`)} />}
+    {sprintAction?.kind === "complete" && sprintAction.sprint && <CompleteSprintDialog sprint={sprintAction.sprint} futureSprints={openSprints.filter((sprint) => sprint.status === "future")}
+      onClose={() => setSprintAction(null)} onCompleted={(sprint) => sprintDone(`${sprint.name} completed.`)} />}
+    <AlertDialog open={sprintAction?.kind === "delete"} onOpenChange={(open) => !open && !mutation.busy && setSprintAction(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {sprintAction?.sprint?.name}?</AlertDialogTitle>
+          <AlertDialogDescription>The sprint is removed and its issues go back to the backlog. Nothing else changes.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <Button variant="outline" onClick={() => setSprintAction(null)} disabled={Boolean(mutation.busy)}>Cancel</Button>
+          <Button variant="destructive" disabled={Boolean(mutation.busy)} onClick={() => sprintAction?.sprint && void deleteSprint(sprintAction.sprint)}>Delete sprint</Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>;
+}
+
+function BoardTab({ project, issues, activeSprint, usesSprints, editable, manageSprints, busy, onMove, onComplete }: {
+  project: PmProject; issues: PmIssue[]; activeSprint: PmSprint | null; usesSprints: boolean; editable: boolean;
+  manageSprints: boolean; busy: string | null; onMove: (issue: PmIssue, status: IssueStatus) => void; onComplete: (sprint: PmSprint) => void;
+}) {
+  const { user } = useAuth();
+  const [query, setQuery] = useState("");
+  const [mine, setMine] = useState(false);
+  if (usesSprints && !activeSprint) return <Empty message="No active sprint" hint={manageSprints ? "Plan issues into a sprint on the Backlog tab, then start it." : "The board shows the active sprint once a project administrator starts one."} />;
+  const needle = query.trim().toLowerCase();
+  const recent = Date.now() - KANBAN_DONE_DAYS * 86_400_000;
+  const cards = issues
+    .filter((issue) => BOARD_TYPES.includes(issue.issue_type))
+    .filter((issue) => usesSprints ? issue.sprint_id === activeSprint!.id
+      : issue.status !== "done" || (issue.resolved_at !== null && Date.parse(issue.resolved_at) >= recent))
+    .filter((issue) => !mine || issue.assignee_id === user?.id)
+    .filter((issue) => !needle || issue.summary.toLowerCase().includes(needle) || issue.key.toLowerCase() === needle)
+    .sort((a, b) => a.rank - b.rank || a.number - b.number);
+  const daysLeft = activeSprint?.end_date ? differenceInCalendarDays(parseISO(activeSprint.end_date), new Date()) : null;
+
+  return <div className="flex flex-col gap-4">
+    {activeSprint && <div className="flex flex-col gap-2 border border-border bg-card p-3 sm:flex-row sm:items-center">
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{activeSprint.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {activeSprint.start_date && activeSprint.end_date && `${dateLabel(activeSprint.start_date)} – ${dateLabel(activeSprint.end_date)} · `}
+          {daysLeft !== null && (daysLeft >= 0 ? `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left · ` : `${-daysLeft} days overdue · `)}
+          {activeSprint.done_points} of {activeSprint.points} points done
+        </p>
+        {activeSprint.goal && <p className="text-sm">Goal: {activeSprint.goal}</p>}
+      </div>
+      {manageSprints && <Button variant="outline" onClick={() => onComplete(activeSprint)}><SquareCheckBig data-icon="inline-start" />Complete sprint</Button>}
+    </div>}
+    <div className="flex flex-wrap items-end gap-3">
+      <Field className="w-full min-w-0 sm:max-w-xs">
+        <FieldLabel htmlFor="pm-board-search">Search board</FieldLabel>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input id="pm-board-search" className="pl-9" value={query} placeholder={`Summary or ${project.key}-1`} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+      </Field>
+      <Toggle variant="outline" pressed={mine} onPressedChange={setMine}>Only my issues</Toggle>
+    </div>
+    {!usesSprints && <p className="text-xs text-muted-foreground">Done shows work finished in the last {KANBAN_DONE_DAYS} days.</p>}
+    <IssueBoard project={project} issues={cards} editable={editable} busy={busy} onMove={onMove} />
   </div>;
 }
 
@@ -268,6 +411,19 @@ function ProjectSettings({ project, members, onSaved }: { project: PmProject; me
           </FieldGroup>
           <Button type="submit" className="self-start" disabled={state.busy}>Save project</Button>
         </form>
+      </CardContent>
+    </Card>
+    <Card>
+      <CardHeader><CardTitle>Way of working</CardTitle><CardDescription>Scrum projects plan sprints from a backlog; Kanban projects use the board alone.</CardDescription></CardHeader>
+      <CardContent>
+        <Field orientation="horizontal">
+          <Switch id="pm-settings-sprints" checked={project.sprints_enabled} disabled={state.busy || archived}
+            onCheckedChange={(checked) => void save({ sprints_enabled: checked }, checked ? "Sprints turned on." : "Sprints turned off.")} />
+          <FieldContent>
+            <FieldLabel htmlFor="pm-settings-sprints">Use sprints</FieldLabel>
+            <FieldDescription>Turning sprints off needs the active sprint to be completed first.</FieldDescription>
+          </FieldContent>
+        </Field>
       </CardContent>
     </Card>
     <Card>

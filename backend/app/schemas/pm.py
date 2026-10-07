@@ -20,6 +20,7 @@ class PmProjectUpdate(BaseModel):
     description: str | None = None
     lead_id: uuid.UUID | None = None
     status: str | None = None
+    sprints_enabled: bool | None = None
     start_date: date | None = None
     target_date: date | None = None
 
@@ -34,6 +35,7 @@ class PmProjectOut(BaseModel):
     lead_id: uuid.UUID | None = None
     lead_name: str | None = None
     status: str
+    sprints_enabled: bool = True
     start_date: date | None = None
     target_date: date | None = None
     created_at: datetime
@@ -78,6 +80,7 @@ class PmIssueCreate(BaseModel):
     reporter_id: uuid.UUID | None = None
     assignee_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
+    sprint_id: uuid.UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
 
@@ -93,6 +96,7 @@ class PmIssueUpdate(BaseModel):
     reporter_id: uuid.UUID | None = None
     assignee_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
+    sprint_id: uuid.UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
     rank: float | None = None
@@ -126,6 +130,8 @@ class PmIssueOut(BaseModel):
     assignee_name: str | None = None
     parent_id: uuid.UUID | None = None
     parent: PmIssueRef | None = None
+    sprint_id: uuid.UUID | None = None
+    sprint_name: str | None = None
     start_date: date | None = None
     due_date: date | None = None
     resolved_at: datetime | None = None
@@ -197,3 +203,49 @@ class PmHistoryOut(BaseModel):
     old_value: str | None = None
     new_value: str | None = None
     created_at: datetime
+
+
+# ---- Sprints ----
+class PmSprintCreate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    goal: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class PmSprintUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    goal: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class PmSprintStart(BaseModel):
+    start_date: date
+    end_date: date
+    goal: str | None = None
+
+
+class PmSprintComplete(BaseModel):
+    # "backlog" or the id of a future sprint for unfinished issues.
+    move_to: str = "backlog"
+
+
+class PmSprintOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    goal: str | None = None
+    status: str
+    start_date: date | None = None
+    end_date: date | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    committed_points: float | None = None
+    completed_points: float | None = None
+    issue_count: int = 0
+    done_count: int = 0
+    points: float = 0
+    done_points: float = 0

@@ -17,6 +17,7 @@ from app.models.pm import (
     ISSUE_PRIORITIES,
     ISSUE_STATUSES,
     ISSUE_TYPES,
+    SPRINTABLE_TYPES,
     PROJECT_ROLES,
     PmComment,
     PmIssue,
@@ -25,6 +26,7 @@ from app.models.pm import (
     PmIssueWatcher,
     PmProject,
     PmProjectMember,
+    PmSprint,
 )
 from app.models.user import User
 from app.models.workplace import Attachment
@@ -46,6 +48,11 @@ from app.schemas.pm import (
     PmProjectCreate,
     PmProjectOut,
     PmProjectUpdate,
+    PmSprintComplete,
+    PmSprintCreate,
+    PmSprintOut,
+    PmSprintStart,
+    PmSprintUpdate,
     PmWatcherIn,
     PmWatcherOut,
 )
@@ -243,6 +250,10 @@ async def update_project(
         raise HTTPException(422, "Invalid project status")
     if data.get("lead_id"):
         await _active_user(db, data["lead_id"])
+    if data.get("sprints_enabled") is None:
+        data.pop("sprints_enabled", None)
+    elif not data["sprints_enabled"] and await _active_sprint(db, project.id):
+        raise HTTPException(409, "Complete the active sprint before switching sprints off.")
     _check_dates(data.get("start_date", project.start_date), data.get("target_date", project.target_date))
     for field, value in data.items():
         setattr(project, field, value.strip() if field == "name" else value)
@@ -473,6 +484,10 @@ async def _issue_outs(
     names = await user_names(
         db, {i.reporter_id for i in issues} | {i.assignee_id for i in issues}
     )
+    sprint_ids = {i.sprint_id for i in issues if i.sprint_id}
+    sprint_names = dict(
+        (await db.execute(select(PmSprint.id, PmSprint.name).where(PmSprint.id.in_(sprint_ids)))).all()
+    ) if sprint_ids else {}
     outs = []
     for issue in issues:
         out = PmIssueOut.model_validate(issue)
@@ -481,6 +496,7 @@ async def _issue_outs(
         out.assignee_name = names.get(issue.assignee_id) if issue.assignee_id else None
         parent = known.get(issue.parent_id) if issue.parent_id else None
         out.parent = _ref(parent, project) if parent else None
+        out.sprint_name = sprint_names.get(issue.sprint_id) if issue.sprint_id else None
         out.child_count, out.child_done = children.get(issue.id, (0, 0))
         out.comment_count = int(comments.get(issue.id, 0))
         outs.append(out)
@@ -537,6 +553,30 @@ async def _check_parent(
     return parent
 
 
+async def _active_sprint(db: AsyncSession, project_id: uuid.UUID) -> PmSprint | None:
+    return await db.scalar(
+        select(PmSprint).where(PmSprint.project_id == project_id, PmSprint.status == "active")
+    )
+
+
+async def _check_sprint(
+    db: AsyncSession, project: PmProject, issue_type: str, sprint_id: uuid.UUID | None
+) -> None:
+    if not sprint_id:
+        return
+    if not project.sprints_enabled:
+        raise HTTPException(422, "This project doesn't use sprints.")
+    if issue_type not in SPRINTABLE_TYPES:
+        raise HTTPException(
+            422, "Only stories, tasks and bugs go into sprints; sub-tasks follow their parent."
+        )
+    sprint = await db.get(PmSprint, sprint_id)
+    if not sprint or sprint.project_id != project.id:
+        raise HTTPException(422, "Choose a sprint from this project.")
+    if sprint.status == "closed":
+        raise HTTPException(422, "That sprint is closed.")
+
+
 async def _watch(db: AsyncSession, issue_id: uuid.UUID, user_ids) -> None:
     wanted = {u for u in user_ids if u}
     if not wanted:
@@ -588,6 +628,7 @@ async def list_issues(
     status: str | None = Query(None, description="Comma-separated statuses"),
     assignee: str | None = Query(None, description="me | none | <user id>"),
     parent_id: uuid.UUID | None = None,
+    sprint: str | None = Query(None, description="backlog | active | <sprint id>"),
     label: str | None = None,
     q: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -614,6 +655,18 @@ async def list_issues(
             raise HTTPException(422, "Invalid assignee filter")
     if parent_id:
         stmt = stmt.where(PmIssue.parent_id == parent_id)
+    if sprint == "backlog":
+        stmt = stmt.where(PmIssue.sprint_id.is_(None))
+    elif sprint == "active":
+        active = await _active_sprint(db, project_id)
+        if not active:
+            return []
+        stmt = stmt.where(PmIssue.sprint_id == active.id)
+    elif sprint:
+        try:
+            stmt = stmt.where(PmIssue.sprint_id == uuid.UUID(sprint))
+        except ValueError:
+            raise HTTPException(422, "Invalid sprint filter")
     issues = list((await db.scalars(stmt)).all())
     if label:
         issues = [i for i in issues if label in (i.labels or [])]
@@ -659,6 +712,7 @@ async def create_issue(
         assignee_id=payload.assignee_id,
     )
     await _check_parent(db, project_id, payload.issue_type, payload.parent_id)
+    await _check_sprint(db, project, payload.issue_type, payload.sprint_id)
     project.issue_seq = (project.issue_seq or 0) + 1
     top = await db.scalar(
         select(func.coalesce(func.max(PmIssue.rank), 0)).where(PmIssue.project_id == project_id)
@@ -676,6 +730,7 @@ async def create_issue(
         reporter_id=reporter_id,
         assignee_id=payload.assignee_id,
         parent_id=payload.parent_id,
+        sprint_id=payload.sprint_id,
         start_date=payload.start_date,
         due_date=payload.due_date,
         resolved_at=_now() if payload.status == "done" else None,
@@ -760,6 +815,9 @@ async def _display(db: AsyncSession, project: PmProject, field: str, value) -> s
     if field == "parent_id":
         parent = await db.get(PmIssue, value)
         return _key(project, parent.number) if parent else None
+    if field == "sprint_id":
+        sprint = await db.get(PmSprint, value)
+        return sprint.name if sprint else None
     if field == "labels":
         return ", ".join(value) or None
     if isinstance(value, float) and value.is_integer():
@@ -772,6 +830,7 @@ HISTORY_FIELDS = {
     "status": "status", "priority": "priority", "story_points": "story points",
     "labels": "labels", "reporter_id": "reporter", "assignee_id": "assignee",
     "parent_id": "parent", "start_date": "start date", "due_date": "due date",
+    "sprint_id": "sprint",
 }
 
 
@@ -820,6 +879,11 @@ async def update_issue(
             parent_id = None
             data["parent_id"] = None
         await _check_parent(db, project.id, new_type, parent_id, issue.id)
+    if new_type not in SPRINTABLE_TYPES and issue.sprint_id and "sprint_id" not in data:
+        # Epics and sub-tasks don't sit in sprints.
+        data["sprint_id"] = None
+    if "sprint_id" in data and data["sprint_id"] != issue.sprint_id:
+        await _check_sprint(db, project, new_type, data["sprint_id"])
 
     prev_status = issue.status
     prev_assignee = issue.assignee_id
@@ -838,6 +902,11 @@ async def update_issue(
         setattr(issue, field, value)
     if issue.status != prev_status:
         issue.resolved_at = _now() if issue.status == "done" else None
+        if prev_status == "done" and issue.sprint_id and "sprint_id" not in data:
+            # Reopened work can't stay in a closed sprint; return it to the backlog.
+            sprint = await db.get(PmSprint, issue.sprint_id)
+            if sprint and sprint.status == "closed":
+                await _move_issues(db, project, user, [issue], None)
         await _notify_watchers(
             db, issue, project, user,
             f"{user.display_name or user.email} moved an issue to {issue.status.replace('_', ' ')}",
@@ -1104,3 +1173,245 @@ async def issue_history(
         out.actor_name = names.get(row.actor_id) if row.actor_id else None
         outs.append(out)
     return outs
+
+
+# ------------------------------------------------------------------ sprints
+async def _load_sprint(
+    db: AsyncSession, user: User, sprint_id: uuid.UUID, minimum: str = "viewer"
+) -> tuple[PmSprint, PmProject]:
+    sprint = await db.get(PmSprint, sprint_id)
+    if not sprint:
+        raise HTTPException(404, "Sprint not found")
+    project, _ = await require_project(db, user, sprint.project_id, minimum)
+    return sprint, project
+
+
+async def _sprint_outs(db: AsyncSession, sprints: list[PmSprint]) -> list[PmSprintOut]:
+    if not sprints:
+        return []
+    done = case((PmIssue.status == "done", 1), else_=0)
+    done_points = case((PmIssue.status == "done", func.coalesce(PmIssue.story_points, 0)), else_=0)
+    totals = {
+        row[0]: row[1:]
+        for row in (
+            await db.execute(
+                select(
+                    PmIssue.sprint_id,
+                    func.count(PmIssue.id),
+                    func.coalesce(func.sum(done), 0),
+                    func.coalesce(func.sum(PmIssue.story_points), 0),
+                    func.coalesce(func.sum(done_points), 0),
+                )
+                .where(PmIssue.sprint_id.in_([s.id for s in sprints]))
+                .group_by(PmIssue.sprint_id)
+            )
+        ).all()
+    }
+    outs = []
+    for sprint in sprints:
+        out = PmSprintOut.model_validate(sprint)
+        count, done_count, points, finished = totals.get(sprint.id, (0, 0, 0, 0))
+        out.issue_count, out.done_count = int(count), int(done_count)
+        out.points, out.done_points = float(points), float(finished)
+        outs.append(out)
+    return outs
+
+
+async def _sprint_points(db: AsyncSession, sprint_id: uuid.UUID, done_only: bool) -> float:
+    stmt = select(func.coalesce(func.sum(PmIssue.story_points), 0)).where(
+        PmIssue.sprint_id == sprint_id
+    )
+    if done_only:
+        stmt = stmt.where(PmIssue.status == "done")
+    return float(await db.scalar(stmt) or 0)
+
+
+async def _move_issues(
+    db: AsyncSession, project: PmProject, user: User, issues, target: PmSprint | None
+) -> None:
+    """Move issues to ``target`` (None = backlog), recording each in history."""
+    for issue in issues:
+        if issue.sprint_id == (target.id if target else None):
+            continue
+        db.add(
+            PmIssueHistory(
+                issue_id=issue.id, actor_id=user.id, field="sprint",
+                old_value=await _display(db, project, "sprint_id", issue.sprint_id),
+                new_value=target.name if target else None,
+            )
+        )
+        issue.sprint_id = target.id if target else None
+
+
+def _require_sprints(project: PmProject) -> None:
+    _ensure_writable(project)
+    if not project.sprints_enabled:
+        raise HTTPException(409, "Turn sprints on for this project first.")
+
+
+@router.get("/projects/{project_id}/sprints", response_model=list[PmSprintOut])
+async def list_sprints(
+    project_id: uuid.UUID,
+    state: str = Query("open", description="open (active and future) | closed | all"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    await require_project(db, user, project_id)
+    stmt = select(PmSprint).where(PmSprint.project_id == project_id)
+    if state == "open":
+        stmt = stmt.where(PmSprint.status != "closed")
+    elif state == "closed":
+        stmt = stmt.where(PmSprint.status == "closed")
+    order = {"active": 0, "future": 1, "closed": 2}
+    sprints = sorted(
+        (await db.scalars(stmt)).all(),
+        key=lambda s: (
+            order.get(s.status, 3),
+            # Closed sprints newest first; others in creation order.
+            -(s.completed_at.timestamp()) if s.status == "closed" and s.completed_at else 0,
+            s.created_at,
+        ),
+    )
+    return await _sprint_outs(db, sprints)
+
+
+@router.post("/projects/{project_id}/sprints", response_model=PmSprintOut, status_code=201)
+async def create_sprint(
+    project_id: uuid.UUID,
+    payload: PmSprintCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    await require_project(db, user, project_id, "admin")
+    project = await db.scalar(
+        select(PmProject)
+        .where(PmProject.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    _require_sprints(project)
+    _check_dates(payload.start_date, payload.end_date, "End date")
+    project.sprint_seq = (project.sprint_seq or 0) + 1
+    name = (payload.name or "").strip() or f"{project.key} Sprint {project.sprint_seq}"
+    sprint = PmSprint(
+        project_id=project_id, name=name, goal=payload.goal,
+        start_date=payload.start_date, end_date=payload.end_date, status="future",
+    )
+    db.add(sprint)
+    await db.commit()
+    await db.refresh(sprint)
+    return (await _sprint_outs(db, [sprint]))[0]
+
+
+@router.patch("/sprints/{sprint_id}", response_model=PmSprintOut)
+async def update_sprint(
+    sprint_id: uuid.UUID,
+    payload: PmSprintUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    _require_sprints(project)
+    if sprint.status == "closed":
+        raise HTTPException(409, "Closed sprints can't be changed.")
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        if not (data["name"] or "").strip():
+            raise HTTPException(422, "Enter a sprint name.")
+        data["name"] = data["name"].strip()
+    _check_dates(data.get("start_date", sprint.start_date), data.get("end_date", sprint.end_date), "End date")
+    if sprint.status == "active" and ("start_date" in data or "end_date" in data):
+        if not data.get("start_date", sprint.start_date) or not data.get("end_date", sprint.end_date):
+            raise HTTPException(422, "An active sprint needs start and end dates.")
+    for field, value in data.items():
+        setattr(sprint, field, value)
+    await db.commit()
+    await db.refresh(sprint)
+    return (await _sprint_outs(db, [sprint]))[0]
+
+
+@router.delete("/sprints/{sprint_id}", status_code=204)
+async def delete_sprint(
+    sprint_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    _ensure_writable(project)
+    if sprint.status != "future":
+        raise HTTPException(409, "Only sprints that haven't started can be deleted.")
+    issues = (await db.scalars(select(PmIssue).where(PmIssue.sprint_id == sprint.id))).all()
+    await _move_issues(db, project, user, issues, None)
+    await db.flush()
+    await db.delete(sprint)
+    await db.commit()
+
+
+@router.post("/sprints/{sprint_id}/start", response_model=PmSprintOut)
+async def start_sprint(
+    sprint_id: uuid.UUID,
+    payload: PmSprintStart,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    _require_sprints(project)
+    if sprint.status != "future":
+        raise HTTPException(409, "This sprint has already started.")
+    _check_dates(payload.start_date, payload.end_date, "End date")
+    if await _active_sprint(db, project.id):
+        raise HTTPException(409, "Complete the active sprint before starting another.")
+    sprint.status = "active"
+    sprint.start_date = payload.start_date
+    sprint.end_date = payload.end_date
+    if payload.goal is not None:
+        sprint.goal = payload.goal
+    sprint.started_at = _now()
+    sprint.committed_points = await _sprint_points(db, sprint.id, done_only=False)
+    record(
+        db, user=user, action="started", entity_type="pm_sprint", entity_id=sprint.id,
+        summary=f"{user.display_name or user.email} started {sprint.name} in {project.key}",
+    )
+    await db.commit()
+    await db.refresh(sprint)
+    return (await _sprint_outs(db, [sprint]))[0]
+
+
+@router.post("/sprints/{sprint_id}/complete", response_model=PmSprintOut)
+async def complete_sprint(
+    sprint_id: uuid.UUID,
+    payload: PmSprintComplete,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    _ensure_writable(project)
+    if sprint.status != "active":
+        raise HTTPException(409, "Only the active sprint can be completed.")
+    target = None
+    if payload.move_to != "backlog":
+        try:
+            target = await db.get(PmSprint, uuid.UUID(payload.move_to))
+        except ValueError:
+            target = None
+        if not target or target.project_id != project.id or target.status != "future":
+            raise HTTPException(422, "Move unfinished issues to the backlog or a future sprint.")
+    unfinished = (
+        await db.scalars(
+            select(PmIssue).where(PmIssue.sprint_id == sprint.id, PmIssue.status != "done")
+        )
+    ).all()
+    sprint.completed_points = await _sprint_points(db, sprint.id, done_only=True)
+    await _move_issues(db, project, user, unfinished, target)
+    sprint.status = "closed"
+    sprint.completed_at = _now()
+    record(
+        db, user=user, action="completed", entity_type="pm_sprint", entity_id=sprint.id,
+        summary=(
+            f"{user.display_name or user.email} completed {sprint.name} in {project.key}; "
+            f"{len(unfinished)} unfinished issue(s) moved to {target.name if target else 'the backlog'}"
+        ),
+    )
+    await db.commit()
+    await db.refresh(sprint)
+    return (await _sprint_outs(db, [sprint]))[0]

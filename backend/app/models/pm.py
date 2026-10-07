@@ -1,4 +1,4 @@
-"""Project tracker (Jira-style): projects, issues, sprints-ready backlog data.
+"""Project tracker (Jira-style): projects, sprints, issues and their history.
 
 Kept separate from ``workplace.Task`` on purpose. Ordinary tasks also carry
 routine-check runs, onboarding mirrors and assignment-email delivery; the
@@ -13,15 +13,18 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +37,9 @@ ISSUE_TYPES = ("epic", "story", "task", "bug", "subtask")
 ISSUE_STATUSES = ("todo", "in_progress", "in_review", "done")
 ISSUE_PRIORITIES = ("highest", "high", "medium", "low", "lowest")
 LINK_TYPES = ("blocks", "relates")
+SPRINT_STATUSES = ("future", "active", "closed")
+# Sprints hold standard issues; epics span sprints and sub-tasks follow their parent.
+SPRINTABLE_TYPES = ("story", "task", "bug")
 
 
 class PmProject(UUIDMixin, TimestampMixin, Base):
@@ -52,6 +58,9 @@ class PmProject(UUIDMixin, TimestampMixin, Base):
     target_date: Mapped[date | None] = mapped_column(Date)
     # Last issue number handed out; incremented under a row lock.
     issue_seq: Mapped[int] = mapped_column(Integer, default=0)
+    # Scrum (sprints + backlog) when true; plain Kanban board when false.
+    sprints_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sprint_seq: Mapped[int] = mapped_column(Integer, default=0)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -71,6 +80,34 @@ class PmProjectMember(UUIDMixin, TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint("project_id", "user_id", name="uq_pm_project_member"),
+    )
+
+
+class PmSprint(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "pm_sprints"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pm_projects.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    goal: Mapped[str | None] = mapped_column(Text)
+    # future | active | closed
+    status: Mapped[str] = mapped_column(String(16), default="future", index=True)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Snapshot at completion, so velocity survives later edits.
+    completed_points: Mapped[float | None] = mapped_column(Float)
+    committed_points: Mapped[float | None] = mapped_column(Float)
+
+    __table_args__ = (
+        # One active sprint per project.
+        Index(
+            "uq_pm_sprints_one_active", "project_id", unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
     )
 
 
@@ -100,6 +137,9 @@ class PmIssue(UUIDMixin, TimestampMixin, Base):
     # Epic for stories/tasks/bugs; the parent issue for sub-tasks.
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("pm_issues.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    sprint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("pm_sprints.id", ondelete="SET NULL", name="fk_pm_issues_sprint_id"), index=True, nullable=True
     )
     start_date: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date)

@@ -4,8 +4,16 @@ import { expect, test, type Page } from "@playwright/test";
 const project = {
   id: "p1", key: "LIMS", name: "LIMS v3", description: "Lab information system", lead_id: "admin", lead_name: "Sara Admin",
   status: "active", start_date: "2026-10-01", target_date: "2026-12-31", created_at: "2026-10-01T08:00:00Z",
-  issue_count: 2, done_count: 1, member_count: 3,
+  issue_count: 3, done_count: 1, member_count: 3, sprints_enabled: true,
 };
+const sprintBase = { project_id: "p1", goal: null, started_at: null, completed_at: null, committed_points: null, completed_points: null, done_points: 0 };
+function sprints() {
+  return [
+    { ...sprintBase, id: "sp1", name: "LIMS Sprint 1", status: "active", start_date: "2026-10-05", end_date: "2026-10-19", goal: "Ship upload",
+      started_at: "2026-10-05T08:00:00Z", committed_points: 5, issue_count: 2, done_count: 1, points: 5 },
+    { ...sprintBase, id: "sp2", name: "LIMS Sprint 2", status: "future", start_date: null, end_date: null, issue_count: 0, done_count: 0, points: 0 },
+  ];
+}
 const members = [
   { user_id: "admin", name: "Sara Admin", email: "sara@example.com", role: "admin" },
   { user_id: "dev", name: "Ali Dev", email: "ali@example.com", role: "member" },
@@ -13,7 +21,7 @@ const members = [
 ];
 const base = {
   project_id: "p1", description: null, priority: "medium", story_points: null, labels: [], reporter_id: "drt", reporter_name: "Dr T",
-  assignee_id: null, assignee_name: null, parent_id: null, parent: null, start_date: null, due_date: null, resolved_at: null,
+  assignee_id: null, assignee_name: null, parent_id: null, parent: null, sprint_id: null, sprint_name: null, start_date: null, due_date: null, resolved_at: null,
   created_at: "2026-10-02T08:00:00Z", updated_at: "2026-10-02T08:00:00Z", child_count: 0, child_done: 0, comment_count: 0,
 };
 const epicRef = { id: "e1", key: "LIMS-1", summary: "AI file analysis", issue_type: "epic", status: "in_progress" };
@@ -22,14 +30,18 @@ function issues() {
   return [
     { ...base, id: "e1", key: "LIMS-1", number: 1, issue_type: "epic", summary: "AI file analysis", status: "in_progress", rank: 1, child_count: 2, child_done: 1 },
     { ...base, id: "s1", key: "LIMS-2", number: 2, issue_type: "story", summary: "Analyse uploaded PDFs", status: "todo", rank: 2,
-      parent_id: "e1", parent: epicRef, story_points: 5, labels: ["ai"], assignee_id: "dev", assignee_name: "Ali Dev", due_date: "2026-11-15" },
-    { ...base, id: "b1", key: "LIMS-3", number: 3, issue_type: "bug", summary: "Upload fails over 20MB", status: "done", rank: 3, parent_id: "e1", parent: epicRef, priority: "high" },
+      parent_id: "e1", parent: epicRef, story_points: 5, labels: ["ai"], assignee_id: "dev", assignee_name: "Ali Dev", due_date: "2026-11-15",
+      sprint_id: "sp1", sprint_name: "LIMS Sprint 1" },
+    { ...base, id: "b1", key: "LIMS-3", number: 3, issue_type: "bug", summary: "Upload fails over 20MB", status: "done", rank: 3, parent_id: "e1", parent: epicRef, priority: "high",
+      sprint_id: "sp1", sprint_name: "LIMS Sprint 1", resolved_at: "2026-10-04T08:00:00Z" },
+    { ...base, id: "t1", key: "LIMS-5", number: 5, issue_type: "task", summary: "Set up storage bucket", status: "todo", rank: 5, story_points: 2 },
   ];
 }
 
 async function mount(page: Page, role: "admin" | "viewer") {
   const userId = role === "admin" ? "admin" : "drt";
   let list = issues();
+  const sprintList = sprints();
   let comments: Array<Record<string, unknown>> = [];
   const requests: Array<{ method: string; path: string; body: unknown }> = [];
   await page.route("**/api/**", async (route) => {
@@ -49,6 +61,8 @@ async function mount(page: Page, role: "admin" | "viewer") {
     else if (path === "/api/pm/projects/p1/members") json = members;
     else if (path === "/api/pm/people") json = [{ id: "new", name: "Khalid", email: "khalid@example.com" }];
     else if (path === "/api/pm/projects/p1/issues" && method === "GET") json = list;
+    else if (path === "/api/pm/projects/p1/sprints") json = sprintList;
+    else if (path.startsWith("/api/pm/sprints/") && method === "POST") json = { ...sprintList.find((s) => path.includes(s.id)), status: path.endsWith("/complete") ? "closed" : "active" };
     else if (path === "/api/pm/projects/p1/issues" && method === "POST") {
       const created = { ...base, ...body, id: "n1", key: "LIMS-4", number: 4, rank: 4, parent: body.parent_id ? epicRef : null };
       list = [...list, created];
@@ -59,7 +73,7 @@ async function mount(page: Page, role: "admin" | "viewer") {
         watchers: [{ user_id: "drt", name: "Dr T" }, { user_id: "dev", name: "Ali Dev" }] };
     } else if (path.startsWith("/api/pm/issues/") && method === "PATCH") {
       const id = path.split("/").pop();
-      list = list.map((item) => item.id === id ? { ...item, ...body } : item);
+      list = list.map((item) => item.id === id ? { ...item, ...body, ...("sprint_id" in body ? { sprint_name: sprintList.find((s) => s.id === body.sprint_id)?.name ?? null } : {}) } : item);
       json = list.find((item) => item.id === id);
     } else if (path.endsWith("/comments") && method === "POST") {
       const comment = { id: `c${comments.length}`, issue_id: "s1", author_id: userId, author_name: "Dr T", body: body.body,
@@ -84,10 +98,12 @@ test("project list leads to issues grouped by epic, and an issue opens in a pane
   await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
   await page.getByRole("link", { name: "LIMS v3" }).click();
   await expect(page.getByRole("heading", { name: "LIMS v3", level: 1 })).toBeVisible();
+  await page.getByRole("tab", { name: "Issues" }).click();
 
   const epic = page.getByRole("region", { name: "Epic LIMS-1" });
   await expect(epic.getByText("AI file analysis")).toBeVisible();
   await expect(epic.getByText("1/2 done")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Issues" }).getByRole("link", { name: "Set up storage bucket" })).toBeVisible();
   await expect(epic.getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
@@ -147,4 +163,67 @@ test("viewers read and comment but cannot change issues", async ({ page }) => {
   expect(requests).toEqual([{ method: "POST", path: "/api/pm/issues/s1/comments", body: { body: "Please include the lab logo." } }]);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
+});
+
+test("the board shows the active sprint and moves issues with the keyboard", async ({ page }) => {
+  const requests = await mount(page, "admin");
+  await page.goto("/projects/LIMS");
+  await expect(page.getByText("Goal: Ship upload")).toBeVisible();
+  const todo = page.getByRole("region", { name: "To Do column" });
+  await expect(todo.getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
+  // Backlog work stays off the sprint board.
+  await expect(page.getByRole("link", { name: "Set up storage bucket" })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await page.screenshot({ path: `test-results/project-board-${page.viewportSize()!.width}.png`, fullPage: true });
+
+  const handle = page.getByRole("button", { name: "Move issue: LIMS-2" });
+  await handle.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByText("Over To Do.", { exact: true })).toBeAttached();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.keyboard.press(page.viewportSize()!.width < 768 ? "ArrowDown" : "ArrowRight");
+  await expect(page.getByText("Over In Progress.", { exact: true })).toBeAttached();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("region", { name: "In Progress column" }).getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
+  expect(requests).toEqual([{ method: "PATCH", path: "/api/pm/issues/s1", body: { status: "in_progress" } }]);
+});
+
+test("the backlog plans issues into sprints and completes the active sprint", async ({ page }) => {
+  const requests = await mount(page, "admin");
+  await page.goto("/projects/LIMS");
+  await page.getByRole("tab", { name: "Backlog" }).click();
+  const backlog = page.getByRole("region", { name: "Backlog", exact: true });
+  await expect(backlog.getByRole("link", { name: "Set up storage bucket" })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await page.screenshot({ path: `test-results/project-backlog-${page.viewportSize()!.width}.png`, fullPage: true });
+
+  await backlog.getByRole("button", { name: "Move LIMS-5" }).click();
+  await page.getByRole("menuitem", { name: "LIMS Sprint 2" }).click();
+  await expect(page.getByRole("region", { name: "LIMS Sprint 2" }).getByRole("link", { name: "Set up storage bucket" })).toBeVisible();
+  const patch = requests.find((r) => r.method === "PATCH");
+  expect(patch).toMatchObject({ path: "/api/pm/issues/t1", body: { sprint_id: "sp2" } });
+  expect(typeof (patch!.body as { rank: number }).rank).toBe("number");
+
+  await page.getByRole("region", { name: "LIMS Sprint 1" }).getByRole("button", { name: "Complete sprint" }).click();
+  const dialog = page.getByRole("dialog", { name: "Complete LIMS Sprint 1" });
+  await dialog.getByRole("combobox", { name: "Move unfinished issues to" }).click();
+  await page.getByRole("option", { name: "LIMS Sprint 2" }).click();
+  await dialog.getByRole("button", { name: "Complete sprint" }).click();
+  await expect(dialog).toBeHidden();
+  expect(requests.at(-1)).toEqual({ method: "POST", path: "/api/pm/sprints/sp1/complete", body: { move_to: "sp2" } });
+});
+
+test("viewers see the board and backlog without planning controls", async ({ page }) => {
+  await mount(page, "viewer");
+  await page.goto("/projects/LIMS");
+  await expect(page.getByRole("region", { name: "To Do column" }).getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Move issue:/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Complete sprint" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Backlog" }).click();
+  await expect(page.getByRole("region", { name: "Backlog", exact: true }).getByRole("link", { name: "Set up storage bucket" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Move LIMS-/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create sprint" })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
