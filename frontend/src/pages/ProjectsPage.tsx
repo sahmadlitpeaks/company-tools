@@ -5,6 +5,7 @@ import { api } from "@/api/client";
 import { labelOf, pmError, PROJECT_ROLES, type PmPerson, type PmProject } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
 import { useAuth } from "@/auth/AuthContext";
+import { HealthBadge, ProjectsTimeline } from "@/components/pm/ProjectsTimeline";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
 import { Empty, ErrorState, Loading, PageHead } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -25,6 +26,7 @@ export default function ProjectsPage() {
   const [status, setStatus] = useState<"active" | "archived">("active");
   const projects = useFetch<PmProject[]>(`/api/pm/projects?status=${status}`, true);
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<"cards" | "timeline">("cards");
   const navigate = useNavigate();
 
   return <div className="flex flex-col gap-5">
@@ -34,16 +36,23 @@ export default function ProjectsPage() {
       subtitle="Epics, stories, tasks and bugs for each project, visible to the people on it."
       action={user?.is_admin ? <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button> : undefined}
     />
-    <ToggleGroup value={[status]} onValueChange={(values) => values[0] && setStatus(values[0] as typeof status)} aria-label="Project status">
-      <ToggleGroupItem value="active">Active</ToggleGroupItem>
-      <ToggleGroupItem value="archived">Archived</ToggleGroupItem>
-    </ToggleGroup>
+    <div className="flex flex-wrap gap-3">
+      <ToggleGroup value={[status]} onValueChange={(values) => values[0] && setStatus(values[0] as typeof status)} aria-label="Project status">
+        <ToggleGroupItem value="active">Active</ToggleGroupItem>
+        <ToggleGroupItem value="archived">Archived</ToggleGroupItem>
+      </ToggleGroup>
+      <ToggleGroup value={[view]} onValueChange={(values) => values[0] && setView(values[0] as typeof view)} aria-label="Project view">
+        <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
+        <ToggleGroupItem value="timeline">Timeline</ToggleGroupItem>
+      </ToggleGroup>
+    </div>
     {projects.error ? <ErrorState message={projects.error} onRetry={projects.reload} /> :
       projects.loading && !projects.data ? <Loading /> :
       !projects.data?.length ? <Empty
         message={status === "archived" ? "No archived projects" : "No projects yet"}
         hint={status === "archived" ? "Archived projects you can see will appear here." : user?.is_admin ? "Create a project and add its team." : "Ask a project administrator to add you to a project."}
       /> :
+      view === "timeline" ? <ProjectsTimeline projects={projects.data} /> :
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.data.map((project) => <ProjectCard key={project.id} project={project} />)}
       </div>}
@@ -68,6 +77,7 @@ function ProjectCard({ project }: { project: PmProject }) {
         <Progress value={percent} aria-label={`${project.name} progress`} />
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <HealthBadge project={project} />
         {project.my_role && <Badge variant="outline">{labelOf(PROJECT_ROLES, project.my_role)}</Badge>}
         <span>{project.member_count} {project.member_count === 1 ? "person" : "people"}</span>
         {project.target_date && <span>· Target {dateLabel(project.target_date)}</span>}

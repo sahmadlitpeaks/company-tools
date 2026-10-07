@@ -343,3 +343,81 @@ async def test_kanban_projects_reject_sprints(client, auth):
     # A sprint from another project is rejected, as is any sprint on a Kanban project.
     r = await client.post(f"/api/pm/projects/{pid}/issues", headers=auth, json={"summary": "x", "sprint_id": sprint["id"]})
     assert r.status_code == 422
+
+
+async def test_project_health(client, auth):
+    from datetime import date, timedelta
+
+    past = (date.today() - timedelta(days=3)).isoformat()
+    future = (date.today() + timedelta(days=30)).isoformat()
+    on_time = await _project(client, auth, key="OK", target_date=future)
+    await _issue(client, auth, on_time["id"], summary="Fine", due_date=future)
+    risky = await _project(client, auth, key="RISK", target_date=future)
+    await _issue(client, auth, risky["id"], summary="Overdue", due_date=past)
+    late = await _project(client, auth, key="LATE", start_date="2026-01-01", target_date=past)
+    await _issue(client, auth, late["id"], summary="Still open")
+    health = {p["key"]: (p["health"], p["overdue_count"]) for p in (await client.get("/api/pm/projects", headers=auth)).json()}
+    assert health == {"OK": ("on_track", 0), "RISK": ("at_risk", 1), "LATE": ("late", 0)}
+
+
+async def test_burndown_velocity_and_links(client, auth):
+    from datetime import date, timedelta
+
+    project = await _project(client, auth)
+    pid = project["id"]
+    (dev, _), (viewer, _), outsider = await _team(client, auth, pid)
+    sprint = (await client.post(f"/api/pm/projects/{pid}/sprints", headers=auth, json={})).json()
+    a = await _issue(client, dev, pid, summary="A", story_points=3, sprint_id=sprint["id"])
+    b = await _issue(client, dev, pid, summary="B", story_points=5, sprint_id=sprint["id"])
+    today = date.today()
+    start, end = today - timedelta(days=3), today + timedelta(days=4)
+    await client.post(f"/api/pm/sprints/{sprint['id']}/start", headers=auth, json={"start_date": start.isoformat(), "end_date": end.isoformat()})
+    await client.patch(f"/api/pm/issues/{a['id']}", headers=dev, json={"status": "done"})
+
+    chart = (await client.get(f"/api/pm/projects/{pid}/reports/burndown", headers=viewer)).json()
+    assert chart["sprint"]["name"] == "LIMS Sprint 1" and chart["total_points"] == 8
+    days = chart["days"]
+    assert len(days) == 8 and days[0]["ideal"] == 8 and days[-1]["ideal"] == 0
+    assert days[0]["remaining"] == 8
+    assert days[3]["date"] == today.isoformat() and days[3]["remaining"] == 5
+    assert days[4]["remaining"] is None
+
+    link = await client.post(f"/api/pm/issues/{a['id']}/links", headers=dev, json={"target_id": b["id"], "relation": "blocks"})
+    links = (await client.get(f"/api/pm/projects/{pid}/links", headers=viewer)).json()
+    assert links == [{"id": link.json()["id"], "source_id": a["id"], "target_id": b["id"], "link_type": "blocks"}]
+
+    await client.post(f"/api/pm/sprints/{sprint['id']}/complete", headers=auth, json={"move_to": "backlog"})
+    velocity = (await client.get(f"/api/pm/projects/{pid}/reports/velocity", headers=viewer)).json()
+    assert velocity == {"sprints": [{"id": sprint["id"], "name": "LIMS Sprint 1", "committed": 8, "completed": 3}], "average_completed": 3}
+    # The closed sprint's burndown still counts the unfinished issue moved out.
+    closed = (await client.get(f"/api/pm/projects/{pid}/reports/burndown?sprint_id={sprint['id']}", headers=viewer)).json()
+    assert closed["total_points"] == 8 and closed["days"][3]["remaining"] == 5
+
+    for path in ("reports/burndown", "reports/velocity", "reports/workload", "reports/activity", "links"):
+        assert (await client.get(f"/api/pm/projects/{pid}/{path}", headers=outsider)).status_code == 404
+
+
+async def test_workload_and_activity_heat_maps(client, auth):
+    from datetime import date, timedelta
+
+    project = await _project(client, auth)
+    pid = project["id"]
+    (dev, dev_id), (viewer, _), _ = await _team(client, auth, pid)
+    monday = date.today() - timedelta(days=date.today().weekday())
+    # Four points over two weeks: two per week.
+    await _issue(client, dev, pid, summary="Spread", story_points=4, assignee_id=dev_id,
+                 start_date=monday.isoformat(), due_date=(monday + timedelta(days=8)).isoformat())
+    await _issue(client, dev, pid, summary="Undated", story_points=2, assignee_id=dev_id)
+
+    load = (await client.get(f"/api/pm/projects/{pid}/reports/workload?weeks=3&start={monday.isoformat()}", headers=viewer)).json()
+    assert load["weeks"] == [(monday + timedelta(weeks=i)).isoformat() for i in range(3)]
+    row = next(p for p in load["people"] if p["user_id"] == dev_id)
+    assert row["points"] == [2, 2, 0] and row["issues"] == [1, 1, 0] and row["unscheduled"] == 1
+    # Every project member gets a row, even with nothing assigned.
+    assert {p["name"] for p in load["people"]} >= {"dev", "drt"}
+    assert (await client.get(f"/api/pm/projects/{pid}/reports/workload?weeks=0", headers=viewer)).status_code == 422
+
+    activity = (await client.get(f"/api/pm/projects/{pid}/reports/activity?weeks=4", headers=viewer)).json()
+    assert activity["weeks"][-1] == monday.isoformat()
+    dev_row = next(p for p in activity["people"] if p["user_id"] == dev_id)
+    assert dev_row["counts"][-1] == 2 and activity["totals"][-1] >= 2

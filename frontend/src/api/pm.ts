@@ -21,6 +21,8 @@ export interface PmProject {
   issue_count: number;
   done_count: number;
   member_count: number;
+  overdue_count: number;
+  health: "on_track" | "at_risk" | "late";
 }
 
 export interface PmMember {
@@ -131,6 +133,41 @@ export interface PmSprint {
 
 /** Issue types that sit in sprints and on the board; epics span sprints and sub-tasks follow their parent. */
 export const BOARD_TYPES: IssueType[] = ["story", "task", "bug"];
+
+export interface PmLinkRow {
+  id: string;
+  source_id: string;
+  target_id: string;
+  link_type: "blocks" | "relates";
+}
+
+export interface BurndownReport {
+  sprint: { id: string; name: string; status: string; start_date: string; end_date: string } | null;
+  total_points: number;
+  days: Array<{ date: string; ideal: number; remaining: number | null }>;
+}
+
+export interface VelocityReport {
+  sprints: Array<{ id: string; name: string; committed: number; completed: number }>;
+  average_completed: number;
+}
+
+export interface WorkloadReport {
+  weeks: string[];
+  people: Array<{ user_id: string; name: string; points: number[]; issues: number[]; unscheduled: number }>;
+}
+
+export interface ActivityReport {
+  weeks: string[];
+  people: Array<{ user_id: string; name: string; counts: number[] }>;
+  totals: number[];
+}
+
+export const HEALTH: Record<PmProject["health"], { label: string; variant: "success" | "warning" | "destructive" }> = {
+  on_track: { label: "On track", variant: "success" },
+  at_risk: { label: "At risk", variant: "warning" },
+  late: { label: "Late", variant: "destructive" },
+};
 
 export const ISSUE_TYPES: Array<{ value: IssueType; label: string }> = [
   { value: "epic", label: "Epic" },

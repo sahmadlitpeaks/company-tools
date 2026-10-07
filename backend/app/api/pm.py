@@ -5,7 +5,7 @@ checks the caller's role on the specific project (see services/pm_access.py).
 """
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, delete, func, or_, select
@@ -123,6 +123,19 @@ async def _project_outs(
             )
         ).all()
     }
+    overdue = {
+        row[0]: int(row[1])
+        for row in (
+            await db.execute(
+                select(PmIssue.project_id, func.count(PmIssue.id))
+                .where(
+                    PmIssue.project_id.in_(ids), PmIssue.issue_type != "epic",
+                    PmIssue.status != "done", PmIssue.due_date < date.today(),
+                )
+                .group_by(PmIssue.project_id)
+            )
+        ).all()
+    }
     members = {
         row[0]: int(row[1])
         for row in (
@@ -150,8 +163,19 @@ async def _project_outs(
         out.my_role = "admin" if user.is_admin else roles.get(project.id)
         out.issue_count, out.done_count = counts.get(project.id, (0, 0))
         out.member_count = members.get(project.id, 0)
+        out.overdue_count = overdue.get(project.id, 0)
+        out.health = _health(project, out.issue_count - out.done_count, out.overdue_count)
         outs.append(out)
     return outs
+
+
+def _health(project: PmProject, open_count: int, overdue_count: int) -> str:
+    """on_track | at_risk | late, from the target date and overdue issues."""
+    if project.target_date and project.target_date < date.today() and open_count:
+        return "late"
+    if overdue_count:
+        return "at_risk"
+    return "on_track"
 
 
 async def _active_user(db: AsyncSession, user_id: uuid.UUID) -> User:

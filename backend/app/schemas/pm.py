@@ -44,6 +44,9 @@ class PmProjectOut(BaseModel):
     issue_count: int = 0
     done_count: int = 0
     member_count: int = 0
+    overdue_count: int = 0
+    # on_track | at_risk | late
+    health: str = "on_track"
 
 
 class PmMemberIn(BaseModel):

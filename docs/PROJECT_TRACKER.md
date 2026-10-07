@@ -68,6 +68,38 @@ refused while a sprint is active.
 - Project administrators manage sprints; members plan and move issues;
   viewers see the board and backlog read-only.
 
+## Timeline, reports and heat maps
+
+- **Timeline** (Gantt): epics with their stories, tasks and bugs as bars. An
+  epic without its own dates spans its issues (dashed outline) and fills as
+  they finish. Members drag a bar to move it or its ends to change the start
+  or due date; on a focused bar, arrow keys move it a day and Shift+arrows
+  change the due date. "Blocks" links are drawn as arrows, red when the
+  blocked issue starts before its blocker ends. A today line, sprint bands and
+  Weeks/Months/Quarters zoom are included. It opens scrolled to today.
+- **Projects timeline**: the Projects page's Timeline view shows every visible
+  project from start to target date, filled by progress, with its health.
+- **Project health** on each project: *Late* when the target date has passed
+  with work still open, *At risk* when any issue is past its due date,
+  otherwise *On track*.
+- **Reports** tab:
+  - *Sprint burndown* (Scrum): remaining story points per day against the
+    ideal line, for the active sprint or any completed one. Scope is the
+    sprint's issues, including unfinished work moved out when it closed; an
+    issue burns on the day it was resolved.
+  - *Velocity* (Scrum): committed vs completed points for recent sprints,
+    using the snapshots taken at sprint start and completion.
+  - *Team workload* heat map: story points (or issue count) per person per
+    week. An issue's window is its start to due date, falling back to its
+    sprint's dates; points spread evenly across the weeks it spans. Cells over
+    the chosen weekly capacity are outlined with a warning icon. Issues with no
+    dates are counted per person as "without dates".
+  - *Activity* heat map: issues created, fields changed and comments written
+    per person per week over the last 12 weeks, with a whole-team row.
+- Charts use the single-hue `--chart-1…5` ramp; numbers inside filled cells
+  use the `--chart-ink` tokens. Every chart has a legend, hover/focus details,
+  and a data table or numeric cells, so nothing depends on colour alone.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
@@ -123,6 +155,11 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET/POST /projects/{id}/sprints` | List (`?state=open|closed|all`); create (project admin) |
 | `PATCH/DELETE /sprints/{id}` | Edit an open sprint; delete a future sprint |
 | `POST /sprints/{id}/start`, `POST /sprints/{id}/complete` | Start with dates; complete with `move_to` (`backlog` or a future sprint id) |
+| `GET /projects/{id}/links` | Every issue link in the project (timeline dependencies) |
+| `GET /projects/{id}/reports/burndown` | `?sprint_id=`; defaults to the active, else latest completed, sprint |
+| `GET /projects/{id}/reports/velocity` | Recent closed sprints (`?limit=`, default 7) |
+| `GET /projects/{id}/reports/workload` | `?start=YYYY-MM-DD&weeks=8` (1–26) |
+| `GET /projects/{id}/reports/activity` | `?weeks=12` (1–26) |
 
 ## Frontend
 
@@ -133,6 +170,9 @@ All routes are under `/api/pm` and require the `projects` module.
   **Settings** for project administrators.
 - `components/pm/IssueBoard.tsx`, `Backlog.tsx` and `SprintDialogs.tsx`: the
   drag-and-drop board, backlog planning and sprint create/edit/start/complete.
+- `components/pm/Timeline.tsx` (with shared `buildScale`/`TimeAxis`/`TimeGrid`),
+  `ProjectsTimeline.tsx`, `Reports.tsx` and `Charts.tsx`: the Gantt views,
+  reports and heat maps. Report endpoints live in `app/api/pm_reports.py`.
 - `components/pm/IssueDetail.tsx`: the issue side panel, opened with
   `?issue=KEY-N` so issue links can be shared and come from notifications.
 - `components/pm/IssueForm.tsx`, `ProjectMembers.tsx`, `IssueBits.tsx`, and
@@ -140,8 +180,8 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Planned next: the timeline (Gantt), reports (burndown, velocity) and the team
-workload heat map.
+Possible next steps from the original requirements: Jira import, read-only share
+links for project views, and AI access through an MCP server.
 
 ## Checks
 

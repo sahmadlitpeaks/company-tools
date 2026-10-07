@@ -5,7 +5,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
   BOARD_TYPES, canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, pmError,
-  type IssueStatus, type PmIssue, type PmMember, type PmProject, type PmSprint,
+  type IssueStatus, type PmIssue, type PmLinkRow, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
 import { useAuth } from "@/auth/AuthContext";
@@ -15,6 +15,8 @@ import { IssueTypeIcon, pointsLabel, StatusBadge } from "@/components/pm/IssueBi
 import { IssueDetail } from "@/components/pm/IssueDetail";
 import { IssueForm } from "@/components/pm/IssueForm";
 import { ProjectMembers } from "@/components/pm/ProjectMembers";
+import { Reports } from "@/components/pm/Reports";
+import { Timeline } from "@/components/pm/Timeline";
 import { CompleteSprintDialog, SprintDialog, StartSprintDialog } from "@/components/pm/SprintDialogs";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
 import { Empty, ErrorState, Loading, PageHead, useToast } from "@/components/ui";
@@ -131,7 +133,9 @@ export default function ProjectPage() {
       <TabsList className="max-w-full overflow-x-auto">
         <TabsTrigger value="board">Board</TabsTrigger>
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
+        <TabsTrigger value="timeline">Timeline</TabsTrigger>
         <TabsTrigger value="issues">Issues</TabsTrigger>
+        <TabsTrigger value="reports">Reports</TabsTrigger>
         <TabsTrigger value="people">People</TabsTrigger>
         {current.my_role === "admin" && <TabsTrigger value="settings">Settings</TabsTrigger>}
       </TabsList>
@@ -151,6 +155,13 @@ export default function ProjectPage() {
             onStartSprint={(sprint) => setSprintAction({ kind: "start", sprint })}
             onCompleteSprint={(sprint) => setSprintAction({ kind: "complete", sprint })} />}
       </TabsContent>}
+      <TabsContent value="timeline" className="pt-4">
+        {issues.error ? <ErrorState message={issues.error} onRetry={issues.reload} /> : !issues.data ? <Loading /> :
+          <TimelineTab project={current} issues={issues.data} editable={editable}
+            onOpen={(key) => setParams((p) => { const next = new URLSearchParams(p); next.set("issue", key); return next; })}
+            onReschedule={(issue, start, due) => void patchIssue(issue, { start_date: start, due_date: due }, { start_date: start, due_date: due })} />}
+      </TabsContent>
+      <TabsContent value="reports" className="pt-4"><Reports project={current} /></TabsContent>
       <TabsContent value="issues" className="pt-4">
         {issues.error ? <ErrorState message={issues.error} onRetry={issues.reload} /> :
           !issues.data ? <Loading /> : <IssueList project={current} issues={issues.data} members={members.data ?? []} />}
@@ -190,6 +201,17 @@ export default function ProjectPage() {
       </AlertDialogContent>
     </AlertDialog>
   </div>;
+}
+
+function TimelineTab({ project, issues, editable, onOpen, onReschedule }: {
+  project: PmProject; issues: PmIssue[]; editable: boolean;
+  onOpen: (key: string) => void; onReschedule: (issue: PmIssue, start: string, due: string) => void;
+}) {
+  const links = useFetch<PmLinkRow[]>(`/api/pm/projects/${project.id}/links`);
+  const sprints = useFetch<PmSprint[]>(project.sprints_enabled ? `/api/pm/projects/${project.id}/sprints?state=all` : null);
+  if (links.error) return <ErrorState message={links.error} onRetry={links.reload} />;
+  if (!links.data) return <Loading />;
+  return <Timeline issues={issues} links={links.data} sprints={sprints.data ?? []} editable={editable} onOpen={onOpen} onReschedule={onReschedule} />;
 }
 
 function BoardTab({ project, issues, activeSprint, usesSprints, editable, manageSprints, busy, onMove, onComplete }: {
