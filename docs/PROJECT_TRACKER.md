@@ -100,6 +100,41 @@ refused while a sprint is active.
   use the `--chart-ink` tokens. Every chart has a legend, hover/focus details,
   and a data table or numeric cells, so nothing depends on colour alone.
 
+## Import from Jira
+
+Project administrators import a Jira CSV export from **Settings → Import from
+Jira**. In Jira, open the issues to move (for example a project filter) and use
+**Export → CSV (all fields)**. A CSV export was chosen over Jira's API so no
+Jira credentials are stored and the server needs no access to Atlassian.
+
+1. **Preview** parses the file and writes nothing. It lists issue types,
+   comments, links and attachments found, issues already imported, and
+   proposes a mapping for each Jira status (Done/Closed → Done, Review/QA/Test →
+   In Review, Progress/Develop → In Progress, otherwise To Do) and each Jira
+   person (matched by display name or email to an active account).
+2. **Import** re-sends the file with the confirmed mappings and creates, in one
+   transaction:
+   - issues with type, summary, description, priority (Blocker/Critical →
+     Highest, Major → High, Minor → Low, Trivial → Lowest), story points,
+     labels, due date and the original created and resolved times;
+   - the hierarchy: stories, tasks and bugs under their epic (Epic Link or
+     Parent column), sub-tasks under their parent; a sub-task whose parent
+     isn't in the file becomes a task; other types (Improvement, New Feature…)
+     become tasks;
+   - comments with their mapped author and original time, or the Jira name in
+     the text when the author isn't mapped;
+   - Blocks and Relates links between issues in the file or imported earlier;
+   - unfinished stories, tasks and bugs in a sprint go into a future sprint of
+     the same name (Scrum projects only).
+
+Each issue keeps its Jira key (`external_key`, shown as "Jira key" on the issue
+and unique per project), so importing the same or an overlapping export again
+skips issues already there. New issue numbers are given parents first. Mapped
+people can be added to the project automatically (assignees as members,
+reporters as viewers); otherwise unmapped or non-member people are named in the
+description. Attachments aren't in a CSV export; the preview counts them. Files
+are limited to 10 MB and 5,000 issues.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
@@ -160,6 +195,8 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET /projects/{id}/reports/velocity` | Recent closed sprints (`?limit=`, default 7) |
 | `GET /projects/{id}/reports/workload` | `?start=YYYY-MM-DD&weeks=8` (1–26) |
 | `GET /projects/{id}/reports/activity` | `?weeks=12` (1–26) |
+| `POST /projects/{id}/import/jira/preview` | Multipart `file`; project admin; writes nothing |
+| `POST /projects/{id}/import/jira` | Multipart `file` + `mapping` JSON (`statuses`, `people`, `add_members`) |
 
 ## Frontend
 
@@ -173,6 +210,8 @@ All routes are under `/api/pm` and require the `projects` module.
 - `components/pm/Timeline.tsx` (with shared `buildScale`/`TimeAxis`/`TimeGrid`),
   `ProjectsTimeline.tsx`, `Reports.tsx` and `Charts.tsx`: the Gantt views,
   reports and heat maps. Report endpoints live in `app/api/pm_reports.py`.
+- `components/pm/JiraImport.tsx`: the Jira import preview, mapping and result;
+  backend in `app/api/pm_import.py` and `app/services/jira_import.py`.
 - `components/pm/IssueDetail.tsx`: the issue side panel, opened with
   `?issue=KEY-N` so issue links can be shared and come from notifications.
 - `components/pm/IssueForm.tsx`, `ProjectMembers.tsx`, `IssueBits.tsx`, and
@@ -180,12 +219,14 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Possible next steps from the original requirements: Jira import, read-only share
-links for project views, and AI access through an MCP server.
+Possible next steps from the original requirements: read-only share links for
+project views, AI access through an MCP server, and Microsoft Teams
+notifications.
 
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
-- Migrations `s5c6d7e8f9a0` and `t6d7e8f9a0b1` (verified on PostgreSQL 16,
-  including downgrade).
+- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1` and `u7e8f9a0b1c2` (verified on
+  PostgreSQL 16, including downgrade).
+- Jira import: `backend/tests/test_pm_import.py`.
 - Browser: `frontend/e2e/projects.spec.ts` (desktop and Pixel 5, with axe).

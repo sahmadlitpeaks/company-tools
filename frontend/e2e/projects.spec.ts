@@ -50,7 +50,8 @@ async function mount(page: Page, role: "admin" | "viewer") {
     const path = new URL(request.url()).pathname;
     const method = request.method();
     if (!path.startsWith("/api/")) return route.continue();
-    const body = request.postData() ? request.postDataJSON() : null;
+    const isJson = (request.headers()["content-type"] ?? "").includes("application/json");
+    const body = request.postData() ? (isJson ? request.postDataJSON() : request.postData()) : null;
     if (method !== "GET") requests.push({ method, path, body });
     let json: unknown = [];
     if (path === "/api/auth/me") json = { id: userId, email: `${userId}@example.com`, display_name: role === "admin" ? "Sara Admin" : "Dr T", role: role === "admin" ? "admin" : "member",
@@ -63,6 +64,14 @@ async function mount(page: Page, role: "admin" | "viewer") {
     else if (path === "/api/pm/people") json = [{ id: "new", name: "Khalid", email: "khalid@example.com" }];
     else if (path === "/api/pm/projects/p1/issues" && method === "GET") json = list;
     else if (path === "/api/pm/projects/p1/sprints") json = sprintList;
+    else if (path === "/api/pm/projects/p1/import/jira/preview") json = {
+      total: 3, already_imported: 1, types: [{ name: "Story", count: 2, imported_as: "story" }, { name: "Improvement", count: 1, imported_as: "task" }],
+      statuses: [{ name: "Code Review", count: 2, suggested: "in_review" }, { name: "Backlog", count: 1, suggested: "todo" }],
+      people: [{ name: "Ali Dev", count: 2, suggested_user_id: "dev", suggested_name: "Ali Dev" }, { name: "Old Contractor", count: 1, suggested_user_id: null, suggested_name: null }],
+      sprints: ["OLD Sprint 2"], comments: 4, links: 1, attachments: 2, warnings: ["Improvement will be imported as tasks."],
+      sample: [{ key: "OLD-1", type: "story", summary: "Analyse PDFs", status: "Code Review" }],
+    };
+    else if (path === "/api/pm/projects/p1/import/jira") json = { created: 2, skipped: 1, comments: 4, links: 1, sprints_created: 1, members_added: 0, warnings: [], first_key: "LIMS-6" };
     else if (path === "/api/pm/projects/p1/links") json = [{ id: "l1", source_id: "s1", target_id: "t1", link_type: "blocks" }];
     else if (path === "/api/pm/projects/p1/reports/burndown") json = { sprint: { id: "sp1", name: "LIMS Sprint 1", status: "active", start_date: "2026-10-05", end_date: "2026-10-09" }, total_points: 8,
       days: [8, 8, 5, null, null].map((remaining, i) => ({ date: `2026-10-0${5 + i}`, ideal: 8 - i * 2, remaining })) };
@@ -293,4 +302,26 @@ test("the projects page shows health and a cross-project timeline", async ({ pag
   await expect(page.getByRole("link", { name: /^LIMS v3: 1 Oct 2026 to 31 Dec 2026, 33% done, At risk$/ })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
+});
+
+test("project admins preview a Jira export, adjust mappings and import it", async ({ page }) => {
+  const requests = await mount(page, "admin");
+  await page.goto("/projects/LIMS");
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await page.getByLabel("Jira CSV export").setInputFiles({ name: "jira.csv", mimeType: "text/csv", buffer: Buffer.from("Summary,Issue key,Issue Type\nA,OLD-1,Story\n") });
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByText("Improvement will be imported as tasks.")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Status for Jira Code Review" })).toContainText("In Review");
+  await expect(page.getByRole("combobox", { name: "Person for Jira Ali Dev" })).toContainText("Ali Dev");
+  await page.getByRole("combobox", { name: "Status for Jira Code Review" }).click();
+  await page.getByRole("option", { name: "Done" }).click();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await page.screenshot({ path: `test-results/project-jira-import-${page.viewportSize()!.width}.png`, fullPage: true });
+
+  await page.getByRole("button", { name: "Import 2 issues" }).click();
+  await expect(page.getByText("Imported 2 issues")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open LIMS-6" })).toBeVisible();
+  const upload = requests.find((r) => r.path === "/api/pm/projects/p1/import/jira");
+  expect(String(upload?.body)).toContain('{"statuses":{"Code Review":"done","Backlog":"todo"},"people":{"Ali Dev":"dev","Old Contractor":null},"add_members":true}');
 });

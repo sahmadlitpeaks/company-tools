@@ -146,12 +146,16 @@ class PmIssue(UUIDMixin, TimestampMixin, Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Backlog ordering; lower comes first.
     rank: Mapped[float] = mapped_column(Float, default=0)
+    # Key in the system the issue was imported from (e.g. Jira "ABC-123").
+    external_key: Mapped[str | None] = mapped_column(String(64))
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     __table_args__ = (
         UniqueConstraint("project_id", "number", name="uq_pm_issue_number"),
+        # Re-running an import skips what is already there.
+        UniqueConstraint("project_id", "external_key", name="uq_pm_issue_external_key"),
     )
 
 

@@ -22,7 +22,8 @@ and now also includes:
 
 - A Jira-style project tracker: epics, stories, tasks, bugs and sub-tasks with
   issue keys, story points, labels, links, watchers, comments, attachments and
-  field history, visible only to each project's members. See
+  field history, visible only to each project's members, with sprints, a
+  board, a Gantt timeline, reports, heat maps and Jira CSV import. See
   [project tracker](docs/PROJECT_TRACKER.md).
 
 - Simple time tracking with two primary actions (clock and break), a live

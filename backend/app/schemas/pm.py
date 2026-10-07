@@ -139,6 +139,7 @@ class PmIssueOut(BaseModel):
     due_date: date | None = None
     resolved_at: datetime | None = None
     rank: float = 0
+    external_key: str | None = None
     created_at: datetime
     updated_at: datetime
     # Children (stories under an epic, sub-tasks under an issue).

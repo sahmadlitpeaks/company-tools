@@ -70,6 +70,7 @@ export interface PmIssue {
   due_date: string | null;
   resolved_at: string | null;
   rank: number;
+  external_key: string | null;
   created_at: string;
   updated_at: string;
   child_count: number;
@@ -161,6 +162,31 @@ export interface ActivityReport {
   weeks: string[];
   people: Array<{ user_id: string; name: string; counts: number[] }>;
   totals: number[];
+}
+
+export interface JiraPreview {
+  total: number;
+  already_imported: number;
+  types: Array<{ name: string; count: number; imported_as: IssueType }>;
+  statuses: Array<{ name: string; count: number; suggested: IssueStatus }>;
+  people: Array<{ name: string; count: number; suggested_user_id: string | null; suggested_name: string | null }>;
+  sprints: string[];
+  comments: number;
+  links: number;
+  attachments: number;
+  warnings: string[];
+  sample: Array<{ key: string; type: IssueType; summary: string; status: string }>;
+}
+
+export interface JiraImportResult {
+  created: number;
+  skipped: number;
+  comments: number;
+  links: number;
+  sprints_created: number;
+  members_added: number;
+  warnings: string[];
+  first_key: string | null;
 }
 
 export const HEALTH: Record<PmProject["health"], { label: string; variant: "success" | "warning" | "destructive" }> = {

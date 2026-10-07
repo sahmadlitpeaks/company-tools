@@ -101,6 +101,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
               {project.sprints_enabled && <Detail label="Sprint">{issue.sprint_name ?? "Backlog"}</Detail>}
               <Detail label="Start date">{issue.start_date ? dateLabel(issue.start_date) : "—"}</Detail>
               <Detail label="Due date">{issue.due_date ? dateLabel(issue.due_date) : "—"}</Detail>
+              {issue.external_key && <Detail label="Jira key">{issue.external_key}</Detail>}
               <Detail label="Labels" wide>
                 {issue.labels?.length ? <span className="flex flex-wrap gap-1">{issue.labels.map((label) => <Badge key={label} variant="outline">{label}</Badge>)}</span> : "None"}
               </Detail>
