@@ -309,7 +309,7 @@ notifications, and OAuth sign-in for MCP clients that require it.
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
-- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2`, `v8f9a0b1c2d3` and
+- Migrations `s6d7e8f9a0b1`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2`, `v8f9a0b1c2d3` and
   `w9a0b1c2d3e4` (verified on PostgreSQL 16, including downgrade).
 - Jira import: `backend/tests/test_pm_import.py`; share links:
   `backend/tests/test_pm_share.py`; AI access over MCP:

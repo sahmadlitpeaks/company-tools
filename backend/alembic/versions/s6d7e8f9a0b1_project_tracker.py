@@ -1,13 +1,13 @@
 """Project tracker: projects, members, issues, links, watchers, comments, history.
 
-Revision ID: s5c6d7e8f9a0
-Revises: r4b5c6d7e8f9
+Revision ID: s6d7e8f9a0b1
+Revises: s5c6d7e8f9a0
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "s5c6d7e8f9a0"
-down_revision = "r4b5c6d7e8f9"
+revision = "s6d7e8f9a0b1"
+down_revision = "s5c6d7e8f9a0"
 branch_labels = None
 depends_on = None
 

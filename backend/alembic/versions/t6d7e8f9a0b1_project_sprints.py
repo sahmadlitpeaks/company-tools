@@ -1,13 +1,13 @@
 """Project tracker sprints: optional per project, issues belong to one sprint.
 
 Revision ID: t6d7e8f9a0b1
-Revises: s5c6d7e8f9a0
+Revises: s6d7e8f9a0b1
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "t6d7e8f9a0b1"
-down_revision = "s5c6d7e8f9a0"
+down_revision = "s6d7e8f9a0b1"
 branch_labels = None
 depends_on = None
 
