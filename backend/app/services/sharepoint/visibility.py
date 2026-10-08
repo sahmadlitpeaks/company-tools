@@ -26,7 +26,7 @@ class DocumentScope:
         return self.documents is None or document_id in self.documents
 
 
-async def document_scope(db: AsyncSession, user: User, source: SharePointSource) -> DocumentScope:
+async def document_scope(db: AsyncSession, user: User, source: SharePointSource | None = None) -> DocumentScope:
     if user.is_admin:
         return DocumentScope(None, None)
 
@@ -53,7 +53,7 @@ async def document_scope(db: AsyncSession, user: User, source: SharePointSource)
         SharePointComplianceTask.id, SharePointComplianceTask.document_id,
         SharePointComplianceTask.owner_user_id, SharePointComplianceTask.owner_department_id,
     ).where(
-        SharePointComplianceTask.source_id == source.id,
+        SharePointComplianceTask.source_id == source.id if source else true(),
         SharePointComplianceTask.status.in_(["active", "completed"]),
     ))).all()
     owned_documents = {row.document_id for row in rows}
@@ -67,7 +67,7 @@ async def document_scope(db: AsyncSession, user: User, source: SharePointSource)
     # A standalone reminder is an explicit document assignment. Task reminder
     # history never grants access to a former owner after reassignment.
     manual = select(SharePointReminder.document_id).where(
-        SharePointReminder.source_id == source.id,
+        SharePointReminder.source_id == source.id if source else true(),
         SharePointReminder.task_id.is_(None),
         func.lower(func.trim(SharePointReminder.recipient_email)).in_(
             select(func.lower(User.email)).where(User.id.in_(team))
@@ -79,7 +79,7 @@ async def document_scope(db: AsyncSession, user: User, source: SharePointSource)
     if manager and user.department_id:
         departments = (await db.scalars(select(Department))).all()
         candidates = (await db.execute(select(SharePointDocument.id, SharePointDocument.path).where(
-            SharePointDocument.source_id == source.id, SharePointDocument.deleted.is_(False),
+            SharePointDocument.source_id == source.id if source else true(), SharePointDocument.deleted.is_(False),
             SharePointDocument.in_scope.is_(True), SharePointDocument.is_folder.is_(False),
         ))).all()
         for doc_id, path in candidates:

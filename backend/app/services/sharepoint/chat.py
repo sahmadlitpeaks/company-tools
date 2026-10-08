@@ -14,7 +14,7 @@ from app.services.sharepoint.analysis import source_segments
 from app.services.sharepoint.common import SharePointError, decrypt
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.privacy import restore
-from app.services.sharepoint.store import authorize_document, source_for
+from app.services.sharepoint.store import authorize_document, sources_for, document_source
 from app.services.sharepoint.visibility import document_scope
 
 log = logging.getLogger("sharepoint_chat")
@@ -559,10 +559,12 @@ def synthesize_offline_central_response(
 
 async def ask_document(db: AsyncSession, user: User, document_id: str | uuid.UUID, messages: list[dict]) -> dict:
     doc_uuid = uuid.UUID(str(document_id)) if not isinstance(document_id, uuid.UUID) else document_id
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, doc_uuid)
+    source = await document_source(db, doc)
     if not doc or doc.source_id != source.id or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
+
+    await authorize_document(db, user, source, doc)
 
     if doc.status != "ready":
         raise SharePointError("document_not_ready", 409)
@@ -637,12 +639,12 @@ async def ask_central(
     messages: list[dict],
     document_ids: list[str] | None = None,
 ) -> dict:
-    source = await source_for(db)
+    sources = {source.id: source for source in await sources_for(db)}
     graph = GraphClient(await delegated_token(db, user))
-    workspace = await document_scope(db, user, source)
+    workspace = await document_scope(db, user)
 
     query = select(SharePointDocument).where(
-        workspace.document_filter(), SharePointDocument.source_id == source.id,
+        workspace.document_filter(), SharePointDocument.source_id.in_(sources),
         SharePointDocument.in_scope.is_(True),
         SharePointDocument.deleted.is_(False),
         SharePointDocument.is_folder.is_(False),
@@ -730,7 +732,7 @@ async def ask_central(
         if len(authorized_docs) >= max_candidates:
             break
         try:
-            metadata = await authorize_document(db, user, source, doc, graph, workspace=workspace)
+            metadata = await authorize_document(db, user, sources[doc.source_id], doc, graph, workspace=workspace)
             # DO NOT restore segments or analysis before sending to OpenAI (Issue #15)
             # Pass sanitized segments and analysis
             authorized_docs.append((doc, metadata, source_segments(doc.segments or []), doc.analysis))

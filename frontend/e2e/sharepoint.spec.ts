@@ -390,9 +390,9 @@ test("Documents Home displays greeting, attention items, query suggestions, and 
 test("Document sources admin tab is accessible to administrators", async ({ page }) => {
   await page.goto("/sharepoint?tab=admin");
   await expect(page.getByRole("main", { name: "Document sources" })).toBeVisible();
-  await expect(page.getByText("Automatic sync")).toBeVisible();
-  await expect(page.getByText("Compliance workflow")).toBeVisible();
-  await expect(page.getByText("Processing health")).toBeVisible();
+  await expect(page.getByText(/Automatic sync:/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add source" })).toBeVisible();
+  await expect(page.getByText("No document sources")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open compliance dashboard" })).toBeVisible();
 });
 

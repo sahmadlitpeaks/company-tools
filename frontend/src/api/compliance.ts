@@ -11,6 +11,8 @@ export type ComplianceSummary = {
 
 export type ComplianceDocument = {
   id: string;
+  source_id?: string;
+  source_name?: string;
   name: string;
   url: string;
   company_id: string | null;

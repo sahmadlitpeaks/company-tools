@@ -44,7 +44,7 @@ def decrypt(value: str):
 
 
 def configuration_errors():
-    names = ["TENANT_ID", "CLIENT_ID", "CLIENT_SECRET", "SITE_ID", "DRIVE_ID", "FOLDER_ID", "REDIRECT_URI", "ENCRYPTION_KEY"]
+    names = ["TENANT_ID", "CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI", "ENCRYPTION_KEY"]
     missing = [f"SHAREPOINT_{name}" for name in names if not getattr(settings, f"SHAREPOINT_{name}")]
     if not missing:
         try:

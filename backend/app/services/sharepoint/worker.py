@@ -14,13 +14,13 @@ from app.services.sharepoint.common import SharePointError, digest, now
 from app.services.sharepoint.compliance import apply_analysis, archive_prior_version, event
 from app.services.sharepoint.graph import GraphClient, application_token, graph_url, item_path
 from app.services.sharepoint.privacy import PIPELINE_VERSION, VISUAL_REVIEW_LOCATION, preprocess
+from app.services.sharepoint.uploads import new_upload, queue_uploads, upload_notification_loop
 from app.services.sharepoint.store import (
     enqueue,
     in_live_scope,
     purge,
     purge_document_reminders,
-    scope_key,
-    source_for,
+    sources_for,
 )
 
 log = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ async def owned(db, source_id, owner):
     # The row lock serializes result publication with lease takeover on PostgreSQL.
     source = (await db.execute(select(SharePointSource).where(SharePointSource.id == source_id,
         SharePointSource.lease_owner == owner, SharePointSource.lease_until > now()).with_for_update())).scalar_one_or_none()
-    if not source or source.scope_key != scope_key():
+    if not source or not source.registered or not source.enabled or source.tenant_id != settings.SHAREPOINT_TENANT_ID:
         raise SharePointError("sync_lease_lost", 409)
     return source
 
@@ -56,17 +56,28 @@ async def heartbeat(source_id, owner):
 
 async def claim():
     async with AsyncSessionLocal() as db:
-        source = await source_for(db)
-        if not source.active_run_id and settings.SHAREPOINT_POLLING_ENABLED:
-            last = source.last_sync
-            if last is None or (now() - last.replace(tzinfo=now().tzinfo)).total_seconds() >= max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS):
-                await enqueue(db, source)
-        owner = str(uuid.uuid4())
-        changed = await db.execute(update(SharePointSource).execution_options(synchronize_session=False).where(SharePointSource.id == source.id,
-            SharePointSource.active_run_id.is_not(None), or_(SharePointSource.lease_until.is_(None), SharePointSource.lease_until < now())
-        ).values(lease_owner=owner, lease_until=now() + timedelta(seconds=LEASE_SECONDS)))
+        await sources_for(db)
+        sources = list((await db.scalars(select(SharePointSource).where(
+            SharePointSource.tenant_id == settings.SHAREPOINT_TENANT_ID,
+            SharePointSource.registered.is_(True),
+            SharePointSource.enabled.is_(True)).order_by(
+            SharePointSource.last_sync.asc().nullsfirst(), SharePointSource.created_at, SharePointSource.id))).all())
+        for source in sources:
+            if not source.active_run_id and settings.SHAREPOINT_POLLING_ENABLED:
+                last = source.last_sync
+                if last is None or (now() - last.replace(tzinfo=now().tzinfo)).total_seconds() >= max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS):
+                    await enqueue(db, source)
+            owner = str(uuid.uuid4())
+            changed = await db.execute(update(SharePointSource).execution_options(synchronize_session=False).where(
+                SharePointSource.id == source.id, SharePointSource.enabled.is_(True),
+                SharePointSource.active_run_id.is_not(None),
+                or_(SharePointSource.lease_until.is_(None), SharePointSource.lease_until < now())
+            ).values(lease_owner=owner, lease_until=now() + timedelta(seconds=LEASE_SECONDS)))
+            if changed.rowcount:
+                await db.commit()
+                return source.id, owner
         await db.commit()
-        return (source.id, owner) if changed.rowcount else None
+        return None
 
 
 def item_path_from_metadata(item, indexed):
@@ -91,6 +102,8 @@ def item_path_from_metadata(item, indexed):
 
 
 def ancestry(doc, by_id, folder):
+    if folder == "root":
+        return not doc.deleted
     seen = set()
     current = doc
     for _ in range(100):
@@ -161,7 +174,8 @@ async def discover(source_id, owner, graph):
                 if not doc:
                     if len(indexed) >= settings.SHAREPOINT_MAX_ITEMS:
                         raise SharePointError("source_item_limit", 422)
-                    doc = SharePointDocument(source_id=source_id, item_id=item["id"])
+                    doc = SharePointDocument(source_id=source_id, item_id=item["id"],
+                        upload_notification_pending=new_upload(source, item))
                     db.add(doc)
                     indexed[item["id"]] = doc
                     await db.flush()
@@ -243,6 +257,9 @@ async def discover(source_id, owner, graph):
                     doc.in_scope = included
                     if not included:
                         doc.filename = doc.web_url = doc.path = ""
+                await queue_uploads(db, source, indexed.values())
+                if source.baseline_completed_at is None:
+                    source.baseline_completed_at = now()
                 source.delta_link = delta
                 source.generation = None
             await db.commit()
@@ -398,14 +415,19 @@ async def execute(source_id, owner):
 
 
 async def worker_loop():
-    while True:
-        try:
-            if settings.SHAREPOINT_ENABLED:
-                work = await claim()
-                if work:
-                    await execute(*work)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.warning("SharePoint worker unavailable; retrying (details withheld)")
-        await asyncio.sleep(5)
+    notifications = asyncio.create_task(upload_notification_loop())
+    try:
+        while True:
+            try:
+                if settings.SHAREPOINT_ENABLED:
+                    work = await claim()
+                    if work:
+                        await execute(*work)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.warning("SharePoint worker unavailable; retrying (details withheld)")
+            await asyncio.sleep(5)
+    finally:
+        notifications.cancel()
+        await asyncio.gather(notifications, return_exceptions=True)

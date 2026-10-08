@@ -109,6 +109,7 @@ class ApprovalIn(StrictModel):
 class SearchIn(StrictModel):
     q: str = Field(default="", max_length=200)
     cursor: str | None = Field(default=None, max_length=4096)
+    source_id: uuid.UUID | None = None
 
 
 class ChatMessage(StrictModel):
