@@ -5,13 +5,14 @@ import {
   Search, ShieldCheck, UsersRound, X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { SourceFilter } from "@/components/sharepoint/SourceFilter";
 import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
 import { api } from "@/api/client";
 import {
   type ComplianceDashboard, type ComplianceDocument, type ComplianceOptions,
   type ComplianceTask, type OwnerRule, DOCUMENT_TYPES, documentTypeLabel, factValue,
 } from "@/api/compliance";
-import { formatDateTime, type SharePointDocument, type SharePointReminder, type SharePointStatus } from "@/api/sharepoint";
+import { formatDateTime, type SharePointDocument, type SharePointReminder, type SharePointStatus, type SharePointSourceOption } from "@/api/sharepoint";
 import { useAuth } from "@/auth/AuthContext";
 import { useToast, PageHead } from "@/components/ui";
 import { useFetch } from "@/hooks/useApi";
@@ -533,7 +534,10 @@ export default function CompliancePage() {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const status = useFetch<SharePointStatus>("/api/sharepoint/status", true);
-  const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? "/api/sharepoint/compliance/dashboard" : null, true);
+  const [sourceId, setSourceId] = useState("all");
+  const sourceOptions = useFetch<SharePointSourceOption[]>(status.data?.connected ? "/api/sharepoint/source-options" : null, true);
+  const sourceQuery = sourceId === "all" ? "" : `?source_id=${encodeURIComponent(sourceId)}`;
+  const dashboard = useFetch<ComplianceDashboard>(status.data?.connected ? `/api/sharepoint/compliance/dashboard${sourceQuery}` : null, true);
   const canReview = Boolean(user?.is_admin || status.data?.can_review || (user?.role === "manager" && user.department_id));
   const options = useFetch<ComplianceOptions>(status.data?.connected && canReview ? "/api/sharepoint/compliance/options" : null, true);
   const data = dashboard.error ? null : dashboard.data;
@@ -597,7 +601,7 @@ export default function CompliancePage() {
   }
   async function sync() {
     setBusy("sync");
-    try { await api("/api/sharepoint/sync", { method: "POST" }); notify("SharePoint sync queued."); void status.reload(); }
+    try { await api(sourceId === "all" ? "/api/sharepoint/sync" : `/api/sharepoint/sources/${sourceId}/sync`, { method: "POST" }); notify("SharePoint sync queued."); void status.reload(); }
     catch (cause) { notify(cause instanceof Error ? cause.message : "Could not sync", "error"); }
     finally { setBusy(null); }
   }
@@ -608,6 +612,8 @@ export default function CompliancePage() {
     finally { setBusy(null); }
   }
   return <div className="space-y-5"><MicrosoftConnectionFeedback /><PageHead title="Document Compliance" subtitle="Know what expires, who owns it, and what needs your review." action={<div className="flex flex-wrap gap-2">{user?.is_admin && <Button variant="outline" className="bg-background text-sm" disabled={busy === "sync"} onClick={() => void sync()}><RefreshCw data-icon="inline-start" />Sync now</Button>}<Button nativeButton={false} variant="secondary" className="border border-border text-sm" render={<Link to="/sharepoint/assistant" />}><Bell data-icon="inline-start" />Ask the assistant</Button></div>} />
+    {status.data?.connected && <SourceFilter id="compliance-source" value={sourceId} sources={Array.isArray(sourceOptions.data) ? sourceOptions.data : []} onChange={setSourceId} />}
+    {sourceOptions.error && <Alert variant="destructive"><AlertDescription>{sourceOptions.error}</AlertDescription></Alert>}
     {status.loading && !status.data ? <Skeleton className="h-40" /> : status.error ? <Alert variant="destructive"><AlertDescription>{status.error}</AlertDescription></Alert> : !status.data?.enabled || !status.data.configured ? <Alert><AlertDescription>SharePoint must be configured by an administrator before compliance processing can begin.</AlertDescription></Alert> : !status.data.connected ? <Card><CardHeader><CardTitle className="text-lg">Connect Microsoft 365</CardTitle><CardDescription className="text-sm">Connect your work account to see only the documents you can access in SharePoint.</CardDescription></CardHeader><CardContent><Button nativeButton={false} className="text-sm" render={<a aria-label="Connect Microsoft" href="/api/sharepoint/connect?return_to=%2Fsharepoint%2Fcompliance" />}>Connect Microsoft<ArrowRight data-icon="inline-end" /></Button></CardContent></Card> : <>
       <Card className="py-3"><CardContent className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="flex items-start gap-2 text-sm sm:items-center"><CircleCheck className="mt-0.5 size-4 shrink-0 text-success sm:mt-0" aria-hidden="true" /><span><strong>Connected to SharePoint.</strong> New files are analyzed automatically; originals stay in SharePoint.</span></p><Badge variant="success" className="self-start sm:self-auto">{status.data.active_run ? "Sync in progress" : "Automatic sync on"}</Badge></CardContent></Card>
       {dashboard.loading && !data ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-24" />)}</div> : dashboard.error ? <Alert variant="destructive"><AlertDescription>{dashboard.error} <Button variant="link" onClick={() => void dashboard.reload()}>Retry</Button></AlertDescription></Alert> : data && <Tabs value={view} onValueChange={(next) => setView(next as View)} className="min-w-0">

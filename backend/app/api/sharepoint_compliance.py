@@ -24,7 +24,7 @@ from app.services.sharepoint.compliance import (DEFAULT_LEADS, _active_departmen
 from app.services.sharepoint.graph import GraphClient, delegated_token
 from app.services.sharepoint.reminders import (compliance_task_recipients,
     notify_task_assignment, populate_task_reminders)
-from app.services.sharepoint.store import authorize_document, source_for
+from app.services.sharepoint.store import authorize_document, sources_for, document_source
 from app.services.task_assignment_email import deliver_assignment_emails
 from app.services.sharepoint.visibility import document_scope
 
@@ -33,8 +33,8 @@ router = APIRouter(prefix="/sharepoint/compliance", tags=["sharepoint-compliance
 
 
 async def _authorized(db, user, document_id):
-    source = await source_for(db)
     document = await db.get(SharePointDocument, document_id)
+    source = await document_source(db, document)
     metadata = await authorize_document(db, user, source, document)
     return document, metadata
 
@@ -67,15 +67,16 @@ async def _can_assign(db, user: User, task: SharePointComplianceTask) -> bool:
 @router.get("/dashboard")
 async def dashboard(company_id: uuid.UUID | None = None, document_type: str | None = None,
                     owner_id: uuid.UUID | None = None, department_id: uuid.UUID | None = None,
+                    source_id: uuid.UUID | None = None,
                     status: str | None = None, due_from: date | None = None, due_to: date | None = None,
                     user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if not (user.is_admin or user.role == "manager"):
         raise SharePointError("manager_required", 403)
-    source = await source_for(db)
+    sources = {source.id: source for source in await sources_for(db, source_id)}
     graph = GraphClient(await delegated_token(db, user))
-    workspace = await document_scope(db, user, source)
+    workspace = await document_scope(db, user)
     candidates = (await db.scalars(select(SharePointDocument).where(workspace.document_filter(),
-        SharePointDocument.source_id == source.id,
+        SharePointDocument.source_id.in_(sources),
         SharePointDocument.in_scope.is_(True), SharePointDocument.deleted.is_(False),
         SharePointDocument.is_folder.is_(False)).order_by(SharePointDocument.created_at.desc()))).all()
     all_departments = (await db.scalars(select(Department))).all()
@@ -84,7 +85,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
     accessible = []
     for document in candidates:
         try:
-            metadata = await authorize_document(db, user, source, document, graph, workspace=workspace)
+            metadata = await authorize_document(db, user, sources[document.source_id], document, graph, workspace=workspace)
         except SharePointError as error:
             if error.code in {"document_access_denied", "document_not_found", "document_changed_sync_required"}:
                 continue
@@ -149,7 +150,7 @@ async def dashboard(company_id: uuid.UUID | None = None, document_type: str | No
                 summary["expiring_60"] += 1
             if 0 <= remaining <= 30:
                 summary["expiring_30"] += 1
-        result_documents.append({"id": str(document.id), "name": metadata.get("name") or document.filename,
+        result_documents.append({"id": str(document.id), "source_id": str(document.source_id), "source_name": sources[document.source_id].name, "name": metadata.get("name") or document.filename,
             "url": metadata.get("webUrl") or "", "company_id": str(document.company_id) if document.company_id else None,
             "company": company_name, "document_type": facts.get("document_type", "unknown"),
             "reference_number": (facts.get("reference_number") or {}).get("value"),

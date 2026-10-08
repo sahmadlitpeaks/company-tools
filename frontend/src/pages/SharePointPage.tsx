@@ -3,12 +3,14 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Link2,
 } from "lucide-react";
+import { SourceFilter } from "@/components/sharepoint/SourceFilter";
 import { MicrosoftConnectionFeedback } from "@/components/sharepoint/MicrosoftConnectionFeedback";
 import { api } from "@/api/client";
 import {
   type SharePointDocument,
   type SharePointReminder,
   type SharePointStatus,
+  type SharePointSourceOption,
   readableStatus,
 } from "@/api/sharepoint";
 import { useAuth } from "@/auth/AuthContext";
@@ -75,6 +77,8 @@ function ConnectedSource({
     }
   }, [rawTab, searchParams, location.pathname, isAdmin, navigate]);
 
+  const [sourceId, setSourceId] = useState("all");
+  const sourceOptions = useFetch<SharePointSourceOption[]>(status.connected ? "/api/sharepoint/source-options" : null, true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState({ q: "", cursor: "" });
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
@@ -82,7 +86,6 @@ function ConnectedSource({
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [assistantQuery, setAssistantQuery] = useState<string | undefined>();
   const [assistantDocId, setAssistantDocId] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
   const { notify } = useToast();
 
   const locationState = location.state as { query?: string; docId?: string } | null;
@@ -91,7 +94,7 @@ function ConnectedSource({
   const currentAssistantDocId =
     searchParams.get("docId") || locationState?.docId || assistantDocId;
 
-  const searchResult = useDocumentSearch(page.q, page.cursor);
+  const searchResult = useDocumentSearch(page.q, page.cursor, sourceId);
   const docs = searchResult.data?.items ?? [];
   const { reload: reloadDocs } = searchResult;
 
@@ -199,20 +202,6 @@ function ConnectedSource({
     }
   }
 
-  async function action(subpath: string, message: string, method: "POST" | "DELETE" = "POST") {
-    setBusy(true);
-    try {
-      await api(`/api/sharepoint/${subpath}`, { method });
-      notify(message);
-      await reload();
-      void reloadDocs();
-      void reloadReminders();
-    } catch (error) {
-      notify(readableStatus(error instanceof Error ? error.message : "action_failed"), "error");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   useEffect(() => {
     const refresh = () => {
@@ -233,7 +222,7 @@ function ConnectedSource({
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
-      {status.connected ? (
+      {status.connected || (activeTab === "admin" && isAdmin) ? (
         <div className="min-w-0 max-w-full">
           {activeTab === "home" && (
             <DocumentsHomeTab
@@ -249,6 +238,10 @@ function ConnectedSource({
             />
           )}
 
+          {activeTab === "documents" && <div className="mb-4 space-y-2">
+            <SourceFilter id="documents-source" value={sourceId} sources={Array.isArray(sourceOptions.data) ? sourceOptions.data : []} onChange={(value) => { setSourceId(value); setCursorHistory([]); setPage((current) => ({ ...current, cursor: "" })); }} />
+            {sourceOptions.error && <Alert variant="destructive"><AlertDescription>{readableStatus(sourceOptions.error)}</AlertDescription></Alert>}
+          </div>}
           {activeTab === "documents" && (
             <MyDocumentsTab
               documents={docs}
@@ -299,15 +292,7 @@ function ConnectedSource({
           )}
 
           {activeTab === "admin" && isAdmin && (
-            <AdminSourcesTab
-              status={status}
-              documents={docs}
-              onTestAccess={() =>
-                action("test-connection", "SharePoint read access verified.")
-              }
-              onSyncNow={() => action("sync", "Document sync queued.")}
-              isBusy={busy}
-            />
+            <AdminSourcesTab status={status} onChanged={() => { void reload(); void reloadDocs(); void sourceOptions.reload(); }} />
           )}
         </div>
       ) : (

@@ -35,9 +35,10 @@ def send_slack(text: str) -> bool:
         return 200 <= resp.status < 300
 
 
-def send_teams(title: str, body: str | None, link: str | None) -> bool:
+def send_teams(title: str, body: str | None, link: str | None, *, webhook_url: str | None = None) -> bool:
     """Post an Adaptive Card or MessageCard to the configured Teams incoming webhook."""
-    if not teams_enabled():
+    destination = webhook_url or settings.TEAMS_WEBHOOK_URL
+    if not destination:
         return False
     abs_link = _absolute(link)
 
@@ -58,6 +59,7 @@ def send_teams(title: str, body: str | None, link: str | None) -> bool:
                             "size": "Medium",
                             "weight": "Bolder",
                             "text": title,
+                            "wrap": True,
                         },
                         *(
                             [{"type": "TextBlock", "text": body, "wrap": True}]
@@ -84,9 +86,15 @@ def send_teams(title: str, body: str | None, link: str | None) -> bool:
     try:
         data = json.dumps(adaptive_card).encode()
         req = urllib.request.Request(
-            settings.TEAMS_WEBHOOK_URL, data=data, headers={"Content-Type": "application/json"}
+            destination, data=data, headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 (configured URL)
+        # Per-source workflows receive one Adaptive Card attempt. Never follow a
+        # redirect with the webhook secret or retry an uncertain send as another format.
+        class NoRedirects(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        transport = urllib.request.build_opener(NoRedirects()).open if webhook_url else urllib.request.urlopen
+        with transport(req, timeout=10) as resp:  # noqa: S310 (configured URL)
             if 200 <= resp.status < 300:
                 return True
     except urllib.error.HTTPError as e:
@@ -94,6 +102,9 @@ def send_teams(title: str, body: str | None, link: str | None) -> bool:
             return False
     except Exception:
         pass
+
+    if webhook_url:
+        return False
 
     # 2. Legacy MessageCard fallback (for classic Office 365 connectors)
     card: dict = {

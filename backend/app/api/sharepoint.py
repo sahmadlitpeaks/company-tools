@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
+from app.api.sharepoint_sources import router as source_router
 from app.auth.deps import get_current_admin, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
@@ -18,11 +19,11 @@ from app.services.activity import record
 from app.services.dispatch import email_enabled
 from app.services.sharepoint.visibility import document_scope
 from app.services.sharepoint.chat import ask_central, ask_document
-from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, encrypt, is_reviewer, now, require_config
+from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, digest, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
 from app.services.sharepoint.privacy import restore
 from app.services.sharepoint.reminders import _calculate_reminder_date, deliver_reminder, run_sharepoint_reminders
-from app.services.sharepoint.store import authorize_document, enqueue, public_document, purge, purge_document_reminders, run_info, scope_key, source_for
+from app.services.sharepoint.store import authorize_document, enqueue, public_document, purge, purge_document_reminders, run_info, scope_key, source_for, sources_for, document_source
 
 
 async def same_origin(request: Request):
@@ -51,23 +52,25 @@ async def status(user=Depends(get_current_user), db: AsyncSession = Depends(get_
     connection = await db.get(SharePointConnection, user.id)
     connected = bool(connection and connection.tenant_id == settings.SHAREPOINT_TENANT_ID and
         connection.client_id == settings.SHAREPOINT_CLIENT_ID and (connection.object_id == user.azure_oid if user.azure_oid else bool(connection.object_id)))
-    source = None
+    sources = []
     run = None
     if settings.SHAREPOINT_ENABLED and not missing:
-        source = await source_for(db)
+        sources = await sources_for(db)
         if user.is_admin:
-            run = (await db.scalars(select(SharePointRun).where(SharePointRun.source_id == source.id).order_by(SharePointRun.created_at.desc()).limit(1))).first()
+            run = (await db.scalars(select(SharePointRun).where(SharePointRun.source_id.in_(
+                [source.id for source in sources])).order_by(SharePointRun.created_at.desc()).limit(1))).first()
+    latest_sync = max((source.last_sync for source in sources if source.last_sync), default=None)
     return {"enabled": settings.SHAREPOINT_ENABLED, "configured": not missing,
         "missing": missing if user.is_admin else [], "connected": connected,
         "microsoft_sign_in_required": False, "can_review": is_reviewer(user),
         "user_id": str(user.id), "openai_configured": bool(settings.SHAREPOINT_OPENAI_API_KEY and settings.SHAREPOINT_OPENAI_MODEL),
-        "active_run": bool(source and source.active_run_id),
+        "active_run": any(source.active_run_id for source in sources),
         "polling_enabled": settings.SHAREPOINT_POLLING_ENABLED,
         "scheduler_enabled": settings.RUN_SCHEDULER,
         "email_configured": email_enabled(),
         "teams_configured": bool(settings.TEAMS_WEBHOOK_URL),
         "sync_interval_seconds": max(60, settings.SHAREPOINT_SYNC_INTERVAL_SECONDS),
-        "run": run_info(run), "last_sync": source.last_sync.isoformat() if source and source.last_sync else None,
+        "run": run_info(run), "last_sync": latest_sync.isoformat() if latest_sync else None,
         "languages": [x.strip() for x in settings.SHAREPOINT_NER_LANGUAGES.split(",") if x.strip()]}
 
 
@@ -173,10 +176,12 @@ async def test_connection(user=Depends(get_current_admin), db: AsyncSession = De
 
 @router.post("/sync", status_code=202)
 async def sync(user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
-    run = await enqueue(db, source, user.id)
+    sources = [source for source in await sources_for(db) if source.enabled]
+    if not sources:
+        raise SharePointError("source_paused", 409)
+    runs = [await enqueue(db, source, user.id) for source in sources]
     record(db, user=user, action="sync", entity_type="sharepoint", summary="Requested read-only document sync")
-    return run_info(run)
+    return {**run_info(runs[0]), "runs": [run_info(run) for run in runs]}
 
 
 @router.post("/search")
@@ -184,19 +189,20 @@ async def documents(body: SearchIn,
                     user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     # Search names/text stay out of access-log URLs and browser history.
     q, cursor = body.q, body.cursor or None
-    source = await source_for(db)
+    sources = {source.id: source for source in await sources_for(db, body.source_id)}
+    search_scope = digest(sorted(source.scope_key for source in sources.values()))
     graph = GraphClient(await delegated_token(db, user))
     after = None
     if cursor:
         try:
             position = decrypt(cursor)
-            if position["user"] != str(user.id) or position["scope"] != source.scope_key or position["q"] != q or position["until"] < time.time():
+            if position["user"] != str(user.id) or position["scope"] != search_scope or position["q"] != q or position["until"] < time.time():
                 raise ValueError()
             after = uuid.UUID(position["after"])
         except (ValueError, KeyError, TypeError, SharePointError):
             raise SharePointError("invalid_search_cursor", 400) from None
-    workspace = await document_scope(db, user, source)
-    query = select(SharePointDocument).where(workspace.document_filter(), SharePointDocument.source_id == source.id,
+    workspace = await document_scope(db, user)
+    query = select(SharePointDocument).where(workspace.document_filter(), SharePointDocument.source_id.in_(sources),
         SharePointDocument.in_scope.is_(True), SharePointDocument.deleted.is_(False), SharePointDocument.is_folder.is_(False))
     if after:
         query = query.where(SharePointDocument.id > after)
@@ -204,7 +210,7 @@ async def documents(body: SearchIn,
     items = []
     for doc in candidates[:20]:
         try:
-            metadata = await authorize_document(db, user, source, doc, graph, workspace=workspace)
+            metadata = await authorize_document(db, user, sources[doc.source_id], doc, graph, workspace=workspace)
         except SharePointError as error:
             if error.code in ("document_access_denied", "document_not_found", "document_changed_sync_required"):
                 continue
@@ -217,7 +223,7 @@ async def documents(body: SearchIn,
         items.append(public_document(doc, metadata))
     next_cursor = None
     if len(candidates) > 20:
-        next_cursor = encrypt({"user": str(user.id), "scope": source.scope_key, "q": q,
+        next_cursor = encrypt({"user": str(user.id), "scope": search_scope, "q": q,
             "after": str(candidates[19].id), "until": time.time() + 900})
     return {"items": items, "next_cursor": next_cursor}
 
@@ -229,16 +235,16 @@ async def first_documents(user=Depends(get_current_user), db: AsyncSession = Dep
 
 @router.get("/documents/{document_id}")
 async def document(document_id: uuid.UUID, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, document_id)
+    source = await document_source(db, doc)
     metadata = await authorize_document(db, user, source, doc)
     return public_document(doc, metadata, detail=True)
 
 
 @router.post("/documents/{document_id}/retry", status_code=202)
 async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, document_id)
+    source = await document_source(db, doc)
     await authorize_document(db, user, source, doc)
     source = (await db.scalars(select(SharePointSource).where(SharePointSource.id == source.id).with_for_update().execution_options(populate_existing=True))).one()
     await db.refresh(doc)
@@ -257,8 +263,8 @@ async def retry(document_id: uuid.UUID, user=Depends(get_current_admin), db: Asy
 
 @router.post("/documents/{document_id}/chat")
 async def document_chat(document_id: uuid.UUID, body: ChatIn, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, document_id)
+    source = await document_source(db, doc)
     await authorize_document(db, user, source, doc)
     return await ask_document(db, user, str(document_id), [m.model_dump() for m in body.messages])
 
@@ -273,16 +279,17 @@ async def list_reminders(
     category: str | None = None,
     status: str | None = None,
     unassigned: bool | None = None,
+    source_id: uuid.UUID | None = None,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    source = await source_for(db)
+    sources = {source.id: source for source in await sources_for(db, source_id)}
     token = await delegated_token(db, user)
     graph = GraphClient(token)
 
     # 1. Filter by reminder IDs before loading document rows. DISTINCT on the
     # full document fails in PostgreSQL because documents contain JSON fields.
-    reminder_doc_ids = select(SharePointReminder.document_id).where(SharePointReminder.source_id == source.id)
+    reminder_doc_ids = select(SharePointReminder.document_id).where(SharePointReminder.source_id.in_(sources))
     if not user.is_admin and user.role != "manager":
         reminder_doc_ids = reminder_doc_ids.where(
             func.lower(func.trim(SharePointReminder.recipient_email)) == (user.email or "").strip().lower())
@@ -295,8 +302,8 @@ async def list_reminders(
     elif unassigned is False:
         reminder_doc_ids = reminder_doc_ids.where(SharePointReminder.recipient_email.is_not(None))
 
-    workspace = await document_scope(db, user, source)
-    doc_stmt = select(SharePointDocument).where(workspace.document_filter(),
+    workspace = await document_scope(db, user)
+    doc_stmt = select(SharePointDocument).where(workspace.document_filter(), SharePointDocument.source_id.in_(sources),
         SharePointDocument.id.in_(reminder_doc_ids),
         SharePointDocument.deleted.is_(False),
         SharePointDocument.in_scope.is_(True),
@@ -309,7 +316,7 @@ async def list_reminders(
     auth_doc_cache: dict[uuid.UUID, dict] = {}
     for doc in candidate_docs:
         try:
-            meta = await authorize_document(db, user, source, doc, graph, workspace=workspace)
+            meta = await authorize_document(db, user, sources[doc.source_id], doc, graph, workspace=workspace)
             auth_doc_cache[doc.id] = meta
         except SharePointError:
             continue
@@ -322,7 +329,7 @@ async def list_reminders(
         select(SharePointReminder, SharePointDocument)
         .join(SharePointDocument, SharePointReminder.document_id == SharePointDocument.id)
         .where(
-            SharePointReminder.source_id == source.id,
+            SharePointReminder.source_id.in_(sources),
             SharePointReminder.document_id.in_(auth_doc_cache.keys()),
             SharePointDocument.deleted == False,
             SharePointDocument.in_scope == True,
@@ -386,8 +393,8 @@ async def test_send_reminder(reminder_id: uuid.UUID, user=Depends(get_current_ad
     rem = await db.get(SharePointReminder, reminder_id)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, rem.document_id)
+    source = await document_source(db, doc)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
@@ -408,8 +415,8 @@ async def dismiss_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user
     if not rem:
         raise SharePointError("reminder_not_found", 404)
     require_reminder_recipient(user, rem)
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, rem.document_id)
+    source = await document_source(db, doc)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
@@ -429,8 +436,8 @@ async def complete_reminder(reminder_id: uuid.UUID, user=Depends(get_current_use
     if not rem:
         raise SharePointError("reminder_not_found", 404)
     require_reminder_recipient(user, rem)
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, rem.document_id)
+    source = await document_source(db, doc)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
@@ -461,8 +468,8 @@ async def reopen_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user)
     if not rem:
         raise SharePointError("reminder_not_found", 404)
     require_reminder_recipient(user, rem)
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, rem.document_id)
+    source = await document_source(db, doc)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
@@ -479,8 +486,8 @@ async def update_reminder(reminder_id: uuid.UUID, body: ReminderUpdateIn, user=D
     if not rem:
         raise SharePointError("reminder_not_found", 404)
     require_reminder_recipient(user, rem)
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, rem.document_id)
+    source = await document_source(db, doc)
     if not doc or doc.deleted or not doc.in_scope:
         raise SharePointError("document_not_found", 404)
     await authorize_document(db, user, source, doc)
@@ -518,8 +525,8 @@ async def update_reminder(reminder_id: uuid.UUID, body: ReminderUpdateIn, user=D
 
 @router.get("/documents/{document_id}/reminders", response_model=list[ReminderOut])
 async def document_reminders(document_id: uuid.UUID, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    source = await source_for(db)
     doc = await db.get(SharePointDocument, document_id)
+    source = await document_source(db, doc)
     await authorize_document(db, user, source, doc)
     stmt = (
         select(SharePointReminder)
@@ -555,3 +562,6 @@ async def document_reminders(document_id: uuid.UUID, user=Depends(get_current_us
         )
         for r in reminders
     ]
+
+
+router.include_router(source_router)
