@@ -160,6 +160,54 @@ revoked links get the same "not available" answer; switching the Projects module
 off org-wide disables every link. Responses are `no-store` and `noindex`, and the
 page sets `no-referrer` so the link isn't passed on to other sites.
 
+## AI access (MCP)
+
+AI assistants (Claude, ChatGPT and other MCP clients) can read and update the
+tracker through an MCP server at **`/api/mcp/`** (also served at `/api/mcp`
+without the slash, rather than redirecting, because some clients drop headers on
+redirects). It uses the Streamable HTTP transport in stateless JSON mode via the
+official `mcp` Python SDK, mounted inside the backend, so no extra service or
+proxy rule is needed. The session manager starts and stops with the app.
+
+**Tokens.** Each person creates personal access tokens under **My Work → AI
+Access** (`/ai-access`). Tokens start with `pmt_`, are shown once (only the
+SHA-256 is stored), expire after 30–365 days and can be revoked; the page shows
+ready-to-paste setup for Claude Code and a generic MCP JSON config. Platform
+administrators see and can revoke every token. Clients send
+`Authorization: Bearer pmt_...`; missing, unknown, expired or revoked tokens,
+inactive accounts and accounts without the Projects module (including when it is
+switched off org-wide) get `401`.
+
+**Read vs write.** Tokens are read-only unless created with "Allow changes",
+which requires the **Projects: AI write access** permission
+(`projects_ai_write`). Grant it to named people or departments in **Departments &
+Access**; it is not in member or manager defaults. The permission is checked
+again on every write call, so removing it stops existing write tokens at once.
+
+**Tools.** The assistant acts as the token's owner, sees only their projects and
+is limited by their project role; every tool calls the same handlers as the web
+app, so validation, history, notifications and watchers behave identically.
+
+| Tool | Access | Purpose |
+| --- | --- | --- |
+| `tracker_list_projects` | read | Visible projects with role, health and progress |
+| `tracker_get_project_summary` | read | Status counts, active sprint, overdue issues, epic progress |
+| `tracker_search_issues` | read | Search by text/key, status, type, assignee (`me`, `none`, email) or sprint; paged |
+| `tracker_get_issue` | read | Description, people, labels, children, links and the last 20 comments |
+| `tracker_create_issue` | write | Create an issue (parent/epic, assignee by email, points, dates, active sprint) |
+| `tracker_update_issue` | write | Change only the fields given |
+| `tracker_move_issue` | write | Change status |
+| `tracker_add_comment` | write | Comment as the token's owner |
+
+Read tools are annotated `readOnlyHint`; nothing deletes. Errors explain what to
+do next (for example "This token is read-only…").
+
+**Data protection.** Whatever a tool returns is sent to the assistant's provider,
+including descriptions and comments. Only grant tokens for assistants the
+organisation has approved; the AI Access page says so, and administrators can
+review and revoke tokens. Clients that only support OAuth sign-in (some web
+connectors) can't use personal tokens yet.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
@@ -225,6 +273,9 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET/POST /projects/{id}/shares` | List share links; create one (`view`, `label`, `expires_in_days`, 0 = never); project admin |
 | `DELETE /shares/{id}` | Revoke a share link |
 | `GET /api/public/pm-shares/{token}` | Public, no sign-in: the shared view's minimal payload |
+| `GET /ai/status`, `GET/POST /ai/tokens`, `DELETE /ai/tokens/{id}` | AI access tokens for the signed-in person |
+| `GET /ai/tokens/all` | Every token (platform admins) |
+| `POST /api/mcp/` | MCP endpoint (Bearer personal token) |
 
 ## Frontend
 
@@ -240,6 +291,8 @@ All routes are under `/api/pm` and require the `projects` module.
   reports and heat maps. Report endpoints live in `app/api/pm_reports.py`.
 - `components/pm/JiraImport.tsx`: the Jira import preview, mapping and result;
   backend in `app/api/pm_import.py` and `app/services/jira_import.py`.
+- `pages/AiAccessPage.tsx`: AI access tokens and setup; backend in
+  `app/api/pm_tokens.py` and `app/api/pm_mcp.py`.
 - `components/pm/ShareLinks.tsx` and `pages/public/PublicProjectSharePage.tsx`:
   share link management and the public read-only page (the board and timeline
   have read-only modes); backend in `app/api/pm_share.py`.
@@ -250,14 +303,17 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Possible next steps from the original requirements: AI access through an MCP
-server, and Microsoft Teams notifications.
+Possible next steps from the original requirements: Microsoft Teams
+notifications, and OAuth sign-in for MCP clients that require it.
 
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
-- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2` and `v8f9a0b1c2d3`
-  (verified on PostgreSQL 16, including downgrade).
+- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2`, `v8f9a0b1c2d3` and
+  `w9a0b1c2d3e4` (verified on PostgreSQL 16, including downgrade).
 - Jira import: `backend/tests/test_pm_import.py`; share links:
-  `backend/tests/test_pm_share.py`.
+  `backend/tests/test_pm_share.py`; AI access over MCP:
+  `backend/tests/test_pm_mcp.py` (also exercised end to end with the official
+  MCP client against uvicorn and PostgreSQL); browser:
+  `frontend/e2e/ai-access.spec.ts`.
 - Browser: `frontend/e2e/projects.spec.ts` (desktop and Pixel 5, with axe).

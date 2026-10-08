@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { FolderKanban, Plus } from "lucide-react";
+import { Bot, FolderKanban, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { labelOf, pmError, PROJECT_ROLES, type PmPerson, type PmProject } from "@/api/pm";
@@ -34,7 +34,10 @@ export default function ProjectsPage() {
       headingLevel={1}
       title="Projects"
       subtitle="Epics, stories, tasks and bugs for each project, visible to the people on it."
-      action={user?.is_admin ? <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button> : undefined}
+      action={<div className="flex gap-2">
+        <Button variant="outline" nativeButton={false} render={<Link to="/ai-access" />}><Bot data-icon="inline-start" />AI access</Button>
+        {user?.is_admin && <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button>}
+      </div>}
     />
     <div className="flex flex-wrap gap-3">
       <ToggleGroup value={[status]} onValueChange={(values) => values[0] && setStatus(values[0] as typeof status)} aria-label="Project status">

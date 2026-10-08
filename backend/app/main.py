@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.routing import Route
 
 from app.api import (
     activity,
@@ -61,8 +62,10 @@ from app.api import (
     timekeeping,
     pm,
     pm_import,
+    pm_mcp,
     pm_reports,
     pm_share,
+    pm_tokens,
     products,
     qrcodes,
     service_desk,
@@ -131,7 +134,9 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(worker_loop()))
     app.state.scheduler_tasks = tasks
     try:
-        yield
+        # The project tracker's MCP endpoint needs its session manager running.
+        async with pm_mcp.running():
+            yield
     finally:
         for task in tasks:
             task.cancel()
@@ -317,6 +322,10 @@ app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_reports.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_import.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_share.router, prefix=api_prefix, dependencies=_mod("projects"))
+app.include_router(pm_tokens.router, prefix=api_prefix, dependencies=_mod("projects"))
+# AI assistants (MCP, Streamable HTTP). Authenticates its own personal tokens.
+app.mount(f"{api_prefix}/mcp", pm_mcp.mcp_asgi_app())
+app.router.routes.insert(0, Route(f"{api_prefix}/mcp", endpoint=pm_mcp.mcp_exact_path_app(f"{api_prefix}/mcp"), methods=["GET", "POST", "DELETE"]))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(leave.router, prefix=api_prefix, dependencies=_feat("approvals.leave"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))

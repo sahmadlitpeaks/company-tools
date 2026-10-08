@@ -144,7 +144,9 @@ email configuration, and delivery guarantees.
 The project tracker (`/api/pm`, `app/api/pm.py`) is separate from ordinary
 tasks. It is gated by the `projects` module and then by per-project membership
 (`app/services/pm_access.py`); being a manager elsewhere grants nothing there.
-See [Project tracker](PROJECT_TRACKER.md).
+It also serves read-only public share links (`/api/public/pm-shares/`) and an
+MCP endpoint for AI assistants at `/api/mcp/`, authenticated by personal access
+tokens rather than the session cookie. See [Project tracker](PROJECT_TRACKER.md).
 
 ## Modules & key endpoints
 

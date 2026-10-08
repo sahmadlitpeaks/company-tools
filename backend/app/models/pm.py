@@ -253,3 +253,22 @@ class PmShareLink(UUIDMixin, TimestampMixin, Base):
     )
     last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     view_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PmAccessToken(UUIDMixin, TimestampMixin, Base):
+    """A personal token for AI assistants (MCP clients) acting as its owner.
+
+    Read-only unless ``can_write``; only the SHA-256 of the token is stored.
+    """
+
+    __tablename__ = "pm_access_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    can_write: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
