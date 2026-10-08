@@ -2,6 +2,18 @@ export type SharePointRun = {
   id: string; status: string; discovered: number; processed: number; failed: number; error_code: string | null;
 };
 
+export type SharePointSourceOption = { id: string; name: string };
+export type SharePointSource = SharePointSourceOption & {
+  site_id: string; drive_id: string; folder_id: string; enabled: boolean;
+  active_run: boolean; last_sync: string | null; baseline_completed: boolean;
+  teams_notify_uploads: boolean; teams_channel_name: string; teams_webhook_configured: boolean;
+  run: SharePointRun | null; deliveries: Record<string, number>; last_delivery_error: string | null;
+};
+export type SharePointSourceInput = {
+  name: string; site_id: string; drive_id: string; folder_id: string; enabled: boolean;
+  teams_notify_uploads: boolean; teams_channel_name: string; teams_webhook_url?: string;
+};
+
 export type SharePointStatus = {
   enabled: boolean; configured: boolean; missing: string[]; connected: boolean;
   microsoft_sign_in_required: boolean; can_review: boolean; user_id: string;
@@ -55,6 +67,7 @@ export type AnalysisSection = {
 };
 export type Segment = { id: string; location: string; text: string };
 export type SharePointDocument = {
+  source_id?: string;
   id: string; name: string; path?: string; url: string; status: string; error_code: string | null;
   languages: string[]; size?: number; modified_at: string | null; processed_at?: string | null;
   requires_attention: boolean; model?: string; attempts?: number;

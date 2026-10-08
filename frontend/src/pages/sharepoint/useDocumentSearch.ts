@@ -3,8 +3,8 @@ import { api } from "@/api/client";
 import type { DocumentPage } from "@/api/sharepoint";
 
 /** Search text belongs in a POST body, never in URL/access logs. Clear stale results. */
-export function useDocumentSearch(q: string, cursor: string) {
-  const key = JSON.stringify([q, cursor]);
+export function useDocumentSearch(q: string, cursor: string, sourceId = "all") {
+  const key = JSON.stringify([q, cursor, sourceId]);
   const [state, setState] = useState<{
     key: string;
     loading: boolean;
@@ -17,7 +17,7 @@ export function useDocumentSearch(q: string, cursor: string) {
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
-    const requestKey = JSON.stringify([q, cursor]);
+    const requestKey = JSON.stringify([q, cursor, sourceId]);
 
     // Keep existing data if the search query & cursor are unchanged (stale-while-revalidate)
     setState((prev) => ({
@@ -30,7 +30,7 @@ export function useDocumentSearch(q: string, cursor: string) {
     try {
       const data = await api<DocumentPage>("/api/sharepoint/search", {
         method: "POST",
-        body: { q, cursor: cursor || null },
+        body: { q, cursor: cursor || null, source_id: sourceId === "all" ? null : sourceId },
         signal: request.signal,
       });
       if (!request.signal.aborted) {
@@ -46,7 +46,7 @@ export function useDocumentSearch(q: string, cursor: string) {
         });
       }
     }
-  }, [q, cursor]);
+  }, [q, cursor, sourceId]);
 
   useEffect(() => {
     void reload();

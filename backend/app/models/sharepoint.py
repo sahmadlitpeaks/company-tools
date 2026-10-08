@@ -16,6 +16,15 @@ class SharePointSource(UUIDMixin, TimestampMixin, Base):
     site_id: Mapped[str] = mapped_column(String(255))
     drive_id: Mapped[str] = mapped_column(String(255))
     folder_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(128), default="SharePoint source")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    registered: Mapped[bool] = mapped_column(Boolean, default=True)
+    baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    teams_notify_uploads: Mapped[bool] = mapped_column(Boolean, default=False)
+    teams_channel_name: Mapped[str | None] = mapped_column(String(128))
+    teams_webhook_cipher: Mapped[str | None] = mapped_column(Text)
+    notification_version: Mapped[int] = mapped_column(Integer, default=1)
+    notify_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     policy: Mapped[str] = mapped_column(String(16), default="auto")
     rules_cipher: Mapped[str | None] = mapped_column(Text)
     policy_version: Mapped[int] = mapped_column(Integer, default=1)
@@ -26,6 +35,21 @@ class SharePointSource(UUIDMixin, TimestampMixin, Base):
     lease_owner: Mapped[str | None] = mapped_column(String(36))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_sync: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SharePointUploadDelivery(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "sharepoint_upload_deliveries"
+    __table_args__ = (UniqueConstraint("source_id", "document_id", name="uq_sharepoint_upload_delivery"),)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_sources.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_documents.id", ondelete="CASCADE"))
+    notification_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(80))
+    lease_owner: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SharePointConnection(TimestampMixin, Base):
@@ -42,6 +66,7 @@ class SharePointDocument(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "sharepoint_documents"
     __table_args__ = (UniqueConstraint("source_id", "item_id", name="uq_sharepoint_source_item"),)
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sharepoint_sources.id", ondelete="CASCADE"), index=True)
+    upload_notification_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     item_id: Mapped[str] = mapped_column(String(255))
     parent_id: Mapped[str | None] = mapped_column(String(255))
     filename: Mapped[str] = mapped_column(Text, default="")

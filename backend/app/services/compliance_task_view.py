@@ -7,7 +7,7 @@ from app.models.sharepoint import SharePointComplianceTask, SharePointDocument
 from app.models.user import User
 from app.services.sharepoint.common import SharePointError
 from app.services.sharepoint.graph import GraphClient, delegated_token
-from app.services.sharepoint.store import authorize_document, public_document, source_for
+from app.services.sharepoint.store import authorize_document, public_document, sources_for
 from app.services.task_assignment_email import assignment_states
 from app.services.sharepoint.visibility import document_scope
 
@@ -25,16 +25,16 @@ ACCESS_DEADLINE_SECONDS = 12
 
 async def task_board(db, user, *, preview=False):
     try:
-        source = await source_for(db)
+        sources = {source.id: source for source in await sources_for(db)}
     except SharePointError as error:
         if error.code in {"sharepoint_disabled", "sharepoint_not_configured"}:
             return {"tasks": [], "available": False, "message": "Document tasks are waiting for SharePoint setup."}
         raise
-    workspace = await document_scope(db, user, source)
+    workspace = await document_scope(db, user)
     task_filter = SharePointComplianceTask.id.in_(workspace.tasks) if workspace.tasks is not None else True
     pairs = (await db.execute(select(SharePointComplianceTask, SharePointDocument).join(
         SharePointDocument, SharePointDocument.id == SharePointComplianceTask.document_id).where(
-        task_filter, SharePointComplianceTask.source_id == source.id,
+        task_filter, SharePointComplianceTask.source_id.in_(sources),
         SharePointComplianceTask.status.in_(["active", "completed"]),
         SharePointDocument.deleted.is_(False), SharePointDocument.in_scope.is_(True),
         SharePointDocument.is_folder.is_(False)).order_by(SharePointComplianceTask.due_date))).all()
@@ -54,7 +54,7 @@ async def task_board(db, user, *, preview=False):
             async def check(document):
                 async with semaphore:
                     try:
-                        return await authorize_document(db, user, source, document, graph=graph, workspace=workspace)
+                        return await authorize_document(db, user, sources[document.source_id], document, graph=graph, workspace=workspace)
                     except SharePointError as error:
                         return error.code
 

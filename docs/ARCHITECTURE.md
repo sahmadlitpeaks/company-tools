@@ -22,13 +22,17 @@
 SharePoint Intelligence has a separate delegated Microsoft connection. Its
 module gate does not grant document access: every content response checks current
 workspace assignments/team scope, live delegated Graph metadata/content access,
-and the configured folder scope. Employees see their assigned documents,
+and the document's registered source folder scope. Employees see their assigned documents,
 managers see their team's documents and department review inbox, and admins
 have global workspace scope. The Assistant uses the same boundary and never
 falls back to raw indexed records when Microsoft access is unavailable. An
 app-only read grant powers ingestion only. Microsoft tokens are encrypted,
 direct AI analysis creates owned compliance tasks when facts are clear, and a
-database lease owns durable sync runs. See [SharePoint setup and architecture](SHAREPOINT_INTELLIGENCE.md)
+database lease owns durable sync runs per source. Admin-managed sources share one
+Microsoft tenant. Optional encrypted per-source Teams webhooks receive minimal
+upload cards through a durable outbox independent of analysis; first discovery
+baselines suppress historical alerts. Source management is admin-only and upload
+delivery does not ingest Teams conversations. See [SharePoint setup and architecture](SHAREPOINT_INTELLIGENCE.md)
 for the data boundary, failure handling, configuration and operational limits.
 
 1. SPA sends the user to `GET /api/auth/login`.
