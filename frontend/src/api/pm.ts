@@ -189,6 +189,58 @@ export interface JiraImportResult {
   first_key: string | null;
 }
 
+export type ShareView = "board" | "timeline" | "progress";
+
+export interface PmShareLink {
+  id: string;
+  view: ShareView;
+  label: string | null;
+  state: "active" | "expired" | "revoked";
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+  /** Only present in the response that created the link. */
+  token?: string;
+  path?: string;
+}
+
+/** The deliberately small issue shape a public share link exposes. */
+export type SharedIssue = Pick<PmIssue, "id" | "key" | "number" | "issue_type" | "summary" | "status" | "priority" | "story_points"
+  | "assignee_name" | "parent_id" | "parent" | "sprint_id" | "start_date" | "due_date" | "resolved_at" | "rank" | "child_count" | "child_done">;
+
+export interface PublicShare {
+  view: ShareView;
+  label: string | null;
+  expires_at: string | null;
+  generated_at: string;
+  project: Pick<PmProject, "key" | "name" | "status" | "sprints_enabled" | "start_date" | "target_date" | "issue_count" | "done_count" | "overdue_count" | "health">;
+  board?: { sprint: Pick<PmSprint, "id" | "name" | "goal" | "status" | "start_date" | "end_date"> | null; issues: SharedIssue[] };
+  timeline?: { issues: SharedIssue[]; links: PmLinkRow[]; sprints: Array<Pick<PmSprint, "id" | "name" | "goal" | "status" | "start_date" | "end_date">> };
+  progress?: {
+    counts: Record<IssueStatus, number>;
+    epics: Array<{ key: string; summary: string; status: IssueStatus; issue_count: number; done_count: number; due_date: string | null }>;
+    burndown: BurndownReport | null;
+    velocity: VelocityReport | null;
+  };
+}
+
+export const SHARE_VIEWS: Array<{ value: ShareView; label: string; hint: string }> = [
+  { value: "board", label: "Board", hint: "The active sprint's board (or current work on Kanban projects)" },
+  { value: "timeline", label: "Timeline", hint: "Epics and issues on the Gantt timeline" },
+  { value: "progress", label: "Progress", hint: "Health, status totals, epic progress, burndown and velocity" },
+];
+
+/** Fill the fields a shared issue doesn't carry so board and timeline components can draw it. */
+export function fromShared(issue: SharedIssue, projectId = ""): PmIssue {
+  return {
+    ...issue, project_id: projectId, description: null, labels: null, reporter_id: null, reporter_name: null,
+    assignee_id: null, sprint_name: null, external_key: null, created_at: "", updated_at: "", comment_count: 0,
+  };
+}
+
 export const HEALTH: Record<PmProject["health"], { label: string; variant: "success" | "warning" | "destructive" }> = {
   on_track: { label: "On track", variant: "success" },
   at_risk: { label: "At risk", variant: "warning" },

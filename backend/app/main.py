@@ -62,6 +62,7 @@ from app.api import (
     pm,
     pm_import,
     pm_reports,
+    pm_share,
     products,
     qrcodes,
     service_desk,
@@ -278,6 +279,7 @@ app.include_router(assets.public_router, prefix=api_prefix)
 app.include_router(products.public_router, prefix=api_prefix)
 app.include_router(landing.public_router, prefix=api_prefix)
 app.include_router(transfers.public_router, prefix=api_prefix)
+app.include_router(pm_share.public_router, prefix=api_prefix)
 app.include_router(shares.public_router, prefix=api_prefix)
 app.include_router(shares.search_router, prefix=api_prefix)
 app.include_router(intake.public_router, prefix=api_prefix)
@@ -314,6 +316,7 @@ app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("
 app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_reports.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_import.router, prefix=api_prefix, dependencies=_mod("projects"))
+app.include_router(pm_share.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(approvals.router, prefix=api_prefix, dependencies=_mod("approvals"))
 app.include_router(leave.router, prefix=api_prefix, dependencies=_feat("approvals.leave"))
 app.include_router(service_desk.router, prefix=api_prefix, dependencies=_mod("service_desk"))

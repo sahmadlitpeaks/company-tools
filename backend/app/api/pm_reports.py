@@ -109,6 +109,11 @@ async def burndown(
     completion); an issue counts as burned on the day it was resolved.
     """
     await require_project(db, user, project_id)
+    return await burndown_data(db, project_id, sprint_id)
+
+
+async def burndown_data(db: AsyncSession, project_id: uuid.UUID, sprint_id: uuid.UUID | None = None) -> dict:
+    """Burndown for ``sprint_id``, else the active or latest completed sprint."""
     if sprint_id:
         sprint = await db.get(PmSprint, sprint_id)
         if not sprint or sprint.project_id != project_id:
@@ -168,6 +173,10 @@ async def velocity(
 ):
     """Committed vs completed points for the most recent closed sprints."""
     await require_project(db, user, project_id)
+    return await velocity_data(db, project_id, limit)
+
+
+async def velocity_data(db: AsyncSession, project_id: uuid.UUID, limit: int = 7) -> dict:
     closed = (
         await db.scalars(
             select(PmSprint).where(PmSprint.project_id == project_id, PmSprint.status == "closed")

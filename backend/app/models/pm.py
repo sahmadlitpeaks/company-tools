@@ -225,3 +225,31 @@ class PmIssueHistory(UUIDMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+
+
+SHARE_VIEWS = ("board", "timeline", "progress")
+
+
+class PmShareLink(UUIDMixin, TimestampMixin, Base):
+    """A read-only public link to one view of a project.
+
+    Only the SHA-256 of the token is stored, so a link can be shown once and
+    then only revoked or replaced.
+    """
+
+    __tablename__ = "pm_share_links"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pm_projects.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # board | timeline | progress
+    view: Mapped[str] = mapped_column(String(16))
+    label: Mapped[str | None] = mapped_column(String(120))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    view_count: Mapped[int] = mapped_column(Integer, default=0)

@@ -14,7 +14,7 @@ class ActiveComplianceWorkError(ValueError):
 PERSONAL_TABLES = {
     "notifications", "dashboard_preferences", "workspace_items", "saved_views",
     "email_signatures", "user_companies", "sharepoint_connections", "task_assignment_emails",
-    "pm_issue_watchers",
+    "pm_issue_watchers", "pm_share_links",
 }
 
 

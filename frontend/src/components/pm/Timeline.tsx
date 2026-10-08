@@ -88,8 +88,9 @@ export function Timeline({ issues, links, sprints, editable, onOpen, onReschedul
   links: PmLinkRow[];
   sprints: PmSprint[];
   editable: boolean;
-  onOpen: (key: string) => void;
-  onReschedule: (issue: PmIssue, start: string, due: string) => void;
+  /** Omit (with editable false) for a static, read-only timeline. */
+  onOpen?: (key: string) => void;
+  onReschedule?: (issue: PmIssue, start: string, due: string) => void;
 }) {
   const [zoom, setZoom] = useState<Zoom>("weeks");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -158,21 +159,21 @@ export function Timeline({ issues, links, sprints, editable, onOpen, onReschedul
     dragRef.current = null;
     setDrag(null);
     if (!current || current.id !== row.issue.id) return;
-    if (!current.moved) { onOpen(row.issue.key); return; }
+    if (!current.moved) { onOpen?.(row.issue.key); return; }
     const before = row.span!;
     if (+current.start !== +before.start || +current.end !== +before.end) {
-      onReschedule(row.issue, format(current.start, "yyyy-MM-dd"), format(current.end, "yyyy-MM-dd"));
+      onReschedule?.(row.issue, format(current.start, "yyyy-MM-dd"), format(current.end, "yyyy-MM-dd"));
     }
   }
   function keys(event: KeyboardEvent, row: Row) {
-    if (event.key === "Enter") { onOpen(row.issue.key); return; }
+    if (event.key === "Enter") { onOpen?.(row.issue.key); return; }
     if (!editable || !row.span || row.span.derived || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
     const step = event.key === "ArrowRight" ? 1 : -1;
     // Arrows move the bar; with Shift they change the due date.
     const start = event.shiftKey ? row.span.start : addDays(row.span.start, step);
     const end = maxDate([addDays(row.span.end, step), start]);
-    onReschedule(row.issue, format(start, "yyyy-MM-dd"), format(end, "yyyy-MM-dd"));
+    onReschedule?.(row.issue, format(start, "yyyy-MM-dd"), format(end, "yyyy-MM-dd"));
   }
 
   const bands = sprints.filter((s) => s.start_date && s.end_date).map((s) => {
@@ -248,16 +249,25 @@ export function Timeline({ issues, links, sprints, editable, onOpen, onReschedul
                 const epic = row.issue.issue_type === "epic";
                 const done = epic && row.issue.child_count ? row.issue.child_done / row.issue.child_count : null;
                 const label = `${row.issue.key} ${row.issue.summary}: ${format(span.start, "d MMM")} to ${format(span.end, "d MMM yyyy")}, ${labelOf(ISSUE_STATUSES, row.issue.status)}${done !== null ? `, ${Math.round(done * 100)}% done` : ""}${span.derived ? ", dates from its issues" : ""}`;
+                const fill = cn(epic ? "bg-chart-1 text-chart-ink hover:bg-chart-1/90 hover:text-chart-ink" : cn(STATUS_BAR[row.issue.status], row.issue.status === "todo" ? "text-foreground hover:text-foreground" : "text-chart-ink hover:text-chart-ink"),
+                  span.derived && "border border-dashed border-chart-4 bg-chart-1/50");
+                if (!editable && !onOpen) {
+                  // Read-only (shared) timeline: a plain bar with its details for screen readers.
+                  return <div key={row.issue.id} title={label} className={cn("absolute flex items-center overflow-hidden text-[11px] font-medium", fill)}
+                    style={{ top: i * ROW + 7, height: ROW - 14, left, width }}>
+                    {done !== null && <span className="absolute inset-y-0 left-0 bg-chart-4/70" style={{ width: `${done * 100}%` }} aria-hidden="true" />}
+                    <span className="relative truncate px-2" aria-hidden="true">{width > 60 ? row.issue.key : ""}</span>
+                    <span className="sr-only">{label}</span>
+                  </div>;
+                }
                 return <Button key={row.issue.id} type="button" variant="ghost" aria-label={label} title={label}
-                  className={cn("absolute h-auto justify-start overflow-hidden p-0 text-[11px] active:not-aria-[haspopup]:translate-y-0",
-                    epic ? "bg-chart-1 text-chart-ink hover:bg-chart-1/90 hover:text-chart-ink" : cn(STATUS_BAR[row.issue.status], row.issue.status === "todo" ? "text-foreground hover:text-foreground" : "text-chart-ink hover:text-chart-ink"),
-                    span.derived && "border border-dashed border-chart-4 bg-chart-1/50",
+                  className={cn("absolute h-auto justify-start overflow-hidden p-0 text-[11px] active:not-aria-[haspopup]:translate-y-0", fill,
                     draggable ? "cursor-grab touch-none active:cursor-grabbing" : "cursor-pointer",
                     drag?.id === row.issue.id && "opacity-80 ring-2 ring-ring")}
                   style={{ top: i * ROW + 7, height: ROW - 14, left, width }}
                   onPointerDown={(event) => draggable ? begin(event, row, "move") : undefined}
                   onPointerMove={(event) => move(event, row)}
-                  onPointerUp={() => draggable ? finish(row) : onOpen(row.issue.key)}
+                  onPointerUp={() => draggable ? finish(row) : onOpen?.(row.issue.key)}
                   onPointerCancel={() => { dragRef.current = null; setDrag(null); }}
                   onKeyDown={(event) => keys(event, row)}>
                   {done !== null && <span className="absolute inset-y-0 left-0 bg-chart-4/70" style={{ width: `${done * 100}%` }} aria-hidden="true" />}

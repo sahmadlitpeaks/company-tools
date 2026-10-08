@@ -136,5 +136,6 @@ from app.models.pm import (  # noqa: F401
     PmIssueWatcher,
     PmProject,
     PmProjectMember,
+    PmShareLink,
     PmSprint,
 )

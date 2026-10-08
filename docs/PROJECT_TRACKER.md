@@ -135,6 +135,31 @@ reporters as viewers); otherwise unmapped or non-member people are named in the
 description. Attachments aren't in a CSV export; the preview counts them. Files
 are limited to 10 MB and 5,000 issues.
 
+## Share links
+
+Project administrators create read-only links under **Settings → Share links**
+for people without an account (for example requesters or management outside
+the platform). Each link shows one view:
+
+- **Board**: the active sprint's board (or current work on a Kanban project).
+- **Timeline**: epics and their stories, tasks and bugs on the Gantt chart.
+- **Progress**: health, status totals, epic progress, sprint burndown and
+  velocity.
+
+Links expire after 7, 30 or 90 days, or never, and can be revoked at any time;
+each records its view count and last view. Only the SHA-256 of the token is
+stored (the same approach as secure transfers and API tokens), so the full link
+is shown once, when created.
+
+The public page (`/share/p/<token>`, API `GET /api/public/pm-shares/<token>`)
+needs no sign-in and exposes only issue keys, summaries, types, statuses,
+priorities, story points, assignee names, sprint and dates. Descriptions,
+comments, attachments, reporters, labels and email addresses never leave the
+server, and nothing on the page links into the platform. Unknown, expired and
+revoked links get the same "not available" answer; switching the Projects module
+off org-wide disables every link. Responses are `no-store` and `noindex`, and the
+page sets `no-referrer` so the link isn't passed on to other sites.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
@@ -197,6 +222,9 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET /projects/{id}/reports/activity` | `?weeks=12` (1–26) |
 | `POST /projects/{id}/import/jira/preview` | Multipart `file`; project admin; writes nothing |
 | `POST /projects/{id}/import/jira` | Multipart `file` + `mapping` JSON (`statuses`, `people`, `add_members`) |
+| `GET/POST /projects/{id}/shares` | List share links; create one (`view`, `label`, `expires_in_days`, 0 = never); project admin |
+| `DELETE /shares/{id}` | Revoke a share link |
+| `GET /api/public/pm-shares/{token}` | Public, no sign-in: the shared view's minimal payload |
 
 ## Frontend
 
@@ -212,6 +240,9 @@ All routes are under `/api/pm` and require the `projects` module.
   reports and heat maps. Report endpoints live in `app/api/pm_reports.py`.
 - `components/pm/JiraImport.tsx`: the Jira import preview, mapping and result;
   backend in `app/api/pm_import.py` and `app/services/jira_import.py`.
+- `components/pm/ShareLinks.tsx` and `pages/public/PublicProjectSharePage.tsx`:
+  share link management and the public read-only page (the board and timeline
+  have read-only modes); backend in `app/api/pm_share.py`.
 - `components/pm/IssueDetail.tsx`: the issue side panel, opened with
   `?issue=KEY-N` so issue links can be shared and come from notifications.
 - `components/pm/IssueForm.tsx`, `ProjectMembers.tsx`, `IssueBits.tsx`, and
@@ -219,14 +250,14 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Possible next steps from the original requirements: read-only share links for
-project views, AI access through an MCP server, and Microsoft Teams
-notifications.
+Possible next steps from the original requirements: AI access through an MCP
+server, and Microsoft Teams notifications.
 
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
-- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1` and `u7e8f9a0b1c2` (verified on
-  PostgreSQL 16, including downgrade).
-- Jira import: `backend/tests/test_pm_import.py`.
+- Migrations `s5c6d7e8f9a0`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2` and `v8f9a0b1c2d3`
+  (verified on PostgreSQL 16, including downgrade).
+- Jira import: `backend/tests/test_pm_import.py`; share links:
+  `backend/tests/test_pm_share.py`.
 - Browser: `frontend/e2e/projects.spec.ts` (desktop and Pixel 5, with axe).

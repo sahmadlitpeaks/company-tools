@@ -38,15 +38,17 @@ const columnCoordinates: KeyboardCoordinateGetter = (event, { currentCoordinates
 };
 
 type Props = {
-  project: PmProject;
+  project: Pick<PmProject, "key">;
   issues: PmIssue[];
   editable: boolean;
   busy: string | null;
   onMove: (issue: PmIssue, status: IssueStatus) => void;
+  /** False on shared, read-only boards: summaries are plain text, not issue links. */
+  linkIssues?: boolean;
 };
 
 /** Jira-style board: one column per workflow status; drag a card to move it. */
-export function IssueBoard({ project, issues, editable, busy, onMove }: Props) {
+export function IssueBoard({ project, issues, editable, busy, onMove, linkIssues = true }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -86,7 +88,7 @@ export function IssueBoard({ project, issues, editable, busy, onMove }: Props) {
           const column = issues.filter((issue) => issue.status === status.value);
           const points = column.reduce((sum, issue) => sum + (issue.story_points ?? 0), 0);
           return <Column key={status.value} status={status.value} label={status.label} count={column.length} points={points}>
-            {column.map((issue) => <BoardCard key={issue.id} project={project} issue={issue} disabled={!editable || Boolean(busy)} saving={busy === issue.id} />)}
+            {column.map((issue) => <BoardCard key={issue.id} project={project} issue={issue} disabled={!editable || Boolean(busy)} saving={busy === issue.id} linked={linkIssues} />)}
           </Column>;
         })}
       </div>
@@ -113,7 +115,7 @@ function Column({ status, label, count, points, children }: { status: IssueStatu
   </section>;
 }
 
-function BoardCard({ project, issue, disabled, saving }: { project: PmProject; issue: PmIssue; disabled: boolean; saving: boolean }) {
+function BoardCard({ project, issue, disabled, saving, linked }: { project: Pick<PmProject, "key">; issue: PmIssue; disabled: boolean; saving: boolean; linked: boolean }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: issue.id, disabled });
   // Base UI swallows Space on buttons; hand the key to the sensor first.
   const { onKeyDown, ...pointerListeners } = listeners ?? {};
@@ -124,7 +126,9 @@ function BoardCard({ project, issue, disabled, saving }: { project: PmProject; i
       if (!disabled && event.pointerType === "mouse" && event.target instanceof Element && !event.target.closest("button, a")) pointerListeners.onPointerDown?.(event);
     }}>
     <div className="flex items-start gap-2">
-      <Link to={issueLink(project.key, issue.key)} className="min-w-0 flex-1 break-words font-medium underline-offset-4 hover:underline">{issue.summary}</Link>
+      {linked
+        ? <Link to={issueLink(project.key, issue.key)} className="min-w-0 flex-1 break-words font-medium underline-offset-4 hover:underline">{issue.summary}</Link>
+        : <span className="min-w-0 flex-1 break-words font-medium">{issue.summary}</span>}
       {!disabled && <Button ref={setActivatorNodeRef} variant="ghost" size="icon-sm" className="-m-1 shrink-0 touch-none"
         {...attributes} {...pointerListeners} onKeyDownCapture={(event) => onKeyDown?.(event)} aria-label={`Move issue: ${issue.key}`}>
         <GripVertical />

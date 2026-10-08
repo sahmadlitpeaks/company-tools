@@ -72,6 +72,7 @@ const BookingsPage = lazy(() => import("./pages/BookingsPage"));
 const PublicCardPage = lazy(() => import("./pages/public/PublicCardPage"));
 const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
 const PublicTransferPage = lazy(() => import("./pages/public/PublicTransferPage"));
+const PublicProjectSharePage = lazy(() => import("./pages/public/PublicProjectSharePage"));
 const PublicDocPage = lazy(() => import("./pages/public/PublicDocPage"));
 const VisitorsPage = lazy(() => import("./pages/VisitorsPage"));
 const PublicVisitorPage = lazy(() => import("./pages/public/PublicVisitorPage"));
@@ -109,6 +110,7 @@ export default function App() {
       <Route path="/c/:slug" element={<StandaloneRoute><PublicCardPage /></StandaloneRoute>} />
       <Route path="/p/:slug" element={<StandaloneRoute><PublicLandingPage /></StandaloneRoute>} />
       <Route path="/t/:token" element={<StandaloneRoute><PublicTransferPage /></StandaloneRoute>} />
+      <Route path="/share/p/:token" element={<StandaloneRoute><PublicProjectSharePage /></StandaloneRoute>} />
       <Route path="/b/:id" element={<StandaloneRoute><PublicDocPage base="brochures" /></StandaloneRoute>} />
       <Route path="/a/:id" element={<StandaloneRoute><PublicDocPage base="assets" /></StandaloneRoute>} />
       <Route path="/auth/callback" element={<StandaloneRoute><AuthCallback /></StandaloneRoute>} />

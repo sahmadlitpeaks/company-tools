@@ -9,7 +9,7 @@ import { buildScale, TimeAxis, TimeGrid, type Zoom } from "./Timeline";
 
 const ROW = 44;
 
-export function HealthBadge({ project }: { project: PmProject }) {
+export function HealthBadge({ project }: { project: Pick<PmProject, "health" | "overdue_count"> }) {
   const health = HEALTH[project.health];
   const Icon = project.health === "on_track" ? CircleCheck : project.health === "late" ? CircleAlert : TriangleAlert;
   const reason = project.health === "late" ? "Target date passed with work still open"

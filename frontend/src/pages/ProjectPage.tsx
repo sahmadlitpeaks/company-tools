@@ -15,6 +15,7 @@ import { IssueTypeIcon, pointsLabel, StatusBadge } from "@/components/pm/IssueBi
 import { IssueDetail } from "@/components/pm/IssueDetail";
 import { IssueForm } from "@/components/pm/IssueForm";
 import { JiraImport } from "@/components/pm/JiraImport";
+import { ShareLinks } from "@/components/pm/ShareLinks";
 import { ProjectMembers } from "@/components/pm/ProjectMembers";
 import { Reports } from "@/components/pm/Reports";
 import { Timeline } from "@/components/pm/Timeline";
@@ -174,6 +175,7 @@ export default function ProjectPage() {
       {current.my_role === "admin" && <TabsContent value="settings" className="pt-4">
         <div className="flex flex-col gap-4">
           <ProjectSettings project={current} members={members.data ?? []} onSaved={(saved) => project.setData(saved)} />
+          <ShareLinks project={current} />
           {current.status === "active" && <JiraImport project={current} onImported={() => { changed(); void members.refresh(); }} />}
         </div>
       </TabsContent>}

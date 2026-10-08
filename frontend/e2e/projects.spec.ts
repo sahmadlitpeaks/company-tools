@@ -71,6 +71,12 @@ async function mount(page: Page, role: "admin" | "viewer") {
       sprints: ["OLD Sprint 2"], comments: 4, links: 1, attachments: 2, warnings: ["Improvement will be imported as tasks."],
       sample: [{ key: "OLD-1", type: "story", summary: "Analyse PDFs", status: "Code Review" }],
     };
+    else if (path === "/api/pm/projects/p1/shares" && method === "POST") json = { id: "sh2", view: body.view, label: body.label, state: "active",
+      expires_at: "2026-11-07T08:00:00Z", revoked_at: null, created_at: "2026-10-08T08:00:00Z", created_by_name: "Sara Admin", view_count: 0, last_viewed_at: null,
+      token: "tok-new", path: "/share/p/tok-new" };
+    else if (path === "/api/pm/projects/p1/shares") json = [{ id: "sh1", view: "timeline", label: "For Dr T", state: "active", expires_at: "2026-10-30T08:00:00Z",
+      revoked_at: null, created_at: "2026-10-01T08:00:00Z", created_by_name: "Sara Admin", view_count: 4, last_viewed_at: "2026-10-07T08:00:00Z" }];
+    else if (path === "/api/pm/shares/sh1" && method === "DELETE") return route.fulfill({ status: 204, body: "" });
     else if (path === "/api/pm/projects/p1/import/jira") json = { created: 2, skipped: 1, comments: 4, links: 1, sprints_created: 1, members_added: 0, warnings: [], first_key: "LIMS-6" };
     else if (path === "/api/pm/projects/p1/links") json = [{ id: "l1", source_id: "s1", target_id: "t1", link_type: "blocks" }];
     else if (path === "/api/pm/projects/p1/reports/burndown") json = { sprint: { id: "sp1", name: "LIMS Sprint 1", status: "active", start_date: "2026-10-05", end_date: "2026-10-09" }, total_points: 8,
@@ -324,4 +330,87 @@ test("project admins preview a Jira export, adjust mappings and import it", asyn
   await expect(page.getByRole("link", { name: "Open LIMS-6" })).toBeVisible();
   const upload = requests.find((r) => r.path === "/api/pm/projects/p1/import/jira");
   expect(String(upload?.body)).toContain('{"statuses":{"Code Review":"done","Backlog":"todo"},"people":{"Ali Dev":"dev","Old Contractor":null},"add_members":true}');
+});
+
+test("project admins create, copy and revoke read-only share links", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const requests = await mount(page, "admin");
+  await page.goto("/projects/LIMS");
+  await page.getByRole("tab", { name: "Settings" }).click();
+  const card = page.locator('[data-slot="card"]', { has: page.getByText("Share links", { exact: true }) });
+  await expect(card.getByText("For Dr T")).toBeVisible();
+  await expect(card.getByText(/4 views/)).toBeVisible();
+  await card.getByRole("combobox", { name: "View" }).click();
+  await page.getByRole("option", { name: "Progress" }).click();
+  await card.getByLabel("Note (optional)").fill("Monthly update");
+  await card.getByRole("button", { name: "Create link" }).click();
+  const link = card.getByRole("textbox", { name: "New share link" });
+  await expect(link).toHaveValue(/\/share\/p\/tok-new$/);
+  expect(requests.find((r) => r.path === "/api/pm/projects/p1/shares")?.body).toEqual({ view: "progress", label: "Monthly update", expires_in_days: 30 });
+  await card.getByRole("button", { name: "Copy link" }).click();
+  await expect(card.getByText("Copied")).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+
+  await card.getByRole("button", { name: "Revoke" }).click();
+  await page.getByRole("button", { name: "Revoke link" }).click();
+  await expect.poll(() => requests.some((r) => r.method === "DELETE" && r.path === "/api/pm/shares/sh1")).toBe(true);
+});
+
+const shared = {
+  label: "Monthly update", expires_at: "2026-11-07T08:00:00Z", generated_at: "2026-10-08T08:00:00Z",
+  project: { key: "LIMS", name: "LIMS v3", status: "active", sprints_enabled: true, start_date: "2026-10-01", target_date: "2026-12-31",
+    issue_count: 3, done_count: 1, overdue_count: 1, health: "at_risk" },
+};
+const sharedIssue = { id: "s1", key: "LIMS-2", number: 2, issue_type: "story", summary: "Analyse uploaded PDFs", status: "in_progress", priority: "high",
+  story_points: 5, assignee_name: "Ali Dev", parent_id: "e1", parent: { id: "e1", key: "LIMS-1", summary: "AI file analysis", issue_type: "epic", status: "in_progress" },
+  sprint_id: "sp1", start_date: "2026-10-06", due_date: "2026-10-16", resolved_at: null, rank: 2, child_count: 0, child_done: 0 };
+
+async function mountPublic(page: Page) {
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/public/pm-shares/board-token") return route.fulfill({ json: { ...shared, view: "board",
+      board: { sprint: { id: "sp1", name: "LIMS Sprint 1", goal: "Ship upload", status: "active", start_date: "2026-10-05", end_date: "2026-10-19" }, issues: [sharedIssue] } } });
+    if (path === "/api/public/pm-shares/progress-token") return route.fulfill({ json: { ...shared, view: "progress", progress: {
+      counts: { todo: 1, in_progress: 1, in_review: 0, done: 1 },
+      epics: [{ key: "LIMS-1", summary: "AI file analysis", status: "in_progress", issue_count: 2, done_count: 1, due_date: null }],
+      burndown: { sprint: { id: "sp1", name: "LIMS Sprint 1", status: "active", start_date: "2026-10-05", end_date: "2026-10-09" }, total_points: 8,
+        days: [8, 5, null].map((remaining, i) => ({ date: `2026-10-0${5 + i}`, ideal: 8 - i * 4, remaining })) },
+      velocity: { sprints: [], average_completed: 0 } } } });
+    if (path.startsWith("/api/public/pm-shares/")) return route.fulfill({ status: 404, json: { detail: "This link isn't available. It may have expired or been revoked." } });
+    if (path === "/api/settings/public") return route.fulfill({ json: { platform_name: "AG Holding" } });
+    return route.fulfill({ status: 401, json: { detail: "Not authenticated" } });
+  });
+}
+
+test("a share link shows a read-only board without signing in", async ({ page }) => {
+  await mountPublic(page);
+  await page.goto("/share/p/board-token");
+  await expect(page.getByRole("heading", { name: "LIMS v3", level: 1 })).toBeVisible();
+  await expect(page.getByText("Read-only board view")).toBeVisible();
+  await expect(page.getByText("At risk: 1 overdue issue")).toBeVisible();
+  const card = page.getByRole("region", { name: "In Progress column" }).getByRole("article", { name: "LIMS-2 Analyse uploaded PDFs" });
+  await expect(card).toBeVisible();
+  // Nothing on a shared board opens issues or moves them.
+  await expect(page.getByRole("link")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Move issue/ })).toHaveCount(0);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute("content", "no-referrer");
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await page.screenshot({ path: `test-results/share-board-${page.viewportSize()!.width}.png`, fullPage: true });
+});
+
+test("a progress share link shows status, epics and burndown; a bad link explains itself", async ({ page }) => {
+  await mountPublic(page);
+  await page.goto("/share/p/progress-token");
+  await expect(page.getByText("Read-only progress view")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Burndown: 8 points committed, 5 remaining" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "LIMS-1 50% done" })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+
+  await page.goto("/share/p/revoked-token");
+  await expect(page.getByText("This link isn't available")).toBeVisible();
+  await expect(page.getByRole("button", { name: /retry/i })).toHaveCount(0);
 });
