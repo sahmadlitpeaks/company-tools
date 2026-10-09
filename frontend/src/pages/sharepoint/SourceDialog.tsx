@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 function SourceLabel({ htmlFor, children, help, lookup, docs }: {
   htmlFor: string; children: string; help: string; lookup?: string; docs?: string;
 }) {
-  return <div className="flex min-w-0 flex-1 items-center gap-1">
+  return <div className="flex min-w-0 items-center gap-1 group-data-[orientation=horizontal]/field:flex-1">
     <FieldLabel htmlFor={htmlFor}>{children}</FieldLabel>
     <Popover>
       <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label={`About ${children}`} />}>

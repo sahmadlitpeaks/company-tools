@@ -85,7 +85,8 @@ test("admin adds a source with optional Teams upload notifications", async ({ pa
   await page.screenshot({ path: testInfo.outputPath("document-sources.png"), fullPage: true });
 });
 
-test("source examples and help work without changing the form or closing its dialog", async ({ page }, testInfo) => {
+test("source examples and help work without changing the form or closing its dialog", async ({ page, isMobile }, testInfo) => {
+  if (!isMobile) await page.setViewportSize({ width: 1000, height: 1244 });
   await page.goto("/sharepoint/admin");
   await page.getByRole("button", { name: "Add source", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add document source" });
@@ -93,6 +94,22 @@ test("source examples and help work without changing the form or closing its dia
   await expect(dialog.getByLabel("SharePoint site ID", { exact: true })).toHaveAttribute("placeholder", "contoso.sharepoint.com,site-guid,web-guid");
   await expect(dialog.getByLabel("Document library ID", { exact: true })).toHaveAttribute("placeholder", "e.g. b!AbCdEf…");
   await expect(dialog.getByLabel("Folder ID", { exact: true })).toHaveAttribute("placeholder", "root or e.g. 01ABCDEF…");
+  const libraryInput = await dialog.getByLabel("Document library ID", { exact: true }).boundingBox();
+  const folderInput = await dialog.getByLabel("Folder ID", { exact: true }).boundingBox();
+  const libraryLabel = await dialog.locator('label[for="source-library"]').boundingBox();
+  const folderLabel = await dialog.locator('label[for="source-folder"]').boundingBox();
+  expect(libraryInput && folderInput && libraryLabel && folderLabel).toBeTruthy();
+  // Helper text must not stretch the adjacent field's label away from its input.
+  const libraryGap = libraryInput!.y - (libraryLabel!.y + libraryLabel!.height);
+  const folderGap = folderInput!.y - (folderLabel!.y + folderLabel!.height);
+  expect(Math.abs(libraryGap - folderGap)).toBeLessThanOrEqual(1);
+  if (!isMobile) {
+    expect(Math.abs(libraryInput!.y - folderInput!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(libraryLabel!.y - folderLabel!.y)).toBeLessThanOrEqual(1);
+  } else {
+    expect(folderLabel!.y).toBeGreaterThan(libraryInput!.y + libraryInput!.height);
+  }
+  await page.screenshot({ path: testInfo.outputPath("source-field-layout.png") });
   await dialog.getByLabel("Source name", { exact: true }).fill("My documents");
   const nameHelp = dialog.getByRole("button", { name: "About Source name", exact: true });
   await nameHelp.focus();
