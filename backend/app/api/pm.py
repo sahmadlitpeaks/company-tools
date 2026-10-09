@@ -67,6 +67,8 @@ from app.services.pm_access import (
     visible_project_ids,
 )
 from app.services.storage import absolute_path
+from app.services.pm_workspace import apply_workspace_fields, configuration, default_board_settings
+from app.models.pm_view import PmView
 
 router = APIRouter(prefix="/pm", tags=["project-tracker"])
 
@@ -233,12 +235,15 @@ async def create_project(
         lead_id=lead_id,
         start_date=payload.start_date,
         target_date=payload.target_date,
+        sprints_enabled=payload.sprints_enabled,
         created_by_id=user.id,
         issue_seq=0,
     )
     db.add(project)
     await db.flush()
     # The lead administers the project; platform admins already see it.
+    db.add(PmView(project_id=project.id, owner_id=lead_id, name="Team board",
+                  visibility="team", settings=default_board_settings(payload.sprints_enabled)))
     db.add(PmProjectMember(project_id=project.id, user_id=lead_id, role="admin"))
     record(
         db, user=user, action="created", entity_type="pm_project", entity_id=project.id,
@@ -279,6 +284,11 @@ async def update_project(
         data.pop("sprints_enabled", None)
     elif not data["sprints_enabled"] and await _active_sprint(db, project.id):
         raise HTTPException(409, "Complete the active sprint before switching sprints off.")
+    if data.get("sprints_enabled") is False:
+        boards = (await db.scalars(select(PmView).where(PmView.project_id == project.id))).all()
+        for board in boards:
+            if board.settings.get("board_type", "scrum") == "scrum":
+                board.settings = {**board.settings, "board_type": "kanban"}
     _check_dates(data.get("start_date", project.start_date), data.get("target_date", project.target_date))
     for field, value in data.items():
         setattr(project, field, value.strip() if field == "name" else value)
@@ -458,13 +468,13 @@ async def _issue_by_ref(db: AsyncSession, ref: str) -> PmIssue | None:
 
 
 async def _load_issue(
-    db: AsyncSession, user: User, ref: str, minimum: str = "viewer"
+    db: AsyncSession, user: User, ref: str, minimum: str = "viewer", *, for_update: bool = False
 ) -> tuple[PmIssue, PmProject, str]:
     issue = await _issue_by_ref(db, ref)
     if not issue:
         raise HTTPException(404, "Issue not found")
-    project, role = await require_project(db, user, issue.project_id, minimum, for_update=minimum != "viewer")
-    if minimum != "viewer":
+    project, role = await require_project(db, user, issue.project_id, minimum, for_update=for_update or minimum != "viewer")
+    if for_update or minimum != "viewer":
         # Another issue/sprint mutation may have committed while we waited.
         issue = await db.scalar(
             select(PmIssue).where(PmIssue.id == issue.id).execution_options(populate_existing=True)
@@ -518,6 +528,11 @@ async def _issue_outs(
     outs = []
     for issue in issues:
         out = PmIssueOut.model_validate(issue)
+        out.workflow_state = issue.workflow_state or issue.status
+        out.workflow_name = next(
+            (state.name for state in configuration(project).states if state.key == out.workflow_state),
+            issue.status.replace("_", " ").title(),
+        )
         out.key = _key(project, issue.number)
         out.reporter_name = names.get(issue.reporter_id) if issue.reporter_id else None
         out.assignee_name = names.get(issue.assignee_id) if issue.assignee_id else None
@@ -713,20 +728,16 @@ async def create_issue(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "member")
-    # Lock the project row so concurrent creates get distinct numbers.
-    # populate_existing: the access check already cached this row, and a stale
-    # issue_seq would hand out a duplicate number.
-    project = await db.scalar(
-        select(PmProject)
-        .where(PmProject.id == project_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    project, _ = await require_project(db, user, project_id, "member", for_update=True)
     _ensure_writable(project)
     _check_choice(payload.issue_type, ISSUE_TYPES, "issue type")
     _check_choice(payload.status, ISSUE_STATUSES, "status")
     _check_choice(payload.priority, ISSUE_PRIORITIES, "priority")
+    workspace_data = {
+        "status": payload.status, "workflow_state": payload.workflow_state or payload.status,
+        "custom_fields": payload.custom_fields, "component": payload.component,
+    }
+    apply_workspace_fields(project, workspace_data)
     _check_dates(payload.start_date, payload.due_date, "Due date")
     summary = payload.summary.strip()
     if not summary:
@@ -750,7 +761,10 @@ async def create_issue(
         issue_type=payload.issue_type,
         summary=summary,
         description=payload.description,
-        status=payload.status,
+        status=workspace_data["status"],
+        workflow_state=workspace_data["workflow_state"],
+        component=payload.component,
+        custom_fields=workspace_data["custom_fields"],
         priority=payload.priority,
         story_points=payload.story_points,
         labels=_clean_labels(payload.labels),
@@ -760,7 +774,7 @@ async def create_issue(
         sprint_id=payload.sprint_id,
         start_date=payload.start_date,
         due_date=payload.due_date,
-        resolved_at=_now() if payload.status == "done" else None,
+        resolved_at=_now() if workspace_data["status"] == "done" else None,
         rank=float(top or 0) + 1,
         created_by_id=user.id,
     )
@@ -858,6 +872,7 @@ HISTORY_FIELDS = {
     "labels": "labels", "reporter_id": "reporter", "assignee_id": "assignee",
     "parent_id": "parent", "start_date": "start date", "due_date": "due date",
     "sprint_id": "sprint",
+    "workflow_state": "workflow state", "component": "component", "custom_fields": "custom fields",
 }
 
 
@@ -868,12 +883,17 @@ async def update_issue(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    return await apply_issue_update(issue_id, payload, db, user, commit=True)
+
+
+async def apply_issue_update(issue_id, payload, db, user, *, commit=False):
     issue, project, _ = await _load_issue(db, user, str(issue_id), "member")
     _ensure_writable(project)
     data = payload.model_dump(exclude_unset=True)
-    for field in ("issue_type", "status", "priority", "summary"):
+    apply_workspace_fields(project, data, issue)
+    for field in ("issue_type", "status", "priority", "summary", "rank"):
         if field in data and data[field] is None:
-            raise HTTPException(422, f"{HISTORY_FIELDS[field].capitalize()} is required.")
+            raise HTTPException(422, f"{HISTORY_FIELDS.get(field, field).capitalize()} is required.")
     if "issue_type" in data:
         _check_choice(data["issue_type"], ISSUE_TYPES, "issue type")
     if "status" in data:
@@ -947,8 +967,12 @@ async def update_issue(
         await _notify_assignee(db, issue, project, user)
     if data.get("reporter_id"):
         await _watch(db, issue.id, {data["reporter_id"]})
-    await db.commit()
-    await db.refresh(issue)
+    if commit:
+        await db.commit()
+        await db.refresh(issue)
+    else:
+        await db.flush()
+        await db.refresh(issue)
     return (await _issue_outs(db, project, [issue]))[0]
 
 
@@ -1065,7 +1089,7 @@ async def add_watcher(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, role = await _load_issue(db, user, str(issue_id))
+    issue, project, role = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
     if payload.user_id != user.id:
         if not role_at_least(role, "member"):
@@ -1083,7 +1107,7 @@ async def remove_watcher(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, role = await _load_issue(db, user, str(issue_id))
+    issue, project, role = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
     if user_id != user.id and not role_at_least(role, "member"):
         raise HTTPException(403, "Viewers can only stop watching issues themselves.")
@@ -1125,16 +1149,24 @@ async def add_comment(
     user: User = Depends(get_current_user),
 ):
     # Viewers (stakeholders) may comment; that is how requesters give feedback.
-    issue, project, _ = await _load_issue(db, user, str(issue_id))
+    issue, project, _ = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
     body = payload.body.strip()
     if not body:
         raise HTTPException(422, "Write a comment first.")
+    mentioned = set(payload.mention_ids)
+    if not mentioned.issubset(await member_ids(db, project.id)):
+        raise HTTPException(422, "Mention people on this project.")
+    for person_id in mentioned:
+        await _active_user(db, person_id)
     comment = PmComment(issue_id=issue.id, author_id=user.id, body=body)
     db.add(comment)
-    await _watch(db, issue.id, {user.id})
+    await _watch(db, issue.id, {user.id} | mentioned)
+    for person_id in mentioned - {user.id}:
+        await notify_user(db, user_id=person_id, title=f"{user.display_name or user.email} mentioned you in a comment",
+                          body=f"{_key(project, issue.number)} {issue.summary}", link=_link(project, issue), category="projects")
     await _notify_watchers(
-        db, issue, project, user, f"{user.display_name or user.email} commented on an issue"
+        db, issue, project, user, f"{user.display_name or user.email} commented on an issue", skip=mentioned
     )
     await db.commit()
     await db.refresh(comment)
@@ -1153,7 +1185,7 @@ async def edit_comment(
     comment = await db.get(PmComment, comment_id)
     if not comment:
         raise HTTPException(404, "Comment not found")
-    _, project, _ = await _load_issue(db, user, str(comment.issue_id))
+    _, project, _ = await _load_issue(db, user, str(comment.issue_id), for_update=True)
     _ensure_writable(project)
     if comment.author_id != user.id:
         raise HTTPException(403, "You can only edit your own comments.")
@@ -1177,7 +1209,7 @@ async def delete_comment(
     comment = await db.get(PmComment, comment_id)
     if not comment:
         return
-    _, project, role = await _load_issue(db, user, str(comment.issue_id))
+    _, project, role = await _load_issue(db, user, str(comment.issue_id), for_update=True)
     _ensure_writable(project)
     if comment.author_id != user.id and role != "admin":
         raise HTTPException(403, "You can only delete your own comments.")

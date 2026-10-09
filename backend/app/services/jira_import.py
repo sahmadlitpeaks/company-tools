@@ -299,6 +299,7 @@ async def run_import(
 ) -> dict:
     """Create the issues; the caller commits. ``project`` must be row-locked."""
     from app.api.pm import _clean_labels  # shared label rules
+    from app.services.pm_workspace import configuration
 
     members = dict(
         (await db.execute(
@@ -335,6 +336,8 @@ async def run_import(
     fresh = [i for i in issues if i.key not in existing]
     order = {"epic": 0, "story": 1, "task": 1, "bug": 1, "subtask": 2}
     fresh.sort(key=lambda i: order[i.issue_type])
+    if fresh and any(field.required for field in configuration(project).fields):
+        raise JiraImportError("Jira CSV does not map custom fields. Make required custom fields optional before importing, then fill them in.")
 
     sprints: dict[str, PmSprint] = {}
     if project.sprints_enabled:
@@ -401,7 +404,7 @@ async def run_import(
         created_at = item.created or now
         row = PmIssue(
             project_id=project.id, number=project.issue_seq, issue_type=issue_type,
-            summary=item.summary, description=description, status=status,
+            summary=item.summary, description=description, status=status, workflow_state=status,
             priority=PRIORITY_MAP.get(item.priority.strip().lower(), "medium"),
             story_points=item.points, labels=_clean_labels(item.labels)[:20],
             reporter_id=reporter or actor.id, assignee_id=assignee, parent_id=parent.id if parent else None,

@@ -1,3 +1,4 @@
+import { useIssueHref } from "./useIssueHref";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin,
@@ -5,7 +6,7 @@ import {
 } from "@dnd-kit/core";
 import { GripVertical, MoreHorizontal, Play, Plus, Search, SquareCheckBig } from "lucide-react";
 import { Link } from "react-router-dom";
-import { BOARD_TYPES, issueLink, rankBetween, type PmIssue, type PmProject, type PmSprint } from "@/api/pm";
+import { BOARD_TYPES, rankBetween, type PmIssue, type PmProject, type PmSprint } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
 import { Empty } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
@@ -173,6 +174,7 @@ function BacklogRow({ project, issue, sprints, canPlan, saving, onMove, onTop }:
   const drag = useDraggable({ id: issue.id, disabled: !canPlan || saving });
   const dropTarget = useDroppable({ id: `row:${issue.id}` });
   const { onKeyDown, ...pointerListeners } = drag.listeners ?? {};
+  const issueHref = useIssueHref();
   const targets = [...sprints.filter((sprint) => sprint.id !== issue.sprint_id).map((sprint) => ({ key: sprint.id, label: sprint.name })),
     ...(issue.sprint_id ? [{ key: BACKLOG, label: "Backlog" }] : [])];
   return <li ref={(node) => { drag.setNodeRef(node); dropTarget.setNodeRef(node); }}
@@ -183,10 +185,10 @@ function BacklogRow({ project, issue, sprints, canPlan, saving, onMove, onTop }:
     {canPlan && <Button ref={drag.setActivatorNodeRef} variant="ghost" size="icon-sm" className="shrink-0 touch-none"
       {...drag.attributes} {...pointerListeners} onKeyDownCapture={(event) => onKeyDown?.(event)} aria-label={`Drag ${issue.key}`}><GripVertical /></Button>}
     <IssueTypeIcon type={issue.issue_type} />
-    <Link to={issueLink(project.key, issue.key)} className="shrink-0 text-muted-foreground underline-offset-4 hover:underline">{issue.key}</Link>
-    <Link to={issueLink(project.key, issue.key)} className="min-w-0 flex-1 truncate underline-offset-4 hover:underline">{issue.summary}</Link>
+    <Link to={issueHref(project.key, issue.key)} className="shrink-0 text-muted-foreground underline-offset-4 hover:underline">{issue.key}</Link>
+    <Link to={issueHref(project.key, issue.key)} className="min-w-0 flex-1 truncate underline-offset-4 hover:underline">{issue.summary}</Link>
     {issue.parent?.issue_type === "epic" && <Badge variant="secondary" className="hidden max-w-40 truncate md:inline-flex">{issue.parent.summary}</Badge>}
-    <span className="hidden sm:inline-flex"><StatusBadge status={issue.status} /></span>
+    <span className="hidden sm:inline-flex"><StatusBadge status={issue.status} label={issue.workflow_name} /></span>
     <span className="hidden w-28 truncate text-xs text-muted-foreground lg:inline">{issue.assignee_name ?? "Unassigned"}</span>
     <Badge variant="outline" className="shrink-0" title="Story points">{pointsLabel(issue.story_points)}</Badge>
     {canPlan && <DropdownMenu>

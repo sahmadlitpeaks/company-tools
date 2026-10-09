@@ -45,6 +45,8 @@ SPRINTABLE_TYPES = ("story", "task", "bug")
 class PmProject(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "pm_projects"
 
+    workspace_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Short upper-case code used in issue keys, e.g. "LIMS" -> LIMS-12.
     key: Mapped[str] = mapped_column(String(10), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -116,6 +118,11 @@ class PmSprint(UUIDMixin, TimestampMixin, Base):
 
 class PmIssue(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "pm_issues"
+
+    # Named workflow state; status keeps the stable reporting category.
+    workflow_state: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    component: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    custom_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("pm_projects.id", ondelete="CASCADE"), index=True

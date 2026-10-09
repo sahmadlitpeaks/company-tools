@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Bot, FolderKanban, Plus } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { labelOf, pmError, PROJECT_ROLES, type PmPerson, type PmProject } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
@@ -20,13 +20,20 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useFetch } from "@/hooks/useApi";
+import { IssueExplorer } from "@/components/pm/IssueExplorer";
+import { FilterSelect } from "@/components/ListControls";
+import { type PmView } from "@/api/pm-workspace";
 
 export default function ProjectsPage() {
   const { user } = useAuth();
   const [status, setStatus] = useState<"active" | "archived">("active");
   const projects = useFetch<PmProject[]>(`/api/pm/projects?status=${status}`, true);
   const [creating, setCreating] = useState(false);
-  const [view, setView] = useState<"cards" | "timeline">("cards");
+  const [params, setParams] = useSearchParams();
+  const view = params.get("layout") ?? "cards";
+  function setView(value: string) { setParams((old) => { const next = new URLSearchParams(old); next.set("layout", value); return next; }); }
+  const views = useFetch<PmView[]>("/api/pm/views");
+  const savedView = views.data?.find((item) => item.id === params.get("view"));
   const navigate = useNavigate();
 
   return <div className="flex flex-col gap-5">
@@ -47,9 +54,15 @@ export default function ProjectsPage() {
       <ToggleGroup value={[view]} onValueChange={(values) => values[0] && setView(values[0] as typeof view)} aria-label="Project view">
         <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
         <ToggleGroupItem value="timeline">Timeline</ToggleGroupItem>
+        <ToggleGroupItem value="issues">All issues</ToggleGroupItem>
       </ToggleGroup>
     </div>
-    {projects.error ? <ErrorState message={projects.error} onRetry={projects.reload} /> :
+    {view === "issues" ? <div className="flex flex-col gap-4">
+      {views.error ? <ErrorState message={views.error} onRetry={views.reload} /> : !views.data ? <Loading /> : <>
+        <div className="sm:w-72"><FilterSelect id="pm-global-view" label="Saved personal view" value={savedView?.id ?? ""} options={[{ value: "", label: "All accessible issues" }, ...views.data.map((item) => ({ value: item.id, label: item.name }))]} onChange={(id) => setParams((old) => { const next = new URLSearchParams(old); next.set("view", id); for (const key of Array.from(next.keys())) if (key.startsWith("f_") || key.startsWith("issue_") || key === "month") next.delete(key); next.delete("offset"); return next; })} /></div>
+        <IssueExplorer key={savedView?.id ?? "all"} view={savedView} projects={projects.data ?? []} onViewDeleted={() => { void views.refresh(); setParams((old) => { const next = new URLSearchParams(old); next.delete("view"); return next; }); }} onViewSaved={(saved) => { void views.refresh(); setParams((old) => { const next = new URLSearchParams(old); next.set("view", saved.id); return next; }); }} />
+      </>}
+    </div> : projects.error ? <ErrorState message={projects.error} onRetry={projects.reload} /> :
       projects.loading && !projects.data ? <Loading /> :
       !projects.data?.length ? <Empty
         message={status === "archived" ? "No archived projects" : "No projects yet"}
@@ -92,7 +105,7 @@ function ProjectCard({ project }: { project: PmProject }) {
 function CreateProject({ onClose, onCreated }: { onClose: () => void; onCreated: (project: PmProject) => void }) {
   const { user } = useAuth();
   const people = useFetch<PmPerson[]>("/api/pm/people");
-  const [form, setForm] = useState({ key: "", name: "", description: "", lead: user?.id ?? "", start: "", target: "" });
+  const [form, setForm] = useState({ key: "", name: "", description: "", lead: user?.id ?? "", start: "", target: "", mode: "scrum" });
   const [state, setState] = useState({ busy: false, error: "" });
   const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -103,6 +116,7 @@ function CreateProject({ onClose, onCreated }: { onClose: () => void; onCreated:
       const project = await api<PmProject>("/api/pm/projects", { method: "POST", body: {
         key: form.key.trim().toUpperCase(), name: form.name.trim(), description: form.description.trim() || null,
         lead_id: form.lead || null, start_date: form.start || null, target_date: form.target || null,
+        sprints_enabled: form.mode === "scrum",
       } });
       onCreated(project);
     } catch (cause) {
@@ -129,6 +143,7 @@ function CreateProject({ onClose, onCreated }: { onClose: () => void; onCreated:
             <Input id="pm-project-name" value={form.name} required maxLength={255} onChange={(event) => set("name", event.target.value)} />
           </Field>
           <FieldDescription className="sm:col-span-2">The key prefixes every issue, for example {(form.key || "LIMS")}-12. It can't be changed later.</FieldDescription>
+          <div className="sm:col-span-2"><TaskChoice id="pm-project-mode" label="Starting board" value={form.mode} items={[{ value: "scrum", label: "Scrum · sprints and backlog" }, { value: "kanban", label: "Kanban · continuous flow" }]} onChange={(value) => set("mode", value)} /></div>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="pm-project-description">Description</FieldLabel>
             <Textarea id="pm-project-description" rows={3} value={form.description} onChange={(event) => set("description", event.target.value)} />

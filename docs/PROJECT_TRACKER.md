@@ -1,8 +1,8 @@
 # Project tracker
 
 A Jira-style tracker for development projects, under **My Work → Projects**
-(`/projects`). It follows Jira's standard model instead of inventing custom
-stages, so the team can move over from Jira without retraining.
+(`/projects`). It combines Jira's issue hierarchy and reporting categories
+with configurable workflows, boards and personal views.
 
 ## Model
 
@@ -22,10 +22,14 @@ Project (key LIMS)
   project. An epic never has a parent.
 - **Issue keys** are `<project key>-<number>`, allocated under a row lock so
   concurrent creates never share a number.
-- **Fields**: summary, description, status, priority (Highest–Lowest), story
-  points, labels, reporter, assignee, start date, due date, rank.
-- **Workflow**: To Do → In Progress → In Review → Done. Moving to Done stamps
-  `resolved_at`; moving out clears it.
+- **Fields**: summary, Markdown description, priority (Highest–Lowest), story
+  points, labels, reporter, assignee, start date, due date, rank, component and
+  project-specific text, number, date, selection or checkbox fields.
+- **Workflow**: project administrators rename the standard states, add named
+  states and restrict transitions. Every state maps to To Do, In Progress,
+  In Review or Done for reports, sprints, imports and older clients. Moving
+  to a Done category stamps `resolved_at`; moving out clears it. Restrictions
+  also apply to status edits from older clients and MCP, and to bulk changes.
 - **People on an issue** use Jira's roles: the **reporter** is who asked for it
   (for example a stakeholder), the **assignee** is who is working on it, and
   **watchers** follow it. Creating, reporting, being assigned and commenting
@@ -40,6 +44,25 @@ Project (key LIMS)
 Projects use sprints by default (Scrum). A project administrator can switch
 them off in **Settings → Way of working** to run a plain Kanban board; that is
 refused while a sprint is active.
+
+New projects offer a Scrum or Kanban starting board. **Create board** adds a
+named board or list/table/calendar view. It uses the project's existing issues;
+creating or deleting a view never copies or deletes work. Scrum and Kanban
+boards can coexist when project sprints are enabled. Switching sprints off
+converts existing Scrum views to Kanban.
+
+Project administrators manage team views. Any project participant can save and
+manage private views, including a private copy of a team view. Private views
+are visible only to their owner, and access to the project is still required.
+Archived project views are readable but cannot be modified.
+
+Board configuration includes column names/order, workflow-state mappings,
+advisory WIP limits, assignee/epic/priority swimlanes, sorting and card fields.
+Each state must map to one column. New states remain visible on older boards.
+WIP counts cover the filtered board across all its swimlanes; the limit warns
+without blocking moves. Members drag to change state or reorder manually
+ordered boards; the up/down controls support ordering on phones and keyboards.
+Quick creation in a column retains its state and the active Scrum sprint.
 
 - **Sprints** are `future`, `active` or `closed`. New sprints are numbered
   automatically (`LIMS Sprint 3`) unless named.
@@ -60,13 +83,57 @@ refused while a sprint is active.
   between sections and to reorder them (the issue's `rank`), or use each
   issue's **Move** menu, which also works by keyboard and on phones. Finished
   issues that are not in a sprint drop out of the backlog.
-- **Board**: one column per status. Scrum boards show the active sprint's
+- **Board**: configured columns map one or more workflow states. Scrum boards show the active sprint's
   stories, tasks and bugs; Kanban boards show all of them, with Done limited to
   the last 14 days. Members drag cards (mouse anywhere on the card, touch and
   keyboard by the handle) to change status. "Only my issues" and search filter
   the board.
 - Project administrators manage sprints; members plan and move issues;
   viewers see the board and backlog read-only.
+
+## Issue views and editing
+
+**Issues** supports responsive tables/lists, epic/assignee/priority grouping,
+sorting and bounded server pagination. Filters include summary or exact issue
+key, type, workflow state, priority, assignee, epic, sprint, label, component
+and due dates. Labels and text searches treat SQL wildcard characters literally.
+Desktop cells edit state, assignee, priority, points and due dates. Mobile list
+cards provide **Quick edit**. Bulk editing validates all selected issues and
+commits their data, history and notifications together; one failure rolls back
+the entire request. Up to 100 issues can be edited per request.
+
+**Calendar** queries the selected month's due dates. Filters still apply and
+pagination moves through that month's results; undated issues do not appear.
+Phones show a dated agenda. Timeline remains the date-range planning view.
+Board selection, filters, layout, grouping, sort, month and pagination are
+represented in the URL and retained when an issue opens in the same project.
+
+The Projects page's **All issues** view queries only accessible projects and
+supports project scoping and private saved tables, lists or calendars. It opens
+the corresponding project when an issue is selected. The global app search also
+finds project issue keys and summaries within the caller's project permissions.
+
+Administrators configure components and their owners, custom fields and issue
+templates in **Settings → Project workflow and fields**. Applying a template
+explicitly replaces the draft's type, priority and description. A required
+field cannot be enabled until every existing issue has a valid value; fields
+with data cannot be removed until those values are cleared. Jira CSV does not
+map custom fields: import is refused while required custom fields are enabled.
+
+MCP project summaries expose workflow, field and component configuration.
+Create/update tools accept named state, component and typed custom field values;
+the shared validation and transition restrictions apply to these clients too.
+
+Descriptions and comments support Markdown, links and checklists with preview;
+raw HTML is ignored. **Mention a teammate** explicitly selects project members,
+adds them as watchers and sends one in-app mention notification. Plain text
+containing a name does not send a mention notification. **Duplicate** copies
+issue content into To Do/backlog without copying imported identity, attachments,
+comments, watchers or history.
+
+Migration `y1c2d3e4f5a6` adds named-state and workspace configuration storage,
+backfills existing issue state from its reporting category, and creates a
+default team board for existing projects with an available owner.
 
 ## Timeline, reports and heat maps
 
@@ -202,7 +269,7 @@ app, so validation, history, notifications and watchers behave identically.
 | Tool | Access | Purpose |
 | --- | --- | --- |
 | `tracker_list_projects` | read | Visible projects with role, health and progress |
-| `tracker_get_project_summary` | read | Status counts, active sprint, overdue issues, epic progress |
+| `tracker_get_project_summary` | read | Status counts, active sprint, overdue issues, epic progress and workspace configuration |
 | `tracker_search_issues` | read | Search by text/key, status, type, assignee (`me`, `none`, email) or sprint; paged |
 | `tracker_get_issue` | read | Description, people, labels, children, links and the last 20 comments |
 | `tracker_create_issue` | write | Create an issue (parent/epic, assignee by email, points, dates, active sprint) |
@@ -212,6 +279,11 @@ app, so validation, history, notifications and watchers behave identically.
 
 Read tools are annotated `readOnlyHint`; nothing deletes. Errors explain what to
 do next (for example "This token is read-only…").
+
+Issue payloads expose the named workflow state, component and custom values.
+Create/update tools accept those fields and use the same configured transitions
+and required-field validation as the UI. The project summary exposes state keys,
+field definitions and component choices so clients can discover valid values.
 
 **Data protection.** Whatever a tool returns is sent to the assistant's provider,
 including descriptions and comments. Only grant tokens for assistants the
@@ -268,6 +340,12 @@ All routes are under `/api/pm` and require the `projects` module.
 | `GET/POST /projects/{id}/members`, `PATCH/DELETE /projects/{id}/members/{user}` | Project people |
 | `GET /people` | Active people for project administrators to add |
 | `GET/POST /projects/{id}/issues` | List (filters: `issue_type`, `status`, `assignee=me|none|<id>`, `parent_id`, `sprint=backlog|active|<id>`, `label`, `q`); create |
+| `GET/PUT /projects/{id}/configuration` | Read workflow, fields, components and templates; project administrators save validated changes |
+| `GET /projects/{id}/views`, `GET /views` | Project team/private views; caller's personal cross-project views |
+| `POST /views`, `PATCH/DELETE /views/{id}` | Save, configure or delete a view; enforce project role and private ownership |
+| `GET /issues/page` | Permission-scoped filtering and ordering with `project_id`, `include_archived`, `offset` and `limit` (1–200) |
+| `POST /issues/bulk` | Apply one validated change set to up to 100 issues in one transaction |
+| `POST /issues/{id}/duplicate` | Copy content into new To Do/backlog work |
 | `GET /issues/{id or KEY-N}` | Issue with children, links, watchers and the caller's role |
 | `PATCH/DELETE /issues/{id}` | Update (records history); delete (sub-tasks go with it, an epic's issues stay) |
 | `POST /issues/{id}/links`, `DELETE /links/{id}` | Issue links |
@@ -314,6 +392,11 @@ All routes are under `/api/pm` and require the `projects` module.
   `?issue=KEY-N` so issue links can be shared and come from notifications.
 - `components/pm/IssueForm.tsx`, `ProjectMembers.tsx`, `IssueBits.tsx`, and
   `api/pm.ts` for shared types and vocabulary.
+- `components/pm/BoardWorkspace.tsx`, `ViewDialog.tsx`, `WorkspaceSettings.tsx`,
+  `IssueExplorer.tsx`, `IssueCalendar.tsx`, `MarkdownField.tsx` and
+  `api/pm-workspace.ts` implement configuration, saved perspectives and editing.
+  Backend contracts, validation and endpoints are in `schemas/pm_workspace.py`,
+  `services/pm_workspace.py` and `api/pm_workspace.py`.
 
 ## Not yet built
 
@@ -325,6 +408,9 @@ All routes are under `/api/pm` and require the `projects` module.
   support requirements and acceptance-criteria text.
 - Dedicated project-specific Microsoft Teams routing (generic notification
   fan-out already exists), and OAuth sign-in for MCP clients that require it.
+- Workflow automation builders, cross-project boards, custom issue types,
+  advanced query languages and external development integrations remain outside
+  this tracker. Saved views use the documented filter controls.
 
 ## Checks
 
@@ -342,3 +428,17 @@ All routes are under `/api/pm` and require the `projects` module.
   MCP client against uvicorn and PostgreSQL); browser:
   `frontend/e2e/ai-access.spec.ts`.
 - Browser: `frontend/e2e/projects.spec.ts` (desktop and Pixel 5, with axe).
+- Workspace behavior: `backend/tests/test_pm_workspace.py` and
+  `frontend/e2e/projects-workspace.spec.ts` (desktop and Pixel 5, with axe).
+- Workspace migration and concurrency: set `PM_WORKSPACE_TEST_DATABASE_URL` to a disposable
+  local PostgreSQL `pm_regression_test` database and run
+  `python -m pytest tests/test_pm_workspace_postgres.py`. The test creates and
+  removes its own schema and covers fresh upgrade, legacy backfill, downgrade,
+  re-upgrade and an archive racing a viewer's comment. No production database
+  should be used for these checks.
+
+The opt-in browser test `frontend/e2e/projects-workspace-live.spec.ts` uses an
+actual local API, cookie session and PostgreSQL. Set `PM_STACK_E2E=1` and
+`PLAYWRIGHT_BASE_URL` to a disposable local stack with an active test admin
+account (`E2E_EMAIL`/`E2E_PASSWORD`). It creates projects and issues for its
+own runs; never enable it against production.

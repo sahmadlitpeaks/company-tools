@@ -1,9 +1,10 @@
+import { useIssueHref } from "./useIssueHref";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Eye, EyeOff, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Copy, Eye, EyeOff, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
-  canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, LINK_RELATIONS, pmError,
+  canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, labelOf, LINK_RELATIONS, pmError,
   type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
@@ -23,6 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useFetch } from "@/hooks/useApi";
 import { IssueForm } from "./IssueForm";
 import { IssueTypeIcon, pointsLabel, StatusBadge } from "./IssueBits";
+import { useWorkspace } from "./WorkspaceContext";
+import { MarkdownContent, MarkdownField } from "./MarkdownField";
 
 type Props = {
   issueKey: string;
@@ -36,7 +39,10 @@ type Props = {
 
 /** Jira-style issue view in a side panel, opened from `?issue=KEY-N`. */
 export function IssueDetail({ issueKey, project, members, issues, sprints, onClose, onChanged }: Props) {
+  const issueHref = useIssueHref();
   const { user } = useAuth();
+  const config = useWorkspace();
+  const [, setParams] = useSearchParams();
   const detail = useFetch<PmIssueDetail>(`/api/pm/issues/${issueKey}`, true);
   const [mode, setMode] = useState<null | "edit" | "child" | "delete">(null);
   const [state, setState] = useState({ busy: false, error: "" });
@@ -68,7 +74,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
             <span className="min-w-0 break-words">{issue ? issue.summary : issueKey}</span>
           </SheetTitle>
           <SheetDescription>
-            {issue ? <>{issue.parent && <><Link to={issueLink(project.key, issue.parent.key)} className="underline-offset-4 hover:underline">{issue.parent.key}</Link> / </>}{issue.key} · {labelOf(ISSUE_TYPES, issue.issue_type)}</> : "Loading issue"}
+            {issue ? <>{issue.parent && <><Link to={issueHref(project.key, issue.parent.key)} className="underline-offset-4 hover:underline">{issue.parent.key}</Link> / </>}{issue.key} · {labelOf(ISSUE_TYPES, issue.issue_type)}</> : "Loading issue"}
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-5 p-4">
@@ -77,8 +83,11 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-44">
                 <TaskChoice
-                  id="pm-detail-status" label="Status" value={issue.status} items={ISSUE_STATUSES} disabled={!editable || state.busy}
-                  onChange={(value) => void mutate(() => api(`/api/pm/issues/${issue.id}`, { method: "PATCH", body: { status: value as IssueStatus } }))}
+                  id="pm-detail-status" label="Status" value={issue.workflow_state ?? issue.status} items={config.states.filter((item) => {
+                    const current = config.states.find((state) => state.key === (issue.workflow_state ?? issue.status));
+                    return !current?.allowed_next || item.key === current.key || current.allowed_next.includes(item.key);
+                  }).map((item) => ({ value: item.key, label: item.name }))} disabled={!editable || state.busy}
+                  onChange={(value) => void mutate(() => api(`/api/pm/issues/${issue.id}`, { method: "PATCH", body: config.states.find((item) => item.key === value)?.category === value ? { status: value as IssueStatus } : { workflow_state: value } }))}
                 />
               </div>
               <Button
@@ -91,6 +100,10 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 {issue.watching ? "Stop watching" : "Watch"}
               </Button>
               {editable && <Button variant="outline" onClick={() => setMode("edit")} disabled={state.busy}><Pencil data-icon="inline-start" />Edit</Button>}
+              {editable && <Button variant="outline" disabled={state.busy} onClick={() => void mutate(async () => {
+                const copy = await api<PmIssue>(`/api/pm/issues/${issue.id}/duplicate`, { method: "POST" });
+                setParams((old) => { const next = new URLSearchParams(old); next.set("issue", copy.key); return next; });
+              })}><Copy data-icon="inline-start" />Duplicate</Button>}
               {editable && <Button variant="ghost" size="icon" aria-label={`Delete ${issue.key}`} onClick={() => setMode("delete")} disabled={state.busy}><Trash2 /></Button>}
             </div>
 
@@ -102,6 +115,8 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
               {project.sprints_enabled && <Detail label="Sprint">{issue.sprint_name ?? "Backlog"}</Detail>}
               <Detail label="Start date">{issue.start_date ? dateLabel(issue.start_date) : "—"}</Detail>
               <Detail label="Due date">{issue.due_date ? dateLabel(issue.due_date) : "—"}</Detail>
+              {config.components.length > 0 && <Detail label="Component">{config.components.find((item) => item.key === issue.component)?.name ?? "None"}</Detail>}
+              {config.fields.map((field) => <Detail key={field.key} label={field.name}>{issue.custom_fields?.[field.key] == null ? "—" : field.kind === "checkbox" ? issue.custom_fields[field.key] ? "Yes" : "No" : String(issue.custom_fields[field.key])}</Detail>)}
               {issue.external_key && <Detail label="Jira key">{issue.external_key}</Detail>}
               <Detail label="Labels" wide>
                 {issue.labels?.length ? <span className="flex flex-wrap gap-1">{issue.labels.map((label) => <Badge key={label} variant="outline">{label}</Badge>)}</span> : "None"}
@@ -111,7 +126,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
 
             <section className="flex flex-col gap-2">
               <h3 className="text-sm font-semibold">Description</h3>
-              {issue.description ? <p className="whitespace-pre-wrap break-words text-sm">{issue.description}</p> : <p className="text-sm text-muted-foreground">No description.</p>}
+              {issue.description ? <MarkdownContent text={issue.description} /> : <p className="text-sm text-muted-foreground">No description.</p>}
             </section>
 
             {issue.issue_type !== "subtask" && <section className="flex flex-col gap-2">
@@ -122,11 +137,11 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
               {issue.children.length > 0 && <Progress value={Math.round(issue.child_done / issue.child_count * 100)} aria-label={`${issue.child_done} of ${issue.child_count} done`} />}
               {issue.children.length === 0 ? <p className="text-sm text-muted-foreground">None yet.</p> : <ul className="flex flex-col divide-y divide-border border border-border">
                 {issue.children.map((child) => <li key={child.id}>
-                  <Link to={issueLink(project.key, child.key)} className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted">
+                  <Link to={issueHref(project.key, child.key)} className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted">
                     <IssueTypeIcon type={child.issue_type} />
                     <span className="shrink-0 text-muted-foreground">{child.key}</span>
                     <span className="min-w-0 flex-1 truncate">{child.summary}</span>
-                    <StatusBadge status={child.status} />
+                    <StatusBadge status={child.status} label={child.workflow_name} />
                   </Link>
                 </li>)}
               </ul>}
@@ -141,7 +156,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 <TabsTrigger value="comments">Comments</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
-              <TabsContent value="comments"><IssueComments issueId={issue.id} isAdmin={issue.my_role === "admin"} readOnly={!writable} onChanged={onChanged} /></TabsContent>
+              <TabsContent value="comments"><IssueComments issueId={issue.id} members={members} isAdmin={issue.my_role === "admin"} readOnly={!writable} onChanged={onChanged} /></TabsContent>
               <TabsContent value="history"><IssueHistory issueId={issue.id} updatedAt={issue.updated_at} /></TabsContent>
             </Tabs>
 
@@ -190,6 +205,7 @@ function IssueLinks({ issue, issues, projectKey, editable, busy, mutate }: {
   issue: PmIssueDetail; issues: PmIssue[]; projectKey: string; editable: boolean; busy: boolean;
   mutate: (run: () => Promise<unknown>) => Promise<boolean>;
 }) {
+  const issueHref = useIssueHref();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ relation: PmLink["relation"]; target: string }>({ relation: "blocks", target: "" });
   const targets = issues.filter((other) => other.id !== issue.id);
@@ -208,10 +224,10 @@ function IssueLinks({ issue, issues, projectKey, editable, busy, mutate }: {
     {issue.links.length > 0 && <ul className="flex flex-col gap-1">
       {issue.links.map((link) => <li key={link.id} className="flex items-center gap-2 text-sm">
         <span className="w-28 shrink-0 text-muted-foreground">{labelOf(LINK_RELATIONS, link.relation)}</span>
-        <Link to={issueLink(projectKey, link.issue.key)} className="flex min-w-0 flex-1 items-center gap-2 hover:underline">
+        <Link to={issueHref(projectKey, link.issue.key)} className="flex min-w-0 flex-1 items-center gap-2 hover:underline">
           <IssueTypeIcon type={link.issue.issue_type} /><span className="shrink-0">{link.issue.key}</span><span className="truncate">{link.issue.summary}</span>
         </Link>
-        <StatusBadge status={link.issue.status} />
+        <StatusBadge status={link.issue.status} label={issues.find((item) => item.id === link.issue.id)?.workflow_name} />
         {editable && <Button size="icon-sm" variant="ghost" aria-label={`Remove link to ${link.issue.key}`} disabled={busy} onClick={() => void mutate(() => api(`/api/pm/links/${link.id}`, { method: "DELETE" }))}><X /></Button>}
       </li>)}
     </ul>}
@@ -226,10 +242,11 @@ function IssueLinks({ issue, issues, projectKey, editable, busy, mutate }: {
   </section>;
 }
 
-function IssueComments({ issueId, isAdmin, readOnly, onChanged }: { issueId: string; isAdmin: boolean; readOnly: boolean; onChanged: () => void }) {
+function IssueComments({ issueId, members, isAdmin, readOnly, onChanged }: { issueId: string; members: PmMember[]; isAdmin: boolean; readOnly: boolean; onChanged: () => void }) {
   const { user } = useAuth();
   const comments = useFetch<PmComment[]>(`/api/pm/issues/${issueId}/comments`);
   const [body, setBody] = useState("");
+  const [mentions, setMentions] = useState<string[]>([]);
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [state, setState] = useState({ busy: false, error: "" });
   async function run(action: () => Promise<unknown>, reset?: () => void) {
@@ -255,11 +272,16 @@ function IssueComments({ issueId, isAdmin, readOnly, onChanged }: { issueId: str
         {!readOnly && editing?.id === comment.id ? <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (editing.body.trim()) void run(() => api(`/api/pm/comments/${comment.id}`, { method: "PATCH", body: { body: editing.body.trim() } }), () => setEditing(null)); }}>
           <Field><FieldLabel htmlFor={`pm-edit-${comment.id}`} className="sr-only">Edit comment</FieldLabel><Textarea id={`pm-edit-${comment.id}`} rows={3} value={editing.body} onChange={(event) => setEditing({ id: comment.id, body: event.target.value })} /></Field>
           <div className="flex gap-2"><Button type="submit" size="sm" disabled={state.busy || !editing.body.trim()}>Save</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
-        </form> : <p className="whitespace-pre-wrap break-words text-sm">{comment.body}</p>}
+        </form> : <MarkdownContent text={comment.body} />}
       </article>)}
     </>}
-    {!readOnly && <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (body.trim()) void run(() => api(`/api/pm/issues/${issueId}/comments`, { method: "POST", body: { body: body.trim() } }), () => setBody("")); }}>
-      <Field><FieldLabel htmlFor="pm-comment">Add a comment</FieldLabel><Textarea id="pm-comment" rows={3} value={body} onChange={(event) => setBody(event.target.value)} /></Field>
+    {!readOnly && <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (body.trim()) void run(() => api(`/api/pm/issues/${issueId}/comments`, { method: "POST", body: { body: body.trim(), ...(mentions.length ? { mention_ids: mentions } : {}) } }), () => { setBody(""); setMentions([]); }); }}>
+      <MarkdownField id="pm-comment" label="Add a comment" rows={3} value={body} onChange={setBody} />
+      <TaskChoice id="pm-comment-mention" label="Mention a teammate" value="" items={[{ value: "", label: "Choose a person" }, ...members.filter((member) => !mentions.includes(member.user_id)).map((member) => ({ value: member.user_id, label: member.name }))]} onChange={(id) => {
+        const person = members.find((member) => member.user_id === id);
+        if (person) { setMentions((current) => [...new Set([...current, id])]); setBody((current) => `${current}${current ? " " : ""}@${person.name} `); }
+      }} />
+      {mentions.length > 0 && <div className="flex flex-wrap gap-1">{mentions.map((id) => <Button key={id} type="button" size="sm" variant="outline" aria-label={`Remove mention of ${members.find((member) => member.user_id === id)?.name}`} onClick={() => setMentions((current) => current.filter((value) => value !== id))}>{members.find((member) => member.user_id === id)?.name}<X data-icon="inline-end" /></Button>)}</div>}
       <div><Button type="submit" disabled={state.busy || !body.trim()}>Comment</Button></div>
     </form>}
   </div>;
