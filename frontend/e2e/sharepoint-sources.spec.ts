@@ -65,12 +65,12 @@ test("admin adds a source with optional Teams upload notifications", async ({ pa
   const dialog = page.getByRole("dialog", { name: "Add document source" });
   await expect(dialog.getByRole("switch", { name: "Notify Teams on new upload" })).not.toBeChecked();
   await dialog.getByLabel("Source name", { exact: true }).fill("HR documents");
-  await dialog.getByLabel("SharePoint site ID").fill("hr-site");
-  await dialog.getByLabel("Document library ID").fill("hr-library");
+  await dialog.getByLabel("SharePoint site ID", { exact: true }).fill("hr-site");
+  await dialog.getByLabel("Document library ID", { exact: true }).fill("hr-library");
   await dialog.getByLabel("Folder ID", { exact: true }).fill("root");
   await dialog.getByRole("switch", { name: "Notify Teams on new upload" }).click();
-  await dialog.getByLabel("Teams destination channel").fill("HR / Documents");
-  await dialog.getByLabel("Teams workflow webhook URL").fill("https://example.logic.azure.com/workflows/test?sig=fake");
+  await dialog.getByLabel("Teams destination channel", { exact: true }).fill("HR / Documents");
+  await dialog.getByLabel("Teams workflow webhook URL", { exact: true }).fill("https://example.logic.azure.com/workflows/test?sig=fake");
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/sharepoint/sources" && request.method() === "POST");
   await dialog.getByRole("button", { name: "Add source", exact: true }).click();
@@ -85,13 +85,80 @@ test("admin adds a source with optional Teams upload notifications", async ({ pa
   await page.screenshot({ path: testInfo.outputPath("document-sources.png"), fullPage: true });
 });
 
+test("source examples and help work without changing the form or closing its dialog", async ({ page, isMobile }, testInfo) => {
+  if (!isMobile) await page.setViewportSize({ width: 1000, height: 1244 });
+  await page.goto("/sharepoint/admin");
+  await page.getByRole("button", { name: "Add source", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add document source" });
+  await expect(dialog.getByLabel("Source name", { exact: true })).toHaveAttribute("placeholder", "e.g. Finance documents");
+  await expect(dialog.getByLabel("SharePoint site ID", { exact: true })).toHaveAttribute("placeholder", "contoso.sharepoint.com,site-guid,web-guid");
+  await expect(dialog.getByLabel("Document library ID", { exact: true })).toHaveAttribute("placeholder", "e.g. b!AbCdEf…");
+  await expect(dialog.getByLabel("Folder ID", { exact: true })).toHaveAttribute("placeholder", "root or e.g. 01ABCDEF…");
+  const libraryInput = await dialog.getByLabel("Document library ID", { exact: true }).boundingBox();
+  const folderInput = await dialog.getByLabel("Folder ID", { exact: true }).boundingBox();
+  const libraryLabel = await dialog.locator('label[for="source-library"]').boundingBox();
+  const folderLabel = await dialog.locator('label[for="source-folder"]').boundingBox();
+  expect(libraryInput && folderInput && libraryLabel && folderLabel).toBeTruthy();
+  // Helper text must not stretch the adjacent field's label away from its input.
+  const libraryGap = libraryInput!.y - (libraryLabel!.y + libraryLabel!.height);
+  const folderGap = folderInput!.y - (folderLabel!.y + folderLabel!.height);
+  expect(Math.abs(libraryGap - folderGap)).toBeLessThanOrEqual(1);
+  if (!isMobile) {
+    expect(Math.abs(libraryInput!.y - folderInput!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(libraryLabel!.y - folderLabel!.y)).toBeLessThanOrEqual(1);
+  } else {
+    expect(folderLabel!.y).toBeGreaterThan(libraryInput!.y + libraryInput!.height);
+  }
+  await page.screenshot({ path: testInfo.outputPath("source-field-layout.png") });
+  await dialog.getByLabel("Source name", { exact: true }).fill("My documents");
+  const nameHelp = dialog.getByRole("button", { name: "About Source name", exact: true });
+  await nameHelp.focus();
+  await nameHelp.press("Enter");
+  const popup = page.locator('[data-slot="popover-content"]');
+  await expect(popup).toContainText("appears in source filters");
+  await page.keyboard.press("Escape");
+  await expect(popup).not.toBeVisible();
+  await expect(nameHelp).toBeFocused();
+  await dialog.getByRole("switch", { name: "Notify Teams on new upload" }).click();
+  await expect(dialog.getByLabel("Teams destination channel", { exact: true })).toHaveAttribute("placeholder", "e.g. Finance / Documents");
+  await expect(dialog.getByLabel("Teams workflow webhook URL", { exact: true })).toHaveAttribute("placeholder", "https://…logic.azure.com/workflows/…");
+  for (const [label, text] of [
+    ["SharePoint site ID", "GET /sites/contoso.sharepoint.com:/sites/Finance"],
+    ["Document library ID", "GET /sites/{site-id}/drives"],
+    ["Folder ID", "GET /drives/{drive-id}/root:/Finance"],
+    ["Enable sync", "pause both"],
+    ["Notify Teams on new upload", "Existing files stay silent"],
+    ["Teams destination channel", "only a label"],
+    ["Teams workflow webhook URL", "copy the webhook URL from the workflow details"],
+  ]) {
+    await dialog.getByRole("button", { name: `About ${label}`, exact: true }).click();
+    await expect(popup).toContainText(text);
+    const bounds = await popup.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    if (label === "SharePoint site ID") {
+      await expect(popup.getByRole("link")).toHaveAttribute("href", "https://learn.microsoft.com/en-us/graph/api/site-getbypath?view=graph-rest-1.0");
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      await page.screenshot({ path: testInfo.outputPath("source-field-help.png") });
+    }
+    await page.keyboard.press("Escape");
+    await expect(popup).not.toBeVisible();
+    await expect(dialog).toBeVisible();
+  }
+  await expect(dialog.getByRole("switch", { name: "Enable sync" })).toBeChecked();
+  await expect(dialog.getByRole("switch", { name: "Notify Teams on new upload" })).toBeChecked();
+  await expect(dialog.getByLabel("Source name", { exact: true })).toHaveValue("My documents");
+});
+
 test("admin edits settings without revealing the saved webhook and pauses a source", async ({ page }) => {
   await page.goto("/sharepoint/admin");
   const card = page.locator('[data-slot="card"]').filter({ has: page.getByText("Operations", { exact: true }) });
   await card.getByRole("button", { name: "Edit", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Edit document source" });
-  await expect(dialog.getByLabel("Teams workflow webhook URL")).toHaveValue("");
-  await expect(dialog.getByLabel("SharePoint site ID")).toHaveAttribute("readonly", "");
+  await expect(dialog.getByLabel("Teams workflow webhook URL", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Teams workflow webhook URL", { exact: true })).toHaveAttribute("placeholder", "Saved securely — leave blank to keep");
+  await expect(dialog.getByLabel("SharePoint site ID", { exact: true })).toHaveAttribute("readonly", "");
   const requestPromise = page.waitForRequest((request) => request.method() === "PUT");
   await dialog.getByRole("button", { name: "Save source" }).click();
   expect((await requestPromise).postDataJSON()).not.toHaveProperty("teams_webhook_url");
@@ -114,8 +181,8 @@ test("failed access keeps the source form open with an actionable error", async 
   await page.getByRole("button", { name: "Add source", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Source name", { exact: true }).fill("Restricted");
-  await dialog.getByLabel("SharePoint site ID").fill("site");
-  await dialog.getByLabel("Document library ID").fill("drive");
+  await dialog.getByLabel("SharePoint site ID", { exact: true }).fill("site");
+  await dialog.getByLabel("Document library ID", { exact: true }).fill("drive");
   await dialog.getByLabel("Folder ID", { exact: true }).fill("folder");
   await dialog.getByRole("button", { name: "Add source", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText("grant this app access");
