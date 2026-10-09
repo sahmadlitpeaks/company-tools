@@ -145,6 +145,19 @@ a retry worker checks current ownership and live SharePoint access before
 sending document details. See [Tasks](TASKS.md) for permissions, progress,
 email configuration, and delivery guarantees.
 
+The project tracker (`/api/pm`, `app/api/pm.py`) is separate from ordinary
+tasks. It is gated by the `projects` module and then by per-project membership
+(`app/services/pm_access.py`); being a manager elsewhere grants nothing there.
+Membership changes and issue/sprint mutations lock the project row before
+individual records. This preserves at least one project administrator and
+serializes sprint completion with issue edits. Completion persists a burndown
+snapshot before spillover moves, in the same transaction as velocity totals.
+Public shares resolve display names without internal email fallbacks; MCP
+checks account/password-change restrictions at authentication and tool entry.
+It also serves read-only public share links (`/api/public/pm-shares/`) and an
+MCP endpoint for AI assistants at `/api/mcp/`, authenticated by personal access
+tokens rather than the session cookie. See [Project tracker](PROJECT_TRACKER.md).
+
 ## Modules & key endpoints
 
 | Feature | Module | Auth endpoints | Public endpoints |

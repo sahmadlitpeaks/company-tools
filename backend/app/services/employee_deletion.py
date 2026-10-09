@@ -14,6 +14,7 @@ class ActiveComplianceWorkError(ValueError):
 PERSONAL_TABLES = {
     "notifications", "dashboard_preferences", "workspace_items", "saved_views",
     "email_signatures", "user_companies", "sharepoint_connections", "task_assignment_emails",
+    "pm_issue_watchers", "pm_share_links", "pm_access_tokens",
 }
 
 
@@ -41,6 +42,8 @@ def record_label(name):
         return "Active Compliance owner rules"
     if name == "sharepoint_compliance_tasks":
         return "Active Compliance tasks"
+    if name.startswith("pm_"):
+        return "Project tracker records"
     if name.startswith(("tasks", "task_", "project", "checklist")):
         return "Tasks and projects"
     if name.startswith(("time_", "work_log", "timesheet", "payroll", "leave", "hr_", "compensation", "employment")):

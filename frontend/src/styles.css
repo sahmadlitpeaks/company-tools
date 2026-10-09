@@ -49,6 +49,9 @@
   --chart-3: oklch(0.681 0.162 75.834);
   --chart-4: oklch(0.554 0.135 66.442);
   --chart-5: oklch(0.476 0.114 61.907);
+  /* Text set inside chart fills: ink on light steps, inverse on dark steps. */
+  --chart-ink: oklch(0.21 0.006 285.885);
+  --chart-ink-inverse: oklch(0.985 0 0);
 
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -102,6 +105,9 @@ svg.lucide {
   --chart-3: oklch(0.681 0.162 75.834);
   --chart-4: oklch(0.554 0.135 66.442);
   --chart-5: oklch(0.476 0.114 61.907);
+  /* Text set inside chart fills: ink on light steps, inverse on dark steps. */
+  --chart-ink: oklch(0.21 0.006 285.885);
+  --chart-ink-inverse: oklch(0.985 0 0);
 
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
@@ -148,6 +154,8 @@ svg.lucide {
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-ink: var(--chart-ink);
+  --color-chart-ink-inverse: var(--chart-ink-inverse);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
