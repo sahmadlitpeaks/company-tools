@@ -41,7 +41,8 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
   const [mode, setMode] = useState<null | "edit" | "child" | "delete">(null);
   const [state, setState] = useState({ busy: false, error: "" });
   const issue = detail.data;
-  const editable = canEdit(issue?.my_role);
+  const writable = project.status !== "archived";
+  const editable = writable && canEdit(issue?.my_role);
 
   async function mutate(run: () => Promise<unknown>) {
     setState({ busy: true, error: "" });
@@ -81,7 +82,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 />
               </div>
               <Button
-                variant="outline" disabled={state.busy}
+                variant="outline" disabled={!writable || state.busy}
                 onClick={() => void mutate(() => issue.watching
                   ? api(`/api/pm/issues/${issue.id}/watchers/${user?.id}`, { method: "DELETE" })
                   : api(`/api/pm/issues/${issue.id}/watchers`, { method: "POST", body: { user_id: user?.id } }))}
@@ -140,7 +141,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 <TabsTrigger value="comments">Comments</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
-              <TabsContent value="comments"><IssueComments issueId={issue.id} isAdmin={issue.my_role === "admin"} onChanged={onChanged} /></TabsContent>
+              <TabsContent value="comments"><IssueComments issueId={issue.id} isAdmin={issue.my_role === "admin"} readOnly={!writable} onChanged={onChanged} /></TabsContent>
               <TabsContent value="history"><IssueHistory issueId={issue.id} updatedAt={issue.updated_at} /></TabsContent>
             </Tabs>
 
@@ -153,9 +154,9 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
       </SheetContent>
     </Sheet>
 
-    {issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
-    {issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
-    <AlertDialog open={mode === "delete"} onOpenChange={(open) => !open && !state.busy && setMode(null)}>
+    {editable && issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
+    {editable && issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
+    <AlertDialog open={editable && mode === "delete"} onOpenChange={(open) => !open && !state.busy && setMode(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {issue?.key}?</AlertDialogTitle>
@@ -214,7 +215,7 @@ function IssueLinks({ issue, issues, projectKey, editable, busy, mutate }: {
         {editable && <Button size="icon-sm" variant="ghost" aria-label={`Remove link to ${link.issue.key}`} disabled={busy} onClick={() => void mutate(() => api(`/api/pm/links/${link.id}`, { method: "DELETE" }))}><X /></Button>}
       </li>)}
     </ul>}
-    {adding && <form onSubmit={(event) => void add(event)} className="grid items-end gap-2 sm:grid-cols-[10rem_1fr_auto]">
+    {editable && adding && <form onSubmit={(event) => void add(event)} className="grid items-end gap-2 sm:grid-cols-[10rem_1fr_auto]">
       <TaskChoice id="pm-link-relation" label="This issue" value={form.relation} items={LINK_RELATIONS} onChange={(value) => setForm((c) => ({ ...c, relation: value as PmLink["relation"] }))} />
       <TaskChoice id="pm-link-target" label="Issue" value={form.target} items={[...(form.target ? [] : [{ value: "", label: "Choose an issue" }]), ...targets.map((t) => ({ value: t.id, label: `${t.key} ${t.summary}` }))]} onChange={(value) => setForm((c) => ({ ...c, target: value }))} />
       <div className="flex gap-2">
@@ -225,7 +226,7 @@ function IssueLinks({ issue, issues, projectKey, editable, busy, mutate }: {
   </section>;
 }
 
-function IssueComments({ issueId, isAdmin, onChanged }: { issueId: string; isAdmin: boolean; onChanged: () => void }) {
+function IssueComments({ issueId, isAdmin, readOnly, onChanged }: { issueId: string; isAdmin: boolean; readOnly: boolean; onChanged: () => void }) {
   const { user } = useAuth();
   const comments = useFetch<PmComment[]>(`/api/pm/issues/${issueId}/comments`);
   const [body, setBody] = useState("");
@@ -247,20 +248,20 @@ function IssueComments({ issueId, isAdmin, onChanged }: { issueId: string; isAdm
             {comment.updated_at !== comment.created_at && " · edited"}
           </p>
           <span className="flex gap-1">
-            {comment.author_id === user?.id && <Button size="icon-sm" variant="ghost" aria-label="Edit comment" onClick={() => setEditing({ id: comment.id, body: comment.body })}><Pencil /></Button>}
-            {(comment.author_id === user?.id || isAdmin) && <Button size="icon-sm" variant="ghost" aria-label="Delete comment" disabled={state.busy} onClick={() => void run(() => api(`/api/pm/comments/${comment.id}`, { method: "DELETE" }))}><Trash2 /></Button>}
+            {!readOnly && comment.author_id === user?.id && <Button size="icon-sm" variant="ghost" aria-label="Edit comment" onClick={() => setEditing({ id: comment.id, body: comment.body })}><Pencil /></Button>}
+            {!readOnly && (comment.author_id === user?.id || isAdmin) && <Button size="icon-sm" variant="ghost" aria-label="Delete comment" disabled={state.busy} onClick={() => void run(() => api(`/api/pm/comments/${comment.id}`, { method: "DELETE" }))}><Trash2 /></Button>}
           </span>
         </div>
-        {editing?.id === comment.id ? <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (editing.body.trim()) void run(() => api(`/api/pm/comments/${comment.id}`, { method: "PATCH", body: { body: editing.body.trim() } }), () => setEditing(null)); }}>
+        {!readOnly && editing?.id === comment.id ? <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (editing.body.trim()) void run(() => api(`/api/pm/comments/${comment.id}`, { method: "PATCH", body: { body: editing.body.trim() } }), () => setEditing(null)); }}>
           <Field><FieldLabel htmlFor={`pm-edit-${comment.id}`} className="sr-only">Edit comment</FieldLabel><Textarea id={`pm-edit-${comment.id}`} rows={3} value={editing.body} onChange={(event) => setEditing({ id: comment.id, body: event.target.value })} /></Field>
           <div className="flex gap-2"><Button type="submit" size="sm" disabled={state.busy || !editing.body.trim()}>Save</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
         </form> : <p className="whitespace-pre-wrap break-words text-sm">{comment.body}</p>}
       </article>)}
     </>}
-    <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (body.trim()) void run(() => api(`/api/pm/issues/${issueId}/comments`, { method: "POST", body: { body: body.trim() } }), () => setBody("")); }}>
+    {!readOnly && <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); if (body.trim()) void run(() => api(`/api/pm/issues/${issueId}/comments`, { method: "POST", body: { body: body.trim() } }), () => setBody("")); }}>
       <Field><FieldLabel htmlFor="pm-comment">Add a comment</FieldLabel><Textarea id="pm-comment" rows={3} value={body} onChange={(event) => setBody(event.target.value)} /></Field>
       <div><Button type="submit" disabled={state.busy || !body.trim()}>Comment</Button></div>
-    </form>
+    </form>}
   </div>;
 }
 

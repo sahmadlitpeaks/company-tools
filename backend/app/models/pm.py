@@ -100,6 +100,9 @@ class PmSprint(UUIDMixin, TimestampMixin, Base):
     # Snapshot at completion, so velocity survives later edits.
     completed_points: Mapped[float | None] = mapped_column(Float)
     committed_points: Mapped[float | None] = mapped_column(Float)
+    # Immutable report captured in the completion transaction, before spillover
+    # moves. It survives issue edits, reopening, moves and deletion.
+    burndown_snapshot: Mapped[dict | None] = mapped_column(JSON)
 
     __table_args__ = (
         # One active sprint per project.

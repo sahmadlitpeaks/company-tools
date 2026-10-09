@@ -11,6 +11,7 @@ async function mount(page: Page, admin: boolean) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) return route.continue();
     const method = request.method();
     const body = request.postData() ? request.postDataJSON() : null;
     if (method !== "GET") requests.push({ method, path, body });

@@ -87,6 +87,10 @@ refused while a sprint is active.
     ideal line, for the active sprint or any completed one. Scope is the
     sprint's issues, including unfinished work moved out when it closed; an
     issue burns on the day it was resolved.
+    Completion saves an immutable burndown report before moving unfinished
+    work. Reopening, editing or deleting issues afterwards cannot change it.
+    Existing closed reports are frozen from the data available when migration
+    `x0b1c2d3e4f5` runs; already-deleted historical data cannot be recovered.
   - *Velocity* (Scrum): committed vs completed points for recent sprints,
     using the snapshots taken at sprint start and completion.
   - *Team workload* heat map: story points (or issue count) per person per
@@ -134,6 +138,8 @@ people can be added to the project automatically (assignees as members,
 reporters as viewers); otherwise unmapped or non-member people are named in the
 description. Attachments aren't in a CSV export; the preview counts them. Files
 are limited to 10 MB and 5,000 issues.
+Descriptions can exceed the CSV library's default field limit, up to the
+bounded file size. Malformed exports return a validation error without writes.
 
 ## Share links
 
@@ -155,7 +161,11 @@ The public page (`/share/p/<token>`, API `GET /api/public/pm-shares/<token>`)
 needs no sign-in and exposes only issue keys, summaries, types, statuses,
 priorities, story points, assignee names, sprint and dates. Descriptions,
 comments, attachments, reporters, labels and email addresses never leave the
-server, and nothing on the page links into the platform. Unknown, expired and
+server, and nothing on the page links into the platform.
+The public views omit reporters/requesters and workload/activity heat maps.
+Use a signed-in project viewer for those details. Missing, blank or email-like
+assignee display names appear as **Team member**, never an email fallback.
+Unknown, expired and
 revoked links get the same "not available" answer; switching the Projects module
 off org-wide disables every link. Responses are `no-store` and `noindex`, and the
 page sets `no-referrer` so the link isn't passed on to other sites.
@@ -175,7 +185,8 @@ SHA-256 is stored), expire after 30–365 days and can be revoked; the page show
 ready-to-paste setup for Claude Code and a generic MCP JSON config. Platform
 administrators see and can revoke every token. Clients send
 `Authorization: Bearer pmt_...`; missing, unknown, expired or revoked tokens,
-inactive accounts and accounts without the Projects module (including when it is
+inactive accounts, accounts required to change their password, and accounts
+without the Projects module (including when it is
 switched off org-wide) get `401`.
 
 **Read vs write.** Tokens are read-only unless created with "Allow changes",
@@ -227,7 +238,10 @@ project is then visible only to its members and platform administrators.
   teams' work are not confirmed.
 - Being a manager elsewhere in the platform grants nothing here, including on
   attachments.
-- Archived projects stay readable but reject every change (409).
+- Archived projects stay readable but reject changes to issues, sprints,
+  comments, watchers and attachments (409). Project administration and access
+  revocation remain available to administrators; restore the project before
+  changing its work.
 - Removing someone from a project also removes them as a watcher there.
 - Departments with an explicit permission list do not gain the new `projects`
   module automatically; grant it in **Departments & Access** where needed.
@@ -303,14 +317,25 @@ All routes are under `/api/pm` and require the `projects` module.
 
 ## Not yet built
 
-Possible next steps from the original requirements: Microsoft Teams
-notifications, and OAuth sign-in for MCP clients that require it.
+- Release/version tracking, Jira Fix Version import, issue grouping by release,
+  and release-note generation/export are follow-up work. **Keep the existing
+  release-note sheets until that workflow is implemented and accepted.** This
+  tracker currently replaces issue planning, not the release-note process.
+- Structured requirements approval/baselines are not implemented; descriptions
+  support requirements and acceptance-criteria text.
+- Dedicated project-specific Microsoft Teams routing (generic notification
+  fan-out already exists), and OAuth sign-in for MCP clients that require it.
 
 ## Checks
 
 - Backend: `backend/tests/test_pm.py`.
 - Migrations `s6d7e8f9a0b1`, `t6d7e8f9a0b1`, `u7e8f9a0b1c2`, `v8f9a0b1c2d3` and
-  `w9a0b1c2d3e4` (verified on PostgreSQL 16, including downgrade).
+  `w9a0b1c2d3e4` and `x0b1c2d3e4f5` (burndown snapshots).
+- Regression boundaries: `backend/tests/test_pm_regressions.py` and
+  `backend/tests/test_pm_mcp.py`. Run PostgreSQL concurrency coverage with
+  `PM_TEST_DATABASE_URL=postgresql+psycopg://...@127.0.0.1:<port>/pm_regression_test`
+  and `python -m pytest tests/test_pm_postgres.py` against a disposable local
+  database only. It creates and removes its own unique schema.
 - Jira import: `backend/tests/test_pm_import.py`; share links:
   `backend/tests/test_pm_share.py`; AI access over MCP:
   `backend/tests/test_pm_mcp.py` (also exercised end to end with the official

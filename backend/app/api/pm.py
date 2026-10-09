@@ -60,6 +60,7 @@ from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_names
 from app.services.pm_access import (
+    ensure_writable as _ensure_writable,
     member_ids,
     require_project,
     role_at_least,
@@ -266,7 +267,7 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    project, _ = await require_project(db, user, project_id, "admin")
+    project, _ = await require_project(db, user, project_id, "admin", for_update=True)
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and not (data["name"] or "").strip():
         raise HTTPException(422, "Enter a project name.")
@@ -340,7 +341,7 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin")
+    await require_project(db, user, project_id, "admin", for_update=True)
     _check_role(payload.role)
     person = await _active_user(db, payload.user_id)
     existing = await db.scalar(
@@ -366,7 +367,7 @@ async def update_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin")
+    await require_project(db, user, project_id, "admin", for_update=True)
     _check_role(payload.role)
     membership = await db.scalar(
         select(PmProjectMember).where(
@@ -393,7 +394,7 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin")
+    await require_project(db, user, project_id, "admin", for_update=True)
     membership = await db.scalar(
         select(PmProjectMember).where(
             PmProjectMember.project_id == project_id, PmProjectMember.user_id == user_id
@@ -462,13 +463,15 @@ async def _load_issue(
     issue = await _issue_by_ref(db, ref)
     if not issue:
         raise HTTPException(404, "Issue not found")
-    project, role = await require_project(db, user, issue.project_id, minimum)
+    project, role = await require_project(db, user, issue.project_id, minimum, for_update=minimum != "viewer")
+    if minimum != "viewer":
+        # Another issue/sprint mutation may have committed while we waited.
+        issue = await db.scalar(
+            select(PmIssue).where(PmIssue.id == issue.id).execution_options(populate_existing=True)
+        )
+        if not issue:
+            raise HTTPException(404, "Issue not found")
     return issue, project, role
-
-
-def _ensure_writable(project: PmProject) -> None:
-    if project.status == "archived":
-        raise HTTPException(409, "This project is archived. Restore it to make changes.")
 
 
 async def _issue_outs(
@@ -906,6 +909,15 @@ async def update_issue(
     if new_type not in SPRINTABLE_TYPES and issue.sprint_id and "sprint_id" not in data:
         # Epics and sub-tasks don't sit in sprints.
         data["sprint_id"] = None
+    final_sprint_id = data.get("sprint_id", issue.sprint_id)
+    if final_sprint_id and final_sprint_id == issue.sprint_id:
+        sprint = await db.get(PmSprint, final_sprint_id)
+        if new_type not in SPRINTABLE_TYPES:
+            data["sprint_id"] = None
+        elif sprint and sprint.status == "closed" and data.get("status", issue.status) != "done":
+            # An unchanged closed sprint is stale Edit form state, not an
+            # explicit destination. Also repair already-stranded open work.
+            data["sprint_id"] = None
     if "sprint_id" in data and data["sprint_id"] != issue.sprint_id:
         await _check_sprint(db, project, new_type, data["sprint_id"])
 
@@ -926,11 +938,6 @@ async def update_issue(
         setattr(issue, field, value)
     if issue.status != prev_status:
         issue.resolved_at = _now() if issue.status == "done" else None
-        if prev_status == "done" and issue.sprint_id and "sprint_id" not in data:
-            # Reopened work can't stay in a closed sprint; return it to the backlog.
-            sprint = await db.get(PmSprint, issue.sprint_id)
-            if sprint and sprint.status == "closed":
-                await _move_issues(db, project, user, [issue], None)
         await _notify_watchers(
             db, issue, project, user,
             f"{user.display_name or user.email} moved an issue to {issue.status.replace('_', ' ')}",
@@ -1059,6 +1066,7 @@ async def add_watcher(
     user: User = Depends(get_current_user),
 ):
     issue, project, role = await _load_issue(db, user, str(issue_id))
+    _ensure_writable(project)
     if payload.user_id != user.id:
         if not role_at_least(role, "member"):
             raise HTTPException(403, "Viewers can only watch issues themselves.")
@@ -1075,7 +1083,8 @@ async def remove_watcher(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, _, role = await _load_issue(db, user, str(issue_id))
+    issue, project, role = await _load_issue(db, user, str(issue_id))
+    _ensure_writable(project)
     if user_id != user.id and not role_at_least(role, "member"):
         raise HTTPException(403, "Viewers can only stop watching issues themselves.")
     await db.execute(
@@ -1206,7 +1215,13 @@ async def _load_sprint(
     sprint = await db.get(PmSprint, sprint_id)
     if not sprint:
         raise HTTPException(404, "Sprint not found")
-    project, _ = await require_project(db, user, sprint.project_id, minimum)
+    project, _ = await require_project(db, user, sprint.project_id, minimum, for_update=minimum != "viewer")
+    if minimum != "viewer":
+        sprint = await db.scalar(
+            select(PmSprint).where(PmSprint.id == sprint_id).execution_options(populate_existing=True)
+        )
+        if not sprint:
+            raise HTTPException(404, "Sprint not found")
     return sprint, project
 
 
@@ -1426,9 +1441,16 @@ async def complete_sprint(
         )
     ).all()
     sprint.completed_points = await _sprint_points(db, sprint.id, done_only=True)
-    await _move_issues(db, project, user, unfinished, target)
-    sprint.status = "closed"
     sprint.completed_at = _now()
+    # Issue edits/creation and sprint completion share the project lock, so this
+    # snapshot and velocity describe the same committed completion state.
+    from app.api.pm_reports import burndown_data
+
+    snapshot = await burndown_data(db, project.id, sprint.id)
+    snapshot["sprint"]["status"] = "closed"
+    sprint.burndown_snapshot = snapshot
+    sprint.status = "closed"
+    await _move_issues(db, project, user, unfinished, target)
     record(
         db, user=user, action="completed", entity_type="pm_sprint", entity_id=sprint.id,
         summary=(

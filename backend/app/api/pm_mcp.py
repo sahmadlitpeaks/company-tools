@@ -81,6 +81,9 @@ class _Session:
         if not self.user or not self.user.is_active or self.user.status != "active":
             await self.db.close()
             raise ToolFailure("This token's account is no longer active.")
+        if self.user.must_change_password:
+            await self.db.close()
+            raise ToolFailure("Change your password in the platform before using AI access.")
         self.caller = caller
         return self
 
@@ -386,7 +389,7 @@ class TokenAuth:
             if not token or token_state(token) != "active":
                 return None
             user = await db.get(User, token.user_id)
-            if not user or not user.is_active or user.status != "active":
+            if not user or not user.is_active or user.status != "active" or user.must_change_password:
                 return None
             if "projects" not in await active_permissions(user, db):
                 return None

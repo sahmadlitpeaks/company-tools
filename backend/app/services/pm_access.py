@@ -42,14 +42,23 @@ async def visible_project_ids(db: AsyncSession, user: User) -> set[uuid.UUID] | 
 
 
 async def require_project(
-    db: AsyncSession, user: User, project_id: uuid.UUID, minimum: str = "viewer"
+    db: AsyncSession, user: User, project_id: uuid.UUID, minimum: str = "viewer",
+    *, for_update: bool = False,
 ) -> tuple[PmProject, str]:
     """Load a project and check the caller holds at least ``minimum``.
 
     A project the caller cannot see is reported as missing, so ids of other
     teams' projects are not confirmed to exist.
     """
-    project = await db.get(PmProject, project_id)
+    # Serialize membership mutations before locking/counting individual members.
+    # Check access after waiting, since the caller may have lost its role.
+    if for_update:
+        project = await db.scalar(
+            select(PmProject).where(PmProject.id == project_id)
+            .with_for_update().execution_options(populate_existing=True)
+        )
+    else:
+        project = await db.get(PmProject, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
     role = await project_role(db, user, project_id)
@@ -58,6 +67,11 @@ async def require_project(
     if _RANK[role] < _RANK[minimum]:
         raise HTTPException(403, "Your project role does not allow this")
     return project, role
+
+
+def ensure_writable(project: PmProject) -> None:
+    if project.status == "archived":
+        raise HTTPException(409, "This project is archived. Restore it to make changes.")
 
 
 def role_at_least(role: str | None, minimum: str) -> bool:

@@ -29,6 +29,9 @@ from app.models.pm import (
 from app.models.user import User
 
 MAX_BYTES = 10 * 1024 * 1024
+# This is process-wide: set once rather than changing/restoring per request.
+# The bounded upload size is also the maximum possible decoded field size.
+csv.field_size_limit(MAX_BYTES)
 MAX_ISSUES = 5000
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
 LINK_HEADER = re.compile(r"^(outward|inward) issue link \((.+)\)$")
@@ -108,7 +111,10 @@ def parse_export(raw: bytes) -> list[JiraIssue]:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = raw.decode("latin-1")
-    rows = list(csv.reader(io.StringIO(text)))
+    try:
+        rows = list(csv.reader(io.StringIO(text), strict=True))
+    except csv.Error as exc:
+        raise JiraImportError("The CSV is malformed. Export it again as CSV (all fields).") from exc
     if not rows:
         raise JiraImportError("The file is empty.")
     headers = [h.strip().lower() for h in rows[0]]

@@ -39,11 +39,16 @@ function issues() {
   ];
 }
 
-async function mount(page: Page, role: "admin" | "viewer") {
+async function mount(page: Page, role: "admin" | "viewer", options: { archived?: boolean; closedIssue?: boolean } = {}) {
   const userId = role === "admin" ? "admin" : "drt";
   let list = issues();
+  if (options.closedIssue) list = list.map((item) => item.id === "s1"
+    ? { ...item, status: "done", sprint_id: "closed1", sprint_name: "Completed sprint", resolved_at: "2026-10-08T08:00:00Z" } : item);
+  const visibleProject = { ...project, ...(options.archived ? { status: "archived" } : {}) };
   const sprintList = sprints();
-  let comments: Array<Record<string, unknown>> = [];
+  let comments: Array<Record<string, unknown>> = options.archived ? [{ id: "archived-comment", issue_id: "s1",
+    author_id: userId, author_name: "Sara Admin", body: "Archived evidence stays readable",
+    created_at: "2026-10-08T08:00:00Z", updated_at: "2026-10-08T08:00:00Z" }] : [];
   const requests: Array<{ method: string; path: string; body: unknown }> = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -58,8 +63,8 @@ async function mount(page: Page, role: "admin" | "viewer") {
       is_admin: role === "admin", is_active: true, status: "active", effective_permissions: ["projects"], managed_company_ids: [] };
     else if (path === "/api/settings/public") json = { platform_name: "AG Holding" };
     else if (path === "/api/notifications/unread-count") json = { count: 0 };
-    else if (path === "/api/pm/projects") json = [{ ...project, my_role: role }];
-    else if (path === "/api/pm/projects/LIMS") json = { ...project, my_role: role };
+    else if (path === "/api/pm/projects") json = [{ ...visibleProject, my_role: role }];
+    else if (path === "/api/pm/projects/LIMS") json = { ...visibleProject, my_role: role };
     else if (path === "/api/pm/projects/p1/members") json = members;
     else if (path === "/api/pm/people") json = [{ id: "new", name: "Khalid", email: "khalid@example.com" }];
     else if (path === "/api/pm/projects/p1/issues" && method === "GET") json = list;
@@ -102,7 +107,11 @@ async function mount(page: Page, role: "admin" | "viewer") {
         watchers: [{ user_id: "drt", name: "Dr T" }, { user_id: "dev", name: "Ali Dev" }] };
     } else if (path.startsWith("/api/pm/issues/") && method === "PATCH") {
       const id = path.split("/").pop();
-      list = list.map((item) => item.id === id ? { ...item, ...body, ...("sprint_id" in body ? { sprint_name: sprintList.find((s) => s.id === body.sprint_id)?.name ?? null } : {}) } : item);
+      // Match the API's closed-sprint transition. The browser sends a full
+      // Edit payload; the server validates the actual sprint, not list loading.
+      const saved = options.closedIssue && body.sprint_id === "closed1" && body.status !== "done"
+        ? { ...body, sprint_id: null } : body;
+      list = list.map((item) => item.id === id ? { ...item, ...saved, ...("sprint_id" in saved ? { sprint_name: sprintList.find((s) => s.id === saved.sprint_id)?.name ?? null } : {}) } : item);
       json = list.find((item) => item.id === id);
     } else if (path.endsWith("/comments") && method === "POST") {
       const comment = { id: `c${comments.length}`, issue_id: "s1", author_id: userId, author_name: "Dr T", body: body.body,
@@ -154,6 +163,36 @@ test("project list leads to issues grouped by epic, and an issue opens in a pane
   await expect(panel.getByText("Ali Dev changed status from To Do to In Progress")).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: `test-results/project-issue-${page.viewportSize()!.width}.png` });
+});
+
+test("archived issue panels keep evidence readable and hide content mutations", async ({ page }) => {
+  const requests = await mount(page, "admin", { archived: true });
+  await page.goto("/projects/LIMS?issue=LIMS-2");
+  const panel = page.getByRole("dialog");
+  await expect(panel.getByRole("heading", { name: "Analyse uploaded PDFs" })).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Status" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: /^(Watch|Stop watching)$/ })).toBeDisabled();
+  for (const name of ["Edit", "Delete LIMS-2", "Add sub-task", "Link issue", "+ Attach file", "Edit comment", "Delete comment", "Comment"]) {
+    await expect(panel.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(panel.getByText("Archived evidence stays readable")).toBeVisible();
+  await expect(panel.getByRole("textbox", { name: "Add a comment" })).toHaveCount(0);
+  expect(requests).toEqual([]);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+});
+
+test("reopening through the full Edit payload returns closed-sprint work to the backlog", async ({ page }) => {
+  const requests = await mount(page, "admin", { closedIssue: true });
+  await page.goto("/projects/LIMS?issue=LIMS-2");
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  const form = page.locator("#pm-issue-form");
+  await form.getByRole("combobox", { name: "Status" }).click();
+  await page.getByRole("option", { name: "To Do", exact: true }).click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => requests.find((request) => request.method === "PATCH")?.body).toMatchObject({ status: "todo", sprint_id: "closed1" });
+  await expect(page.getByRole("dialog").getByText("Backlog", { exact: true })).toBeVisible();
+  await noOverflow(page);
 });
 
 test("members create issues under an epic with Jira fields", async ({ page }) => {
@@ -369,6 +408,7 @@ const sharedIssue = { id: "s1", key: "LIMS-2", number: 2, issue_type: "story", s
 async function mountPublic(page: Page) {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (!path.startsWith("/api/")) return route.continue();
     if (path === "/api/public/pm-shares/board-token") return route.fulfill({ json: { ...shared, view: "board",
       board: { sprint: { id: "sp1", name: "LIMS Sprint 1", goal: "Ship upload", status: "active", start_date: "2026-10-05", end_date: "2026-10-19" }, issues: [sharedIssue] } } });
     if (path === "/api/public/pm-shares/progress-token") return route.fulfill({ json: { ...shared, view: "progress", progress: {

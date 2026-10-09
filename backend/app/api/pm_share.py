@@ -156,7 +156,14 @@ async def _issues(db: AsyncSession, project: PmProject, issues: list[PmIssue]) -
     parents = {
         p.id: p for p in (await db.scalars(select(PmIssue).where(PmIssue.id.in_(parent_ids)))).all()
     } if parent_ids else {}
-    names = await user_names(db, {i.assignee_id for i in issues})
+    # Public links must never use the internal resolver's email fallback.
+    people = (await db.execute(
+        select(User.id, User.display_name).where(User.id.in_({i.assignee_id for i in issues if i.assignee_id}))
+    )).all()
+    names = {
+        person_id: name.strip() if name and name.strip() and "@" not in name else "Team member"
+        for person_id, name in people
+    }
     out = []
     for issue in issues:
         row = _issue(issue, project.key, names, parents)

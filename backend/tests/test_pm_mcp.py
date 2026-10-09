@@ -68,6 +68,41 @@ async def _setup(client, auth):
 
 
 @with_mcp
+async def test_existing_write_token_is_blocked_until_forced_password_change_is_complete(client, auth):
+    import uuid
+    from sqlalchemy import update
+    from app.api import pm_mcp
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import User
+
+    await _setup(client, auth)
+    secret = (await _token(client, auth, can_write=True))["token"]
+    caller = await pm_mcp.TokenAuth._resolve(secret)
+    user_id = uuid.UUID((await client.get("/api/auth/me", headers=auth)).json()["id"])
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(User).where(User.id == user_id).values(must_change_password=True))
+        await db.commit()
+    assert (await client.get("/api/pm/projects", headers=auth)).status_code == 403
+    for tool, arguments in (("tracker_list_projects", {}), ("tracker_create_issue", {"project_key": "LIMS", "summary": "Blocked"})):
+        response = await rpc(client, secret, "tools/call", {"name": tool, "arguments": arguments})
+        assert response.status_code == 401, response.text
+    # Revalidate inside the tool even when the account was reset after the
+    # middleware resolved it but before execution began.
+    reset = pm_mcp._caller.set(caller)
+    try:
+        with pytest.raises(pm_mcp.ToolFailure, match="Change your password"):
+            async with pm_mcp._Session():
+                pytest.fail("The tool session should reject a reset account")
+    finally:
+        pm_mcp._caller.reset(reset)
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(User).where(User.id == user_id).values(must_change_password=False))
+        await db.commit()
+    error, result = await call(client, secret, "tracker_create_issue", project_key="LIMS", summary="Allowed after change")
+    assert not error and result["created"]["summary"] == "Allowed after change"
+
+
+@with_mcp
 async def test_tokens_are_personal_hashed_and_write_needs_permission(client, auth):
     ctx = await _setup(client, auth)
     dev, dev_id = ctx["dev"]

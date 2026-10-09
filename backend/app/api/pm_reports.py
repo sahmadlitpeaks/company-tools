@@ -134,6 +134,8 @@ async def burndown_data(db: AsyncSession, project_id: uuid.UUID, sprint_id: uuid
         sprint = active[0] if active else (closed[-1] if closed else None)
     if not sprint or sprint.status == "future" or not sprint.start_date or not sprint.end_date:
         return {"sprint": None, "total_points": 0, "days": []}
+    if sprint.status == "closed" and sprint.burndown_snapshot is not None:
+        return sprint.burndown_snapshot
 
     scope = await _sprint_scope(db, sprint)
     total = float(sum(i.story_points or 0 for i in scope))
