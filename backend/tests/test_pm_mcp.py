@@ -68,6 +68,31 @@ async def _setup(client, auth):
 
 
 @with_mcp
+async def test_named_workflow_and_custom_fields_are_available_through_mcp(client, auth):
+    setup = await _setup(client, auth)
+    pid = setup["project"]["id"]
+    config = (await client.get(f"/api/pm/projects/{pid}/configuration", headers=auth)).json()
+    config["states"].append({"key": "qa", "name": "QA testing", "category": "in_review", "allowed_next": ["done"]})
+    config["fields"] = [{"key": "customer", "name": "Customer", "kind": "text"}]
+    config["components"] = [{"key": "frontend", "name": "Frontend", "lead_id": setup["dev"][1]}]
+    assert (await client.put(f"/api/pm/projects/{pid}/configuration", headers=auth, json=config)).status_code == 200
+    token = (await _token(client, auth, can_write=True))["token"]
+    error, summary = await call(client, token, "tracker_get_project_summary", project_key="LIMS")
+    assert not error and summary["workspace_configuration"]["states"][-1]["key"] == "qa"
+    error, created = await call(client, token, "tracker_create_issue", project_key="LIMS", summary="Named state", workflow_state="qa", component="frontend", custom_fields={"customer": "Lab A"})
+    assert not error, created
+    issue = created["created"]
+    assert issue["workflow_state"] == "qa" and issue["status"] == "in_review"
+    assert issue["custom_fields"] == {"customer": "Lab A"}
+    error, message = await call(client, token, "tracker_move_issue", issue_key=issue["key"], status="todo")
+    assert error and "not allowed" in message
+    error, updated = await call(client, token, "tracker_update_issue", issue_key=issue["key"], workflow_state="done", custom_fields={"customer": "Lab B"}, component="none")
+    assert not error, updated
+    assert updated["updated"]["workflow_state"] == "done"
+    assert updated["updated"]["component"] is None
+
+
+@with_mcp
 async def test_existing_write_token_is_blocked_until_forced_password_change_is_complete(client, auth):
     import uuid
     from sqlalchemy import update

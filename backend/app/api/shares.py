@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,6 +22,8 @@ from app.schemas.common import (
 )
 from app.services import sharing
 from app.services.qrcodes import generate_qr_png
+from app.models.pm import PmIssue, PmProject
+from app.services.pm_access import visible_project_ids
 
 router = APIRouter(tags=["shares"])
 search_router = APIRouter(tags=["search"])
@@ -125,6 +127,19 @@ async def global_search(
     like = f"%{q.strip()}%"
     hits: list[SearchHit] = []
     permissions = await active_permissions(user, db)
+
+    if "projects" in permissions:
+        ids = await visible_project_ids(db, user)
+        issue_key = PmProject.key + "-" + cast(PmIssue.number, String)
+        stmt = select(PmIssue, PmProject.key).join(PmProject, PmProject.id == PmIssue.project_id).where(
+            or_(PmIssue.summary.icontains(q.strip(), autoescape=True), func.lower(issue_key) == q.strip().lower())
+        )
+        if ids is not None:
+            stmt = stmt.where(PmIssue.project_id.in_(ids))
+        rows = (await db.execute(stmt.order_by(PmIssue.updated_at.desc()).limit(10))).all()
+        hits.extend(SearchHit(kind="task", id=issue.id, title=f"{key}-{issue.number} · {issue.summary}",
+                              subtitle=f"Project issue · {issue.status.replace('_', ' ')}",
+                              href=f"/projects/{key}?issue={key}-{issue.number}") for issue, key in rows)
 
     if "directory" in permissions:
         people = (

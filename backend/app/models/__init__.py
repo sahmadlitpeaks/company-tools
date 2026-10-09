@@ -140,3 +140,4 @@ from app.models.pm import (  # noqa: F401
     PmShareLink,
     PmSprint,
 )
+from app.models.pm_view import PmView  # noqa: F401

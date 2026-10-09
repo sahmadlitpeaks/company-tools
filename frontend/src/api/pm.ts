@@ -47,6 +47,10 @@ export interface PmIssueRef {
 }
 
 export interface PmIssue {
+  workflow_state?: string | null;
+  workflow_name?: string | null;
+  component?: string | null;
+  custom_fields?: Record<string, string | number | boolean | null> | null;
   id: string;
   key: string;
   project_id: string;
@@ -302,8 +306,10 @@ export function parentCandidates(issues: PmIssue[], type: IssueType, selfId?: st
   return issues.filter((issue) => issue.id !== selfId && wanted.includes(issue.issue_type));
 }
 
-export function issueLink(projectKey: string, issueKey: string) {
-  return `/projects/${projectKey}?issue=${issueKey}`;
+export function issueLink(projectKey: string, issueKey: string, search = "") {
+  const params = new URLSearchParams(search);
+  params.set("issue", issueKey);
+  return `/projects/${encodeURIComponent(projectKey)}?${params}`;
 }
 
 /** A rank that places an item between two neighbours (either may be missing). */

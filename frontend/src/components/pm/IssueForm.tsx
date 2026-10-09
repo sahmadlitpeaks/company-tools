@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { api } from "@/api/client";
 import {
-  BOARD_TYPES, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, parentCandidates, pmError,
+  BOARD_TYPES, ISSUE_PRIORITIES, ISSUE_TYPES, parentCandidates, pmError,
   type IssuePriority, type IssueStatus, type IssueType, type PmIssue, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { useAuth } from "@/auth/AuthContext";
@@ -12,7 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { MarkdownField } from "./MarkdownField";
+import { useWorkspace } from "./WorkspaceContext";
 
 const NONE = "none";
 
@@ -24,16 +26,20 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
   /** Open (active and future) sprints. */
   sprints?: PmSprint[];
   issue?: PmIssue;
-  defaults?: { issue_type?: IssueType; parent_id?: string; sprint_id?: string };
+  defaults?: { issue_type?: IssueType; parent_id?: string; sprint_id?: string; workflow_state?: string };
   onClose: () => void;
   onSaved: (saved: PmIssue) => void;
 }) {
   const { user } = useAuth();
+  const config = useWorkspace();
+  const [template, setTemplate] = useState(NONE);
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>(() => ({ ...Object.fromEntries(config.fields.filter((field) => field.kind === "checkbox").map((field) => [field.key, false])), ...issue?.custom_fields }));
   const [form, setForm] = useState({
     issue_type: issue?.issue_type ?? defaults?.issue_type ?? "task",
     summary: issue?.summary ?? "",
     description: issue?.description ?? "",
-    status: issue?.status ?? "todo",
+    workflow_state: issue?.workflow_state ?? issue?.status ?? defaults?.workflow_state ?? "todo",
+    component: issue?.component ?? NONE,
     priority: issue?.priority ?? "medium",
     story_points: issue?.story_points?.toString() ?? "",
     labels: (issue?.labels ?? []).join(", "),
@@ -59,12 +65,15 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
     if (!form.summary.trim()) return setState({ busy: false, error: "Enter a summary." });
     if (parentRequired && form.parent_id === NONE) return setState({ busy: false, error: "Choose the parent issue for this sub-task." });
     const points = form.story_points.trim();
-    if (points && (Number.isNaN(Number(points)) || Number(points) < 0)) return setState({ busy: false, error: "Story points must be zero or more." });
+    if (points && (!Number.isFinite(Number(points)) || Number(points) < 0 || Number(points) > 1000)) return setState({ busy: false, error: "Story points must be between zero and 1000." });
     const body = {
       issue_type: type,
       summary: form.summary.trim(),
       description: form.description.trim() || null,
-      status: form.status as IssueStatus,
+      status: config.states.find((item) => item.key === form.workflow_state)?.category as IssueStatus,
+      workflow_state: form.workflow_state,
+      component: form.component === NONE ? null : form.component,
+      custom_fields: customFields,
       priority: form.priority as IssuePriority,
       story_points: points ? Number(points) : null,
       labels: form.labels.split(",").map((label) => label.trim()).filter(Boolean),
@@ -96,6 +105,14 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
       <form id="pm-issue-form" onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
         {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}
         <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          {!issue && config.templates.length > 0 && <div className="flex flex-col gap-2 sm:col-span-2">
+            <TaskChoice id="pm-issue-template" label="Issue template" value={template} items={[{ value: NONE, label: "Start from scratch" }, ...config.templates.map((item) => ({ value: item.key, label: item.name }))]} onChange={setTemplate} />
+            <Button type="button" variant="outline" className="self-start" disabled={template === NONE} onClick={() => {
+              const selected = config.templates.find((item) => item.key === template);
+              if (selected) setForm((current) => ({ ...current, issue_type: selected.issue_type, description: selected.description, priority: selected.priority as IssuePriority, parent_id: selected.issue_type !== "epic" && issues.some((item) => item.id === current.parent_id && item.issue_type === "epic") ? current.parent_id : NONE }));
+            }}>Apply template</Button>
+            <FieldDescription>Applying a template replaces the type, priority and description in this draft.</FieldDescription>
+          </div>}
           <TaskChoice id="pm-issue-type" label="Issue type" value={form.issue_type} items={ISSUE_TYPES} onChange={(value) => setForm((current) => ({ ...current, issue_type: value as IssueType, parent_id: NONE }))} />
           {type !== "epic" && <TaskChoice
             id="pm-issue-parent" label={parentRequired ? "Parent issue" : "Epic"} value={form.parent_id}
@@ -106,14 +123,13 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
             <FieldLabel htmlFor="pm-issue-summary">Summary</FieldLabel>
             <Input id="pm-issue-summary" value={form.summary} maxLength={255} required onChange={(event) => set("summary", event.target.value)} />
           </Field>
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="pm-issue-description">Description</FieldLabel>
-            <Textarea id="pm-issue-description" rows={5} value={form.description} onChange={(event) => set("description", event.target.value)} />
-            <FieldDescription>Requirements, acceptance criteria and links to supporting documents.</FieldDescription>
-          </Field>
+          <div className="sm:col-span-2"><MarkdownField id="pm-issue-description" label="Description" value={form.description} onChange={(value) => set("description", value)} /></div>
           {sprintable && <TaskChoice id="pm-issue-sprint" label="Sprint" value={form.sprint_id}
             items={[{ value: NONE, label: "Backlog" }, ...sprintChoices.map((s) => ({ value: s.id, label: s.name }))]} onChange={(value) => set("sprint_id", value)} />}
-          <TaskChoice id="pm-issue-status" label="Status" value={form.status} items={ISSUE_STATUSES} onChange={(value) => set("status", value)} />
+          <TaskChoice id="pm-issue-status" label="Status" value={form.workflow_state} items={config.states.filter((item) => {
+            const original = config.states.find((state) => state.key === (issue?.workflow_state ?? issue?.status));
+            return !issue || !original?.allowed_next || item.key === original.key || original.allowed_next.includes(item.key);
+          }).map((item) => ({ value: item.key, label: item.name }))} onChange={(value) => set("workflow_state", value)} />
           <TaskChoice id="pm-issue-priority" label="Priority" value={form.priority} items={ISSUE_PRIORITIES} onChange={(value) => set("priority", value)} />
           <TaskChoice id="pm-issue-assignee" label="Assignee" value={form.assignee_id} items={[{ value: NONE, label: "Unassigned" }, ...assignable.map((m) => ({ value: m.user_id, label: m.name }))]} onChange={(value) => set("assignee_id", value)} />
           <TaskChoice id="pm-issue-reporter" label="Reporter" value={form.reporter_id} items={[...(form.reporter_id === NONE ? [{ value: NONE, label: "Me" }] : []), ...members.map((m) => ({ value: m.user_id, label: m.name }))]} onChange={(value) => set("reporter_id", value)} />
@@ -134,6 +150,16 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
             <FieldLabel htmlFor="pm-issue-due">Due date</FieldLabel>
             <Input id="pm-issue-due" type="date" value={form.due_date} onChange={(event) => set("due_date", event.target.value)} />
           </Field>
+          {config.components.length > 0 && <TaskChoice id="pm-issue-component" label="Component" value={form.component} items={[{ value: NONE, label: "None" }, ...config.components.map((item) => ({ value: item.key, label: item.name }))]} onChange={(value) => set("component", value)} />}
+          {config.fields.map((field) => {
+            const id = `pm-custom-${field.key}`;
+            const value = customFields[field.key];
+            const update = (next: unknown) => setCustomFields((current) => ({ ...current, [field.key]: next }));
+            const label = `${field.name}${field.required ? " *" : ""}`;
+            return field.kind === "select" ? <TaskChoice key={field.key} id={id} label={label} value={typeof value === "string" ? value : NONE} items={[{ value: NONE, label: "Choose an option" }, ...field.options.map((option) => ({ value: option, label: option }))]} onChange={(next) => update(next === NONE ? null : next)} /> :
+              field.kind === "checkbox" ? <Field key={field.key} orientation="horizontal"><Checkbox id={id} checked={value === true} onCheckedChange={(next) => update(Boolean(next))} /><FieldLabel htmlFor={id}>{label}</FieldLabel></Field> :
+              <Field key={field.key}><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} required={field.required} type={field.kind === "number" ? "number" : field.kind === "date" ? "date" : "text"} step={field.kind === "number" ? "any" : undefined} maxLength={4000} value={value == null ? "" : String(value)} onChange={(event) => update(event.target.value === "" ? null : field.kind === "number" ? Number(event.target.value) : event.target.value)} /></Field>;
+          })}
         </FieldGroup>
       </form>
       <DialogFooter>

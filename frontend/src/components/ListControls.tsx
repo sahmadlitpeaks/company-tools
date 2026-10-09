@@ -3,12 +3,12 @@ import { Input } from "@/components/ui/input";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function FilterSelect({ id, label, value, options, onChange, disabled = false }: {
+export function FilterSelect({ id, label, value, options, onChange, disabled = false, labelClassName }: {
   id: string; label: string; value: string; options: { value: string; label: string }[];
-  onChange: (value: string) => void; disabled?: boolean;
+  onChange: (value: string) => void; disabled?: boolean; labelClassName?: string;
 }) {
   return <Field>
-    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <FieldLabel htmlFor={id} className={labelClassName}>{label}</FieldLabel>
     <Select items={options} value={value} disabled={disabled} onValueChange={(next) => onChange(next ?? "")}>
       <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
       <SelectContent><SelectGroup>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>

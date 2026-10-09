@@ -1,17 +1,13 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { differenceInCalendarDays, parseISO } from "date-fns";
-import { Archive, ArchiveRestore, Plus, Search, SquareCheckBig } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Archive, ArchiveRestore, Plus } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
-  BOARD_TYPES, canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, issueLink, labelOf, pmError,
-  type IssueStatus, type PmIssue, type PmLinkRow, type PmMember, type PmProject, type PmSprint,
+  canEdit, pmError,
+  type PmIssue, type PmLinkRow, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
-import { useAuth } from "@/auth/AuthContext";
 import { Backlog } from "@/components/pm/Backlog";
-import { IssueBoard } from "@/components/pm/IssueBoard";
-import { IssueTypeIcon, pointsLabel, StatusBadge } from "@/components/pm/IssueBits";
 import { IssueDetail } from "@/components/pm/IssueDetail";
 import { IssueForm } from "@/components/pm/IssueForm";
 import { JiraImport } from "@/components/pm/JiraImport";
@@ -21,27 +17,24 @@ import { Reports } from "@/components/pm/Reports";
 import { Timeline } from "@/components/pm/Timeline";
 import { CompleteSprintDialog, SprintDialog, StartSprintDialog } from "@/components/pm/SprintDialogs";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
-import { Empty, ErrorState, Loading, PageHead, useToast } from "@/components/ui";
+import { ErrorState, Loading, PageHead, useToast } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSurface } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Toggle } from "@/components/ui/toggle";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useFetch } from "@/hooks/useApi";
+import { DEFAULT_CONFIG, type WorkspaceConfig } from "@/api/pm-workspace";
+import { WorkspaceContext } from "@/components/pm/WorkspaceContext";
+import { BoardWorkspace } from "@/components/pm/BoardWorkspace";
+import { WorkspaceSettings } from "@/components/pm/WorkspaceSettings";
+import { IssueExplorer } from "@/components/pm/IssueExplorer";
+import { FilterSelect } from "@/components/ListControls";
 
-const FILTERS = { q: "", type: "all", status: "all", assignee: "all" };
-// A Kanban board keeps recently finished work visible, as Jira does.
-const KANBAN_DONE_DAYS = 14;
 
 type SprintAction = { kind: "create" | "edit" | "start" | "complete" | "delete"; sprint?: PmSprint };
 
@@ -51,11 +44,13 @@ export default function ProjectPage() {
   const { notify } = useToast();
   const project = useFetch<PmProject>(`/api/pm/projects/${encodeURIComponent(projectKey)}`, true);
   const projectId = project.data?.id;
+  const workspace = useFetch<WorkspaceConfig>(projectId ? `/api/pm/projects/${projectId}/configuration` : null);
   const usesSprints = Boolean(project.data?.sprints_enabled);
   const members = useFetch<PmMember[]>(projectId ? `/api/pm/projects/${projectId}/members` : null);
   const issues = useFetch<PmIssue[]>(projectId ? `/api/pm/projects/${projectId}/issues` : null);
   const sprints = useFetch<PmSprint[]>(projectId && usesSprints ? `/api/pm/projects/${projectId}/sprints` : null);
   const [creating, setCreating] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState<{ workflow_state?: string; sprint_id?: string }>({});
   const [sprintAction, setSprintAction] = useState<SprintAction | null>(null);
   const [mutation, setMutation] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
   const openKey = params.get("issue");
@@ -68,6 +63,8 @@ export default function ProjectPage() {
   function changed() {
     void issues.refresh();
     void project.refresh();
+    void workspace.refresh();
+    void members.refresh();
     if (usesSprints) void sprints.refresh();
   }
   /** Save an issue change optimistically; the server's answer replaces the guess. */
@@ -83,9 +80,6 @@ export default function ProjectPage() {
       issues.setData((list) => list?.map((item) => item.id === issue.id ? issue : item) ?? null);
       setMutation({ busy: null, error: `${issue.key}: ${pmError(cause)}` });
     }
-  }
-  function moveStatus(issue: PmIssue, status: IssueStatus) {
-    void patchIssue(issue, { status }, { status });
   }
   function plan(issue: PmIssue, sprintId: string | null, rank: number) {
     const sprintChanged = sprintId !== issue.sprint_id;
@@ -115,24 +109,40 @@ export default function ProjectPage() {
   </div>;
   if (!project.data) return <Loading />;
   const current = project.data;
-  const editable = canEdit(current.my_role) && current.status === "active";
+  const editable = canEdit(current.my_role) && current.status === "active" && Boolean(workspace.data);
   const manageSprints = current.my_role === "admin" && current.status === "active";
   const openSprints = sprints.data ?? [];
   const activeSprint = openSprints.find((sprint) => sprint.status === "active") ?? null;
-  const ready = issues.data && (!usesSprints || sprints.data);
-  const dataError = issues.error || (usesSprints && sprints.error);
+  const ready = issues.data && workspace.data && members.data && (!usesSprints || sprints.data);
+  const dataError = issues.error || workspace.error || members.error || (usesSprints && sprints.error);
+  const tab = params.get("tab") ?? "board";
+  function setTab(value: string) {
+    setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
+  }
+  const tabs = [{ value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
+    { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "reports", label: "Reports" },
+    { value: "people", label: "People" }, ...(current.my_role === "admin" ? [{ value: "settings", label: "Settings" }] : [])];
 
-  return <div className="flex flex-col gap-5">
+  return <WorkspaceContext value={workspace.data ?? DEFAULT_CONFIG}><div className="flex flex-col gap-5">
     <PageHead
       headingLevel={1}
       title={current.name}
       subtitle={`${current.key} · Lead: ${current.lead_name ?? "Not set"}${current.target_date ? ` · Target ${dateLabel(current.target_date)}` : ""}`}
-      action={editable ? <Button onClick={() => setCreating(true)} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
+      action={editable ? <Button onClick={() => { setCreateDefaults({}); setCreating(true); }} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
     />
     {current.status === "archived" && <Alert><AlertDescription>This project is archived. Its issues are read-only.</AlertDescription></Alert>}
+    {ready && !issues.data!.length && current.status === "active" && <Card>
+      <CardHeader><CardTitle>Set up your project</CardTitle><CardDescription>Start with the team and a few issues, then choose the views that suit your work.</CardDescription></CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        {editable && <Button variant="outline" onClick={() => { setCreateDefaults({}); setCreating(true); }}>Create the first issue</Button>}
+        {current.my_role === "admin" && <><Button variant="outline" onClick={() => setTab("people")}>Add the team</Button><Button variant="outline" onClick={() => setTab("settings")}>Configure workflow or import Jira</Button></>}
+        {usesSprints && <Button variant="outline" onClick={() => setTab("backlog")}>Plan the first sprint</Button>}
+      </CardContent>
+    </Card>}
     {mutation.error && <Alert variant="destructive" role="alert"><AlertDescription>{mutation.error}</AlertDescription></Alert>}
-    <Tabs defaultValue="board">
-      <TabsList className="max-w-full overflow-x-auto">
+    <Tabs value={tabs.some((item) => item.value === tab) ? tab : "board"} onValueChange={setTab}>
+      <div className="sm:hidden"><FilterSelect id="pm-project-view" label="Project view" value={tab} options={tabs} onChange={setTab} /></div>
+      <TabsList className="hidden h-auto max-w-full flex-wrap justify-start sm:flex">
         <TabsTrigger value="board">Board</TabsTrigger>
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -143,8 +153,9 @@ export default function ProjectPage() {
       </TabsList>
       <TabsContent value="board" className="pt-4">
         {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> : !ready ? <Loading /> :
-          <BoardTab project={current} issues={issues.data!} activeSprint={usesSprints ? activeSprint : null} usesSprints={usesSprints}
-            editable={editable} manageSprints={manageSprints} busy={mutation.busy} onMove={moveStatus}
+          <BoardWorkspace project={current} issues={issues.data!} members={members.data ?? []} sprints={openSprints} activeSprint={activeSprint}
+            editable={editable} busy={mutation.busy} onPatch={(issue, body, guess) => void patchIssue(issue, body, guess)}
+            onCreate={(defaults) => { setCreateDefaults(defaults); setCreating(true); }} onBacklog={() => setTab("backlog")} onChanged={changed}
             onComplete={(sprint) => setSprintAction({ kind: "complete", sprint })} />}
       </TabsContent>
       {usesSprints && <TabsContent value="backlog" className="pt-4">
@@ -165,8 +176,8 @@ export default function ProjectPage() {
       </TabsContent>
       <TabsContent value="reports" className="pt-4"><Reports project={current} /></TabsContent>
       <TabsContent value="issues" className="pt-4">
-        {issues.error ? <ErrorState message={issues.error} onRetry={issues.reload} /> :
-          !issues.data ? <Loading /> : <IssueList project={current} issues={issues.data} members={members.data ?? []} />}
+        {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> :
+          !ready ? <Loading /> : <IssueExplorer project={current} issues={issues.data!} members={members.data ?? []} sprints={openSprints} onChanged={changed} onViewSaved={(view) => { setParams((old) => { const next = new URLSearchParams(old); next.set("tab", "board"); next.set("view", view.id); return next; }); }} />}
       </TabsContent>
       <TabsContent value="people" className="pt-4">
         {members.error ? <ErrorState message={members.error} onRetry={members.reload} /> :
@@ -175,13 +186,14 @@ export default function ProjectPage() {
       {current.my_role === "admin" && <TabsContent value="settings" className="pt-4">
         <div className="flex flex-col gap-4">
           <ProjectSettings project={current} members={members.data ?? []} onSaved={(saved) => project.setData(saved)} />
+          {workspace.data && <WorkspaceSettings key={current.id + workspace.data.states.map((state) => state.key).join(",")} project={current} members={members.data ?? []} config={workspace.data} onSaved={(config) => { workspace.setData(config); changed(); }} />}
           <ShareLinks project={current} />
           {current.status === "active" && <JiraImport project={current} onImported={() => { changed(); void members.refresh(); }} />}
         </div>
       </TabsContent>}
     </Tabs>
     {creating && members.data && issues.data && <IssueForm
-      project={current} members={members.data} issues={issues.data} sprints={openSprints}
+      project={current} members={members.data} issues={issues.data} sprints={openSprints} defaults={createDefaults}
       onClose={() => setCreating(false)}
       onSaved={(saved) => { setCreating(false); changed(); setParams((p) => { const next = new URLSearchParams(p); next.set("issue", saved.key); return next; }); }}
     />}
@@ -206,7 +218,7 @@ export default function ProjectPage() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  </div>;
+  </div></WorkspaceContext>;
 }
 
 function TimelineTab({ project, issues, editable, onOpen, onReschedule }: {
@@ -218,189 +230,6 @@ function TimelineTab({ project, issues, editable, onOpen, onReschedule }: {
   if (links.error) return <ErrorState message={links.error} onRetry={links.reload} />;
   if (!links.data) return <Loading />;
   return <Timeline issues={issues} links={links.data} sprints={sprints.data ?? []} editable={editable} onOpen={onOpen} onReschedule={onReschedule} />;
-}
-
-function BoardTab({ project, issues, activeSprint, usesSprints, editable, manageSprints, busy, onMove, onComplete }: {
-  project: PmProject; issues: PmIssue[]; activeSprint: PmSprint | null; usesSprints: boolean; editable: boolean;
-  manageSprints: boolean; busy: string | null; onMove: (issue: PmIssue, status: IssueStatus) => void; onComplete: (sprint: PmSprint) => void;
-}) {
-  const { user } = useAuth();
-  const [query, setQuery] = useState("");
-  const [mine, setMine] = useState(false);
-  if (usesSprints && !activeSprint) return <Empty message="No active sprint" hint={manageSprints ? "Plan issues into a sprint on the Backlog tab, then start it." : "The board shows the active sprint once a project administrator starts one."} />;
-  const needle = query.trim().toLowerCase();
-  const recent = Date.now() - KANBAN_DONE_DAYS * 86_400_000;
-  const cards = issues
-    .filter((issue) => BOARD_TYPES.includes(issue.issue_type))
-    .filter((issue) => usesSprints ? issue.sprint_id === activeSprint!.id
-      : issue.status !== "done" || (issue.resolved_at !== null && Date.parse(issue.resolved_at) >= recent))
-    .filter((issue) => !mine || issue.assignee_id === user?.id)
-    .filter((issue) => !needle || issue.summary.toLowerCase().includes(needle) || issue.key.toLowerCase() === needle)
-    .sort((a, b) => a.rank - b.rank || a.number - b.number);
-  const daysLeft = activeSprint?.end_date ? differenceInCalendarDays(parseISO(activeSprint.end_date), new Date()) : null;
-
-  return <div className="flex flex-col gap-4">
-    {activeSprint && <div className="flex flex-col gap-2 border border-border bg-card p-3 sm:flex-row sm:items-center">
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">{activeSprint.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {activeSprint.start_date && activeSprint.end_date && `${dateLabel(activeSprint.start_date)} – ${dateLabel(activeSprint.end_date)} · `}
-          {daysLeft !== null && (daysLeft >= 0 ? `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left · ` : `${-daysLeft} days overdue · `)}
-          {activeSprint.done_points} of {activeSprint.points} points done
-        </p>
-        {activeSprint.goal && <p className="text-sm">Goal: {activeSprint.goal}</p>}
-      </div>
-      {manageSprints && <Button variant="outline" onClick={() => onComplete(activeSprint)}><SquareCheckBig data-icon="inline-start" />Complete sprint</Button>}
-    </div>}
-    <div className="flex flex-wrap items-end gap-3">
-      <Field className="w-full min-w-0 sm:max-w-xs">
-        <FieldLabel htmlFor="pm-board-search">Search board</FieldLabel>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input id="pm-board-search" className="pl-9" value={query} placeholder={`Summary or ${project.key}-1`} onChange={(event) => setQuery(event.target.value)} />
-        </div>
-      </Field>
-      <Toggle variant="outline" pressed={mine} onPressedChange={setMine}>Only my issues</Toggle>
-    </div>
-    {!usesSprints && <p className="text-xs text-muted-foreground">Done shows work finished in the last {KANBAN_DONE_DAYS} days.</p>}
-    <IssueBoard project={project} issues={cards} editable={editable} busy={busy} onMove={onMove} />
-  </div>;
-}
-
-function IssueList({ project, issues, members }: { project: PmProject; issues: PmIssue[]; members: PmMember[] }) {
-  const isMobile = useIsMobile();
-  const [filters, setFilters] = useState(FILTERS);
-  const [grouping, setGrouping] = useState<"epic" | "list">("epic");
-  const set = (key: keyof typeof FILTERS, value: string) => setFilters((current) => ({ ...current, [key]: value }));
-  const filtered = Object.entries(filters).some(([key, value]) => FILTERS[key as keyof typeof FILTERS] !== value);
-  const epics = issues.filter((issue) => issue.issue_type === "epic");
-
-  const visible = useMemo(() => {
-    const needle = filters.q.trim().toLowerCase();
-    return issues.filter((issue) =>
-      // Like a Jira backlog, sub-tasks stay inside their parent unless asked for.
-      (filters.type === "all" ? issue.issue_type !== "subtask" && (grouping === "list" || issue.issue_type !== "epic") : issue.issue_type === filters.type) &&
-      (filters.status === "all" || issue.status === filters.status) &&
-      (filters.assignee === "all" || (filters.assignee === "none" ? !issue.assignee_id : issue.assignee_id === filters.assignee)) &&
-      (!needle || issue.summary.toLowerCase().includes(needle) || issue.key.toLowerCase() === needle || (issue.labels ?? []).some((label) => label.toLowerCase() === needle)));
-  }, [issues, filters, grouping]);
-
-  const groups = grouping === "list" || filters.type === "epic" || filters.type === "subtask"
-    ? [{ id: "all", epic: null as PmIssue | null, items: visible }]
-    : [
-      ...epics.map((epic) => ({ id: epic.id, epic, items: visible.filter((issue) => issue.parent_id === epic.id) })),
-      { id: "none", epic: null as PmIssue | null, items: visible.filter((issue) => !issue.parent_id || !epics.some((epic) => epic.id === issue.parent_id)) },
-    ].filter((group) => group.items.length > 0 || (group.epic && !filtered));
-
-  return <div className="flex flex-col gap-4">
-    <Card>
-      <CardContent className="flex flex-col gap-3 pt-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <Field className="w-full min-w-0 sm:max-w-sm sm:flex-1">
-            <FieldLabel htmlFor="pm-search">Search issues</FieldLabel>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input id="pm-search" className="pl-9" placeholder={`Summary, label or ${project.key}-1`} value={filters.q} onChange={(event) => set("q", event.target.value)} />
-            </div>
-          </Field>
-          <ToggleGroup value={[grouping]} onValueChange={(values) => values[0] && setGrouping(values[0] as typeof grouping)} aria-label="Group issues">
-            <ToggleGroupItem value="epic">By epic</ToggleGroupItem>
-            <ToggleGroupItem value="list">List</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <FieldGroup className="grid gap-3 sm:grid-cols-3">
-          <TaskChoice id="pm-filter-type" label="Type" value={filters.type} items={[{ value: "all", label: "All issues" }, ...ISSUE_TYPES]} onChange={(value) => set("type", value)} />
-          <TaskChoice id="pm-filter-status" label="Status" value={filters.status} items={[{ value: "all", label: "Any status" }, ...ISSUE_STATUSES]} onChange={(value) => set("status", value)} />
-          <TaskChoice id="pm-filter-assignee" label="Assignee" value={filters.assignee}
-            items={[{ value: "all", label: "Anyone" }, { value: "none", label: "Unassigned" }, ...members.filter((m) => m.role !== "viewer").map((m) => ({ value: m.user_id, label: m.name }))]}
-            onChange={(value) => set("assignee", value)} />
-        </FieldGroup>
-        {filtered && <Button variant="ghost" className="self-start" onClick={() => setFilters(FILTERS)}>Clear filters</Button>}
-      </CardContent>
-    </Card>
-    {issues.length === 0 ? <Empty message="No issues yet" hint={canEdit(project.my_role) ? "Create an epic for each requirement, then add its stories and tasks." : "Issues appear here once the team adds them."} /> :
-      groups.every((group) => group.items.length === 0) ? <Empty message="No issues match these filters" hint="Clear the filters to see every issue." /> :
-      groups.map((group) => <section key={group.id} className="flex flex-col gap-2" aria-label={group.epic ? `Epic ${group.epic.key}` : "Issues"}>
-        {grouping === "epic" && group.id !== "all" && <EpicHeader project={project} epic={group.epic} count={group.items.length} />}
-        {group.items.length === 0 ? <p className="text-sm text-muted-foreground">No issues in this epic yet.</p> :
-          isMobile ? <IssueCards project={project} issues={group.items} /> : <IssueTable project={project} issues={group.items} />}
-      </section>)}
-  </div>;
-}
-
-function EpicHeader({ project, epic, count }: { project: PmProject; epic: PmIssue | null; count: number }) {
-  if (!epic) return <h2 className="border-b border-border pb-2 font-semibold">Issues without an epic <Badge variant="secondary">{count}</Badge></h2>;
-  const percent = epic.child_count ? Math.round(epic.child_done / epic.child_count * 100) : 0;
-  return <div className="flex flex-col gap-2 border-b border-border pb-2 sm:flex-row sm:items-center">
-    <h2 className="flex min-w-0 flex-1 items-center gap-2 font-semibold">
-      <IssueTypeIcon type="epic" />
-      <Link to={issueLink(project.key, epic.key)} className="shrink-0 text-muted-foreground underline-offset-4 hover:underline">{epic.key}</Link>
-      <span className="truncate">{epic.summary}</span>
-      <StatusBadge status={epic.status} />
-    </h2>
-    <div className="flex items-center gap-2 text-xs text-muted-foreground sm:w-56">
-      <Progress value={percent} className="flex-1" aria-label={`${epic.key} progress`} />
-      <span className="shrink-0">{epic.child_done}/{epic.child_count} done</span>
-    </div>
-  </div>;
-}
-
-function IssueTable({ project, issues }: { project: PmProject; issues: PmIssue[] }) {
-  return <TableSurface>
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-28">Key</TableHead>
-          <TableHead>Summary</TableHead>
-          <TableHead className="w-32">Status</TableHead>
-          <TableHead className="w-40">Assignee</TableHead>
-          <TableHead className="w-24">Priority</TableHead>
-          <TableHead className="w-16 text-right">Points</TableHead>
-          <TableHead className="w-28">Due</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {issues.map((issue) => <TableRow key={issue.id}>
-          <TableCell><span className="flex items-center gap-2"><IssueTypeIcon type={issue.issue_type} /><Link to={issueLink(project.key, issue.key)} className="underline-offset-4 hover:underline">{issue.key}</Link></span></TableCell>
-          <TableCell className="max-w-0">
-            <Link to={issueLink(project.key, issue.key)} className="block truncate font-medium underline-offset-4 hover:underline">{issue.summary}</Link>
-            {(issue.child_count > 0 || issue.labels?.length) ? <span className="flex flex-wrap gap-1 pt-1 text-xs text-muted-foreground">
-              {issue.child_count > 0 && <span>{issue.child_done}/{issue.child_count} sub-tasks</span>}
-              {issue.labels?.map((label) => <Badge key={label} variant="outline">{label}</Badge>)}
-            </span> : null}
-          </TableCell>
-          <TableCell><StatusBadge status={issue.status} /></TableCell>
-          <TableCell className="truncate">{issue.assignee_name ?? <span className="text-muted-foreground">Unassigned</span>}</TableCell>
-          <TableCell>{labelOf(ISSUE_PRIORITIES, issue.priority)}</TableCell>
-          <TableCell className="text-right">{pointsLabel(issue.story_points)}</TableCell>
-          <TableCell>{issue.due_date ? dateLabel(issue.due_date) : "–"}</TableCell>
-        </TableRow>)}
-      </TableBody>
-    </Table>
-  </TableSurface>;
-}
-
-function IssueCards({ project, issues }: { project: PmProject; issues: PmIssue[] }) {
-  return <ul className="flex flex-col gap-2">
-    {issues.map((issue) => <li key={issue.id}>
-      <Card size="sm">
-        <CardContent className="flex flex-col gap-2 pt-3">
-          <div className="flex items-center gap-2 text-sm">
-            <IssueTypeIcon type={issue.issue_type} />
-            <span className="text-muted-foreground">{issue.key}</span>
-            <span className="ml-auto"><StatusBadge status={issue.status} /></span>
-          </div>
-          <Link to={issueLink(project.key, issue.key)} className="break-words font-medium underline-offset-4 hover:underline">{issue.summary}</Link>
-          <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-            <span>{issue.assignee_name ?? "Unassigned"}</span>
-            <span>{labelOf(ISSUE_PRIORITIES, issue.priority)}</span>
-            {issue.story_points !== null && <span>{pointsLabel(issue.story_points)} pts</span>}
-            {issue.due_date && <span>Due {dateLabel(issue.due_date)}</span>}
-          </div>
-        </CardContent>
-      </Card>
-    </li>)}
-  </ul>;
 }
 
 function ProjectSettings({ project, members, onSaved }: { project: PmProject; members: PmMember[]; onSaved: (project: PmProject) => void }) {

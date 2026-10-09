@@ -8,7 +8,6 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -72,10 +71,9 @@ async def import_jira(
         raise HTTPException(422, f"Unknown status: {', '.join(bad)}")
     raw = await _read(file)
     # Lock the project so issue numbers stay unique while importing.
-    project = await db.scalar(
-        select(PmProject).where(PmProject.id == project_id).with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    project, _ = await require_project(db, user, project_id, "admin", for_update=True)
+    if project.status == "archived":
+        raise HTTPException(409, "This project is archived. Restore it to import issues.")
     try:
         issues = parse_export(raw)
         result = await run_import(db, project, user, issues, statuses, people, add_members)

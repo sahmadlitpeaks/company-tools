@@ -13,6 +13,7 @@ class PmProjectCreate(BaseModel):
     lead_id: uuid.UUID | None = None
     start_date: date | None = None
     target_date: date | None = None
+    sprints_enabled: bool = True
 
 
 class PmProjectUpdate(BaseModel):
@@ -73,6 +74,9 @@ class PmPersonOut(BaseModel):
 
 # ---- Issues ----
 class PmIssueCreate(BaseModel):
+    workflow_state: str | None = Field(default=None, max_length=64)
+    component: str | None = Field(default=None, max_length=64)
+    custom_fields: dict = Field(default_factory=dict)
     issue_type: str = "task"
     summary: str = Field(min_length=1, max_length=255)
     description: str | None = None
@@ -89,6 +93,9 @@ class PmIssueCreate(BaseModel):
 
 
 class PmIssueUpdate(BaseModel):
+    workflow_state: str | None = Field(default=None, max_length=64)
+    component: str | None = Field(default=None, max_length=64)
+    custom_fields: dict | None = None
     issue_type: str | None = None
     summary: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
@@ -102,7 +109,7 @@ class PmIssueUpdate(BaseModel):
     sprint_id: uuid.UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
-    rank: float | None = None
+    rank: float | None = Field(default=None, allow_inf_nan=False)
 
 
 class PmIssueRef(BaseModel):
@@ -115,6 +122,10 @@ class PmIssueRef(BaseModel):
 
 class PmIssueOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    workflow_state: str | None = None
+    workflow_name: str | None = None
+    component: str | None = None
+    custom_fields: dict | None = None
 
     id: uuid.UUID
     key: str = ""
@@ -183,6 +194,7 @@ class PmWatcherIn(BaseModel):
 # ---- Comments and history ----
 class PmCommentIn(BaseModel):
     body: str = Field(min_length=1, max_length=20000)
+    mention_ids: list[uuid.UUID] = Field(default_factory=list, max_length=25)
 
 
 class PmCommentOut(BaseModel):

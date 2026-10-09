@@ -21,8 +21,8 @@ export function IssueTypeIcon({ type, className }: { type: IssueType; className?
   </span>;
 }
 
-export function StatusBadge({ status }: { status: IssueStatus }) {
-  return <Badge variant={statusVariant(status)}>{labelOf(ISSUE_STATUSES, status)}</Badge>;
+export function StatusBadge({ status, label }: { status: IssueStatus; label?: string | null }) {
+  return <Badge variant={statusVariant(status)}>{label || labelOf(ISSUE_STATUSES, status)}</Badge>;
 }
 
 export function pointsLabel(points: number | null) {

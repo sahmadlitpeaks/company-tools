@@ -272,3 +272,14 @@ workspace/Microsoft access on focus and while visible. Document search also
 clears failed results. Role-specific document labels come from
 documentLibraryLabel in navigation.ts so the sidebar, breadcrumb, browser
 title, and library heading agree.
+
+## Project workspace compositions
+
+Projects use `WorkspaceContext` for the server's named workflow, fields,
+components and templates. `WorkspaceFilters` shares typed filters between saved
+view dialogs, boards and the issue explorer; each instance uses unique control
+IDs. `MarkdownField` and `MarkdownContent` compose installed controls and
+react-markdown/remark-gfm for writing and previewing descriptions/comments,
+ignore raw HTML, and render checklist inputs as labeled shadcn checkboxes.
+`useIssueHref` retains the current project's board, tab and filters when opening
+an issue; links into a different project start with that project's context.

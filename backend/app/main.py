@@ -66,6 +66,7 @@ from app.api import (
     pm_reports,
     pm_share,
     pm_tokens,
+    pm_workspace,
     products,
     qrcodes,
     service_desk,
@@ -318,6 +319,7 @@ app.include_router(
     checklists.runs_router, prefix=api_prefix, dependencies=_mod("routine_checks")
 )
 app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
+app.include_router(pm_workspace.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_reports.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_import.router, prefix=api_prefix, dependencies=_mod("projects"))

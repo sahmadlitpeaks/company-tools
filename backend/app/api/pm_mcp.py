@@ -29,6 +29,7 @@ from app.core.permissions import active_permissions
 from app.models.pm import ISSUE_STATUSES, PmAccessToken, PmIssue, PmSprint
 from app.models.user import User
 from app.schemas.pm import PmCommentIn, PmIssueCreate, PmIssueUpdate
+from app.services.pm_workspace import configuration as pm_workspace_configuration
 from app.services import crypto
 
 
@@ -139,6 +140,8 @@ async def _person(s: _Session, email: str | None) -> uuid.UUID | None:
 def _brief(issue) -> dict[str, Any]:
     return {
         "key": issue.key, "type": issue.issue_type, "summary": issue.summary, "status": issue.status,
+        "workflow_state": getattr(issue, "workflow_state", None), "workflow_name": getattr(issue, "workflow_name", None),
+        "component": getattr(issue, "component", None), "custom_fields": getattr(issue, "custom_fields", None) or {},
         "priority": issue.priority, "story_points": issue.story_points, "assignee": issue.assignee_name,
         "epic_or_parent": issue.parent.key if issue.parent else None, "sprint": issue.sprint_name,
         "start_date": issue.start_date, "due_date": issue.due_date,
@@ -203,6 +206,7 @@ async def tracker_get_project_summary(
         return _jsonable({
             "project": {"key": project.key, "name": project.name, "health": out.health, "lead": out.lead_name,
                         "start_date": project.start_date, "target_date": project.target_date},
+            "workspace_configuration": pm_workspace_configuration(project).model_dump(mode="json"),
             "issues_by_status": counts,
             "active_sprint": sprint_out,
             "overdue": [{"key": f"{project.key}-{i.number}", "summary": i.summary, "due_date": i.due_date} for i in overdue[:10]],
@@ -278,6 +282,9 @@ async def tracker_create_issue(
     start_date: Annotated[date | None, Field(description="YYYY-MM-DD")] = None,
     due_date: Annotated[date | None, Field(description="YYYY-MM-DD")] = None,
     in_active_sprint: Annotated[bool, Field(description="Put a story, task or bug straight into the active sprint")] = False,
+    workflow_state: Annotated[str | None, Field(description="Named state key from the project summary's workspace configuration")] = None,
+    component: Annotated[str | None, Field(description="Component key from the project summary")] = None,
+    custom_fields: Annotated[dict[str, Any] | None, Field(description="Custom field keys and typed values from the project summary")] = None,
 ) -> dict[str, Any]:
     """Create an issue. Needs a read and write token and member access to the project. Returns the new key."""
     async with _Session() as s:
@@ -294,6 +301,7 @@ async def tracker_create_issue(
             story_points=story_points, labels=labels or [], assignee_id=await _person(s, assignee),
             parent_id=await _issue_id(s, parent_key) if parent_key else None,
             start_date=start_date, due_date=due_date, sprint_id=sprint_id,
+            workflow_state=workflow_state, component=component, custom_fields=custom_fields or {},
         )
         created = await _call(pm_api.create_issue, project.id, payload, db=s.db, user=s.user)
         return _jsonable({"created": _brief(created)})
@@ -310,6 +318,9 @@ async def tracker_update_issue(
     labels: Annotated[list[str] | None, Field(description="Replaces all labels")] = None,
     start_date: Annotated[date | None, Field(description="YYYY-MM-DD")] = None,
     due_date: Annotated[date | None, Field(description="YYYY-MM-DD")] = None,
+    workflow_state: Annotated[str | None, Field(description="Named state key; project transition rules apply")] = None,
+    component: Annotated[str | None, Field(description="Component key, or 'none' to clear")] = None,
+    custom_fields: Annotated[dict[str, Any] | None, Field(description="Replaces all custom field values; required fields must be included")] = None,
 ) -> dict[str, Any]:
     """Change fields on an issue; only the fields you pass change. Use tracker_move_issue for status."""
     async with _Session() as s:
@@ -319,10 +330,13 @@ async def tracker_update_issue(
             key: value for key, value in {
                 "summary": summary, "description": description, "priority": priority, "story_points": story_points,
                 "labels": labels, "start_date": start_date, "due_date": due_date,
+                "workflow_state": workflow_state, "custom_fields": custom_fields,
             }.items() if value is not None
         }
         if assignee is not None:
             changes["assignee_id"] = await _person(s, assignee)
+        if component is not None:
+            changes["component"] = None if component == "none" else component
         if not changes:
             raise ToolFailure("Pass at least one field to change.")
         updated = await _call(pm_api.update_issue, issue_id, PmIssueUpdate(**changes), db=s.db, user=s.user)
