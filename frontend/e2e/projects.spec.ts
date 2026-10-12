@@ -6,7 +6,7 @@ test("project list leads to issues grouped by epic, and an issue opens in a pane
   const requests = await mount(page, "admin");
   await page.goto("/projects");
   await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
-  await page.getByRole("link", { name: "LIMS v3" }).click();
+  await page.getByRole("link", { name: "LIMS v3", exact: true }).click();
   await expect(page.getByRole("heading", { name: "LIMS v3", level: 1 })).toBeVisible();
   await selectProjectTab(page, "Issues");
 

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Archive, ArchiveRestore, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, Plus } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
@@ -115,15 +115,17 @@ export default function ProjectPage() {
   const activeSprint = openSprints.find((sprint) => sprint.status === "active") ?? null;
   const ready = issues.data && workspace.data && members.data && (!usesSprints || sprints.data);
   const dataError = issues.error || workspace.error || members.error || (usesSprints && sprints.error);
-  const tab = params.get("tab") ?? "board";
+  const requestedTab = params.get("tab") ?? "board";
   function setTab(value: string) {
     setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
   }
   const tabs = [{ value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
     { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "reports", label: "Reports" },
     { value: "people", label: "People" }, ...(current.my_role === "admin" ? [{ value: "settings", label: "Settings" }] : [])];
+  const tab = tabs.some((item) => item.value === requestedTab) ? requestedTab : "board";
 
   return <WorkspaceContext value={workspace.data ?? DEFAULT_CONFIG}><div className="flex flex-col gap-5">
+    <Button role="link" variant="ghost" className="self-start" nativeButton={false} render={<Link to={`/projects${current.status === "archived" ? "?status=archived" : ""}`} />}><ArrowLeft data-icon="inline-start" aria-hidden="true" />Back to projects</Button>
     <PageHead
       headingLevel={1}
       title={current.name}
@@ -140,10 +142,10 @@ export default function ProjectPage() {
       </CardContent>
     </Card>}
     {mutation.error && <Alert variant="destructive" role="alert"><AlertDescription>{mutation.error}</AlertDescription></Alert>}
-    <Tabs value={tabs.some((item) => item.value === tab) ? tab : "board"} onValueChange={setTab}>
+    <Tabs value={tab} onValueChange={setTab}>
       <div className="sm:hidden"><FilterSelect id="pm-project-view" label="Project view" value={tab} options={tabs} onChange={setTab} /></div>
-      <TabsList className="hidden h-auto max-w-full flex-wrap justify-start sm:flex">
-        <TabsTrigger value="board">Board</TabsTrigger>
+      <TabsList variant="line" aria-label="Project views" className="hidden h-auto w-full flex-wrap justify-start border-b border-border p-0 sm:flex [&>[data-slot=tabs-trigger]]:min-h-11 [&>[data-slot=tabs-trigger]]:flex-none [&>[data-slot=tabs-trigger]]:px-3 [&>[data-slot=tabs-trigger]]:text-sm">
+        <TabsTrigger value="board">Boards & views</TabsTrigger>
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
         <TabsTrigger value="issues">Issues</TabsTrigger>

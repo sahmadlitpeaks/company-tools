@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Bot, FolderKanban, Plus } from "lucide-react";
+import { ArrowRight, Bot, Check, FolderKanban, GanttChart, LayoutGrid, ListTodo, Plus } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { labelOf, pmError, PROJECT_ROLES, type PmPerson, type PmProject } from "@/api/pm";
@@ -11,7 +11,7 @@ import { Empty, ErrorState, Loading, PageHead } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFetch } from "@/hooks/useApi";
 import { IssueExplorer } from "@/components/pm/IssueExplorer";
 import { FilterSelect } from "@/components/ListControls";
@@ -26,12 +27,13 @@ import { type PmView } from "@/api/pm-workspace";
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const [status, setStatus] = useState<"active" | "archived">("active");
-  const projects = useFetch<PmProject[]>(`/api/pm/projects?status=${status}`, true);
   const [creating, setCreating] = useState(false);
   const [params, setParams] = useSearchParams();
-  const view = params.get("layout") ?? "cards";
+  const status = params.get("status") === "archived" ? "archived" : "active";
+  const view = ["timeline", "issues"].includes(params.get("layout") ?? "") ? params.get("layout")! : "cards";
+  const projects = useFetch<PmProject[]>(`/api/pm/projects?status=${view === "issues" ? "active" : status}`, true);
   function setView(value: string) { setParams((old) => { const next = new URLSearchParams(old); next.set("layout", value); return next; }); }
+  function setStatus(value: string) { setParams((old) => { const next = new URLSearchParams(old); next.set("status", value); return next; }); }
   const views = useFetch<PmView[]>("/api/pm/views");
   const savedView = views.data?.find((item) => item.id === params.get("view"));
   const navigate = useNavigate();
@@ -41,28 +43,43 @@ export default function ProjectsPage() {
       headingLevel={1}
       title="Projects"
       subtitle="Epics, stories, tasks and bugs for each project, visible to the people on it."
-      action={<div className="flex gap-2">
+      action={<div className="flex flex-wrap gap-2">
         <Button variant="outline" nativeButton={false} render={<Link to="/ai-access" />}><Bot data-icon="inline-start" />AI access</Button>
         {user?.is_admin && <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button>}
       </div>}
     />
-    <div className="flex flex-wrap gap-3">
-      <ToggleGroup value={[status]} onValueChange={(values) => values[0] && setStatus(values[0] as typeof status)} aria-label="Project status">
-        <ToggleGroupItem value="active">Active</ToggleGroupItem>
-        <ToggleGroupItem value="archived">Archived</ToggleGroupItem>
-      </ToggleGroup>
-      <ToggleGroup value={[view]} onValueChange={(values) => values[0] && setView(values[0] as typeof view)} aria-label="Project view">
-        <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
-        <ToggleGroupItem value="timeline">Timeline</ToggleGroupItem>
-        <ToggleGroupItem value="issues">All issues</ToggleGroupItem>
-      </ToggleGroup>
-    </div>
-    {view === "issues" ? <div className="flex flex-col gap-4">
+    <Tabs value={view === "issues" ? "issues" : "projects"} onValueChange={(value) => setView(value === "issues" ? "issues" : "cards")} className="gap-5">
+      <TabsList variant="line" aria-label="Projects navigation" className="group-data-horizontal/tabs:h-11 w-full justify-start border-b border-border p-0">
+        <TabsTrigger value="projects" className="h-full flex-none px-4 text-sm transition-none after:transition-none group-data-horizontal/tabs:after:bottom-[-1px]"><FolderKanban aria-hidden="true" />Projects</TabsTrigger>
+        <TabsTrigger value="issues" className="h-full flex-none px-4 text-sm transition-none after:transition-none group-data-horizontal/tabs:after:bottom-[-1px]"><ListTodo aria-hidden="true" />All issues</TabsTrigger>
+      </TabsList>
+      <TabsContent value="issues" className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">Search and filter issues across your accessible projects. Project status and layout apply only to the Projects tab.</p>
       {views.error ? <ErrorState message={views.error} onRetry={views.reload} /> : !views.data ? <Loading /> : <>
         <div className="sm:w-72"><FilterSelect id="pm-global-view" label="Saved personal view" value={savedView?.id ?? ""} options={[{ value: "", label: "All accessible issues" }, ...views.data.map((item) => ({ value: item.id, label: item.name }))]} onChange={(id) => setParams((old) => { const next = new URLSearchParams(old); next.set("view", id); for (const key of Array.from(next.keys())) if (key.startsWith("f_") || key.startsWith("issue_") || key === "month") next.delete(key); next.delete("offset"); return next; })} /></div>
         <IssueExplorer key={savedView?.id ?? "all"} view={savedView} projects={projects.data ?? []} onViewDeleted={() => { void views.refresh(); setParams((old) => { const next = new URLSearchParams(old); next.delete("view"); return next; }); }} onViewSaved={(saved) => { void views.refresh(); setParams((old) => { const next = new URLSearchParams(old); next.set("view", saved.id); return next; }); }} />
       </>}
-    </div> : projects.error ? <ErrorState message={projects.error} onRetry={projects.reload} /> :
+      </TabsContent>
+      <TabsContent value="projects" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <span id="pm-status-label" className="text-sm font-medium">Project status</span>
+            <ToggleGroup value={[status]} onValueChange={(values) => values[0] && setStatus(values[0])} aria-labelledby="pm-status-label" spacing={0} className="border border-border bg-muted p-1">
+              {["active", "archived"].map((value) => <ToggleGroupItem key={value} value={value} className="min-h-9 px-3 transition-none aria-pressed:bg-primary aria-pressed:text-primary-foreground">
+                <Check data-icon="inline-start" aria-hidden="true" className={status === value ? undefined : "invisible"} />{value === "active" ? "Active" : "Archived"}
+              </ToggleGroupItem>)}
+            </ToggleGroup>
+          </div>
+          <div className="flex flex-col gap-2">
+            <span id="pm-layout-label" className="text-sm font-medium">Project layout</span>
+            <ToggleGroup value={[view]} onValueChange={(values) => values[0] && setView(values[0])} aria-labelledby="pm-layout-label" variant="outline" spacing={0}>
+              <ToggleGroupItem value="cards" className="min-h-11 px-3 transition-none aria-pressed:border-foreground aria-pressed:bg-muted"><LayoutGrid data-icon="inline-start" aria-hidden="true" />Cards</ToggleGroupItem>
+              <ToggleGroupItem value="timeline" className="min-h-11 px-3 transition-none aria-pressed:border-foreground aria-pressed:bg-muted"><GanttChart data-icon="inline-start" aria-hidden="true" />Timeline</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        </div>
+        <p role="status" className="text-sm text-muted-foreground">{projects.loading ? "Loading projects…" : projects.error ? "Projects could not be loaded." : `${projects.data?.length ?? 0} ${status} ${(projects.data?.length ?? 0) === 1 ? "project" : "projects"}`}{status === "archived" && " · Read-only projects"}</p>
+      {projects.error ? <ErrorState message={projects.error} onRetry={projects.reload} /> :
       projects.loading && !projects.data ? <Loading /> :
       !projects.data?.length ? <Empty
         message={status === "archived" ? "No archived projects" : "No projects yet"}
@@ -72,6 +89,8 @@ export default function ProjectsPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.data.map((project) => <ProjectCard key={project.id} project={project} />)}
       </div>}
+      </TabsContent>
+    </Tabs>
     {creating && <CreateProject onClose={() => setCreating(false)} onCreated={(project) => navigate(`/projects/${project.key}`)} />}
   </div>;
 }
@@ -80,9 +99,9 @@ function ProjectCard({ project }: { project: PmProject }) {
   const percent = project.issue_count ? Math.round(project.done_count / project.issue_count * 100) : 0;
   return <Card>
     <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <FolderKanban className="size-4 text-muted-foreground" aria-hidden="true" />
-        <Link to={`/projects/${project.key}`} className="min-w-0 truncate underline-offset-4 hover:underline">{project.name}</Link>
+      <CardTitle className="flex items-start gap-2">
+        <FolderKanban className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Link to={`/projects/${project.key}`} className="min-w-0 break-words underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring">{project.name}</Link>
       </CardTitle>
       <CardDescription>{project.key} · Lead: {project.lead_name ?? "Not set"}</CardDescription>
     </CardHeader>
@@ -99,6 +118,11 @@ function ProjectCard({ project }: { project: PmProject }) {
         {project.target_date && <span>· Target {dateLabel(project.target_date)}</span>}
       </div>
     </CardContent>
+    <CardFooter className="mt-auto">
+      <Button role="link" variant="outline" nativeButton={false} render={<Link to={`/projects/${project.key}`} />} aria-label={`Open project ${project.name}`}>
+        Open project<ArrowRight data-icon="inline-end" aria-hidden="true" />
+      </Button>
+    </CardFooter>
   </Card>;
 }
 
