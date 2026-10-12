@@ -129,7 +129,7 @@ export function BurndownChart({ days, total }: { days: Array<{ date: string; ide
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-px w-4 bg-muted-foreground" aria-hidden="true" />Ideal</span>
     </div>
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`Burndown: ${total} points committed${lastActual >= 0 ? `, ${pointsLabel(days[lastActual].remaining ?? 0)} remaining` : ""}`}
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`Burndown: ${total} points in scope${lastActual >= 0 ? `, ${pointsLabel(days[lastActual].remaining ?? 0)} remaining` : ""}`}
         tabIndex={0}
         onPointerMove={(event) => locate(event.clientX, event.currentTarget.getBoundingClientRect())}
         onPointerLeave={() => setHover(null)}

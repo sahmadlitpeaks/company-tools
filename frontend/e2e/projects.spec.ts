@@ -193,7 +193,7 @@ test("reports show burndown, velocity and workload and activity heat maps", asyn
   await mount(page, "viewer");
   await page.goto("/projects/LIMS");
   await selectProjectTab(page, "Reports");
-  await expect(page.getByRole("img", { name: "Burndown: 8 points committed, 5 remaining" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Burndown: 8 points in scope, 5 remaining" })).toBeVisible();
   await expect(page.getByRole("img", { name: /^Velocity over 1 sprints, average 10 points/ })).toBeVisible();
   const overloaded = page.getByRole("cell", { name: /^Ali Dev, week of .*: 12, over capacity$/ });
   await expect(overloaded).toBeVisible();
@@ -313,7 +313,7 @@ test("a progress share link shows status, epics and burndown; a bad link explain
   await mountPublic(page);
   await page.goto("/share/p/progress-token");
   await expect(page.getByText("Read-only progress view")).toBeVisible();
-  await expect(page.getByRole("img", { name: "Burndown: 8 points committed, 5 remaining" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Burndown: 8 points in scope, 5 remaining" })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "LIMS-1 50% done" })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
