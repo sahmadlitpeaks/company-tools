@@ -4,6 +4,8 @@ import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { HEALTH, type PmProject } from "@/api/pm";
 import { Badge } from "@/components/ui/badge";
+import { Empty } from "@/components/ui";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { buildScale, TimeAxis, TimeGrid, type Zoom } from "./Timeline";
 
@@ -23,15 +25,17 @@ export function ProjectsTimeline({ projects }: { projects: PmProject[] }) {
   const dated = projects.filter((p) => p.start_date || p.target_date);
   const scale = useMemo(() => buildScale(dated.flatMap((p) => [p.start_date, p.target_date]).filter((d): d is string => Boolean(d)).map((d) => parseISO(d)), zoom), [dated, zoom]);
   const height = dated.length * ROW;
-  const undated = projects.length - dated.length;
+  const undated = projects.filter((p) => !p.start_date && !p.target_date);
   return <div className="flex flex-col gap-3">
-    <ToggleGroup value={[zoom]} onValueChange={(values) => values[0] && setZoom(values[0] as Zoom)} aria-label="Timeline zoom">
+    <div className="flex flex-wrap items-center gap-3"><span id="pm-timeline-scale" className="text-sm font-medium">Time scale</span>
+    <ToggleGroup variant="outline" value={[zoom]} onValueChange={(values) => values[0] && setZoom(values[0] as Zoom)} aria-labelledby="pm-timeline-scale">
       <ToggleGroupItem value="weeks">Weeks</ToggleGroupItem>
       <ToggleGroupItem value="months">Months</ToggleGroupItem>
       <ToggleGroupItem value="quarters">Quarters</ToggleGroupItem>
-    </ToggleGroup>
-    {dated.length === 0 ? <p className="text-sm text-muted-foreground">Give projects start and target dates to compare them on a timeline.</p> :
-      <div className="overflow-x-auto border border-border bg-card [--timeline-label:11rem] sm:[--timeline-label:18rem]">
+    </ToggleGroup></div>
+    {dated.length === 0 ? <Empty message="No scheduled projects" hint="Projects need a start or target date to appear on the timeline. You can still open undated projects below." /> : <>
+      <p id="pm-timeline-help" className="text-xs text-muted-foreground">Scroll horizontally to explore dates. Select a project to open its workspace.</p>
+      <div role="region" aria-label="Project schedule" aria-describedby="pm-timeline-help" tabIndex={0} className="overflow-x-auto border border-border bg-card outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring [--timeline-label:11rem] sm:[--timeline-label:18rem]">
         <div className="flex" style={{ width: `calc(var(--timeline-label) + ${scale.width}px)` }}>
           <div className="sticky left-0 z-20 shrink-0 border-r border-border bg-card" style={{ width: "var(--timeline-label)" }}>
             <div className="flex h-11 items-end border-b border-border px-2 pb-1 text-xs font-medium text-muted-foreground">Project</div>
@@ -63,12 +67,18 @@ export function ProjectsTimeline({ projects }: { projects: PmProject[] }) {
             </div>
           </div>
         </div>
-      </div>}
+      </div></>}
+    {dated.length > 0 &&
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-4 bg-chart-1" aria-hidden="true" />Planned span</span>
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-4 bg-chart-4/70" aria-hidden="true" />Issues done</span>
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-3 border-l-2 border-primary" aria-hidden="true" />Today</span>
-      {undated > 0 && <span>{undated} {undated === 1 ? "project has" : "projects have"} no dates and {undated === 1 ? "isn't" : "aren't"} shown.</span>}
-    </div>
+    </div>}
+    {undated.length > 0 && <Card>
+      <CardHeader><CardTitle>Without dates ({undated.length})</CardTitle><CardDescription>These projects have no start or target date yet.</CardDescription></CardHeader>
+      <CardContent><ul className="flex flex-col gap-2">
+        {undated.map((project) => <li key={project.id}><Link className="inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring" to={`/projects/${project.key}`}><span className="break-words">{project.name}</span><span className="text-muted-foreground">{project.key}</span></Link></li>)}
+      </ul></CardContent>
+    </Card>}
   </div>;
 }

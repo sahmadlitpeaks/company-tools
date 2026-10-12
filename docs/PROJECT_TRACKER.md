@@ -4,6 +4,15 @@ A Jira-style tracker for development projects, under **My Work → Projects**
 (`/projects`). It combines Jira's issue hierarchy and reporting categories
 with configurable workflows, boards and personal views.
 
+The overview separates **Projects** from **All issues** with navigation tabs.
+Within Projects, **Project status** filters Active/Archived and **Project layout**
+switches Cards/Timeline. Status and layout are retained in the URL and browser
+history. All issues uses its own issue filters; the project status control is
+hidden there. Cards include an explicit Open project action. Undated projects
+remain linked below the timeline, and the schedule supports keyboard scrolling.
+Project workspaces provide Back to projects (including archived status), line
+tabs on desktop and a labeled view selector on phones.
+
 ## Model
 
 ```
