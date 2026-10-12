@@ -1,12 +1,37 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mount, noOverflow, selectProjectTab } from "./projects-fixtures";
-import { defaultSettings } from "../src/api/pm-workspace";
+import { DEFAULT_CONFIG, defaultSettings } from "../src/api/pm-workspace";
 
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name: option, exact: true }).click();
 }
+
+test("issue history uses configured workflow names and handles removed states", async ({ page }) => {
+  await mount(page, "viewer", { workspace: true });
+  await page.route("**/api/pm/projects/p1/configuration", (route) => route.fulfill({ json: {
+    ...DEFAULT_CONFIG,
+    states: [
+      ...DEFAULT_CONFIG.states.map((state) => state.key === "todo" ? { ...state, name: "Ready" } : state),
+      { key: "state_qa123", name: "QA testing", category: "in_review", allowed_next: null },
+    ],
+  } }));
+  await page.route("**/api/pm/issues/s1/history*", (route) => route.fulfill({ json: [
+    { id: "h1", actor_name: "Ali Dev", field: "workflow state", old_value: "todo", new_value: "state_qa123", created_at: "2026-10-03T08:00:00Z" },
+    { id: "h2", actor_name: "Ali Dev", field: "workflow state", old_value: "state_removed", new_value: null, created_at: "2026-10-03T09:00:00Z" },
+    { id: "h3", actor_name: "Ali Dev", field: "priority", old_value: "medium", new_value: "high", created_at: "2026-10-03T10:00:00Z" },
+  ] }));
+  await page.goto("/projects/LIMS?tab=issues&issue=LIMS-2");
+  await page.getByRole("tab", { name: "History", exact: true }).click();
+  const history = page.getByRole("tabpanel", { name: "History", exact: true });
+  await expect(history).toContainText("Ali Dev changed workflow state from Ready to QA testing");
+  await expect(history).toContainText("Ali Dev changed workflow state from Unavailable workflow state to none");
+  await expect(history).toContainText("Ali Dev changed priority from Medium to High");
+  await expect(history).not.toContainText("state_qa123");
+  await expect(history).not.toContainText("state_removed");
+  await noOverflow(page);
+});
 
 test("new workflow states remain separate when an older board uses their column key", async ({ page }) => {
   await mount(page, "admin", { workspace: true });

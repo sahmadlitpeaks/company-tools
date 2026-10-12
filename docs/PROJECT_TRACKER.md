@@ -36,6 +36,8 @@ Project (key LIMS)
   all add you as a watcher.
 - **Links**: blocks / is blocked by / relates to, within the same project.
 - **History**: every field change is recorded with who, when, old and new value.
+  Workflow changes display the state's current configured name. A removed
+  state with no available name displays as "Unavailable workflow state".
 - **Attachments** use the shared `attachments` table with entity type
   `pm_issue`.
 
@@ -154,6 +156,8 @@ default team board for existing projects with an available owner.
     ideal line, for the active sprint or any completed one. Scope is the
     sprint's issues, including unfinished work moved out when it closed; an
     issue burns on the day it was resolved.
+    The chart's total is the scope, including issues added after the sprint
+    started; velocity separately reports the commitment recorded at start.
     Completion saves an immutable burndown report before moving unfinished
     work. Reopening, editing or deleting issues afterwards cannot change it.
     Existing closed reports are frozen from the data available when migration

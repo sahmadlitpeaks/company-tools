@@ -8,6 +8,7 @@ import {
   type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
+import type { WorkflowState } from "@/api/pm-workspace";
 import { useAuth } from "@/auth/AuthContext";
 import Attachments from "@/components/Attachments";
 import { TaskChoice } from "@/components/tasks/TaskChoice";
@@ -288,6 +289,7 @@ function IssueComments({ issueId, members, isAdmin, readOnly, onChanged }: { iss
 }
 
 function IssueHistory({ issueId, updatedAt }: { issueId: string; updatedAt: string }) {
+  const { states } = useWorkspace();
   // Keyed on updatedAt so a saved change shows up without a manual refresh.
   const history = useFetch<PmHistory[]>(`/api/pm/issues/${issueId}/history?v=${encodeURIComponent(updatedAt)}`);
   if (history.error) return <ErrorState message={history.error} onRetry={history.reload} />;
@@ -296,7 +298,7 @@ function IssueHistory({ issueId, updatedAt }: { issueId: string; updatedAt: stri
   return <ol className="flex flex-col gap-2 pt-2">
     {history.data.map((entry) => <li key={entry.id} className="text-sm">
       <span className="font-medium">{entry.actor_name ?? "Someone"}</span> changed <span className="font-medium">{entry.field}</span>
-      {entry.field !== "description" && <> from <span className="text-muted-foreground">{historyValue(entry.field, entry.old_value)}</span> to <span className="text-muted-foreground">{historyValue(entry.field, entry.new_value)}</span></>}
+      {entry.field !== "description" && <> from <span className="text-muted-foreground">{historyValue(entry.field, entry.old_value, states)}</span> to <span className="text-muted-foreground">{historyValue(entry.field, entry.new_value, states)}</span></>}
       <span className="block text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</span>
     </li>)}
   </ol>;
@@ -306,7 +308,12 @@ const HISTORY_VOCABULARY: Record<string, Array<{ value: string; label: string }>
   status: ISSUE_STATUSES, priority: ISSUE_PRIORITIES, type: ISSUE_TYPES,
 };
 
-function historyValue(field: string, value: string | null) {
+function historyValue(field: string, value: string | null, states: WorkflowState[]) {
   if (value === null) return "none";
+  if (field === "workflow state") {
+    return states.find((state) => state.key === value)?.name
+      ?? ISSUE_STATUSES.find((state) => state.value === value)?.label
+      ?? "Unavailable workflow state";
+  }
   return HISTORY_VOCABULARY[field]?.find((item) => item.value === value)?.label ?? value;
 }
