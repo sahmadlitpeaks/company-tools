@@ -2140,6 +2140,165 @@ async def test_task_lifecycle_endpoints(client, auth, indexed, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_legacy_mark_done_finishes_group_and_survives_repopulation(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    from app.services.sharepoint.reminders import populate_document_reminders
+
+    facts = {"tasks": [{"title": "Finish security review", "deadline": "2027-12-01", "owner": "Admin"}]}
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        await populate_document_reminders(db, doc, facts, indexed[1])
+        rows = (await db.scalars(select(SharePointReminder))).all()
+        assert len(rows) > 3
+        rows[0].status, rows[0].sent_at, rows[0].delivery_channels = "sent", now(), ["email"]
+        rows[1].status = "skipped"
+        rows[2].status = "failed"
+        db.add(SharePointReminder(source_id=indexed[1], document_id=indexed[2],
+            title="Other action", category="task", target_date="2027-12-01",
+            reminder_date="2027-11-01", dedup_key="other", status="pending"))
+        await db.commit()
+        rem_id = str(rows[-1].id)
+        sent_id = rows[0].id
+
+    assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/complete", headers=auth)).status_code == 200
+    feed = (await client.get("/api/sharepoint/reminders", headers=auth)).json()
+    assert any(r["title"] == "Other action" for r in feed)
+    async with AsyncSessionLocal() as db:
+        doc = await db.get(SharePointDocument, indexed[2])
+        await populate_document_reminders(db, doc, facts, indexed[1])
+        rows = (await db.scalars(select(SharePointReminder))).all()
+        assert all(r.status == "completed" for r in rows if r.title == "Finish security review")
+        receipt = await db.get(SharePointReminder, sent_id)
+        assert receipt.sent_at and receipt.delivery_channels == ["email"]
+    for _ in range(2):
+        response = await client.get("/api/sharepoint/reminders", headers=auth)
+        assert response.status_code == 200, response.text
+        assert not any(r["title"] == "Finish security review" for r in response.json())
+    history = await client.get("/api/sharepoint/reminders?status=completed", headers=auth)
+    assert len(history.json()) > 3
+    assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/reopen", headers=auth)).status_code == 200
+    assert any(r["title"] == "Finish security review" for r in (await client.get("/api/sharepoint/reminders", headers=auth)).json())
+    async with AsyncSessionLocal() as db:
+        assert (await db.get(SharePointReminder, sent_id)).status == "sent"
+
+
+@pytest.mark.asyncio
+async def test_old_partially_completed_legacy_group_is_hidden_without_hiding_other_actions(client, auth, indexed, monkeypatch):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    async with AsyncSessionLocal() as db:
+        for key, state, recipient, due in [
+            ("done", "completed", "admin@agholding.net", "2027-12-01"),
+            ("later", "pending", "admin@agholding.net", "2027-12-01"),
+            ("sent", "sent", "admin@agholding.net", "2027-12-01"),
+            ("other-owner", "pending", "other@agholding.net", "2027-12-01"),
+            ("other-date", "pending", "admin@agholding.net", "2028-12-01"),
+        ]:
+            db.add(SharePointReminder(source_id=indexed[1], document_id=indexed[2], title="Review",
+                category="task", target_date=due, reminder_date=due, dedup_key=key,
+                status=state, recipient_email=recipient))
+        await db.commit()
+    response = await client.get("/api/sharepoint/reminders", headers=auth)
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == 2
+    assert {r["recipient_email"] for r in response.json()} == {"other@agholding.net", "admin@agholding.net"}
+    from app.services.sharepoint.reminders import deliver_reminder
+    sent = []
+    monkeypatch.setattr("app.services.sharepoint.reminders.send_email", lambda **kwargs: sent.append(kwargs) or True)
+    async with AsyncSessionLocal() as db:
+        pending = await db.scalar(select(SharePointReminder).where(SharePointReminder.dedup_key == "later"))
+        assert await deliver_reminder(db, pending) is False
+        assert pending.status == "completed"
+    assert sent == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("complete_from", ["alerts", "tasks"])
+async def test_completed_compliance_action_hides_sent_and_skipped_stages(client, auth, indexed, monkeypatch, complete_from):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    from app.services.sharepoint.reminders import populate_task_reminders
+    async with AsyncSessionLocal() as db:
+        task = SharePointComplianceTask(source_id=indexed[1], document_id=indexed[2],
+            title="Security review", action_key="security-review", basis="deadline",
+            due_date=date(2027, 12, 1), status="active", owner_user_id=indexed[0], assignment_source="manual")
+        db.add(task)
+        await db.flush()
+        await populate_task_reminders(db, task, [30, 7, 3, 1])
+        rows = (await db.scalars(select(SharePointReminder).where(SharePointReminder.task_id == task.id))).all()
+        rows[0].status, rows[0].sent_at = "sent", now()
+        rows[1].status = "skipped"
+        rows[2].status = "failed"
+        await db.commit()
+        tid, rem_id, sent_id = str(task.id), str(rows[-1].id), rows[0].id
+    if complete_from == "alerts":
+        response = await client.post(f"/api/sharepoint/reminders/{rem_id}/complete", headers=auth)
+        assert (await client.post(f"/api/sharepoint/reminders/{rem_id}/complete", headers=auth)).status_code == 200
+    else:
+        response = await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth, json={"status": "completed"})
+    assert response.status_code == 200, response.text
+    for _ in range(2):
+        assert (await client.get("/api/sharepoint/reminders", headers=auth)).json() == []
+    history = await client.get(f"/api/sharepoint/documents/{indexed[2]}/reminders", headers=auth)
+    assert len(history.json()) == 4
+    async with AsyncSessionLocal() as db:
+        task = await db.get(SharePointComplianceTask, uuid.UUID(tid))
+        await populate_task_reminders(db, task, [60, 30, 7, 3, 1])
+        await db.commit()
+        assert len((await db.scalars(select(SharePointReminder))).all()) == 4
+        assert (await db.get(SharePointReminder, sent_id)).status == "sent"
+        if complete_from == "alerts":
+            events = (await db.scalars(select(SharePointComplianceEvent).where(
+                SharePointComplianceEvent.task_id == uuid.UUID(tid),
+                SharePointComplianceEvent.action == "task_completed"))).all()
+            assert len(events) == 1
+    response = await client.patch(f"/api/sharepoint/compliance/tasks/{tid}", headers=auth, json={"status": "active"})
+    assert response.status_code == 200, response.text
+    assert (await client.get("/api/sharepoint/reminders", headers=auth)).json()
+    async with AsyncSessionLocal() as db:
+        assert (await db.get(SharePointReminder, uuid.UUID(rem_id))).status == "pending"
+        assert (await db.get(SharePointReminder, sent_id)).status == "sent"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("direct_report", [True, False])
+async def test_alert_completion_uses_task_manager_boundary(client, auth, indexed, monkeypatch, direct_report):
+    async def permitted(*args): return metadata()
+    monkeypatch.setattr(graph.GraphClient, "can_read", permitted)
+    headers, manager_id = await make_member(client, auth, "alerts-manager@agholding.net", role="manager")
+    async with AsyncSessionLocal() as db:
+        manager = await db.get(User, uuid.UUID(manager_id))
+        manager.extra_permissions = ["sharepoint_intelligence"]
+        db.add(SharePointConnection(user_id=manager.id, tenant_id=TENANT, client_id=CLIENT, object_id=OID,
+            token_cipher=encrypt({"access_token": "delegated-token", "expires_at": time.time() + 3600})))
+        if direct_report:
+            (await db.get(User, indexed[0])).manager_id = manager.id
+        task = SharePointComplianceTask(source_id=indexed[1], document_id=indexed[2],
+            title="Review", action_key="review", basis="deadline", due_date=date(2027, 12, 1),
+            status="active", owner_user_id=indexed[0], assignment_source="manual")
+        db.add(task)
+        await db.flush()
+        reminder = SharePointReminder(source_id=indexed[1], document_id=indexed[2], task_id=task.id,
+            title="Review", category="compliance_task", target_date="2027-12-01",
+            reminder_date="2027-11-01", status="pending", dedup_key="managed", recipient_email="admin@agholding.net")
+        db.add(reminder)
+        # A separate manual action grants document visibility, but must not
+        # grant management of somebody else's compliance task.
+        db.add(SharePointReminder(source_id=indexed[1], document_id=indexed[2],
+            title="Manual review", category="task", target_date="2027-12-01",
+            reminder_date="2027-11-01", status="pending", dedup_key="manual", recipient_email=manager.email))
+        await db.commit()
+        rid, tid = str(reminder.id), task.id
+    response = await client.post(f"/api/sharepoint/reminders/{rid}/complete", headers=headers)
+    assert response.status_code == (200 if direct_report else 403), response.text
+    if not direct_report:
+        assert response.json()["detail"] == "task_owner_required"
+    async with AsyncSessionLocal() as db:
+        assert (await db.get(SharePointComplianceTask, tid)).status == ("completed" if direct_report else "active")
+
+
+@pytest.mark.asyncio
 async def test_escalating_notification_schedule(client, auth, indexed, monkeypatch):
     async def permitted(*args): return metadata()
     monkeypatch.setattr(graph.GraphClient, "can_read", permitted)

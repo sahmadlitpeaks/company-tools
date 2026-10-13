@@ -262,12 +262,37 @@ proxy rule is needed. The session manager starts and stops with the app.
 **Tokens.** Each person creates personal access tokens under **My Work → AI
 Access** (`/ai-access`). Tokens start with `pmt_`, are shown once (only the
 SHA-256 is stored), expire after 30–365 days and can be revoked; the page shows
-ready-to-paste setup for Claude Code and a generic MCP JSON config. Platform
+ready-to-paste setup for Claude Code, Claude Desktop's local bridge, a connector
+Authorization header and a generic MCP HTTP JSON config. Platform
 administrators see and can revoke every token. Clients send
 `Authorization: Bearer pmt_...`; missing, unknown, expired or revoked tokens,
 inactive accounts, accounts required to change their password, and accounts
 without the Projects module (including when it is
 switched off org-wide) get `401`.
+
+**Claude connectors.** In Claude web/Desktop, add the endpoint under
+Customize -> Connectors -> Add custom connector. Select **No sign in** and
+add a request header named `Authorization` with value `Bearer YOUR_TOKEN`.
+Adding only the URL cannot authenticate; OAuth client ID/secret fields are not
+personal-token fields. Enable the connector in the conversation afterwards.
+Follow the [Claude setup guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+Team/Enterprise owners manage organisation connectors: fixed headers are shared
+credentials, so everyone using that connector gets the token owner's project
+access. Use an approved account limited to the intended projects.
+
+Claude Desktop's `claude_desktop_config.json` uses a local stdio command; the
+generic HTTP JSON on this page is for clients accepting HTTP entries. The
+Desktop snippet uses `npx mcp-remote`, requires Node.js, downloads the bridge on
+first use and takes effect after restarting Desktop. Its token is passed in an
+environment variable, avoiding the [bridge's documented Windows argument-spacing issue](https://github.com/punkpeye/mcp-remote#custom-headers).
+Remote web connectors
+must be reachable from Anthropic's servers, not only from the user's network.
+
+**Connection check.** The page's Test connection button sends an authenticated
+MCP `initialize` request followed by `tools/list`. It sends no cookie and reads
+no project content. The token remains in page memory and clears on reload.
+A successful test confirms the app's endpoint and token, not the user's Claude
+configuration or reachability from Anthropic's network.
 
 **Read vs write.** Tokens are read-only unless created with "Allow changes",
 which requires the **Projects: AI write access** permission

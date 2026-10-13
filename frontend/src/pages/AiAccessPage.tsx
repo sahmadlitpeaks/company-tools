@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Bot, Check, Copy, KeyRound, X } from "lucide-react";
 import { api } from "@/api/client";
+import { testMcpConnection } from "@/api/mcp";
 import { pmError } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
 import { useAuth } from "@/auth/AuthContext";
@@ -57,6 +58,8 @@ export default function AiAccessPage() {
   const [copied, setCopied] = useState("");
   const [revoking, setRevoking] = useState<AiToken | null>(null);
   const [state, setState] = useState({ busy: false, error: "" });
+  const [connection, setConnection] = useState({ busy: false, error: "", message: "" });
+  const [testToken, setTestToken] = useState("");
   const endpoint = `${window.location.origin}${status.data?.mcp_path ?? "/api/mcp/"}`;
 
   async function create(event: FormEvent) {
@@ -65,6 +68,8 @@ export default function AiAccessPage() {
     try {
       const token = await api<AiToken>("/api/pm/ai/tokens", { method: "POST", body: { name: form.name.trim(), can_write: form.write, expires_in_days: Number(form.expires) } });
       setCreated(token);
+      setTestToken(token.token ?? "");
+      setConnection({ busy: false, error: "", message: "" });
       setCopied("");
       setForm({ name: "", expires: form.expires, write: false });
       setState({ busy: false, error: "" });
@@ -83,6 +88,8 @@ export default function AiAccessPage() {
     try {
       await api(`/api/pm/ai/tokens/${token.id}`, { method: "DELETE" });
       if (created?.id === token.id) setCreated(null);
+      setTestToken("");
+      setConnection({ busy: false, error: "", message: "" });
       setRevoking(null);
       setState({ busy: false, error: "" });
       notify("Token revoked. Assistants using it lose access immediately.");
@@ -96,6 +103,20 @@ export default function AiAccessPage() {
   const secret = created?.token ?? "";
   const claudeCode = `claude mcp add --transport http company-projects ${endpoint} --header "Authorization: Bearer ${secret}"`;
   const generic = JSON.stringify({ mcpServers: { "company-projects": { type: "http", url: endpoint, headers: { Authorization: `Bearer ${secret}` } } } }, null, 2);
+  const desktop = JSON.stringify({ mcpServers: { "company-projects": {
+    command: "npx", args: ["-y", "mcp-remote", endpoint, "--header", "Authorization:${COMPANY_TOOLS_AUTH}"],
+    env: { COMPANY_TOOLS_AUTH: `Bearer ${secret}` },
+  } } }, null, 2);
+
+  async function checkConnection() {
+    setConnection({ busy: true, error: "", message: "" });
+    try {
+      const count = await testMcpConnection(status.data?.mcp_path ?? "/api/mcp/", testToken);
+      setConnection({ busy: false, error: "", message: `Connection verified: ${count} project tools available. Use the same URL and Authorization header in Claude.` });
+    } catch (cause) {
+      setConnection({ busy: false, error: pmError(cause), message: "" });
+    }
+  }
 
   return <div className="flex flex-col gap-5">
     <PageHead headingLevel={1} title="AI access" subtitle="Let AI assistants such as Claude or ChatGPT read and update your project issues through MCP, acting as you." />
@@ -110,7 +131,14 @@ export default function AiAccessPage() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
         <p>Endpoint: <code className="break-all bg-muted px-1">{endpoint}</code></p>
-        <p className="text-muted-foreground">Works with MCP clients that let you set an Authorization header, such as Claude Code, Claude Desktop, Cursor, VS Code and ChatGPT's developer mode.</p>
+        <p className="text-muted-foreground">Create a token below, then configure your assistant with the endpoint and an Authorization header. Opening the endpoint in a browser or adding only its URL will report that a token is required.</p>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>In Claude web or Desktop, open Customize → Connectors → Add custom connector and enter the endpoint above.</li>
+          <li>Choose No sign in for this token connection. Under Request headers, enter <code>Authorization</code> as the name and <code>Bearer YOUR_TOKEN</code> as the value. Keep the space after Bearer.</li>
+          <li>Add the connector, then enable it in your conversation and ask Claude to list your projects.</li>
+        </ol>
+        <p className="text-muted-foreground">On a Claude Team or Enterprise plan, an owner manages custom connectors. A fixed header on an organisation connector gives its users the token owner's access; use an approved account with access limited to the intended projects.</p>
+        <p><a className="text-primary underline" href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp" target="_blank" rel="noreferrer">Claude connector setup guide</a></p>
         <ul className="grid gap-1 sm:grid-cols-2">
           {TOOLS.map(([name, hint]) => <li key={name}><code className="text-xs">{name}</code> <span className="text-muted-foreground">{hint}</span></li>)}
         </ul>
@@ -148,10 +176,26 @@ export default function AiAccessPage() {
           <AlertDescription className="flex flex-col gap-3">
             <span>Only a fingerprint is stored, so it can't be shown again. Treat it like a password: anyone with it can {created.can_write ? "read and change" : "read"} your project issues until it expires on {date(created.expires_at)}.</span>
             <Snippet id="ai-snippet-token" label="Token" text={secret} copied={copied === "token"} onCopy={() => void copy("token", secret)} rows={1} />
+            <Snippet id="ai-snippet-header" label="Authorization header value" text={`Bearer ${secret}`} copied={copied === "header"} onCopy={() => void copy("header", `Bearer ${secret}`)} rows={1} />
             <Snippet id="ai-snippet-claude" label="Claude Code" text={claudeCode} copied={copied === "claude"} onCopy={() => void copy("claude", claudeCode)} rows={2} />
+            <p>For Claude Desktop's local configuration file, use the bridge below. It requires Node.js and downloads mcp-remote on first use. Paste it into <code>claude_desktop_config.json</code>, merge with existing servers and restart Claude Desktop.</p>
+            <Snippet id="ai-snippet-desktop" label="Claude Desktop local config" text={desktop} copied={copied === "desktop"} onCopy={() => void copy("desktop", desktop)} rows={13} />
             <Snippet id="ai-snippet-config" label="Other MCP clients (JSON config)" text={generic} copied={copied === "json"} onCopy={() => void copy("json", generic)} rows={11} />
           </AlertDescription>
         </Alert>}
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader><CardTitle>Test connection</CardTitle><CardDescription>Check a new or existing token before adding it to Claude. This checks authentication and available tools without reading project data.</CardDescription></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Field>
+          <FieldLabel htmlFor="ai-test-token">Token to test</FieldLabel>
+          <Input id="ai-test-token" type="password" autoComplete="off" value={testToken} onChange={(event) => { setTestToken(event.target.value); setConnection({ busy: false, error: "", message: "" }); }} disabled={connection.busy} />
+        </Field>
+        <Button className="self-start" disabled={connection.busy || !testToken.trim()} onClick={() => void checkConnection()}>{connection.busy ? "Testing…" : "Test connection"}</Button>
+        {connection.error && <Alert variant="destructive" role="alert"><AlertDescription>{connection.error}</AlertDescription></Alert>}
+        {connection.message && <Alert role="status"><AlertDescription>{connection.message}</AlertDescription></Alert>}
       </CardContent>
     </Card>
 
