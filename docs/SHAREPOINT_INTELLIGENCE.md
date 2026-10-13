@@ -55,6 +55,19 @@ SharePoint folders organize the upload path and choose the default access depart
 
 ## Access and data handling
 
+**Alerts completion.** Alerts & reminders presents one action per compliance
+task, or per legacy document/category/title/date/recipient group. Mark done
+completes that whole action. The default reminders feed excludes completed or
+inactive task actions, including sent/skipped notification stages, and legacy
+groups with a completed stage from older releases. Delivery also stops remaining
+legacy stages when an earlier stage was completed. Explicit status-filtered
+queries and document reminder history retain delivery records. Completing a
+legacy action marks its grouped stages completed while retaining delivery
+timestamps/channels; reopening restores unsent stages and keeps sent stages
+sent. Completing a compliance task stops future scheduling; reactivation uses
+the compliance task workflow. Live file authorization and task ownership checks
+still apply.
+
 Module permission and the ordinary session gate are required. Document visibility is the intersection of current workspace assignments/team scope, the configured SharePoint source folder, and live delegated Microsoft file access. A broad Microsoft library grant alone never exposes another employee's or team's workspace documents.
 
 - Employees see files with active/completed tasks assigned to them, and files with independent manual reminders addressed to their current account email. Department inbox tasks are visible to the department manager; if no active manager/admin leads that department, its members retain the existing inbox fallback.

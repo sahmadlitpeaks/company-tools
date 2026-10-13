@@ -5,8 +5,9 @@ import uuid
 from urllib.parse import parse_qs, urlencode, urlparse, urlsplit
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from starlette.responses import RedirectResponse
 
 from app.api.sharepoint_sources import router as source_router
@@ -22,7 +23,7 @@ from app.services.sharepoint.chat import ask_central, ask_document
 from app.services.sharepoint.common import SharePointError, configuration_errors, decrypt, digest, encrypt, is_reviewer, now, require_config
 from app.services.sharepoint.graph import GraphClient, application_token, delegated_token, oauth_client
 from app.services.sharepoint.privacy import restore
-from app.services.sharepoint.reminders import _calculate_reminder_date, deliver_reminder, run_sharepoint_reminders
+from app.services.sharepoint.reminders import _calculate_reminder_date, deliver_reminder, reminder_action, run_sharepoint_reminders
 from app.services.sharepoint.store import authorize_document, enqueue, public_document, purge, purge_document_reminders, run_info, scope_key, source_for, sources_for, document_source
 
 
@@ -290,6 +291,23 @@ async def list_reminders(
     # 1. Filter by reminder IDs before loading document rows. DISTINCT on the
     # full document fails in PostgreSQL because documents contain JSON fields.
     reminder_doc_ids = select(SharePointReminder.document_id).where(SharePointReminder.source_id.in_(sources))
+    # The default feed shows actions, not delivery history. Sent/skipped stages
+    # of a completed task must not resurrect it in Alerts & reminders.
+    active_action = or_(SharePointReminder.task_id.is_(None), SharePointReminder.task_id.in_(
+        select(SharePointComplianceTask.id).where(SharePointComplianceTask.status == "active")))
+    completed_stage = aliased(SharePointReminder)
+    legacy_completed = select(completed_stage.id).where(
+        completed_stage.task_id.is_(None), completed_stage.status == "completed",
+        completed_stage.document_id == SharePointReminder.document_id,
+        completed_stage.category == SharePointReminder.category,
+        completed_stage.title == SharePointReminder.title,
+        completed_stage.target_date == SharePointReminder.target_date,
+        func.coalesce(completed_stage.recipient_email, "") == func.coalesce(SharePointReminder.recipient_email, ""),
+    ).exists()
+    # Also recover legacy groups partially completed before this fix shipped.
+    active_action &= or_(SharePointReminder.task_id.is_not(None), ~legacy_completed)
+    if not status:
+        reminder_doc_ids = reminder_doc_ids.where(active_action)
     if not user.is_admin and user.role != "manager":
         reminder_doc_ids = reminder_doc_ids.where(
             func.lower(func.trim(SharePointReminder.recipient_email)) == (user.email or "").strip().lower())
@@ -337,6 +355,8 @@ async def list_reminders(
     )
     if status:
         stmt = stmt.where(SharePointReminder.status == status)
+    else:
+        stmt = stmt.where(active_action)
     if category:
         stmt = stmt.where(SharePointReminder.category == category)
     if unassigned is True:
@@ -443,20 +463,30 @@ async def complete_reminder(reminder_id: uuid.UUID, user=Depends(get_current_use
     await authorize_document(db, user, source, doc)
     if rem.task_id:
         task = await db.get(SharePointComplianceTask, rem.task_id)
-        if not task or not (user.is_admin or task.owner_user_id == user.id or
-            (task.owner_department_id is not None and task.owner_department_id == user.department_id)):
+        from app.api.sharepoint_compliance import _can_manage
+        if not task or not await _can_manage(db, user, task):
             raise SharePointError("task_owner_required", 403)
+        if task.status not in {"active", "completed"}:
+            raise SharePointError("task_not_active", 409)
         from app.services.sharepoint.compliance import event
-        task.status, task.completed_by, task.completed_at = "completed", user.id, now()
+        was_active = task.status == "active"
+        if was_active:
+            task.status, task.completed_by, task.completed_at = "completed", user.id, now()
         for pending in (await db.scalars(select(SharePointReminder).where(
             SharePointReminder.task_id == task.id,
-            SharePointReminder.status.in_(["pending", "failed"])))).all():
+            SharePointReminder.status.in_(["pending", "failed", "skipped"])))).all():
             pending.status = "dismissed"
-        event(db, doc.id, "task_completed", task_id=task.id, actor_id=user.id)
+        if was_active:
+            event(db, doc.id, "task_completed", task_id=task.id, actor_id=user.id)
         all_tasks = (await db.scalars(select(SharePointComplianceTask).where(
             SharePointComplianceTask.document_id == doc.id))).all()
         if all(item.status == "completed" for item in all_tasks):
             doc.compliance_status = "completed"
+    else:
+        # Legacy actions have no task row: finish every stage in the displayed
+        # action, including already-sent stages. Delivery receipts stay intact.
+        for sibling in (await db.scalars(select(SharePointReminder).where(*reminder_action(rem)))).all():
+            sibling.status = "completed"
     rem.status = "completed"
     await db.commit()
     return {"id": str(rem.id), "status": "completed"}
@@ -475,9 +505,12 @@ async def reopen_reminder(reminder_id: uuid.UUID, user=Depends(get_current_user)
     await authorize_document(db, user, source, doc)
     if rem.task_id:
         raise SharePointError("use_compliance_task_workflow", 409)
-    rem.status = "pending"
+    for sibling in (await db.scalars(select(SharePointReminder).where(*reminder_action(rem)))).all():
+        if sibling.status == "completed":
+            sibling.status = "sent" if sibling.sent_at else "pending"
+    rem.status = "sent" if rem.sent_at else "pending"
     await db.commit()
-    return {"id": str(rem.id), "status": "pending"}
+    return {"id": str(rem.id), "status": rem.status}
 
 
 @router.patch("/reminders/{reminder_id}")

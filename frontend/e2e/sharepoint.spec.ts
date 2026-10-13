@@ -333,6 +333,50 @@ test("notification stages for one compliance task appear as one action", async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
 });
 
+test("completed reminder action stays gone after navigation and page reload", async ({ page }) => {
+  let completed = false;
+  const stages = [30, 7, 1].map((leadDays) => ({
+    id: `stage-${leadDays}`, task_id: "task-1", document_id: "doc-1",
+    document_name: "Executive plan.docx", title: "Complete security review",
+    category: "compliance_task", target_date: "2027-12-01", reminder_date: "2027-11-01",
+    lead_days: leadDays, recipient_email: user.email, status: leadDays === 30 ? "sent" : "pending",
+  }));
+  await page.route("**/api/sharepoint/reminders**", async (route) => {
+    if (route.request().method() === "POST" && route.request().url().endsWith("/complete")) {
+      completed = true;
+      await route.fulfill({ json: { id: "stage-7", status: "completed" } });
+    } else {
+      await route.fulfill({ json: completed ? [] : stages });
+    }
+  });
+  await page.goto("/sharepoint/alerts");
+  await expect(page.getByText("1 action · 3 scheduled reminders", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Mark done" }).click();
+  await expect(page.getByRole("heading", { name: "Complete security review", exact: true })).toHaveCount(0);
+  await page.goto("/sharepoint");
+  await page.goto("/sharepoint/alerts");
+  await page.reload();
+  await expect(page.getByText("0 actions · 0 scheduled reminders", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark done" })).toHaveCount(0);
+});
+
+test("failed reminder completion keeps the action visible and shows the error", async ({ page }) => {
+  await page.route("**/api/sharepoint/reminders**", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 403, json: { detail: "task_owner_required" } });
+    } else {
+      await route.fulfill({ json: [{
+        id: "rem-1", document_id: "doc-1", title: "Security review", category: "task",
+        target_date: "2027-12-01", reminder_date: "2027-11-01", status: "pending",
+      }] });
+    }
+  });
+  await page.goto("/sharepoint/alerts");
+  await page.getByRole("button", { name: "Mark done" }).click();
+  await expect(page.getByText(/Task Owner Required|task_owner_required|task owner required/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Security review", exact: true })).toBeVisible();
+});
+
 test("Documents sidebar group renders navigation items and urgent badge", async ({ page }, testInfo) => {
   const urgentReminders = [
     {

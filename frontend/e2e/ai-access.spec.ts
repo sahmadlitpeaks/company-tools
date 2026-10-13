@@ -47,6 +47,13 @@ test("members create read-only tokens with ready-to-paste setup, then revoke the
   await expect(page.getByLabel("Token", { exact: true })).toHaveValue("pmt_secret123");
   await expect(page.getByLabel("Claude Code")).toHaveValue(/claude mcp add --transport http company-projects http:\/\/[^ ]+\/api\/mcp\/ --header "Authorization: Bearer pmt_secret123"/);
   await expect(page.getByLabel("Other MCP clients (JSON config)")).toHaveValue(/"Authorization": "Bearer pmt_secret123"/);
+  await expect(page.getByLabel("Authorization header value")).toHaveValue("Bearer pmt_secret123");
+  const desktopConfig = JSON.parse(await page.getByLabel("Claude Desktop local config").inputValue());
+  expect(desktopConfig.mcpServers["company-projects"]).toEqual({
+    command: "npx", args: ["-y", "mcp-remote", `${new URL(page.url()).origin}/api/mcp/`, "--header", "Authorization:${COMPANY_TOOLS_AUTH}"],
+    env: { COMPANY_TOOLS_AUTH: "Bearer pmt_secret123" },
+  });
+  await expect(page.getByText(/Choose No sign in/)).toBeVisible();
   await page.getByRole("button", { name: "Copy" }).first().click();
   await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -56,6 +63,40 @@ test("members create read-only tokens with ready-to-paste setup, then revoke the
   await page.getByRole("button", { name: "Revoke Claude on my laptop" }).click();
   await page.getByRole("button", { name: "Revoke token" }).click();
   await expect.poll(() => requests.some((r) => r.method === "DELETE" && r.path === "/api/pm/ai/tokens/t1")).toBe(true);
+});
+
+test("connection test uses the personal token for initialization and tool discovery", async ({ page }) => {
+  await mount(page, false);
+  const methods: string[] = [];
+  await page.route("**/api/mcp/", async (route) => {
+    const request = route.request();
+    expect(request.headers().authorization).toBe("Bearer pmt_existing");
+    expect(request.headers().accept).toBe("application/json, text/event-stream");
+    const rpc = request.postDataJSON();
+    methods.push(rpc.method);
+    const result = rpc.method === "initialize"
+      ? { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "tracker", version: "1" } }
+      : { tools: [{ name: "tracker_list_projects" }] };
+    await route.fulfill({ json: { jsonrpc: "2.0", id: rpc.id, result } });
+  });
+  await page.goto("/ai-access");
+  await page.getByLabel("Token to test").fill("pmt_existing");
+  await page.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(page.getByText(/Connection verified: 1 project tools available/)).toBeVisible();
+  expect(methods).toEqual(["initialize", "tools/list"]);
+  expect(await page.evaluate(() => Object.values(localStorage).some((value) => String(value).includes("pmt_existing")))).toBe(false);
+  await page.reload();
+  await expect(page.getByLabel("Token to test")).toHaveValue("");
+});
+
+test("connection test explains a rejected token and allows retry", async ({ page }) => {
+  await mount(page, false);
+  await page.route("**/api/mcp/", (route) => route.fulfill({ status: 401, json: { error: "Invalid token" } }));
+  await page.goto("/ai-access");
+  await page.getByLabel("Token to test").fill("pmt_revoked");
+  await page.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Token rejected. Create a new token");
+  await expect(page.getByRole("button", { name: "Test connection", exact: true })).toBeEnabled();
 });
 
 test("people with write access can allow changes; admins see every token", async ({ page }) => {

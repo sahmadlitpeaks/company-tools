@@ -240,6 +240,8 @@ async def populate_document_reminders(db: AsyncSession, document: SharePointDocu
 
 async def populate_task_reminders(db: AsyncSession, task: SharePointComplianceTask, leads: list[int]):
     """Materialize each notification date once; task completion cancels the rest."""
+    if task.status != "active":
+        return
     document = await db.get(SharePointDocument, task.document_id)
     sent_stages = {(row.recipient_email, row.lead_days) for row in
         (await db.scalars(select(SharePointReminder).where(
@@ -377,6 +379,18 @@ def reminder_email_html(reminder: SharePointReminder, document: SharePointDocume
     """
 
 
+def reminder_action(reminder):
+    """Match one legacy action across its notification stages."""
+    return (
+        SharePointReminder.task_id.is_(None),
+        SharePointReminder.document_id == reminder.document_id,
+        SharePointReminder.category == reminder.category,
+        SharePointReminder.title == reminder.title,
+        SharePointReminder.target_date == reminder.target_date,
+        func.coalesce(SharePointReminder.recipient_email, "") == (reminder.recipient_email or ""),
+    )
+
+
 async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bool:
     if reminder.status != "pending":
         return False
@@ -386,6 +400,13 @@ async def deliver_reminder(db: AsyncSession, reminder: SharePointReminder) -> bo
             reminder.status = "dismissed"
             await db.commit()
             return False
+    elif await db.scalar(select(SharePointReminder.id).where(
+        *reminder_action(reminder), SharePointReminder.status == "completed").limit(1)):
+        # Older releases completed only one stage. Its remaining stages must
+        # stop sending too, even if they were queued before this fix.
+        reminder.status = "completed"
+        await db.commit()
+        return False
     document = await db.get(SharePointDocument, reminder.document_id)
     if not document or document.deleted or not document.in_scope:
         reminder.status = "dismissed"

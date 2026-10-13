@@ -382,14 +382,14 @@ async def update_task(task_id: uuid.UUID, body: ComplianceTaskUpdateIn,
         await populate_task_reminders(db, task, [60, 30, 28, 21, 14, 7, 6, 5, 4, 3, 2, 1, 0, -1])
         for reminder in (await db.scalars(select(SharePointReminder).where(
             SharePointReminder.task_id == task.id,
-            SharePointReminder.status == "dismissed"))).all():
+            SharePointReminder.status.in_(["dismissed", "completed"])))).all():
             current_key = digest([str(task.id), document.version or "",
                 document.payload_hash or "", (reminder.recipient_email or "").lower(),
                 str(reminder.lead_days)])[:64]
             if reminder.dedup_key == current_key and (
                 reminder.reminder_date >= date.today().isoformat() or reminder.lead_days == -1
             ):
-                reminder.status = "pending"
+                reminder.status = "sent" if reminder.sent_at else "pending"
     all_tasks = (await db.scalars(select(SharePointComplianceTask).where(
         SharePointComplianceTask.document_id == document.id))).all()
     if all(item.status == "completed" for item in all_tasks):
