@@ -223,6 +223,25 @@ async function createRecord(payload: RecordCreate) {
 - Backend permission checks remain mandatory even when the route is protected
   in React.
 
+### Loading feature code and feeds
+
+Keep optional heavy features behind local `lazy`/`Suspense` boundaries: the
+command palette and password dialog mount on open, the organization tree mounts
+on selection, and SharePoint tabs/document preview load independently. Start
+the active SharePoint tab import alongside its status request to avoid a
+code/data waterfall. The tree's React Flow CSS belongs with its lazy component,
+rather than global application styles.
+
+Enable feeds only for the connected active view. `useDocumentSearch` accepts an
+`enabled` argument and aborts/clears results when disabled; `useFetch(null)` pauses
+other feeds. Keep focus and visible-page authorization rechecks for data that
+the view displays. The shell reminder badge retains its own request.
+
+The app font is bundled DM Sans. `BrandProvider` loads the optional Inter
+stylesheet after startup only when the active company's font requires it; avoid
+an unconditional external font stylesheet in the HTML entry point. See
+[the measured performance audit](PERFORMANCE.md) for the tradeoffs and harnesses.
+
 ## Never Use The Old System
 
 Do not create or copy:

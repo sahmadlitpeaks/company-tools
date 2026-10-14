@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   ChevronDown,
@@ -11,13 +11,11 @@ import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
 import BrandSwitcher from "../brand/BrandSwitcher";
 import NotificationBell from "./NotificationBell";
-import CommandPalette, { ROUTINE_NAV_ITEMS } from "./CommandPalette";
-import { ChangePasswordModal } from "./ChangePassword";
 import { ConfirmDialog, Loading } from "./ui";
 import ErrorBoundary from "./ErrorBoundary";
 import { useTheme } from "../theme/ThemeContext";
 import { AppSidebar } from "./app-sidebar";
-import { currentNavSection, currentNavTitle, NAV_GROUPS } from "./navigation";
+import { currentNavSection, currentNavTitle } from "./navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Breadcrumb,
@@ -46,22 +44,8 @@ import {
 } from "@/components/ui/sidebar";
 
 export const APP_NAME = "AG Holding";
-
-// AppSidebar owns route navigation in the checkpoint layout, so merge the
-// manager routes into the shared source it consumes.
-const requestsGroup = NAV_GROUPS.find(
-  (group) => group.section === "Requests & Support",
-);
-if (requestsGroup) {
-  const knownPaths = new Set(requestsGroup.items.map((item) => item.to));
-  const routineItems = ROUTINE_NAV_ITEMS.filter(
-    (item) => !knownPaths.has(item.to),
-  );
-  const approvalsIndex = requestsGroup.items.findIndex(
-    (item) => item.to === "/approvals",
-  );
-  requestsGroup.items.splice(approvalsIndex + 1, 0, ...routineItems);
-}
+const CommandPalette = lazy(() => import("./CommandPalette"));
+const ChangePasswordModal = lazy(() => import("./ChangePassword").then((module) => ({ default: module.ChangePasswordModal })));
 
 function initials(name?: string | null, email?: string): string {
   const src = (name || email || "?").trim();
@@ -251,7 +235,10 @@ export default function Layout() {
           </main>
         </SidebarInset>
 
-        {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
+        <Suspense fallback={null}>
+          {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
+          {paletteOpen && <CommandPalette open onOpenChange={setPaletteOpen} />}
+        </Suspense>
         {signOutOpen ? (
           <ConfirmDialog
             title="Sign out"
@@ -261,7 +248,6 @@ export default function Layout() {
             onClose={() => setSignOutOpen(false)}
           />
         ) : null}
-        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       </SidebarProvider>
     </BrandProvider>
   );

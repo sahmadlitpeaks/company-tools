@@ -49,6 +49,8 @@ test.beforeEach(async ({ page }) => {
 
 test("sidebar categories and command search scale across viewports", async ({ page }, testInfo) => {
   const errors: string[] = [];
+  const assets: string[] = [];
+  page.on("request", (request) => assets.push(request.url()));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
@@ -56,6 +58,8 @@ test("sidebar categories and command search scale across viewports", async ({ pa
 
   await page.goto("/security");
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+  expect(assets.some((url) => /\/CommandPalette-[^/]+\.js/.test(url))).toBe(false);
+  expect(assets.some((url) => /\/ChangePassword-[^/]+\.js/.test(url))).toBe(false);
 
   if (testInfo.project.name === "mobile") {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
@@ -83,6 +87,7 @@ test("sidebar categories and command search scale across viewports", async ({ pa
   const input = command.getByPlaceholder(/Search people, tools/);
   await input.fill("payslip");
   await expect(command.getByText("Payroll", { exact: true })).toBeVisible();
+  expect(assets.some((url) => /\/CommandPalette-[^/]+\.js/.test(url))).toBe(true);
   await expect(command.getByText("Time & Pay", { exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -98,6 +103,15 @@ test("sidebar categories and command search scale across viewports", async ({ pa
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     ),
   ).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Change password" }).click();
+  const passwordDialog = page.getByRole("dialog", { name: "Change password" });
+  await expect(passwordDialog.getByLabel("Current password")).toBeVisible();
+  expect(assets.some((url) => /\/ChangePassword-[^/]+\.js/.test(url))).toBe(true);
+  await passwordDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(passwordDialog).toBeHidden();
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);

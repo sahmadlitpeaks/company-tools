@@ -1,11 +1,14 @@
-"""Pytest fixtures: an ASGI test client backed by a throwaway SQLite DB."""
+"""Pytest fixtures: an ASGI test client backed by disposable in-memory SQLite."""
 import os
 
 # Configure the environment BEFORE the app/config singletons are imported.
 # Tests must never inherit the Docker service's live PostgreSQL URL. Assign
 # these explicitly so the destructive drop_all/create_all fixture always uses
 # the disposable SQLite database, even when pytest runs inside `docker compose`.
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
+# SQLAlchemy uses StaticPool for in-memory SQLite, so every application session
+# sees the same database. Each fixture still rebuilds the schema for isolation,
+# without hundreds of filesystem writes or a shared test.db between processes.
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["RUN_SCHEDULER"] = "false"

@@ -81,6 +81,10 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("org chart list and tree use the company theme without overflow", async ({ page }) => {
+  const graphRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("OrgChartFlow")) graphRequests.push(request.url());
+  });
   await page.goto("/org-chart");
   await expect(page.getByRole("heading", { name: "Org Chart" })).toBeVisible();
   await expect(page.getByRole("tree", { name: "Organization hierarchy" })).toBeVisible();
@@ -95,10 +99,12 @@ test("org chart list and tree use the company theme without overflow", async ({ 
     return { primary: styles.getPropertyValue("--primary").trim(), radius: styles.getPropertyValue("--radius").trim() };
   });
   expect(rootStyles).toEqual({ primary: "#facc15", radius: "0px" });
+  expect(graphRequests).toHaveLength(0);
 
   await page.getByRole("button", { name: "Tree", exact: true }).click();
   const canvas = page.getByTestId("org-chart-flow");
   await expect(canvas).toBeVisible();
+  expect(graphRequests.length).toBeGreaterThan(0);
   await expect(canvas).toHaveAttribute("aria-label", /Organization tree canvas/);
   await expect(page.getByRole("link", { name: "Alex Morgan" })).toBeVisible();
   const alexDisclosure = page.getByRole("button", { name: "Collapse reports for Alex Morgan" });

@@ -3,18 +3,23 @@ import { api } from "@/api/client";
 import type { DocumentPage } from "@/api/sharepoint";
 
 /** Search text belongs in a POST body, never in URL/access logs. Clear stale results. */
-export function useDocumentSearch(q: string, cursor: string, sourceId = "all") {
-  const key = JSON.stringify([q, cursor, sourceId]);
+export function useDocumentSearch(q: string, cursor: string, sourceId = "all", enabled = true) {
+  const key = enabled ? JSON.stringify([q, cursor, sourceId]) : null;
   const [state, setState] = useState<{
-    key: string;
+    key: string | null;
     loading: boolean;
     error: string | null;
     data: DocumentPage | null;
-  }>({ key, loading: true, error: null, data: null });
+  }>({ key, loading: enabled, error: null, data: null });
   const controller = useRef<AbortController | null>(null);
 
   const reload = useCallback(async () => {
     controller.current?.abort();
+    if (!enabled) {
+      controller.current = null;
+      setState({ key: null, loading: false, error: null, data: null });
+      return;
+    }
     const request = new AbortController();
     controller.current = request;
     const requestKey = JSON.stringify([q, cursor, sourceId]);
@@ -46,7 +51,7 @@ export function useDocumentSearch(q: string, cursor: string, sourceId = "all") {
         });
       }
     }
-  }, [q, cursor, sourceId]);
+  }, [q, cursor, sourceId, enabled]);
 
   useEffect(() => {
     void reload();
@@ -54,9 +59,9 @@ export function useDocumentSearch(q: string, cursor: string, sourceId = "all") {
   }, [reload]);
 
   return {
-    loading: state.loading,
-    error: state.key === key ? state.error : null,
-    data: state.key === key ? state.data : null,
+    loading: enabled && (state.key !== key || state.loading),
+    error: enabled && state.key === key ? state.error : null,
+    data: enabled && state.key === key ? state.data : null,
     reload,
   };
 }

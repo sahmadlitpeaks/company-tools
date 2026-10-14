@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Link2,
@@ -19,13 +19,21 @@ import { Loading, PageHead, useToast } from "@/components/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DocumentsHomeTab } from "./sharepoint/DocumentsHomeTab";
-import { MyDocumentsTab } from "./sharepoint/MyDocumentsTab";
-import { CentralChatTab } from "./sharepoint/CentralChatTab";
-import { AlertsRemindersTab } from "./sharepoint/AlertsRemindersTab";
-import { AdminSourcesTab } from "./sharepoint/AdminSourcesTab";
-import DocumentDialog from "./sharepoint/DocumentDialog";
 import { useDocumentSearch } from "./sharepoint/useDocumentSearch";
+
+const tabLoaders = {
+  home: () => import("./sharepoint/DocumentsHomeTab").then((module) => ({ default: module.DocumentsHomeTab })),
+  documents: () => import("./sharepoint/MyDocumentsTab").then((module) => ({ default: module.MyDocumentsTab })),
+  assistant: () => import("./sharepoint/CentralChatTab").then((module) => ({ default: module.CentralChatTab })),
+  alerts: () => import("./sharepoint/AlertsRemindersTab").then((module) => ({ default: module.AlertsRemindersTab })),
+  admin: () => import("./sharepoint/AdminSourcesTab").then((module) => ({ default: module.AdminSourcesTab })),
+};
+const DocumentsHomeTab = lazy(tabLoaders.home);
+const MyDocumentsTab = lazy(tabLoaders.documents);
+const CentralChatTab = lazy(tabLoaders.assistant);
+const AlertsRemindersTab = lazy(tabLoaders.alerts);
+const AdminSourcesTab = lazy(tabLoaders.admin);
+const DocumentDialog = lazy(() => import("./sharepoint/DocumentDialog"));
 
 function ConnectedSource({
   status,
@@ -78,7 +86,7 @@ function ConnectedSource({
   }, [rawTab, searchParams, location.pathname, isAdmin, navigate]);
 
   const [sourceId, setSourceId] = useState("all");
-  const sourceOptions = useFetch<SharePointSourceOption[]>(status.connected ? "/api/sharepoint/source-options" : null, true);
+  const sourceOptions = useFetch<SharePointSourceOption[]>(status.connected && activeTab === "documents" ? "/api/sharepoint/source-options" : null, true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState({ q: "", cursor: "" });
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
@@ -94,11 +102,13 @@ function ConnectedSource({
   const currentAssistantDocId =
     searchParams.get("docId") || locationState?.docId || assistantDocId;
 
-  const searchResult = useDocumentSearch(page.q, page.cursor, sourceId);
+  const needsDocuments = status.connected && (activeTab === "home" || activeTab === "documents" || activeTab === "alerts");
+  const needsReminders = status.connected && (activeTab === "home" || activeTab === "alerts");
+  const searchResult = useDocumentSearch(page.q, page.cursor, sourceId, needsDocuments);
   const docs = searchResult.data?.items ?? [];
   const { reload: reloadDocs } = searchResult;
 
-  const remindersFetch = useFetch<SharePointReminder[]>("/api/sharepoint/reminders", true);
+  const remindersFetch = useFetch<SharePointReminder[]>(needsReminders ? "/api/sharepoint/reminders" : null, true);
   const remindersData = remindersFetch.error ? null : remindersFetch.data;
   const reminders = useMemo(
     () => (Array.isArray(remindersData) ? remindersData : []),
@@ -222,6 +232,7 @@ function ConnectedSource({
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
+      <Suspense fallback={<Loading />}>
       {status.connected || (activeTab === "admin" && isAdmin) ? (
         <div className="min-w-0 max-w-full">
           {activeTab === "home" && (
@@ -319,8 +330,10 @@ function ConnectedSource({
           </CardContent>
         </Card>
       )}
+      </Suspense>
 
       {selectedDocId && (
+        <Suspense fallback={<Loading />}>
         <DocumentDialog
           id={selectedDocId}
           isAdmin={isAdmin}
@@ -331,6 +344,7 @@ function ConnectedSource({
             void reloadReminders();
           }}
         />
+        </Suspense>
       )}
 
     </div>
@@ -345,6 +359,12 @@ export default function SharePointPage({
   const status = useFetch<SharePointStatus>("/api/sharepoint/status", true);
   const { user } = useAuth();
   const value = !status.error ? (status.data ?? null) : null;
+
+  useEffect(() => {
+    // Fetch the active tab's code alongside status, avoiding a second waterfall.
+    // A rejected import is surfaced by lazy/Suspense and the route error boundary.
+    void tabLoaders[tab ?? "home"]().catch(() => {});
+  }, [tab]);
 
   return (
     <div className="space-y-5">

@@ -24,18 +24,16 @@ WINDOW_DAYS = 14
 WARRANTY_SOON_DAYS = 30
 
 
-async def _count(db: AsyncSession, model) -> int:
-    return (await db.execute(select(func.count()).select_from(model))).scalar_one()
-
-
-def _bucket(rows: list[datetime], days: int) -> list[dict]:
+async def _daily_series(db: AsyncSession, model, since: datetime, days: int) -> list[dict]:
+    # Return one row per day, rather than transferring every click/scan to Python.
+    day = func.date(model.created_at)
+    rows = (await db.execute(
+        select(day, func.count())
+        .where(model.created_at >= since)
+        .group_by(day)
+    )).all()
     today = datetime.now(timezone.utc).date()
-    counts: Counter[str] = Counter()
-    for ts in rows:
-        if ts is None:
-            continue
-        d = ts.date() if isinstance(ts, datetime) else ts
-        counts[d.isoformat()] += 1
+    counts = {str(day): int(count) for day, count in rows}
     series = []
     for i in range(days - 1, -1, -1):
         d = (today - timedelta(days=i)).isoformat()
@@ -49,29 +47,32 @@ async def overview(
 ):
     since = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
 
-    counts = {
-        "employees": await _count(db, User),
-        "cards": await _count(db, DigitalCard),
-        "qrcodes": await _count(db, QRCode),
-        "products": await _count(db, Product),
-        "landing_pages": await _count(db, LandingPage),
-        "short_links": await _count(db, ShortLink),
-        "assets": await _count(db, TrackedAsset),
-        "transfers": await _count(db, SecureTransfer),
+    models = {
+        "employees": User,
+        "cards": DigitalCard,
+        "qrcodes": QRCode,
+        "products": Product,
+        "landing_pages": LandingPage,
+        "short_links": ShortLink,
+        "assets": TrackedAsset,
+        "transfers": SecureTransfer,
     }
-
-    total_clicks = (
-        await db.execute(select(func.coalesce(func.sum(ShortLink.click_count), 0)))
-    ).scalar_one()
-    total_scans = (await db.execute(select(func.count()).select_from(CardScan))).scalar_one()
+    # Independent scalar subqueries preserve empty-table counts without joins,
+    # and collect all overview totals in one database round trip.
+    totals = (await db.execute(select(
+        *(select(func.count()).select_from(model).scalar_subquery().label(name)
+          for name, model in models.items()),
+        select(func.coalesce(func.sum(ShortLink.click_count), 0))
+        .scalar_subquery().label("total_clicks"),
+        select(func.count()).select_from(CardScan).scalar_subquery().label("total_scans"),
+    ))).one()._mapping
+    counts = {name: int(totals[name]) for name in models}
+    total_clicks = totals["total_clicks"]
+    total_scans = totals["total_scans"]
 
     # ---- Time series (last 14 days) ----
-    click_rows = (
-        await db.execute(select(LinkClick.created_at).where(LinkClick.created_at >= since))
-    ).scalars().all()
-    scan_rows = (
-        await db.execute(select(CardScan.created_at).where(CardScan.created_at >= since))
-    ).scalars().all()
+    click_series = await _daily_series(db, LinkClick, since, WINDOW_DAYS)
+    scan_series = await _daily_series(db, CardScan, since, WINDOW_DAYS)
 
     # ---- Asset health ----
     assets = (await db.execute(select(TrackedAsset))).scalars().all()
@@ -121,8 +122,8 @@ async def overview(
         "counts": counts,
         "engagement": {"total_link_clicks": int(total_clicks), "total_card_scans": int(total_scans)},
         "series": {
-            "clicks": _bucket(list(click_rows), WINDOW_DAYS),
-            "scans": _bucket(list(scan_rows), WINDOW_DAYS),
+            "clicks": click_series,
+            "scans": scan_series,
         },
         "assets": {
             "by_status": dict(by_status),

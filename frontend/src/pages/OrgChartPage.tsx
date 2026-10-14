@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronDown,
@@ -14,7 +14,6 @@ import {
 import type { OrgNode } from "../api/types";
 import { useFetch } from "../hooks/useApi";
 import { Empty, ErrorBox, Loading, PageHead } from "../components/ui";
-import { OrgChartFlow } from "../components/org-chart/OrgChartFlow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+
+const OrgChartFlow = lazy(() => import("../components/org-chart/OrgChartFlow").then((module) => ({ default: module.OrgChartFlow })));
 
 function initials(name?: string | null): string {
   const source = (name || "?").trim().split(/\s+/);
@@ -183,7 +184,9 @@ export default function OrgChartPage() {
                 ))}
               </div>
             ) : (
-              <OrgChartFlow roots={roots} expanded={expanded} visibleIds={visibleIds} onToggle={toggle} />
+              <Suspense fallback={<Loading />}>
+                <OrgChartFlow roots={roots} expanded={expanded} visibleIds={visibleIds} onToggle={toggle} />
+              </Suspense>
             )}
           </CardContent>
         </Card>
