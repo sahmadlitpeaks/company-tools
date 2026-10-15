@@ -22,6 +22,7 @@ async def notify_user(
     link: str | None = None,
     category: str = "info",
     dedup_key: str | None = None,
+    in_app_only: bool = False,
 ) -> Notification | None:
     """Queue an in-app notification. Returns None if deduped."""
     if dedup_key:
@@ -48,7 +49,7 @@ async def notify_user(
 
     # Best-effort fan-out to email/Slack/Teams when enabled (never breaks the
     # flow). Respects each user's muted categories.
-    if settings.NOTIFY_OUTBOUND:
+    if settings.NOTIFY_OUTBOUND and not in_app_only:
         try:
             from app.services.dispatch import deliver_notification
 

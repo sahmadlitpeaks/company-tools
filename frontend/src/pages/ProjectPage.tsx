@@ -33,6 +33,8 @@ import { WorkspaceContext } from "@/components/pm/WorkspaceContext";
 import { BoardWorkspace } from "@/components/pm/BoardWorkspace";
 import { WorkspaceSettings } from "@/components/pm/WorkspaceSettings";
 import { IssueExplorer } from "@/components/pm/IssueExplorer";
+import { DecisionRegister } from "@/components/pm/DecisionRegister";
+import { DecisionDetail } from "@/components/pm/DecisionDetail";
 import { FilterSelect } from "@/components/ListControls";
 
 
@@ -50,6 +52,7 @@ export default function ProjectPage() {
   const issues = useFetch<PmIssue[]>(projectId ? `/api/pm/projects/${projectId}/issues` : null);
   const sprints = useFetch<PmSprint[]>(projectId && usesSprints ? `/api/pm/projects/${projectId}/sprints` : null);
   const [creating, setCreating] = useState(false);
+  const [decisionRefresh, setDecisionRefresh] = useState(0);
   const [createDefaults, setCreateDefaults] = useState<{ workflow_state?: string; sprint_id?: string }>({});
   const [sprintAction, setSprintAction] = useState<SprintAction | null>(null);
   const [mutation, setMutation] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
@@ -120,7 +123,7 @@ export default function ProjectPage() {
     setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
   }
   const tabs = [{ value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
-    { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "reports", label: "Reports" },
+    { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "decisions", label: "Decisions" }, { value: "reports", label: "Reports" },
     { value: "people", label: "People" }, ...(current.my_role === "admin" ? [{ value: "settings", label: "Settings" }] : [])];
   const tab = tabs.some((item) => item.value === requestedTab) ? requestedTab : "board";
 
@@ -149,6 +152,7 @@ export default function ProjectPage() {
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
         <TabsTrigger value="issues">Issues</TabsTrigger>
+        <TabsTrigger value="decisions">Decisions</TabsTrigger>
         <TabsTrigger value="reports">Reports</TabsTrigger>
         <TabsTrigger value="people">People</TabsTrigger>
         {current.my_role === "admin" && <TabsTrigger value="settings">Settings</TabsTrigger>}
@@ -177,6 +181,10 @@ export default function ProjectPage() {
             onReschedule={(issue, start, due) => void patchIssue(issue, { start_date: start, due_date: due }, { start_date: start, due_date: due })} />}
       </TabsContent>
       <TabsContent value="reports" className="pt-4"><Reports project={current} /></TabsContent>
+      <TabsContent value="decisions" className="pt-4">
+        {members.error || issues.error ? <ErrorState message={members.error || issues.error || "Unable to load project records"} onRetry={changed} /> : !members.data || !issues.data ? <Loading /> :
+          <DecisionRegister key={decisionRefresh} project={current} members={members.data} issues={issues.data} />}
+      </TabsContent>
       <TabsContent value="issues" className="pt-4">
         {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> :
           !ready ? <Loading /> : <IssueExplorer project={current} issues={issues.data!} members={members.data ?? []} sprints={openSprints} onChanged={changed} onViewSaved={(view) => { setParams((old) => { const next = new URLSearchParams(old); next.set("tab", "board"); next.set("view", view.id); return next; }); }} />}
@@ -199,7 +207,9 @@ export default function ProjectPage() {
       onClose={() => setCreating(false)}
       onSaved={(saved) => { setCreating(false); changed(); setParams((p) => { const next = new URLSearchParams(p); next.set("issue", saved.key); return next; }); }}
     />}
-    {openKey && members.data && issues.data && <IssueDetail
+    {params.get("decision") && members.data && issues.data && <DecisionDetail key={params.get("decision")} id={params.get("decision")!} project={current} members={members.data} issues={issues.data}
+      onClose={() => setParams((old) => { const next = new URLSearchParams(old); next.delete("decision"); return next; })} onChanged={() => { changed(); setDecisionRefresh((value) => value + 1); }} />}
+    {openKey && !params.get("decision") && members.data && issues.data && <IssueDetail
       key={openKey} issueKey={openKey} project={current} members={members.data} issues={issues.data} sprints={openSprints}
       onClose={closeIssue} onChanged={changed}
     />}

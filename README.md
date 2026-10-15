@@ -27,6 +27,10 @@ and now also includes:
   links and AI assistant access over MCP. See
   [project tracker](docs/PROJECT_TRACKER.md).
 
+- Project decision records with named approval, retained submitted versions,
+  rationale, evidence references, linked issues, and project-scoped history.
+  See [decision workflow and limits](docs/DECISIONS.md).
+
 - Simple time tracking with two primary actions (clock and break), a live
   `HH:MM:SS` timer that retains exact seconds after clock-out, a daily
   work/break timeline, weekly timesheets, corrections,

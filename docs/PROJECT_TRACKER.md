@@ -436,14 +436,22 @@ All routes are under `/api/pm` and require the `projects` module.
   Backend contracts, validation and endpoints are in `schemas/pm_workspace.py`,
   `services/pm_workspace.py` and `api/pm_workspace.py`.
 
+## Decisions
+
+Project **Decisions** now records significant choices, rationale, evidence,
+issue links, and explicit approval of a submitted version. See
+[decision workflow](DECISIONS.md) for roles, history, API and validation.
+
 ## Not yet built
 
 - Release/version tracking, Jira Fix Version import, issue grouping by release,
   and release-note generation/export are follow-up work. **Keep the existing
   release-note sheets until that workflow is implemented and accepted.** This
   tracker currently replaces issue planning, not the release-note process.
-- Structured requirements approval/baselines are not implemented; descriptions
-  support requirements and acceptance-criteria text.
+- Separate requirements baselines are not implemented; issue descriptions
+  support requirements and acceptance-criteria text. Decision approval records
+  the decision's submitted snapshot, including linked issue summaries at that
+  time; it does not freeze the entire linked issue or approve its later edits.
 - Dedicated project-specific Microsoft Teams routing (generic notification
   fan-out already exists), and OAuth sign-in for MCP clients that require it.
 - Workflow automation builders, cross-project boards, custom issue types,

@@ -48,7 +48,7 @@ def test_workspace_migration_backfills_legacy_and_round_trips():
             for pid, key, enabled in ((scrum_id, "SCRUM", True), (kanban_id, "KANBAN", False)):
                 db.execute(text("INSERT INTO pm_projects (id,key,name,lead_id,created_by_id,sprints_enabled) VALUES (:id,:key,:key,:uid,:uid,:enabled)"), {"id": pid, "key": key, "uid": user_id, "enabled": enabled})
             db.execute(text("INSERT INTO pm_issues (id,project_id,number,summary,status) VALUES (:id,:pid,1,'Legacy review','in_review')"), {"id": issue_id, "pid": scrum_id})
-        migrate("upgrade", "head")
+        migrate("upgrade", "y1c2d3e4f5a6")
         with engine.begin() as db:
             db.execute(text(f'SET search_path TO "{schema}"'))
             assert db.scalar(text("SELECT workflow_state FROM pm_issues WHERE id=:id"), {"id": issue_id}) == "in_review"
@@ -60,7 +60,7 @@ def test_workspace_migration_backfills_legacy_and_round_trips():
             db.execute(text(f'SET search_path TO "{schema}"'))
             assert db.scalar(text("SELECT summary FROM pm_issues WHERE id=:id"), {"id": issue_id}) == "Legacy review"
             assert db.scalar(text("SELECT to_regclass('pm_views')")) is None
-        migrate("upgrade", "head")
+        migrate("upgrade", "y1c2d3e4f5a6")
         with engine.begin() as db:
             db.execute(text(f'SET search_path TO "{schema}"'))
             assert db.scalar(text("SELECT count(*) FROM pm_views")) == 2

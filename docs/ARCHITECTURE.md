@@ -318,6 +318,24 @@ When parallel work creates multiple heads, add an explicit merge revision.
 `scripts/init_db.py` is a no-Alembic shortcut for disposable development only.
 It is not a production migration path.
 
+## Project decision history
+
+`api/pm_decisions.py` uses the existing Projects module and project membership
+checks. `pm_decisions` holds the working copy; `pm_decision_revisions` stores
+submitted JSON snapshots; `pm_decision_events` records actors, reasons, outcomes
+and revision numbers. These histories have no application update/delete route.
+`pm_decision_issue_links` references existing issues. Snapshots retain issue and
+person names if source records later change or disappear.
+
+Decision writes lock the project first and then the decision, matching project
+membership/archive mutations. Required optimistic versions reject stale writes.
+Approval also checks the exact revision and the named approver's current project
+membership. It is a narrow decision-specific flow rather than the generic
+approval engine, whose fallback/auto-approval and global access policies do not
+meet this contract. Decision notifications use `notify_user(in_app_only=True)`
+so restricted project content never reaches configured shared outbound channels.
+See [Decisions](DECISIONS.md) for lifecycle and release scope.
+
 ## Current Extension Points
 
 - Object-storage backend (S3/Azure Blob) for uploads.
