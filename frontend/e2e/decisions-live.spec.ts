@@ -52,11 +52,14 @@ test("decisions persist with real cookies, PostgreSQL and separate proposer and 
   const pending = await (await page.request.get(`/api/pm/decisions/${id}`)).json();
   expect(pending.revisions[0].snapshot.issues[0].key).toBe(issue.key);
   expect(pending.revisions[0].snapshot.evidence[0].label).toBe("Finance meeting notes");
+  expect((await page.request.patch(`/api/pm/issues/${issue.id}`, { data: { summary: "Changed after decision submission" } })).status()).toBe(200);
   await page.request.post("/api/auth/logout");
   expect((await page.request.post("/api/auth/login", { data: { email: reviewerEmail, password: "ReviewerOld123!" } })).status()).toBe(200);
   expect((await page.request.post("/api/auth/change-password", { data: { current_password: "ReviewerOld123!", new_password: "ReviewerNew123!" } })).status()).toBe(200);
   await page.reload();
   await expect(detail.getByRole("button", { name: "Edit draft" })).toHaveCount(0);
+  await expect(detail.getByRole("link", { name: `${issue.key} · Implement finance review`, exact: true })).toBeVisible();
+  await expect(detail.getByText("Changed after decision submission", { exact: true })).toHaveCount(0);
   await detail.getByRole("button", { name: "Approve revision 1", exact: true }).click();
   const approval = page.getByRole("dialog", { name: "Approve revision", exact: true });
   await approval.getByLabel("Approval note (optional)").fill("Approved by finance.");
