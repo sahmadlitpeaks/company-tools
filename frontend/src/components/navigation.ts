@@ -10,6 +10,8 @@ import {
   Calendar,
   CalendarDays,
   CheckSquare,
+  ClipboardCheck,
+  ClipboardList,
   Clock,
   Coffee,
   CreditCard,
@@ -154,6 +156,8 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "Requests & Support",
     items: [
       { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals", keywords: ["requests", "decisions"] },
+      { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", keywords: ["rounds", "recurring", "inspections"] },
+      { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", keywords: ["templates", "routine checks", "recurring"] },
       { to: "/purchases", label: "Purchase Requests", icon: ShoppingCart, module: "purchases", keywords: ["buy", "procurement", "spend"] },
       { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk", keywords: ["tickets", "help", "support", "it"] },
     ],

@@ -16,6 +16,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import "@xyflow/react/dist/style.css";
 
 import type { OrgNode } from "@/api/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";

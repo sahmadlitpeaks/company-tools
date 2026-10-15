@@ -105,6 +105,40 @@ test.beforeEach(async ({ page }) => {
   await mockPlatform(page);
 });
 
+test("company fonts load only when the selected company needs Inter", async ({ page }, testInfo) => {
+  const fontRequests: string[] = [];
+  await page.route("https://fonts.googleapis.com/**", async (route) => {
+    fontRequests.push(route.request().url());
+    await route.fulfill({ contentType: "text/css", body: "" });
+  });
+  await page.route("**/api/companies", (route) => route.fulfill({
+    json: brands.map((brand) => ({ ...brand, font_family: brand.id === "b2" ? "Inter" : "Arial" })),
+  }));
+  await page.goto("/branding");
+  await expect(page.getByLabel("Base font size")).toHaveValue("16");
+  const stylesheet = page.locator('head link[href^="https://fonts.googleapis.com/"]');
+  await expect(stylesheet).toHaveCount(0);
+  expect(fontRequests).toHaveLength(0);
+  async function selectCompany(id: string, name: string) {
+    if (testInfo.project.name === "mobile") {
+      // The compact shell restores a saved company; its switcher is desktop-only.
+      await page.evaluate((id) => localStorage.setItem("ag_active_brand:v1", id), id);
+      await page.reload();
+    } else {
+      await page.getByRole("button", { name: "Switch company" }).click();
+      await page.getByRole("menuitem", { name }).click();
+    }
+  }
+  await selectCompany("b2", "Litpeaks");
+  await expect(stylesheet).toHaveCount(1);
+  await expect.poll(() => fontRequests.length).toBe(1);
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--brand-font-family"))).toBe("Inter");
+  await selectCompany("b1", "AG Holding");
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--brand-font-family"))).toBe("Arial");
+  await expect(stylesheet).toHaveCount(0);
+  expect(fontRequests).toHaveLength(1);
+});
+
 test("digital cards have clear action hierarchy and compact icons", async ({ page }) => {
   await page.goto("/cards");
   await expect(page.getByRole("heading", { name: "Digital Cards" })).toBeVisible();

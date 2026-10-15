@@ -495,3 +495,46 @@ test("clicking a suggestion in Ask about your documents opens Assistant and subm
     messages: [{ role: "user", content: "Which licences expire soon?" }],
   });
 });
+
+test("source administration does not search documents or poll unrelated feeds", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  await page.clock.install();
+  await page.goto("/sharepoint/admin");
+  await expect(page.getByRole("heading", { name: "Document sources", exact: true })).toBeVisible();
+  await page.clock.runFor(31_000);
+  expect(requests.filter((path) => path === "/api/sharepoint/search")).toHaveLength(0);
+  expect(requests.filter((path) => path === "/api/sharepoint/source-options")).toHaveLength(0);
+  // The shell's alert badge still needs its own reminder feed.
+  expect(requests.filter((path) => path === "/api/sharepoint/reminders")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/sharepoint/status").length).toBeGreaterThan(1);
+});
+
+test("assistant searches once and document navigation activates its own feeds", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  await page.goto("/sharepoint/assistant");
+  await expect(page.getByPlaceholder("Ask about your documents…")).toBeVisible();
+  await expect.poll(() => requests.filter((path) => path === "/api/sharepoint/search").length).toBe(1);
+  expect(requests.filter((path) => path === "/api/sharepoint/search")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/sharepoint/reminders")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/sharepoint/source-options")).toHaveLength(0);
+  await page.evaluate(() => {
+    history.pushState({}, "", "/sharepoint/documents");
+    dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText(document.name).first()).toBeVisible();
+  expect(requests.filter((path) => path === "/api/sharepoint/search")).toHaveLength(2);
+  expect(requests.filter((path) => path === "/api/sharepoint/source-options")).toHaveLength(1);
+  expect(requests.filter((path) => path === "/api/sharepoint/reminders")).toHaveLength(1);
+});
+
+test("disconnected document routes do not request document content", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  await page.route("**/api/sharepoint/status", (route) => route.fulfill({ json: { ...readyStatus, connected: false } }));
+  await page.goto("/sharepoint/documents");
+  await expect(page.getByRole("link", { name: "Connect Microsoft", exact: true })).toBeVisible();
+  expect(requests.filter((path) => path === "/api/sharepoint/search")).toHaveLength(0);
+  expect(requests.filter((path) => path === "/api/sharepoint/source-options")).toHaveLength(0);
+});

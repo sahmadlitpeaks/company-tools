@@ -302,6 +302,18 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     );
   }, [brands, activeId]);
 
+  const needsInter = /\bInter\b/i.test(active?.font_family ?? "");
+  useEffect(() => {
+    // The app uses bundled DM Sans. Fetch Inter only for company content that
+    // explicitly selects it, after startup rather than blocking the HTML paint.
+    if (!needsInter) return;
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap";
+    document.head.appendChild(stylesheet);
+    return () => stylesheet.remove();
+  }, [needsInter]);
+
   useLayoutEffect(() => {
     if (!active) return;
     const root = document.documentElement;

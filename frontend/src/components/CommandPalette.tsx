@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
   CheckSquare,
-  ClipboardCheck,
-  ClipboardList,
   FileText,
   Headphones,
   Package,
@@ -16,7 +14,7 @@ import {
 import { api } from "../api/client";
 import type { SearchHit, SearchResults } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { visibleNavGroups, type NavItem } from "./navigation";
+import { visibleNavGroups } from "./navigation";
 import {
   Command,
   CommandDialog,
@@ -42,24 +40,6 @@ const CREATE_COMMANDS: NavCommand[] = [
   { id: "new-ticket", label: "New ticket", to: "/service-desk?new=1", module: "service_desk", create: true },
   { id: "new-approval", label: "New request (approval)", to: "/approvals?new=1", module: "approvals", create: true },
   { id: "new-ann", label: "New announcement", to: "/announcements?new=1", module: "announcements", create: true, adminOrManager: true },
-];
-
-export const ROUTINE_NAV_ITEMS: NavItem[] = [
-  {
-    to: "/routine-checks",
-    label: "Routine Checks",
-    icon: ClipboardCheck,
-    module: "routine_checks",
-    keywords: ["rounds", "recurring", "inspections"],
-  },
-  {
-    to: "/checklists",
-    label: "Checklists",
-    icon: ClipboardList,
-    module: "routine_checks",
-    feature: "routine_checks.templates",
-    keywords: ["templates", "routine checks", "recurring"],
-  },
 ];
 
 const RESULT_GROUP: Record<string, string> = {
@@ -157,25 +137,6 @@ function OpenCommandPalette({
 
   const navGroups = useMemo(() => {
     const groups = visibleNavGroups(!!user?.is_admin, can, user?.role === "manager");
-    const knownPaths = new Set(
-      groups.flatMap((group) => group.items.map((item) => item.to)),
-    );
-    const routineItems = ROUTINE_NAV_ITEMS.filter((item) => {
-      if (knownPaths.has(item.to)) return false;
-      const key = item.feature ?? item.module;
-      return !key || can(key);
-    });
-    if (routineItems.length > 0) {
-      const requestsIndex = groups.findIndex(
-        (group) => group.section === "Requests & Support",
-      );
-      const routineGroup = { section: "Routine Operations", items: routineItems };
-      groups.splice(
-        requestsIndex >= 0 ? requestsIndex + 1 : groups.length,
-        0,
-        routineGroup,
-      );
-    }
     const needle = q.trim().toLowerCase();
     if (!needle) return groups;
     return groups
