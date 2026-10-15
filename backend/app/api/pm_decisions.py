@@ -232,6 +232,8 @@ async def submit_decision(decision_id: uuid.UUID, payload: SubmitInput, db: Asyn
     _version(row, payload.version)
     if row.status != "draft":
         raise HTTPException(409, "Only a draft can be submitted")
+    if row.owner_id is None:
+        raise HTTPException(422, "Choose an active project member as owner before submitting")
     await _validate_content(db, user, project, DecisionContent(**{field: getattr(row, field) for field in CONTENT_FIELDS}))
     if not row.approver_id or row.approver_id in {user.id, row.proposed_by_id}:
         raise HTTPException(422, "Choose another project participant as approver before submitting")

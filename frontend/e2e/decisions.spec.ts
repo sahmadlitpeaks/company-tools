@@ -30,6 +30,10 @@ async function decisions(page: Page, role: "admin" | "viewer" = "admin", initial
     row.revisions = [{ number: 1, snapshot: snapshot(), change_summary: "Initial proposal", submitted_by_name: "Sara Admin", created_at: now }];
     if (initial === "approved") { row.approved_revision_number = 1; row.approved_at = now; }
   }
+  if (failure === "changed_sources") {
+    row.issues = [];
+    row.owner_name = "Renamed after submission";
+  }
   await page.route("**/api/pm/**", async (route) => {
     const req = route.request(); const url = new URL(req.url()); const path = url.pathname;
     if (!path.includes("/decisions")) return route.fallback();
@@ -160,6 +164,20 @@ test("create draft with evidence and issue links then submit an exact version", 
   expect(requests[1].body).toMatchObject({ version: 2, change_summary: "Initial business agreement" });
   await detail.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("region", { name: "Decision register" }).getByText("Pending approval").filter({ visible: true })).toHaveCount(1);
+});
+
+test("approval opens the frozen submission after linked source records change", async ({ page }) => {
+  const requests = await decisions(page, "viewer", "pending_approval", "changed_sources");
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1");
+  const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
+  await expect(detail.getByRole("link", { name: "LIMS-2 · Analyse uploaded PDFs", exact: true })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Linked issues at submission", exact: true })).toBeVisible();
+  await expect(detail.getByText("Renamed after submission", { exact: true })).toHaveCount(0);
+  await detail.getByRole("button", { name: "Approve revision 1", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve revision", exact: true });
+  await dialog.getByRole("button", { name: "Approve revision", exact: true }).click();
+  expect(requests[0].body).toMatchObject({ version: 2, revision_number: 1, outcome: "approved" });
+  await expect(detail.getByRole("link", { name: "LIMS-2 · Analyse uploaded PDFs", exact: true })).toBeVisible();
 });
 
 for (const outcome of ["Approve", "Reject"] as const) test(`assigned project viewer can ${outcome.toLowerCase()} a submitted revision`, async ({ page }) => {

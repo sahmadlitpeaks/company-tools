@@ -173,3 +173,21 @@ async def test_assigned_platform_admin_must_retain_explicit_project_membership(c
     assert (await client.delete(f"/api/pm/projects/{project['id']}/members/{admin_id}", headers=auth)).status_code == 204
     assert not (await client.get(f"/api/pm/decisions/{row['id']}", headers=admin)).json()["can_decide"]
     assert (await action(client, admin, pending, "approval", revision_number=1, outcome="approved")).status_code == 403
+
+
+async def test_missing_owner_requires_reassignment_before_submission(client, auth, setup):
+    from app.core.database import AsyncSessionLocal
+    from app.models.pm_decision import PmDecision
+
+    project, proposer, approver, outsider, content, row, issue = setup
+    # Ownership is nullable so retained records can outlive their source user.
+    async with AsyncSessionLocal() as db:
+        saved = await db.get(PmDecision, uuid.UUID(row["id"]))
+        saved.owner_id = None
+        await db.commit()
+    response = await action(client, auth, row, "submit", change_summary="Submit retained draft")
+    assert response.status_code == 422
+    assert "owner" in response.json()["detail"].lower()
+    unchanged = (await client.get(f"/api/pm/decisions/{row['id']}", headers=auth)).json()
+    assert unchanged["status"] == "draft" and unchanged["version"] == row["version"]
+    assert unchanged["revisions"] == []

@@ -25,6 +25,8 @@ the decision or acting on the latest proposal.
    A rejection requires a reason. The proposer and submitter cannot approve
    their own submission; a platform administrator cannot substitute for the
    assigned approver. Missing approvers never produce automatic approval.
+   Submitted decisions open their frozen snapshot, including the people and
+   linked issue details captured at submission, even if source records change.
 5. To change submitted or approved content, return it to draft with a reason.
    This withdraws any pending submission. Editing and resubmitting creates a
    new snapshot. An earlier approved revision remains available and explicitly

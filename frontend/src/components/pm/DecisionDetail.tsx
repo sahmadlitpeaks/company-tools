@@ -35,7 +35,8 @@ export function DecisionDetail({ id, project, members, issues, onClose, onChange
   const [revision, setRevision] = useState("");
   const row = detail.data;
   const historical = row?.revisions.find((r) => String(r.number) === revision);
-  const snapshot: DecisionSnapshot | undefined = historical?.snapshot ?? (row ? { ...row, proposed_by_name: row.proposed_by_name } : undefined);
+  const viewedRevision = historical ?? (row?.status !== "draft" ? row?.revisions.find((r) => r.number === row.revision_number) : undefined);
+  const snapshot: DecisionSnapshot | undefined = viewedRevision?.snapshot ?? (row ? { ...row, proposed_by_name: row.proposed_by_name } : undefined);
   const viewingPrevious = Boolean(historical && (row?.status === "draft" || historical.number !== row?.revision_number));
   function saved(savedRow: DecisionDetailData) { detail.setData(savedRow); setEditing(false); setAction(null); setRevision(""); onChanged(); }
   return <>
@@ -73,8 +74,8 @@ export function DecisionDetail({ id, project, members, issues, onClose, onChange
             { value: "", label: row.status === "draft" ? "Current draft" : `Current content · revision ${row.revision_number}` },
             ...row.revisions.map((r) => ({ value: String(r.number), label: `Submitted revision ${r.number}${r.number === row.approved_revision_number ? " · approved" : ""}` })),
           ]} onChange={setRevision} />}
-          {historical && <p className="text-sm text-muted-foreground">Submitted by {historical.submitted_by_name} · {new Date(historical.created_at).toLocaleString()}<br />{historical.change_summary}</p>}
-          <DecisionBody snapshot={snapshot} projectKey={project.key} historical={Boolean(historical)} />
+          {viewedRevision && <p className="text-sm text-muted-foreground">Submitted by {viewedRevision.submitted_by_name} · {new Date(viewedRevision.created_at).toLocaleString()}<br />{viewedRevision.change_summary}</p>}
+          <DecisionBody snapshot={snapshot} projectKey={project.key} submitted={Boolean(viewedRevision)} showTitle={Boolean(historical)} />
           {row.related_decisions.length > 0 && <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Decision relationships</h3>{row.related_decisions.map((related) => <Link key={related.id} to={`/projects/${project.key}?tab=decisions&decision=${related.id}`} className="break-words text-sm underline">{related.relationship === "replaced_by" ? "Replaced by" : "Replaces"} {related.key} · {related.title}</Link>)}</section>}
           <section className="flex flex-col gap-3 border-t border-border pt-5" aria-label="Decision history"><h3 className="text-sm font-semibold">Decision and approval history</h3>
             <ol className="flex flex-col gap-3">{row.events.map((event) => <li key={event.id} className="border-l-2 border-border pl-3 text-sm">
@@ -95,17 +96,17 @@ function Meta({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>;
 }
 
-function DecisionBody({ snapshot, projectKey, historical }: { snapshot: DecisionSnapshot; projectKey: string; historical: boolean }) {
+function DecisionBody({ snapshot, projectKey, submitted, showTitle }: { snapshot: DecisionSnapshot; projectKey: string; submitted: boolean; showTitle: boolean }) {
   return <>
-    {historical && <h3 className="break-words text-base font-semibold">{snapshot.title}</h3>}
+    {showTitle && <h3 className="break-words text-base font-semibold">{snapshot.title}</h3>}
     {[["Context / problem", snapshot.context], ["Chosen approach", snapshot.approach], ["Rationale", snapshot.rationale], ["Alternatives considered", snapshot.alternatives]].filter(([, text]) => text).map(([title, text]) =>
       <section key={title} className="flex flex-col gap-2"><h3 className="text-sm font-semibold">{title}</h3><p className="whitespace-pre-wrap break-words text-sm">{text}</p></section>)}
-    <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Linked issues{historical ? " at submission" : ""}</h3>
+    <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Linked issues{submitted ? " at submission" : ""}</h3>
       {!snapshot.issues.length ? <p className="text-sm text-muted-foreground">No linked issues.</p> : <ul className="flex flex-col gap-2">{snapshot.issues.map((issue) => <li key={issue.id} className="border border-border p-3 text-sm">
         <Link to={`/projects/${projectKey}?tab=issues&issue=${encodeURIComponent(issue.key)}`} className="break-words font-medium underline-offset-4 hover:underline">{issue.key} · {issue.summary}</Link>
         <p className="mt-1 text-xs text-muted-foreground">{issue.issue_type} · {issue.status.split("_").join(" ")} · Assignee: {issue.assignee_name ?? "Unassigned"} · Reporter: {issue.reporter_name ?? "Former employee"}</p>
       </li>)}</ul>}
-      {historical && snapshot.issues.length > 0 && <p className="text-xs text-muted-foreground">These details were captured at submission. An issue may have changed or been removed since then.</p>}
+      {submitted && snapshot.issues.length > 0 && <p className="text-xs text-muted-foreground">These details were captured at submission. An issue may have changed or been removed since then.</p>}
     </section>
     <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Evidence references</h3>
       {!snapshot.evidence.length ? <p className="text-sm text-muted-foreground">No evidence references.</p> : <ul className="flex flex-col gap-2">{snapshot.evidence.map((item) => <li key={`${item.type}-${item.label}-${item.url}`} className="break-words text-sm">
