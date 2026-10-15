@@ -9,9 +9,12 @@ Within Projects, **Project status** filters Active/Archived and **Project layout
 switches Cards/Timeline. Status and layout are retained in the URL and browser
 history. All issues uses its own issue filters; the project status control is
 hidden there. Cards include an explicit Open project action. Undated projects
-remain linked below the timeline, and the schedule supports keyboard scrolling.
+appear as compact cards below the timeline with their lead, issue progress and
+an explicit Open project action. If every project is undated, a short notice
+explains scheduling and the unused time-scale controls are hidden. The schedule
+supports keyboard scrolling.
 Project workspaces provide Back to projects (including archived status), line
-tabs on desktop and a labeled view selector on phones.
+tabs on wide desktop screens and a labeled view selector on phones and tablets.
 
 ## Model
 

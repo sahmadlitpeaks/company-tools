@@ -54,15 +54,41 @@ test("cards have a clear entry action and project views have return navigation",
 
 test("undated timeline projects stay reachable", async ({ page }, testInfo) => {
   await mount(page, "viewer");
+  const longName = "Laboratory information management and document compliance workspace";
   await page.route("**/api/pm/projects?*", async (route) => {
-    await route.fulfill({ json: [{ id: "p1", key: "LIMS", name: "LIMS without dates", status: "active", start_date: null, target_date: null, issue_count: 3, done_count: 1, health: "on_track", overdue_count: 0 }] });
+    await route.fulfill({ json: Array.from({ length: 8 }, (_, index) => ({ id: `p${index + 1}`, key: index === 0 ? "LIMS" : `OPS${index}`, name: index === 0 ? "LIMS without dates" : index === 1 ? longName : `Operations project ${index + 1}`, lead_name: index === 0 ? "Sara Admin" : null, status: "active", start_date: null, target_date: null, issue_count: index === 0 ? 3 : 0, done_count: index === 0 ? 1 : 0, health: "on_track", overdue_count: 0 })) });
   });
   await page.goto("/projects?layout=timeline");
   await expect(page.getByText("No scheduled projects", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "LIMS without dates LIMS", exact: true })).toBeVisible();
+  const undated = page.getByRole("region", { name: "Without dates 8", exact: true });
+  await expect(undated.getByRole("link", { name: "LIMS without dates", exact: true })).toBeVisible();
+  await expect(undated.getByRole("link", { name: longName, exact: true })).toBeVisible();
+  await expect(undated.getByText("Lead: Sara Admin", { exact: true })).toBeVisible();
+  await expect(undated.getByRole("link", { name: /^Open project / })).toHaveCount(8);
+  await expect(page.getByRole("group", { name: "Time scale", exact: true })).toHaveCount(0);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
   await page.screenshot({ path: `test-results/projects-undated-${testInfo.project.name}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Toggle dark mode", exact: true }).click();
+  await page.screenshot({ path: `test-results/projects-undated-dark-${testInfo.project.name}.png`, fullPage: true, animations: "disabled" });
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await undated.getByRole("link", { name: "Open project LIMS without dates", exact: true }).press("Enter");
+  await expect(page.getByRole("heading", { name: "LIMS v3", level: 1 })).toBeVisible();
+});
+
+test("mixed timeline keeps its schedule controls and undated project cards", async ({ page }) => {
+  await mount(page, "viewer");
+  await page.route("**/api/pm/projects?*", (route) => route.fulfill({ json: [
+    { id: "p1", key: "LIMS", name: "Scheduled lab project", lead_name: "Sara Admin", status: "active", start_date: "2026-10-01", target_date: "2026-12-31", issue_count: 3, done_count: 1, health: "on_track", overdue_count: 0 },
+    { id: "p2", key: "OPS", name: "Operations without dates", status: "active", start_date: null, target_date: null, issue_count: 0, done_count: 0, health: "on_track", overdue_count: 0 },
+  ] }));
+  await page.goto("/projects?layout=timeline");
+  await expect(page.getByRole("region", { name: "Project schedule", exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Time scale", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open project Operations without dates", exact: true })).toBeVisible();
+  await expect(page.getByText("No scheduled projects", { exact: true })).toHaveCount(0);
+  await noOverflow(page);
 });
 
 test("project errors retry and archived empty state remains distinct", async ({ page }) => {
@@ -84,7 +110,7 @@ test("archived project return preserves status and invalid mobile view falls bac
   const mutations = await mount(page, "viewer", { archived: true });
   await page.goto("/projects/LIMS?tab=settings");
   await expect(page.getByText("This project is archived. Its issues are read-only.", { exact: true })).toBeVisible();
-  if (page.viewportSize()!.width < 640) await expect(page.getByRole("combobox", { name: "Project view", exact: true })).toContainText("Boards & views");
+  if (page.viewportSize()!.width < 1280) await expect(page.getByRole("combobox", { name: "Project view", exact: true })).toContainText("Boards & views");
   else await expect(page.getByRole("tab", { name: "Boards & views", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("link", { name: "Back to projects", exact: true }).click();
   await expect(page).toHaveURL(/status=archived/);

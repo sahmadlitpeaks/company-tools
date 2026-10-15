@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
+import { ArrowRight, CalendarOff, CircleAlert, CircleCheck, FolderKanban, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { HEALTH, type PmProject } from "@/api/pm";
 import { Badge } from "@/components/ui/badge";
-import { Empty } from "@/components/ui";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { buildScale, TimeAxis, TimeGrid, type Zoom } from "./Timeline";
 
@@ -26,14 +27,16 @@ export function ProjectsTimeline({ projects }: { projects: PmProject[] }) {
   const scale = useMemo(() => buildScale(dated.flatMap((p) => [p.start_date, p.target_date]).filter((d): d is string => Boolean(d)).map((d) => parseISO(d)), zoom), [dated, zoom]);
   const height = dated.length * ROW;
   const undated = projects.filter((p) => !p.start_date && !p.target_date);
-  return <div className="flex flex-col gap-3">
-    <div className="flex flex-wrap items-center gap-3"><span id="pm-timeline-scale" className="text-sm font-medium">Time scale</span>
+  return <div className="flex flex-col gap-5">
+    {dated.length > 0 && <div className="flex flex-wrap items-center gap-3"><span id="pm-timeline-scale" className="text-sm font-medium">Time scale</span>
     <ToggleGroup variant="outline" value={[zoom]} onValueChange={(values) => values[0] && setZoom(values[0] as Zoom)} aria-labelledby="pm-timeline-scale">
       <ToggleGroupItem value="weeks">Weeks</ToggleGroupItem>
       <ToggleGroupItem value="months">Months</ToggleGroupItem>
       <ToggleGroupItem value="quarters">Quarters</ToggleGroupItem>
-    </ToggleGroup></div>
-    {dated.length === 0 ? <Empty message="No scheduled projects" hint="Projects need a start or target date to appear on the timeline. You can still open undated projects below." /> : <>
+    </ToggleGroup></div>}
+    {dated.length === 0 ? <Alert><CalendarOff aria-hidden="true" /><AlertTitle>No scheduled projects</AlertTitle>
+      <AlertDescription>Open a project below to view its work. Project administrators can add a start or target date in Settings to place it on the timeline.</AlertDescription>
+    </Alert> : <>
       <p id="pm-timeline-help" className="text-xs text-muted-foreground">Scroll horizontally to explore dates. Select a project to open its workspace.</p>
       <div role="region" aria-label="Project schedule" aria-describedby="pm-timeline-help" tabIndex={0} className="overflow-x-auto border border-border bg-card outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring [--timeline-label:11rem] sm:[--timeline-label:18rem]">
         <div className="flex" style={{ width: `calc(var(--timeline-label) + ${scale.width}px)` }}>
@@ -74,11 +77,25 @@ export function ProjectsTimeline({ projects }: { projects: PmProject[] }) {
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-4 bg-chart-4/70" aria-hidden="true" />Issues done</span>
       <span className="inline-flex items-center gap-1.5"><span className="inline-block h-3 border-l-2 border-primary" aria-hidden="true" />Today</span>
     </div>}
-    {undated.length > 0 && <Card>
-      <CardHeader><CardTitle>Without dates ({undated.length})</CardTitle><CardDescription>These projects have no start or target date yet.</CardDescription></CardHeader>
-      <CardContent><ul className="flex flex-col gap-2">
-        {undated.map((project) => <li key={project.id}><Link className="inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring" to={`/projects/${project.key}`}><span className="break-words">{project.name}</span><span className="text-muted-foreground">{project.key}</span></Link></li>)}
-      </ul></CardContent>
-    </Card>}
+    {undated.length > 0 && <section aria-labelledby="undated-projects-title" className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1"><h2 id="undated-projects-title" className="flex items-center gap-2 text-sm font-semibold">Without dates<Badge variant="secondary">{undated.length}</Badge></h2>
+        <p className="text-sm text-muted-foreground">Projects without a start or target date. Their work is still available.</p>
+      </div>
+      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {undated.map((project) => <li key={project.id} className="min-w-0"><Card size="sm" className="h-full gap-3">
+          <CardHeader className="min-w-0">
+            <CardTitle className="min-w-0 pr-1"><Link className="break-words underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" to={`/projects/${project.key}`}>{project.name}</Link></CardTitle>
+            <CardDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium">{project.key}</span><span className="break-words">Lead: {project.lead_name ?? "Not assigned"}</span></CardDescription>
+            <CardAction><FolderKanban className="size-4 text-muted-foreground" aria-hidden="true" /></CardAction>
+          </CardHeader>
+          <CardContent className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+            <span className="text-xs text-muted-foreground">{project.issue_count ? `${project.done_count} of ${project.issue_count} issues done` : "No issues yet"}</span>
+            <Button role="link" variant="ghost" size="sm" nativeButton={false} render={<Link to={`/projects/${project.key}`} />} aria-label={`Open project ${project.name}`}>
+              Open project<ArrowRight data-icon="inline-end" aria-hidden="true" />
+            </Button>
+          </CardContent>
+        </Card></li>)}
+      </ul>
+    </section>}
   </div>;
 }

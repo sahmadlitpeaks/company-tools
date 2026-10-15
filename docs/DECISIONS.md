@@ -4,6 +4,14 @@ Open a project and choose **Decisions**. Use this register for significant
 business, product, technical or operational choices. Existing Epics, Stories,
 Tasks, Bugs and Sub-tasks remain the requirements and execution records.
 
+The register uses a desktop table and cards on narrower screens. Draft forms
+keep their title and Save/Cancel actions visible while the fields scroll;
+linked issues can be searched without clearing earlier selections. The detail
+panel keeps its title and Close action visible, separates the approved version
+from a later proposal, and places replacement/archive under **More actions**.
+When viewing an older version, return to the current content before changing
+the decision or acting on the latest proposal.
+
 ## Record and approve a decision
 
 1. A project member or administrator creates a draft with title, category,
@@ -91,8 +99,9 @@ an issue is deleted; submitted historical issue details remain in snapshots.
 - `PM_TEST_DATABASE_URL` enables `tests/test_pm_decisions_postgres.py`: guarded
   local `pm_regression_test` database only; unique temporary schemas test the
   upgrade/downgrade/re-upgrade and concurrent numbering/submission/approval.
-- `frontend/e2e/decisions.spec.ts` covers desktop/Pixel 5 UI, accessibility,
-  filters, forms, role-specific actions, old versions, errors and navigation.
+- `frontend/e2e/decisions.spec.ts` covers desktop/Pixel 5 and tablet UI,
+  accessibility, filters, forms, role-specific actions, old-version actions,
+  errors and navigation.
 - Opt-in `frontend/e2e/decisions-live.spec.ts` uses a migrated disposable local
   stack with real cookie sessions and PostgreSQL. Set `PM_STACK_E2E=1`,
   `PLAYWRIGHT_BASE_URL`, `E2E_EMAIL`, and `E2E_PASSWORD`. It creates synthetic

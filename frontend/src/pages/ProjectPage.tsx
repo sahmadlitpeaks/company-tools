@@ -133,10 +133,10 @@ export default function ProjectPage() {
       headingLevel={1}
       title={current.name}
       subtitle={`${current.key} · Lead: ${current.lead_name ?? "Not set"}${current.target_date ? ` · Target ${dateLabel(current.target_date)}` : ""}`}
-      action={editable ? <Button onClick={() => { setCreateDefaults({}); setCreating(true); }} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
+      action={editable && tab !== "decisions" ? <Button onClick={() => { setCreateDefaults({}); setCreating(true); }} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
     />
     {current.status === "archived" && <Alert><AlertDescription>This project is archived. Its issues are read-only.</AlertDescription></Alert>}
-    {ready && !issues.data!.length && current.status === "active" && <Card>
+    {ready && !issues.data!.length && current.status === "active" && tab !== "decisions" && <Card>
       <CardHeader><CardTitle>Set up your project</CardTitle><CardDescription>Start with the team and a few issues, then choose the views that suit your work.</CardDescription></CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         {editable && <Button variant="outline" onClick={() => { setCreateDefaults({}); setCreating(true); }}>Create the first issue</Button>}
@@ -146,8 +146,8 @@ export default function ProjectPage() {
     </Card>}
     {mutation.error && <Alert variant="destructive" role="alert"><AlertDescription>{mutation.error}</AlertDescription></Alert>}
     <Tabs value={tab} onValueChange={setTab}>
-      <div className="sm:hidden"><FilterSelect id="pm-project-view" label="Project view" value={tab} options={tabs} onChange={setTab} /></div>
-      <TabsList variant="line" aria-label="Project views" className="hidden h-auto w-full flex-wrap justify-start border-b border-border p-0 sm:flex [&>[data-slot=tabs-trigger]]:min-h-11 [&>[data-slot=tabs-trigger]]:flex-none [&>[data-slot=tabs-trigger]]:px-3 [&>[data-slot=tabs-trigger]]:text-sm">
+      <div className="xl:hidden"><FilterSelect id="pm-project-view" label="Project view" value={tab} options={tabs} onChange={setTab} /></div>
+      <TabsList variant="line" aria-label="Project views" className="hidden w-full justify-start border-b border-border p-0 group-data-horizontal/tabs:h-11 xl:flex [&>[data-slot=tabs-trigger]]:min-h-11 [&>[data-slot=tabs-trigger]]:flex-none [&>[data-slot=tabs-trigger]]:px-3 [&>[data-slot=tabs-trigger]]:text-sm">
         <TabsTrigger value="board">Boards & views</TabsTrigger>
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="timeline">Timeline</TabsTrigger>

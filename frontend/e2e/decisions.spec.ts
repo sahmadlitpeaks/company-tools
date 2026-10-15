@@ -72,6 +72,7 @@ test("decision register is accessible on desktop and mobile with persistent filt
   await decisions(page);
   await page.goto("/projects/LIMS?tab=decisions");
   await expect(page.getByRole("heading", { name: "Decisions", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create issue", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Finance approval threshold/ }).filter({ visible: true })).toHaveCount(1);
   await page.getByLabel("Search decisions or linked issue key").fill("LIMS-DEC-1");
   await expect(page).toHaveURL(/d_q=LIMS-DEC-1/);
@@ -92,11 +93,43 @@ test("decision register is accessible on desktop and mobile with persistent filt
   await page.screenshot({ path: `test-results/decisions-register-${page.viewportSize()!.width}.png`, fullPage: true });
 });
 
+test("tablet navigation stays clear of decision content and form actions", async ({ page }) => {
+  await decisions(page);
+  for (const width of [768, 1024]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await page.goto("/projects/LIMS?tab=decisions");
+    const views = page.getByRole("combobox", { name: "Project view", exact: true });
+    await expect(views).toContainText("Decisions");
+    await expect(page.getByRole("tablist", { name: "Project views", exact: true })).toBeHidden();
+    await views.click();
+    await page.getByRole("option", { name: "People", exact: true }).click();
+    await expect(page).toHaveURL(/tab=people/);
+    await views.click();
+    await page.getByRole("option", { name: "Decisions", exact: true }).click();
+    const heading = page.getByRole("heading", { name: "Decisions", exact: true });
+    await expect(heading).toBeVisible();
+    const control = await views.boundingBox();
+    const content = await heading.boundingBox();
+    expect(control!.y + control!.height).toBeLessThan(content!.y);
+    await expect(page.getByRole("navigation", { name: "breadcrumb", exact: true })).toHaveJSProperty("clientHeight", 16);
+    await page.getByRole("button", { name: "Create decision", exact: true }).click();
+    const form = page.getByRole("dialog", { name: "Create decision", exact: true });
+    await form.getByLabel("Find issues", { exact: true }).scrollIntoViewIfNeeded();
+    await expect(form.getByRole("heading", { name: "Create decision", exact: true })).toBeInViewport();
+    await expect(form.getByRole("button", { name: "Save draft", exact: true })).toBeInViewport();
+    await form.getByRole("button", { name: "Cancel", exact: true }).click();
+    await noOverflow(page);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: `test-results/decisions-tablet-${width}.png`, fullPage: true });
+  }
+});
+
 test("create draft with evidence and issue links then submit an exact version", async ({ page }) => {
   const requests = await decisions(page);
   await page.goto("/projects/LIMS?tab=decisions");
   await page.getByRole("button", { name: "Create decision", exact: true }).click();
   const form = page.getByRole("dialog", { name: "Create decision", exact: true });
+  await expect(form.getByRole("button", { name: "Save draft", exact: true })).toBeInViewport();
   await form.getByLabel("Title", { exact: true }).fill("Approval for large purchases");
   await form.getByLabel("Context / problem").fill("Control spending");
   await form.getByLabel("Chosen approach").fill("Finance reviews purchases over 5000");
@@ -104,9 +137,15 @@ test("create draft with evidence and issue links then submit an exact version", 
   await form.getByRole("combobox", { name: "Approver", exact: true }).click();
   await page.getByRole("option", { name: "Dr T", exact: true }).click();
   await form.getByRole("checkbox", { name: /LIMS-2/ }).check();
+  await form.getByLabel("Find issues", { exact: true }).fill("does not match");
+  await expect(form.getByText("No matching issues. Try another key or title.", { exact: true })).toBeVisible();
+  await form.getByLabel("Find issues", { exact: true }).fill("");
+  await expect(form.getByRole("checkbox", { name: /LIMS-2/ })).toBeChecked();
   await form.getByRole("button", { name: "Add reference" }).click();
   await form.getByLabel("Reference 1 description").fill("Signed meeting notes");
   await form.getByLabel("Reference 1 URL").fill("https://example.test/notes");
+  await expect(form.getByRole("heading", { name: "Create decision", exact: true })).toBeInViewport();
+  await expect(form.getByRole("button", { name: "Save draft", exact: true })).toBeInViewport();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await noOverflow(page);
   await form.getByRole("button", { name: "Save draft", exact: true }).click();
@@ -141,7 +180,7 @@ for (const outcome of ["Approve", "Reject"] as const) test(`assigned project vie
   await noOverflow(page);
 });
 
-test("approved revision stays readable when a new draft is proposed", async ({ page }) => {
+test("approved revision stays readable and actions follow the viewed version", async ({ page }) => {
   await decisions(page, "admin", "approved");
   await page.goto("/projects/LIMS?tab=decisions&decision=d1");
   const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
@@ -157,9 +196,24 @@ test("approved revision stays readable when a new draft is proposed", async ({ p
   await detail.getByRole("button", { name: "View approved version" }).click();
   await expect(detail.getByText("Finance approves above 5000", { exact: true })).toBeVisible();
   await expect(detail.getByText("Finance approves above 10000", { exact: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Edit draft", exact: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Submit for approval", exact: true })).toHaveCount(0);
   await expect(detail.getByRole("link", { name: "Meeting notes" })).toBeVisible();
+  await detail.getByRole("heading", { name: "Decision and approval history", exact: true }).scrollIntoViewIfNeeded();
+  await expect(detail.getByRole("heading", { name: "Finance approval threshold", exact: true, level: 2 })).toBeInViewport();
+  await expect(detail.getByRole("button", { name: "Close", exact: true })).toBeInViewport();
   await noOverflow(page);
   await page.screenshot({ path: `test-results/decisions-approved-history-${page.viewportSize()!.width}.png`, fullPage: true });
+  await detail.getByRole("button", { name: "View current draft", exact: true }).click();
+  await expect(detail.getByText("Finance approves above 10000", { exact: true })).toBeVisible();
+  await detail.getByRole("button", { name: "Submit for approval", exact: true }).click();
+  const submit = page.getByRole("dialog", { name: "Submit for approval", exact: true });
+  await submit.getByLabel("Summary of this submission").fill("Raise the threshold");
+  await submit.getByRole("button", { name: "Submit for approval", exact: true }).click();
+  await detail.getByRole("button", { name: "View approved version", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Withdraw submission", exact: true })).toHaveCount(0);
+  await detail.getByRole("button", { name: "View current content", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "Withdraw submission", exact: true })).toBeVisible();
 });
 
 test("issue and decision links navigate in both directions", async ({ page }) => {
@@ -177,7 +231,8 @@ test("replace an approved decision and archive it while retaining its history", 
   const requests = await decisions(page, "admin", "approved");
   await page.goto("/projects/LIMS?tab=decisions&decision=d1");
   const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
-  await detail.getByRole("button", { name: "Replace decision", exact: true }).click();
+  await detail.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Replace decision", exact: true }).click();
   const replace = page.getByRole("dialog", { name: "Replace decision", exact: true });
   await replace.getByRole("combobox", { name: "Approved replacement", exact: true }).click();
   await page.getByRole("option", { name: "LIMS-DEC-2 · Updated finance policy", exact: true }).click();
@@ -186,7 +241,8 @@ test("replace an approved decision and archive it while retaining its history", 
   await expect(detail.getByText("Superseded", { exact: true })).toBeVisible();
   await expect(detail.getByRole("link", { name: "Replaced by LIMS-DEC-2 · Updated finance policy", exact: true })).toBeVisible();
   expect(requests[0].body).toMatchObject({ version: 2, replacement_id: "d2" });
-  await detail.getByRole("button", { name: "Archive decision", exact: true }).click();
+  await detail.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive decision", exact: true }).click();
   const archive = page.getByRole("dialog", { name: "Archive decision", exact: true });
   await archive.getByLabel("Reason", { exact: true }).fill("Retain the original agreement for reference.");
   await archive.getByRole("button", { name: "Archive decision", exact: true }).click();
@@ -195,6 +251,20 @@ test("replace an approved decision and archive it while retaining its history", 
   await detail.getByRole("button", { name: "View approved version", exact: true }).click();
   await expect(detail.getByText("Finance approves above 5000", { exact: true })).toBeVisible();
   await noOverflow(page);
+});
+
+test("draft save errors stay visible and preserve the entered changes", async ({ page }) => {
+  await decisions(page, "admin", "draft", "stale");
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1");
+  await page.getByRole("button", { name: "Edit draft", exact: true }).click();
+  const form = page.getByRole("dialog", { name: "Edit LIMS-DEC-1", exact: true });
+  await form.getByLabel("Title", { exact: true }).fill("Revised finance threshold");
+  await form.getByLabel("Find issues", { exact: true }).fill("LIMS-2");
+  await form.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(form.getByRole("alert")).toContainText("This decision changed. Reload it before trying again.");
+  await expect(form.getByRole("alert")).toBeInViewport();
+  await expect(form.getByLabel("Title", { exact: true })).toHaveValue("Revised finance threshold");
+  await expect(form.getByRole("button", { name: "Save draft", exact: true })).toBeInViewport();
 });
 
 test("stale submission keeps the error actionable", async ({ page }) => {
