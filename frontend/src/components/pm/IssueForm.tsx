@@ -19,13 +19,14 @@ import { useWorkspace } from "./WorkspaceContext";
 const NONE = "none";
 
 /** Create or edit an issue. Field rules mirror the API (see backend/app/api/pm.py). */
-export function IssueForm({ project, members, issues, sprints = [], issue, defaults, onClose, onSaved }: {
+export function IssueForm({ project, members, issues, sprints = [], issue, defaults, requirement, onClose, onSaved }: {
   project: PmProject;
   members: PmMember[];
   issues: PmIssue[];
   /** Open (active and future) sprints. */
   sprints?: PmSprint[];
   issue?: PmIssue;
+  requirement?: { id: string; key: string; title: string };
   defaults?: { issue_type?: IssueType; parent_id?: string; sprint_id?: string; workflow_state?: string };
   onClose: () => void;
   onSaved: (saved: PmIssue) => void;
@@ -83,6 +84,7 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
       ...(form.reporter_id !== NONE ? { reporter_id: form.reporter_id } : {}),
       start_date: form.start_date || null,
       due_date: form.due_date || null,
+      ...(!issue && requirement ? { requirement_id: requirement.id } : {}),
     };
     setState({ busy: true, error: "" });
     try {
@@ -100,7 +102,7 @@ export function IssueForm({ project, members, issues, sprints = [], issue, defau
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{project.key} · {project.name}</DialogDescription>
+        <DialogDescription>{requirement ? `Linked automatically to ${requirement.key} · ${requirement.title}` : `${project.key} · ${project.name}`}</DialogDescription>
       </DialogHeader>
       <form id="pm-issue-form" onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
         {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}

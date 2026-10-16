@@ -110,8 +110,8 @@ test("archived project return preserves status and invalid mobile view falls bac
   const mutations = await mount(page, "viewer", { archived: true });
   await page.goto("/projects/LIMS?tab=settings");
   await expect(page.getByText("This project is archived. Its issues are read-only.", { exact: true })).toBeVisible();
-  if (page.viewportSize()!.width < 1280) await expect(page.getByRole("combobox", { name: "Project view", exact: true })).toContainText("Boards & views");
-  else await expect(page.getByRole("tab", { name: "Boards & views", exact: true })).toHaveAttribute("aria-selected", "true");
+  if (page.viewportSize()!.width < 1280) await expect(page.getByRole("combobox", { name: "Project view", exact: true })).toContainText("Requirements");
+  else await expect(page.getByRole("tab", { name: "Requirements", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("link", { name: "Back to projects", exact: true }).click();
   await expect(page).toHaveURL(/status=archived/);
   expect(mutations).toEqual([]);

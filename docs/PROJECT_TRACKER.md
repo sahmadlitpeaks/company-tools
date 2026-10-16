@@ -2,7 +2,9 @@
 
 A Jira-style tracker for development projects, under **My Work → Projects**
 (`/projects`). It combines Jira's issue hierarchy and reporting categories
-with configurable workflows, boards and personal views.
+with configurable workflows, boards and personal views. Start requests in
+[Requirements](REQUIREMENTS.md), the default project view, and link their
+implementation tasks and supporting decisions.
 
 The overview separates **Projects** from **All issues** with navigation tabs.
 Within Projects, **Project status** filters Active/Archived and **Project layout**
@@ -20,7 +22,7 @@ tabs on wide desktop screens and a labeled view selector on phones and tablets.
 
 ```
 Project (key LIMS)
- └─ Epic        LIMS-1   a requirement or module
+ └─ Epic        LIMS-1   an implementation group or module
      ├─ Story   LIMS-2
      │   └─ Sub-task LIMS-5
      ├─ Task    LIMS-3
@@ -451,8 +453,9 @@ issue links, and explicit approval of a submitted version. See
   and release-note generation/export are follow-up work. **Keep the existing
   release-note sheets until that workflow is implemented and accepted.** This
   tracker currently replaces issue planning, not the release-note process.
-- Separate requirements baselines are not implemented; issue descriptions
-  support requirements and acceptance-criteria text. Decision approval records
+- Requirements now have structured briefs, attachments, task links and decision
+  links; see [Requirements](REQUIREMENTS.md). Formal signed requirement baselines
+  are outside this workflow. Decision approval records
   the decision's submitted snapshot, including linked issue summaries at that
   time; it does not freeze the entire linked issue or approve its later edits.
 - Dedicated project-specific Microsoft Teams routing (generic notification

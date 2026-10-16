@@ -16,11 +16,12 @@ from app.models.pm import PmIssue, PmProject, PmProjectMember
 from app.models.pm_decision import PmDecision, PmDecisionEvent, PmDecisionIssueLink, PmDecisionRevision
 from app.models.user import User
 from app.schemas.pm_decision import (
-    ApprovalInput, Category, DecisionContent, DecisionUpdate, IssueLinkInput, ReasonInput, Status, SubmitInput, SupersedeInput,
+    ApprovalInput, Category, DecisionContent, DecisionCreate, DecisionUpdate, IssueLinkInput, ReasonInput, Status, SubmitInput, SupersedeInput,
 )
 from app.services.notify import notify_user
 from app.services.people import user_names
 from app.services.pm_access import ensure_writable, project_role, require_project, role_at_least
+from app.services.pm_requirements import link_requirement, writable_requirement
 
 router = APIRouter(prefix="/pm", tags=["project decisions"])
 CONTENT_FIELDS = ("title", "category", "context", "approach", "rationale", "alternatives", "owner_id", "approver_id", "effective_date")
@@ -211,10 +212,12 @@ async def list_decisions(project_id: uuid.UUID, q: str = Query("", max_length=25
 
 
 @router.post("/projects/{project_id}/decisions", status_code=201)
-async def create_decision(project_id: uuid.UUID, payload: DecisionContent, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def create_decision(project_id: uuid.UUID, payload: DecisionCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     project, role = await require_project(db, user, project_id, "member", for_update=True)
     ensure_writable(project)
     await _validate_content(db, user, project, payload)
+    requirement_id = getattr(payload, "requirement_id", None)
+    requirement = await writable_requirement(db, requirement_id, project.id) if requirement_id else None
     project.decision_seq += 1
     row = PmDecision(project_id=project.id, number=project.decision_seq, proposed_by_id=user.id,
                      **{field: getattr(payload, field) for field in CONTENT_FIELDS})
@@ -222,6 +225,8 @@ async def create_decision(project_id: uuid.UUID, payload: DecisionContent, db: A
     await db.flush()
     await _apply_content(db, row, payload, user)
     _event(db, row, user, "created")
+    if requirement:
+        await link_requirement(db, requirement, row, "decision", user)
     await db.commit()
     await db.refresh(row)
     return await _out(db, row, project, role, user, detail=True)

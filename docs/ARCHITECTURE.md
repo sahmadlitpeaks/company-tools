@@ -342,6 +342,18 @@ meet this contract. Decision notifications use `notify_user(in_app_only=True)`
 so restricted project content never reaches configured shared outbound channels.
 See [Decisions](DECISIONS.md) for lifecycle and release scope.
 
+## Requirements and traceability
+
+Requirements are first-class project briefs in `pm_requirements`, separate from
+epic/task hierarchy. The global `/requirements` register and default project
+view lead to the brief, files, work, decisions and history. Many-to-many link
+tables connect existing issues and decisions without copying their content.
+Task/decision creation with a requirement context and its link are atomic.
+Requirement writes share the project-first lock order, enforce project roles
+and archive state, and reject stale content versions. Append-only events retain
+original briefs, edits and traceability changes. Generic `pm_requirement`
+attachments enforce the same project boundaries. See [Requirements](REQUIREMENTS.md).
+
 ## Current Extension Points
 
 - Object-storage backend (S3/Azure Blob) for uploads.

@@ -17,6 +17,7 @@ const ProductsPage = lazy(() => import("./pages/ProductsPage"));
 const SharedPage = lazy(() => import("./pages/SharedPage"));
 const TasksPage = lazy(() => import("./pages/TasksPage"));
 const ProjectsPage = lazy(() => import("./pages/ProjectsPage"));
+const RequirementsPage = lazy(() => import("./pages/RequirementsPage"));
 const ProjectPage = lazy(() => import("./pages/ProjectPage"));
 const AiAccessPage = lazy(() => import("./pages/AiAccessPage"));
 const RoutineChecksPage = lazy(() => import("./pages/RoutineChecksPage"));
@@ -190,6 +191,7 @@ export default function App() {
             element={<Protected module="tasks"><TasksPage /></Protected>}
           />
           <Route path="/projects" element={<Protected module="projects"><ProjectsPage /></Protected>} />
+          <Route path="/requirements" element={<Protected module="projects"><RequirementsPage /></Protected>} />
           <Route path="/projects/:projectKey" element={<Protected module="projects"><ProjectPage /></Protected>} />
           <Route path="/ai-access" element={<Protected module="projects"><AiAccessPage /></Protected>} />
           <Route

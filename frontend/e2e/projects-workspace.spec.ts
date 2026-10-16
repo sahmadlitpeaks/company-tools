@@ -44,7 +44,7 @@ test("new workflow states remain separate when an older board uses their column 
       ...["in_progress", "in_review", "done"].map((key) => ({ key, name: key, states: [key], limit: null })),
     ] },
   }] }));
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await expect(page.getByRole("region", { name: "Ready column", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "QA testing column", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Create issue in QA testing", exact: true }).click();
@@ -54,7 +54,7 @@ test("new workflow states remain separate when an older board uses their column 
 
 test("create a configured Kanban board, persist it and remove only the view", async ({ page }) => {
   const requests = await mount(page, "admin", { workspace: true });
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await page.getByRole("button", { name: "Create board", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Name", exact: true }).fill("QA delivery");
@@ -86,7 +86,7 @@ test("create a configured Kanban board, persist it and remove only the view", as
 
 test("quick creation keeps state and sprint and applies a template and custom values", async ({ page }) => {
   const requests = await mount(page, "admin", { workspace: true });
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await page.getByRole("button", { name: "Create issue in QA testing", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("combobox", { name: "Status" })).toContainText("QA testing");
@@ -108,7 +108,7 @@ test("quick creation keeps state and sprint and applies a template and custom va
 
 test("workflow configuration adds a named state and persists after reload", async ({ page }) => {
   const requests = await mount(page, "admin", { workspace: true });
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Settings");
   await page.getByRole("button", { name: "Add workflow state" }).click();
   const section = page.getByRole("region", { name: "New workflow state" });
@@ -202,7 +202,7 @@ test("configuration errors block editing and Retry reloads the configuration", a
 
 test("viewer duplication defaults to private and mentions are explicit", async ({ page }) => {
   const requests = await mount(page, "viewer", { workspace: true });
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await expect(page.getByRole("button", { name: "Create board" })).toHaveCount(0);
   await page.getByRole("button", { name: "View actions" }).click();
   await expect(page.getByRole("menuitem", { name: "Configure view" })).toHaveCount(0);

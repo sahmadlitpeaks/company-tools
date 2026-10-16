@@ -1,8 +1,10 @@
 # Project decisions
 
 Open a project and choose **Decisions**. Use this register for significant
-business, product, technical or operational choices. Existing Epics, Stories,
-Tasks, Bugs and Sub-tasks remain the requirements and execution records.
+business, product, technical or operational choices. Start new requests in
+[Requirements](REQUIREMENTS.md); create tasks from the requirement and record
+decisions there when a supporting choice needs explanation. Epics, Stories,
+Tasks, Bugs and Sub-tasks remain implementation records.
 
 The register uses a desktop table and cards on narrower screens. Draft forms
 keep their title and Save/Cancel actions visible while the fields scroll;

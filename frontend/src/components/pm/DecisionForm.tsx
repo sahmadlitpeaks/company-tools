@@ -13,15 +13,15 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-type Props = { project: PmProject; members: PmMember[]; issues: PmIssue[]; decision?: DecisionDetailData; onClose: () => void; onSaved: (row: DecisionDetailData) => void };
-export function DecisionForm({ project, members, issues, decision, onClose, onSaved }: Props) {
+type Props = { project: PmProject; members: PmMember[]; issues: PmIssue[]; decision?: DecisionDetailData; requirement?: { id: string; key: string }; initialIssueIds?: string[]; onClose: () => void; onSaved: (row: DecisionDetailData) => void };
+export function DecisionForm({ project, members, issues, decision, requirement, initialIssueIds, onClose, onSaved }: Props) {
   const { user } = useAuth();
   const [form, setForm] = useState(() => ({
     title: decision?.title ?? "", category: decision?.category ?? "business", context: decision?.context ?? "",
     approach: decision?.approach ?? "", rationale: decision?.rationale ?? "", alternatives: decision?.alternatives ?? "",
     owner_id: decision?.owner_id ?? (members.some((m) => m.user_id === user?.id && m.role !== "viewer") ? user!.id : ""),
     approver_id: decision?.approver_id ?? "", effective_date: decision?.effective_date ?? "",
-    issue_ids: decision?.issues.map((i) => i.id) ?? [],
+    issue_ids: decision?.issues.map((i) => i.id) ?? initialIssueIds ?? [],
     evidence: (decision?.evidence ?? []).map(({ type, label, url }) => ({ type, label, url, localId: crypto.randomUUID() })),
   }));
   const [state, setState] = useState({ busy: false, error: "" });
@@ -34,7 +34,7 @@ export function DecisionForm({ project, members, issues, decision, onClose, onSa
     setState({ busy: true, error: "" });
     try {
       const body = { ...form, approver_id: form.approver_id || null, effective_date: form.effective_date || null,
-        evidence: form.evidence.map(({ type, label, url }) => ({ type, label, url })), ...(decision ? { version: decision.version } : {}) };
+        evidence: form.evidence.map(({ type, label, url }) => ({ type, label, url })), ...(decision ? { version: decision.version } : requirement ? { requirement_id: requirement.id } : {}) };
       const saved = await api<DecisionDetailData>(decision ? `/api/pm/decisions/${decision.id}` : `/api/pm/projects/${project.id}/decisions`,
         { method: decision ? "PATCH" : "POST", body });
       onSaved(saved);
@@ -46,7 +46,7 @@ export function DecisionForm({ project, members, issues, decision, onClose, onSa
   return <Dialog open onOpenChange={(open) => !open && !state.busy && onClose()}>
     <DialogContent className="flex max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
       <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12 sm:px-6 sm:pr-12"><DialogTitle className="text-base">{decision ? `Edit ${decision.key}` : "Create decision"}</DialogTitle>
-        <DialogDescription>Record what is proposed and why. Saving a draft does not request approval.</DialogDescription></DialogHeader>
+        <DialogDescription>{requirement ? `Linked automatically to ${requirement.key}. ` : ""}Record what is proposed and why. Saving a draft does not request approval.</DialogDescription></DialogHeader>
       {state.error && <Alert variant="destructive" role="alert" className="m-4 w-auto shrink-0 sm:mx-6"><AlertDescription>{state.error} Your changes have not been saved.</AlertDescription></Alert>}
       <form onSubmit={(event) => void save(event)} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6"><FieldGroup className="gap-6">
@@ -69,7 +69,7 @@ export function DecisionForm({ project, members, issues, decision, onClose, onSa
           <Field className="sm:max-w-xs"><FieldLabel htmlFor="decision-effective">Effective date (optional)</FieldLabel><Input id="decision-effective" type="date" value={form.effective_date} onChange={(e) => set("effective_date", e.target.value)} /></Field>
         </FieldGroup></FieldSet>
         <FieldSet><FieldLegend>Linked issues <span className="font-normal text-muted-foreground">· {form.issue_ids.length} selected</span></FieldLegend>
-          <FieldDescription>Link up to 100 requirements and implementation issues already in this project.</FieldDescription>
+          <FieldDescription>Link up to 100 implementation issues already in this project.</FieldDescription>
           {issues.length ? <>
             <Field><FieldLabel htmlFor="decision-issue-search">Find issues</FieldLabel><Input id="decision-issue-search" type="search" placeholder="Search by issue key or title" value={issueQuery} onChange={(event) => setIssueQuery(event.target.value)} /></Field>
             <div className="max-h-48 overflow-y-auto border border-border p-3">

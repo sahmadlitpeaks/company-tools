@@ -65,7 +65,7 @@ test("reopening through the full Edit payload returns closed-sprint work to the 
 
 test("members create issues under an epic with Jira fields", async ({ page }) => {
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await page.getByRole("button", { name: "Create issue", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Create issue", exact: true });
   await dialog.getByRole("combobox", { name: "Issue type" }).click();
@@ -78,7 +78,7 @@ test("members create issues under an epic with Jira fields", async ({ page }) =>
   await dialog.getByRole("combobox", { name: "Assignee" }).click();
   await page.getByRole("option", { name: "Ali Dev" }).click();
   await dialog.getByRole("button", { name: "Create" }).click();
-  await expect(page).toHaveURL(/\?issue=LIMS-4$/);
+  await expect(page).toHaveURL(/[?&]issue=LIMS-4$/);
   const post = requests.find((r) => r.method === "POST");
   expect(post?.body).toMatchObject({
     issue_type: "story", summary: "Export reports to PDF", parent_id: "e1", story_points: 3,
@@ -107,7 +107,7 @@ test("viewers read and comment but cannot change issues", async ({ page }) => {
 
 test("the board shows the active sprint and moves issues with the keyboard", async ({ page }) => {
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await expect(page.getByText("Goal: Ship upload")).toBeVisible();
   const todo = page.getByRole("region", { name: "To Do column" });
   await expect(todo.getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
@@ -131,7 +131,7 @@ test("the board shows the active sprint and moves issues with the keyboard", asy
 
 test("the backlog plans issues into sprints and completes the active sprint", async ({ page }) => {
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Backlog");
   const backlog = page.getByRole("region", { name: "Backlog", exact: true });
   await expect(backlog.getByRole("link", { name: "Set up storage bucket" })).toBeVisible();
@@ -157,7 +157,7 @@ test("the backlog plans issues into sprints and completes the active sprint", as
 
 test("viewers see the board and backlog without planning controls", async ({ page }) => {
   await mount(page, "viewer");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await expect(page.getByRole("region", { name: "To Do column" }).getByRole("link", { name: "Analyse uploaded PDFs" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Move issue:/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Complete sprint" })).toHaveCount(0);
@@ -170,7 +170,7 @@ test("viewers see the board and backlog without planning controls", async ({ pag
 
 test("the timeline shows epics, issues and dependencies and reschedules by keyboard", async ({ page }) => {
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Timeline");
   // The epic has no dates of its own, so it spans its issues.
   await expect(page.getByRole("button", { name: /^LIMS-1 AI file analysis: 6 Oct to 16 Oct 2026, In Progress, 50% done, dates from its issues/ })).toBeVisible();
@@ -191,7 +191,7 @@ test("the timeline shows epics, issues and dependencies and reschedules by keybo
 
 test("reports show burndown, velocity and workload and activity heat maps", async ({ page }) => {
   await mount(page, "viewer");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Reports");
   await expect(page.getByRole("img", { name: "Burndown: 8 points in scope, 5 remaining" })).toBeVisible();
   await expect(page.getByRole("img", { name: /^Velocity over 1 sprints, average 10 points/ })).toBeVisible();
@@ -219,7 +219,7 @@ test("the projects page shows health and a cross-project timeline", async ({ pag
 
 test("project admins preview a Jira export, adjust mappings and import it", async ({ page }) => {
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Settings");
   await page.getByLabel("Jira CSV export").setInputFiles({ name: "jira.csv", mimeType: "text/csv", buffer: Buffer.from("Summary,Issue key,Issue Type\nA,OLD-1,Story\n") });
   await page.getByRole("button", { name: "Preview", exact: true }).click();
@@ -242,7 +242,7 @@ test("project admins preview a Jira export, adjust mappings and import it", asyn
 test("project admins create, copy and revoke read-only share links", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const requests = await mount(page, "admin");
-  await page.goto("/projects/LIMS");
+  await page.goto("/projects/LIMS?tab=board");
   await selectProjectTab(page, "Settings");
   const card = page.locator('[data-slot="card"]', { has: page.getByText("Share links", { exact: true }) });
   await expect(card.getByText("For Dr T")).toBeVisible();
