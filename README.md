@@ -211,6 +211,7 @@ refused.
 - [Architecture and API map](docs/ARCHITECTURE.md)
 - [Frontend components and AI usage](docs/FRONTEND_COMPONENTS.md)
 - [Performance audit and reproducible benchmarks](docs/PERFORMANCE.md)
+- [Requirements workflow](docs/REQUIREMENTS.md)
 - [Project tracker](docs/PROJECT_TRACKER.md)
 - [Backup recovery](docs/backup-recovery.md)
 - [HR roadmap](docs/HR_ROADMAP.md)

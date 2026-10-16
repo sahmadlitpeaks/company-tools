@@ -28,6 +28,8 @@ import { IssueTypeIcon, pointsLabel, StatusBadge } from "./IssueBits";
 import { useWorkspace } from "./WorkspaceContext";
 import { MarkdownContent, MarkdownField } from "./MarkdownField";
 import { IssueDecisions } from "./IssueDecisions";
+import { LinkedRequirements } from "./LinkedRequirements";
+import { DecisionForm } from "./DecisionForm";
 
 type Props = {
   issueKey: string;
@@ -46,7 +48,8 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
   const config = useWorkspace();
   const [, setParams] = useSearchParams();
   const detail = useFetch<PmIssueDetail>(`/api/pm/issues/${issueKey}`, true);
-  const [mode, setMode] = useState<null | "edit" | "child" | "delete">(null);
+  const [mode, setMode] = useState<null | "edit" | "child" | "delete" | "decision">(null);
+  const [decisionRefresh, setDecisionRefresh] = useState(0);
   const [state, setState] = useState({ busy: false, error: "" });
   const issue = detail.data;
   const writable = project.status !== "archived";
@@ -150,7 +153,9 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
             </section>}
 
             <IssueLinks issue={issue} issues={issues} projectKey={project.key} editable={editable} busy={state.busy} mutate={mutate} />
-            <IssueDecisions issueId={issue.id} projectKey={project.key} />
+            <LinkedRequirements kind="issues" id={issue.id} />
+            {editable && <Button className="self-start" variant="outline" onClick={() => setMode("decision")}><Plus data-icon="inline-start" />Record decision</Button>}
+            <IssueDecisions key={decisionRefresh} issueId={issue.id} projectKey={project.key} />
 
             <Attachments entityType="pm_issue" entityId={issue.id} readOnly={!editable} />
 
@@ -174,6 +179,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
 
     {editable && issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
     {editable && issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
+    {editable && issue && mode === "decision" && <DecisionForm project={project} members={members} issues={issues} initialIssueIds={[issue.id]} onClose={() => setMode(null)} onSaved={() => { setMode(null); setDecisionRefresh((value) => value + 1); onChanged(); }} />}
     <AlertDialog open={editable && mode === "delete"} onOpenChange={(open) => !open && !state.busy && setMode(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>

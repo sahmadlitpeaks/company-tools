@@ -35,6 +35,8 @@ import { WorkspaceSettings } from "@/components/pm/WorkspaceSettings";
 import { IssueExplorer } from "@/components/pm/IssueExplorer";
 import { DecisionRegister } from "@/components/pm/DecisionRegister";
 import { DecisionDetail } from "@/components/pm/DecisionDetail";
+import { RequirementRegister } from "@/components/pm/RequirementRegister";
+import { RequirementDetail } from "@/components/pm/RequirementDetail";
 import { FilterSelect } from "@/components/ListControls";
 
 
@@ -53,6 +55,7 @@ export default function ProjectPage() {
   const sprints = useFetch<PmSprint[]>(projectId && usesSprints ? `/api/pm/projects/${projectId}/sprints` : null);
   const [creating, setCreating] = useState(false);
   const [decisionRefresh, setDecisionRefresh] = useState(0);
+  const [requirementRefresh, setRequirementRefresh] = useState(0);
   const [createDefaults, setCreateDefaults] = useState<{ workflow_state?: string; sprint_id?: string }>({});
   const [sprintAction, setSprintAction] = useState<SprintAction | null>(null);
   const [mutation, setMutation] = useState<{ busy: string | null; error: string }>({ busy: null, error: "" });
@@ -64,6 +67,7 @@ export default function ProjectPage() {
     setParams(next, { replace: true });
   }
   function changed() {
+    setRequirementRefresh((value) => value + 1);
     void issues.refresh();
     void project.refresh();
     void workspace.refresh();
@@ -118,14 +122,14 @@ export default function ProjectPage() {
   const activeSprint = openSprints.find((sprint) => sprint.status === "active") ?? null;
   const ready = issues.data && workspace.data && members.data && (!usesSprints || sprints.data);
   const dataError = issues.error || workspace.error || members.error || (usesSprints && sprints.error);
-  const requestedTab = params.get("tab") ?? "board";
+  const requestedTab = params.get("tab") ?? "requirements";
   function setTab(value: string) {
     setParams((old) => { const next = new URLSearchParams(old); next.set("tab", value); return next; });
   }
-  const tabs = [{ value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
+  const tabs = [{ value: "requirements", label: "Requirements" }, { value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
     { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "decisions", label: "Decisions" }, { value: "reports", label: "Reports" },
     { value: "people", label: "People" }, ...(current.my_role === "admin" ? [{ value: "settings", label: "Settings" }] : [])];
-  const tab = tabs.some((item) => item.value === requestedTab) ? requestedTab : "board";
+  const tab = tabs.some((item) => item.value === requestedTab) ? requestedTab : "requirements";
 
   return <WorkspaceContext value={workspace.data ?? DEFAULT_CONFIG}><div className="flex flex-col gap-5">
     <Button role="link" variant="ghost" className="self-start" nativeButton={false} render={<Link to={`/projects${current.status === "archived" ? "?status=archived" : ""}`} />}><ArrowLeft data-icon="inline-start" aria-hidden="true" />Back to projects</Button>
@@ -133,10 +137,10 @@ export default function ProjectPage() {
       headingLevel={1}
       title={current.name}
       subtitle={`${current.key} · Lead: ${current.lead_name ?? "Not set"}${current.target_date ? ` · Target ${dateLabel(current.target_date)}` : ""}`}
-      action={editable && tab !== "decisions" ? <Button onClick={() => { setCreateDefaults({}); setCreating(true); }} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
+      action={editable && tab !== "decisions" && tab !== "requirements" ? <Button onClick={() => { setCreateDefaults({}); setCreating(true); }} disabled={!members.data || !issues.data}><Plus data-icon="inline-start" />Create issue</Button> : undefined}
     />
     {current.status === "archived" && <Alert><AlertDescription>This project is archived. Its issues are read-only.</AlertDescription></Alert>}
-    {ready && !issues.data!.length && current.status === "active" && tab !== "decisions" && <Card>
+    {ready && !issues.data!.length && current.status === "active" && tab !== "decisions" && tab !== "requirements" && <Card>
       <CardHeader><CardTitle>Set up your project</CardTitle><CardDescription>Start with the team and a few issues, then choose the views that suit your work.</CardDescription></CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         {editable && <Button variant="outline" onClick={() => { setCreateDefaults({}); setCreating(true); }}>Create the first issue</Button>}
@@ -148,6 +152,7 @@ export default function ProjectPage() {
     <Tabs value={tab} onValueChange={setTab}>
       <div className="xl:hidden"><FilterSelect id="pm-project-view" label="Project view" value={tab} options={tabs} onChange={setTab} /></div>
       <TabsList variant="line" aria-label="Project views" className="hidden w-full justify-start border-b border-border p-0 group-data-horizontal/tabs:h-11 xl:flex [&>[data-slot=tabs-trigger]]:min-h-11 [&>[data-slot=tabs-trigger]]:flex-none [&>[data-slot=tabs-trigger]]:px-3 [&>[data-slot=tabs-trigger]]:text-sm">
+        <TabsTrigger value="requirements">Requirements</TabsTrigger>
         <TabsTrigger value="board">Boards & views</TabsTrigger>
         {usesSprints && <TabsTrigger value="backlog">Backlog</TabsTrigger>}
         <TabsTrigger value="timeline">Timeline</TabsTrigger>
@@ -157,6 +162,7 @@ export default function ProjectPage() {
         <TabsTrigger value="people">People</TabsTrigger>
         {current.my_role === "admin" && <TabsTrigger value="settings">Settings</TabsTrigger>}
       </TabsList>
+      <TabsContent value="requirements" className="pt-4"><RequirementRegister project={current} refreshKey={requirementRefresh} /></TabsContent>
       <TabsContent value="board" className="pt-4">
         {dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> : !ready ? <Loading /> :
           <BoardWorkspace project={current} issues={issues.data!} members={members.data ?? []} sprints={openSprints} activeSprint={activeSprint}
@@ -207,6 +213,7 @@ export default function ProjectPage() {
       onClose={() => setCreating(false)}
       onSaved={(saved) => { setCreating(false); changed(); setParams((p) => { const next = new URLSearchParams(p); next.set("issue", saved.key); return next; }); }}
     />}
+    {params.get("requirement") && !params.get("decision") && !openKey && (dataError ? <ErrorState message={String(dataError)} onRetry={changed} /> : !ready ? <Loading /> : <RequirementDetail key={params.get("requirement")!} id={params.get("requirement")!} project={current} members={members.data!} issues={issues.data!} sprints={openSprints} onClose={() => setParams((old) => { const next = new URLSearchParams(old); next.delete("requirement"); return next; })} onChanged={changed} />)}
     {params.get("decision") && members.data && issues.data && <DecisionDetail key={`${params.get("decision")}:${params.get("decision_revision") ?? ""}`} id={params.get("decision")!} initialRevision={params.get("decision_revision") ?? ""} project={current} members={members.data} issues={issues.data}
       onClose={() => setParams((old) => { const next = new URLSearchParams(old); next.delete("decision"); next.delete("decision_revision"); return next; })} onChanged={() => { changed(); setDecisionRefresh((value) => value + 1); }} />}
     {openKey && !params.get("decision") && members.data && issues.data && <IssueDetail

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { waitForTransitions } from "./projects-fixtures";
 
 // Explicit opt-in: a migrated, disposable local PostgreSQL-backed stack only.
 test.skip(process.env.PM_STACK_E2E !== "1", "Requires disposable local Projects stack");
@@ -20,7 +21,7 @@ test("workspace persists through the real API, cookie session and PostgreSQL", a
   config.fields = [{ key: "customer", name: "Customer", kind: "text", required: true, options: [] }];
   config.templates = [{ key: "bug", name: "Bug report", issue_type: "bug", description: "## Acceptance\n\n- [ ] Confirm permissions", priority: "high" }];
   expect((await page.request.put(`/api/pm/projects/${project.id}/configuration`, { data: config })).status()).toBe(200);
-  await page.goto(`/projects/${key}`);
+  await page.goto(`/projects/${key}?tab=board`);
   await expect(page.getByRole("heading", { name: `${key} delivery`, level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create issue in QA testing", exact: true }).click();
   const form = page.getByRole("dialog", { name: "Create issue", exact: true });
@@ -64,7 +65,7 @@ test("workspace persists through the real API, cookie session and PostgreSQL", a
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.getByRole("button", { name: "Toggle dark mode" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.evaluate(async () => { await Promise.all(document.getAnimations().filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().iterations)).map((animation) => animation.finished.catch(() => {}))); });
+  await waitForTransitions(page);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/workspace-live-dark-${page.viewportSize()!.width}.png`, fullPage: true });

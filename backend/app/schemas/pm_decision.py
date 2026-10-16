@@ -43,6 +43,10 @@ class DecisionContent(StrictInput):
     evidence: list[EvidenceInput] = Field(default_factory=list, max_length=30)
 
 
+class DecisionCreate(DecisionContent):
+    requirement_id: uuid.UUID | None = None
+
+
 class DecisionUpdate(DecisionContent):
     version: int = Field(ge=1)
 

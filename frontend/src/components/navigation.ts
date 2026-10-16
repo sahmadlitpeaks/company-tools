@@ -106,6 +106,7 @@ export const NAV_GROUPS: NavGroup[] = [
     section: "My Work",
     items: [
       { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks", keywords: ["assignments", "to do"] },
+      { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", keywords: ["requests", "scope", "acceptance", "specifications"] },
       { to: "/projects", label: "Projects", icon: FolderKanban, module: "projects", keywords: ["jira", "epics", "stories", "issues", "bugs", "requirements", "backlog"] },
       { to: "/ai-access", label: "AI Access", icon: Bot, module: "projects", keywords: ["mcp", "chatgpt", "claude", "assistant", "token", "ai"] },
       { to: "/work-log", label: "Work Log", icon: ScrollText, module: "worklog", keywords: ["effort", "activity"] },

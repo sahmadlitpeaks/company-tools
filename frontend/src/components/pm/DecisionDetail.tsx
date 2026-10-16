@@ -18,6 +18,7 @@ import { useFetch } from "@/hooks/useApi";
 import { DecisionForm } from "./DecisionForm";
 import { DecisionStatus } from "./DecisionRegister";
 import { DecisionIssueList, DecisionLinks } from "./DecisionLinks";
+import { LinkedRequirements } from "./LinkedRequirements";
 
 const EVENT_LABELS: Record<string, string> = {
   created: "created the draft", draft_updated: "updated the draft", submitted: "submitted for approval",
@@ -78,6 +79,7 @@ export function DecisionDetail({ id, initialRevision = "", project, members, iss
           ]} onChange={setRevision} />}
           {viewedRevision && <p className="text-sm text-muted-foreground">Submitted by {viewedRevision.submitted_by_name} · {new Date(viewedRevision.created_at).toLocaleString()}<br />{viewedRevision.change_summary}</p>}
           <DecisionBody snapshot={snapshot} projectKey={project.key} submitted={Boolean(viewedRevision)} showTitle={Boolean(historical)} />
+          <LinkedRequirements kind="decisions" id={row.id} />
           <DecisionLinks row={row} issues={issues} projectKey={project.key} historical={viewingPrevious} onSaved={(savedRow) => { detail.setData(savedRow); onChanged(); }} />
           {row.related_decisions.length > 0 && <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Decision relationships</h3>{row.related_decisions.map((related) => <div key={related.id}>
             <Link to={`/projects/${project.key}?tab=decisions&decision=${related.id}${related.revision_number ? `&decision_revision=${related.revision_number}` : ""}`} className="break-words text-sm underline">{related.relationship === "replaced_by" ? "Replaced by" : "Replaces"} {related.key}{related.revision_number ? ` · approved revision ${related.revision_number}` : ""} · {related.title}</Link>

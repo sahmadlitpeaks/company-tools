@@ -53,7 +53,7 @@ def test_decision_migration_round_trip_preserves_existing_projects():
         with engine.begin() as db:
             db.execute(text(f'SET search_path TO "{schema}"'))
             assert db.scalar(text("SELECT decision_seq FROM pm_projects WHERE id=:id"), {"id": pid}) == 0
-            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "a3e4f5a6b7c8"
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "b4f5a6b7c8d9"
             assert db.scalar(text("SELECT count(*) FROM pm_decisions")) == 0
         migrate("downgrade", "z2d3e4f5a6b7")
         old, replacement, issue_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
