@@ -141,3 +141,4 @@ from app.models.pm import (  # noqa: F401
     PmSprint,
 )
 from app.models.pm_view import PmView  # noqa: F401
+from app.models.pm_decision import PmDecision, PmDecisionRevision, PmDecisionIssueLink, PmDecisionEvent  # noqa: F401

@@ -27,6 +27,7 @@ import { IssueForm } from "./IssueForm";
 import { IssueTypeIcon, pointsLabel, StatusBadge } from "./IssueBits";
 import { useWorkspace } from "./WorkspaceContext";
 import { MarkdownContent, MarkdownField } from "./MarkdownField";
+import { IssueDecisions } from "./IssueDecisions";
 
 type Props = {
   issueKey: string;
@@ -149,6 +150,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
             </section>}
 
             <IssueLinks issue={issue} issues={issues} projectKey={project.key} editable={editable} busy={state.busy} mutate={mutate} />
+            <IssueDecisions issueId={issue.id} projectKey={project.key} />
 
             <Attachments entityType="pm_issue" entityId={issue.id} readOnly={!editable} />
 

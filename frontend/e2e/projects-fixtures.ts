@@ -171,7 +171,7 @@ export async function noOverflow(page: Page) {
 }
 
 export async function selectProjectTab(page: Page, name: string) {
-  if (page.viewportSize()!.width < 640) {
+  if (page.viewportSize()!.width < 1280) {
     await page.getByRole("combobox", { name: "Project view", exact: true }).click();
     await page.getByRole("option", { name, exact: true }).click();
   } else await page.getByRole("tab", { name, exact: true }).click();

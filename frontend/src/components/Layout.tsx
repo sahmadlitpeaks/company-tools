@@ -123,14 +123,14 @@ export default function Layout() {
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
             <Breadcrumb className="min-w-0 flex-1">
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbList className="flex-nowrap">
+                <BreadcrumbItem className="hidden shrink-0 xl:block">
                   <BreadcrumbLink render={<Link to="/" />}>
                     {sectionLabel}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden xl:block" />
+                <BreadcrumbItem className="min-w-0">
                   <BreadcrumbPage className="truncate">{title}</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -186,11 +186,11 @@ export default function Layout() {
                       {initials(user?.display_name, user?.email ?? undefined)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden min-w-0 flex-col items-start leading-tight md:flex">
+                  <span className="hidden min-w-0 flex-col items-start leading-tight xl:flex">
                     <span className="max-w-40 truncate text-sm font-medium">{name}</span>
                     <span className="max-w-40 truncate text-xs text-muted-foreground">{role}</span>
                   </span>
-                  <ChevronDown data-icon="inline-end" className="hidden md:block" />
+                  <ChevronDown data-icon="inline-end" className="hidden xl:block" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-56">
                   <DropdownMenuGroup>
