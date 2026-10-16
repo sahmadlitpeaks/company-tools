@@ -40,7 +40,7 @@ export function DecisionRegister({ project, members, issues }: { project: PmProj
   function change(name: string, value: string) {
     updateParams((next) => { if (value) next.set(`d_${name}`, value); else next.delete(`d_${name}`); if (name !== "offset") next.delete("d_offset"); }, name === "q");
   }
-  function href(id: string) { const next = new URLSearchParams(params); next.delete("issue"); next.set("decision", id); return `?${next}`; }
+  function href(id: string) { const next = new URLSearchParams(params); next.delete("issue"); next.delete("decision_revision"); next.set("decision", id); return `?${next}`; }
   const people = members.map((m) => ({ value: m.user_id, label: m.name }));
   const advancedCount = ["owner_id", "approver_id", "proposed_by_id", "after", "before"].filter((name) => filter(name)).length;
   const hasFilters = advancedCount > 0 || ["q", "status", "category"].some((name) => filter(name));

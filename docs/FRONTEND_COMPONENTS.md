@@ -36,6 +36,12 @@ hex values for normal application chrome.
 7. Add focused Playwright behavior and accessibility coverage.
 8. Run typecheck, build, React Doctor, and relevant tests.
 
+The shared authenticated header uses a compact layout below 1280px: it keeps
+the current page breadcrumb and account avatar visible while hiding the parent
+breadcrumb and inline account name/role. The account menu still exposes identity
+and actions. This leaves room for search, brand and notification controls on
+tablets; keep breadcrumbs on one line and truncate the current page label.
+
 Example page skeleton:
 
 ```tsx

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 Category = Literal["business", "product", "technical", "operational", "security_compliance", "other"]
 Status = Literal["draft", "pending_approval", "approved", "rejected", "superseded", "archived"]
+IssueRelationship = Literal["relates_to", "implements", "affects", "depends_on"]
 
 
 class StrictInput(BaseModel):
@@ -52,6 +53,11 @@ class VersionInput(StrictInput):
 
 class SubmitInput(VersionInput):
     change_summary: str = Field(min_length=1, max_length=2000)
+
+
+class IssueLinkInput(VersionInput):
+    issue_id: uuid.UUID
+    relationship: IssueRelationship = "relates_to"
 
 
 class ApprovalInput(VersionInput):

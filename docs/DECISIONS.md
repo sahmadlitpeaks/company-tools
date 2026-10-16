@@ -38,6 +38,27 @@ other. Administrators can archive approved, rejected or superseded decisions
 with a reason. Archived decisions remain searchable and readable. Archived
 projects allow no decision mutations, including approval.
 
+Replacement relationships point to the exact approved revision at replacement.
+If that replacement later has a draft or another approval, the old decision
+still opens the recorded approved version; its current status is shown separately.
+
+## Track implementation issues
+
+Use **Manage issue links** to add/remove issues or update their relationship
+(relates to, implements, affects, depends on). Members/admins can do this while
+a decision is draft, pending, approved or rejected. Tracking changes preserve
+its status, approval timestamp, approved revision and all submitted snapshots.
+The current links are shown separately from the issues captured at submission.
+Archived/superseded decisions and archived projects have read-only links.
+
+Each link records its original author/name/time. Retained links keep that
+metadata during draft edits or relationship changes. Link mutations also append
+history events. Pre-existing links migrated from the first schema have unknown
+author/time; the migration does not invent attribution. Links stay within the
+project, with at most 100 per decision. All link writes use the same row locks
+and optimistic `version` checks as lifecycle writes, so a simultaneous approval
+or draft save must reload if tracking changed.
+
 ## Access and evidence
 
 The Projects module is required. Reads follow existing project membership;
@@ -81,6 +102,8 @@ All paths begin with `/api/pm`:
 | POST | `/decisions/{id}/revise` | Withdraw / propose another version |
 | POST | `/decisions/{id}/supersede` | Link an approved replacement |
 | POST | `/decisions/{id}/archive` | Retain as archived |
+| POST | `/decisions/{id}/issues` | Add a link or update its relationship (`version`, `issue_id`, `relationship`) |
+| DELETE | `/decisions/{id}/issues/{issue_id}?version=N` | Remove a current tracking link |
 | GET | `/issues/{id}/decisions` | Linked decisions with project checks |
 
 Writes other than creation require `version`; approval also requires
@@ -93,6 +116,9 @@ Migration `z2d3e4f5a6b7` follows `y1c2d3e4f5a6` and adds decisions, revisions,
 events, issue links and the project sequence without backfilling fake decisions.
 History tables restrict parent deletion. Live issue links can disappear when
 an issue is deleted; submitted historical issue details remain in snapshots.
+Migration `a3e4f5a6b7c8` follows it, adding link metadata and the recorded
+replacement revision. Apply both before running this API. Approval/rejection
+share one endpoint; detail responses include history to keep clients consistent.
 
 ## Checks and follow-up scope
 

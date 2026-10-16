@@ -78,7 +78,7 @@ export function DecisionForm({ project, members, issues, decision, onClose, onSa
               <FieldLabel htmlFor={`decision-issue-${issue.id}`} className="min-w-0 break-words">{issue.key} · {issue.summary}</FieldLabel>
             </Field>)}</FieldGroup>
             {!matchingIssues.length && <p className="text-sm text-muted-foreground">No matching issues. Try another key or title.</p>}
-          </div></> : <p className="text-sm text-muted-foreground">No issues in this project yet. You can link them while editing a draft.</p>}
+          </div></> : <p className="text-sm text-muted-foreground">No issues in this project yet. Create project issues, then link them from the decision.</p>}
         </FieldSet>
         <section className="flex flex-col gap-3" aria-label="Evidence references">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">Evidence references</h3>

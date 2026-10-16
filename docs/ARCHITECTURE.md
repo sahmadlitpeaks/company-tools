@@ -327,6 +327,12 @@ and revision numbers. These histories have no application update/delete route.
 `pm_decision_issue_links` references existing issues. Snapshots retain issue and
 person names if source records later change or disappear.
 
+Issue links are current tracking data with relationship type and retained
+author/time metadata. Dedicated link writes append events and advance the
+optimistic version without changing approval or submitted snapshots. Replacement
+relationships retain the exact approved revision so later proposals cannot
+change what superseded an older decision.
+
 Decision writes lock the project first and then the decision, matching project
 membership/archive mutations. Required optimistic versions reject stale writes.
 Approval also checks the exact revision and the named approver's current project

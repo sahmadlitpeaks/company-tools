@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import pm_decisions as api
 from app.core.database import Base
-from app.models.pm import PmProject, PmProjectMember
+from app.models.pm import PmIssue, PmProject, PmProjectMember
 from app.models.pm_decision import PmDecision, PmDecisionRevision
 from app.models.user import User
-from app.schemas.pm_decision import ApprovalInput, DecisionContent, ReasonInput, SubmitInput
+from app.schemas.pm_decision import ApprovalInput, DecisionContent, IssueLinkInput, ReasonInput, SubmitInput
 
 pytestmark = pytest.mark.skipif(not os.environ.get("PM_TEST_DATABASE_URL"), reason="Requires disposable local PostgreSQL")
 
@@ -53,8 +53,35 @@ def test_decision_migration_round_trip_preserves_existing_projects():
         with engine.begin() as db:
             db.execute(text(f'SET search_path TO "{schema}"'))
             assert db.scalar(text("SELECT decision_seq FROM pm_projects WHERE id=:id"), {"id": pid}) == 0
-            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "z2d3e4f5a6b7"
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "a3e4f5a6b7c8"
             assert db.scalar(text("SELECT count(*) FROM pm_decisions")) == 0
+        migrate("downgrade", "z2d3e4f5a6b7")
+        old, replacement, issue_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        with engine.begin() as db:
+            db.execute(text(f'SET search_path TO "{schema}"'))
+            for did, number in ((old, 1), (replacement, 2)):
+                db.execute(text("""INSERT INTO pm_decisions
+                    (id,project_id,number,title,category,context,approach,rationale,alternatives,status,evidence,version,revision_number,approved_revision_number)
+                    VALUES (:id,:pid,:number,'Policy','business','Context','Approach','Reason','','approved','[]',3,2,2)"""),
+                    {"id": did, "pid": pid, "number": number})
+            db.execute(text("UPDATE pm_decisions SET status='superseded', superseded_by_id=:replacement WHERE id=:id"), {"replacement": replacement, "id": old})
+            db.execute(text("""INSERT INTO pm_decision_events (id,decision_id,revision_number,actor_name,action,note,details)
+                VALUES (:id,:replacement,1,'Author','replaces_decision','Original replacement',CAST(:details AS JSON))"""),
+                {"id": uuid.uuid4(), "replacement": replacement, "details": '{"previous_id":"' + str(old) + '"}'})
+            db.execute(text("INSERT INTO pm_issues (id,project_id,number,summary) VALUES (:id,:pid,1,'Existing issue')"), {"id": issue_id, "pid": pid})
+            db.execute(text("INSERT INTO pm_decision_issue_links (id,decision_id,issue_id) VALUES (:id,:did,:iid)"), {"id": uuid.uuid4(), "did": old, "iid": issue_id})
+        migrate("upgrade", "head")
+        with engine.begin() as db:
+            db.execute(text(f'SET search_path TO "{schema}"'))
+            link = db.execute(text("SELECT relationship,added_by_id,added_by_name,added_at FROM pm_decision_issue_links")).one()
+            assert tuple(link) == ("relates_to", None, None, None)
+            # Latest approval is 2; historical replacement must still point to 1.
+            assert db.scalar(text("SELECT superseded_by_revision_number FROM pm_decisions WHERE id=:id"), {"id": old}) == 1
+        migrate("downgrade", "z2d3e4f5a6b7")
+        with engine.begin() as db:
+            db.execute(text(f'SET search_path TO "{schema}"'))
+            assert db.scalar(text("SELECT count(*) FROM pm_decision_issue_links")) == 1
+        migrate("upgrade", "head")
         migrate("downgrade", "y1c2d3e4f5a6")
         with engine.begin() as db:
             db.execute(text(f'SET search_path TO "{schema}"'))
@@ -132,6 +159,25 @@ def test_concurrent_numbering_submission_and_approval_vs_withdrawal():
                 revisions = (await db.scalars(select(PmDecisionRevision).where(PmDecisionRevision.decision_id == saved.id))).all()
                 assert len(revisions) == 1 and revisions[0].snapshot["approach"] == "Serialize writes"
                 assert saved.approved_revision_number == (1 if saved.status == "approved" else None)
+
+            # Link and lifecycle writes share the same locks/version boundary.
+            async with sessions() as db:
+                issue = PmIssue(project_id=pid, number=1, summary="Implementation task", issue_type="task")
+                db.add(issue)
+                await db.commit()
+                iid = issue.id
+            async def track(relationship):
+                async with sessions() as db:
+                    try:
+                        return await api.link_issue(row["id"], IssueLinkInput(version=3, issue_id=iid, relationship=relationship), db, proposer)
+                    except HTTPException as exc:
+                        await db.rollback()
+                        return exc.status_code
+            tracked = await asyncio.gather(track("implements"), track("affects"))
+            assert len([x for x in tracked if x == 409]) == 1
+            winner = next(x for x in tracked if isinstance(x, dict))
+            assert winner["version"] == 4 and len(winner["issues"]) == 1 and len(winner["revisions"]) == 1
+            assert winner["status"] == saved.status and winner["approved_revision_number"] == saved.approved_revision_number
         finally:
             async with engine.begin() as db:
                 await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))

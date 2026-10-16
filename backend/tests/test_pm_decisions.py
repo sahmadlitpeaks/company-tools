@@ -139,11 +139,17 @@ async def test_superseding_archiving_and_project_archive(client, auth, setup):
     replacement = (await action(client, approver, submitted2, "approval", revision_number=1, outcome="approved")).json()
     superseded = (await action(client, proposer, old, "supersede", replacement_id=replacement["id"], reason="Updated policy")).json()
     assert superseded["status"] == "superseded" and superseded["related_decisions"][0]["key"] == replacement["key"]
+    assert superseded["superseded_by_revision_number"] == 1
+    replacement_draft = (await action(client, proposer, replacement, "revise", reason="Explore a further change")).json()
+    replacement_draft = (await client.patch(f"/api/pm/decisions/{replacement['id']}", headers=proposer,
+                                           json={**content, "title": "Unapproved future policy", "version": replacement_draft["version"]})).json()
+    related = (await client.get(f"/api/pm/decisions/{old['id']}", headers=proposer)).json()["related_decisions"][0]
+    assert related["title"] == "Replacement" and related["revision_number"] == 1 and related["status"] == "draft"
     assert (await action(client, proposer, superseded, "archive", reason="Retain for reference")).status_code == 403
     archived = (await action(client, auth, superseded, "archive", reason="Retain for reference")).json()
     assert archived["status"] == "archived" and len(archived["revisions"]) == 1
     assert (await client.patch(f"/api/pm/projects/{project['id']}", headers=auth, json={"status": "archived"})).status_code == 200
-    assert (await action(client, proposer, replacement, "revise", reason="Change")).status_code == 409
+    assert (await action(client, proposer, replacement_draft, "submit", change_summary="Change")).status_code == 409
     assert (await client.get(f"/api/pm/decisions/{row['id']}", headers=approver)).status_code == 200
 
 
@@ -191,3 +197,72 @@ async def test_missing_owner_requires_reassignment_before_submission(client, aut
     unchanged = (await client.get(f"/api/pm/decisions/{row['id']}", headers=auth)).json()
     assert unchanged["status"] == "draft" and unchanged["version"] == row["version"]
     assert unchanged["revisions"] == []
+
+
+async def test_approved_issue_tracking_does_not_change_approval_or_snapshots(client, setup):
+    project, proposer, approver, outsider, content, row, issue = setup
+    approved = (await action(client, approver, await submitted(client, setup), "approval", revision_number=1, outcome="approved")).json()
+    extra = (await client.post(f"/api/pm/projects/{project['id']}/issues", headers=proposer,
+                               json={"summary": "Implement approved policy", "issue_type": "task"})).json()
+    linked = await action(client, proposer, approved, "issues", issue_id=extra["id"], relationship="implements")
+    assert linked.status_code == 200, linked.text
+    linked = linked.json()
+    assert linked["status"] == "approved" and linked["approved_at"] == approved["approved_at"]
+    assert linked["approved_revision_number"] == linked["revision_number"] == 1
+    assert linked["revisions"] == approved["revisions"] and linked["version"] == approved["version"] + 1
+    added = next(i for i in linked["issues"] if i["id"] == extra["id"])
+    assert added["relationship"] == "implements" and added["added_by_id"] == content["owner_id"]
+    assert added["added_by_name"] and added["added_at"]
+    assert linked["events"][-1]["action"] == "issue_linked"
+    assert (await client.get(f"/api/pm/issues/{extra['id']}/decisions", headers=approver)).json()[0]["id"] == row["id"]
+    result = (await client.get(f"/api/pm/projects/{project['id']}/decisions", headers=approver, params={"q": extra["key"]})).json()
+    assert result["total"] == 1
+    changed = (await action(client, proposer, linked, "issues", issue_id=extra["id"], relationship="affects")).json()
+    changed_link = next(i for i in changed["issues"] if i["id"] == extra["id"])
+    assert changed_link == {**added, "relationship": "affects"}
+    assert changed["events"][-1]["action"] == "issue_link_updated"
+    repeated = (await action(client, proposer, changed, "issues", issue_id=extra["id"], relationship="affects")).json()
+    assert repeated["version"] == changed["version"] and repeated["events"] == changed["events"]
+    removed = await client.delete(f"/api/pm/decisions/{row['id']}/issues/{extra['id']}", headers=proposer, params={"version": changed["version"]})
+    assert removed.status_code == 200, removed.text
+    removed = removed.json()
+    assert removed["status"] == "approved" and removed["revisions"] == approved["revisions"]
+    assert removed["events"][-1]["action"] == "issue_unlinked"
+    assert [i["id"] for i in removed["issues"]] == [issue["id"]]
+    assert (await client.get(f"/api/pm/issues/{extra['id']}/decisions", headers=approver)).json() == []
+
+
+async def test_issue_tracking_permissions_validation_and_stale_writes(client, auth, setup):
+    project, proposer, approver, outsider, content, row, issue = setup
+    base = f"/api/pm/decisions/{row['id']}/issues"
+    for headers, status in ((approver, 403), (outsider, 404)):
+        assert (await action(client, headers, row, "issues", issue_id=issue["id"])).status_code == status
+        assert (await client.delete(f"{base}/{issue['id']}", headers=headers, params={"version": row["version"]})).status_code == status
+    other = (await client.post("/api/pm/projects", headers=auth, json={"key": "OTHER", "name": "Other project"})).json()
+    foreign = (await client.post(f"/api/pm/projects/{other['id']}/issues", headers=auth, json={"summary": "Private task", "issue_type": "task"})).json()
+    for issue_id in (foreign["id"], str(uuid.uuid4())):
+        assert (await action(client, proposer, row, "issues", issue_id=issue_id)).status_code == 422
+    assert (await action(client, proposer, row, "issues", issue_id=issue["id"], relationship="unknown")).status_code == 422
+    changed = (await action(client, proposer, row, "issues", issue_id=issue["id"], relationship="implements")).json()
+    assert (await action(client, proposer, row, "issues", issue_id=issue["id"], relationship="affects")).status_code == 409
+    assert (await client.delete(f"{base}/{issue['id']}", headers=proposer, params={"version": row["version"]})).status_code == 409
+    assert (await client.delete(f"{base}/{issue['id']}", headers=proposer)).status_code == 422
+    # Retained draft links keep their original actor/time and relationship.
+    edited = (await client.patch(f"/api/pm/decisions/{row['id']}", headers=proposer, json={**content, "version": changed["version"]})).json()
+    assert edited["issues"] == changed["issues"]
+    assert (await client.patch(f"/api/pm/projects/{project['id']}", headers=auth, json={"status": "archived"})).status_code == 200
+    assert (await action(client, proposer, edited, "issues", issue_id=issue["id"])).status_code == 409
+    assert (await client.delete(f"{base}/{issue['id']}", headers=proposer, params={"version": edited["version"]})).status_code == 409
+
+
+async def test_pending_issue_tracking_preserves_submission_and_archived_links_are_read_only(client, auth, setup):
+    project, proposer, approver, outsider, content, row, issue = setup
+    pending = await submitted(client, setup)
+    removed = (await client.delete(f"/api/pm/decisions/{row['id']}/issues/{issue['id']}", headers=proposer, params={"version": pending["version"]})).json()
+    assert removed["status"] == "pending_approval" and removed["issues"] == [] and removed["revisions"] == pending["revisions"]
+    assert (await action(client, approver, pending, "approval", revision_number=1, outcome="approved")).status_code == 409
+    approved = (await action(client, approver, removed, "approval", revision_number=1, outcome="approved")).json()
+    archived = (await action(client, auth, approved, "archive", reason="Complete")).json()
+    assert archived["can_manage_links"] is False
+    assert (await action(client, proposer, archived, "issues", issue_id=issue["id"])).status_code == 409
+    assert (await client.delete(f"/api/pm/decisions/{row['id']}/issues/{issue['id']}", headers=proposer, params={"version": archived["version"]})).status_code == 409

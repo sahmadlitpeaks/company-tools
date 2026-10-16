@@ -31,6 +31,7 @@ class PmDecision(UUIDMixin, TimestampMixin, Base):
     approved_revision_number: Mapped[int | None] = mapped_column(Integer)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("pm_decisions.id", ondelete="RESTRICT"))
+    superseded_by_revision_number: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (UniqueConstraint("project_id", "number", name="uq_pm_decision_number"),)
 
@@ -54,6 +55,10 @@ class PmDecisionIssueLink(UUIDMixin, Base):
 
     decision_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pm_decisions.id", ondelete="CASCADE"), index=True)
     issue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pm_issues.id", ondelete="CASCADE"), index=True)
+    relationship: Mapped[str] = mapped_column(String(24), default="relates_to", server_default="relates_to")
+    added_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    added_by_name: Mapped[str | None] = mapped_column(String(255))
+    added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     __table_args__ = (UniqueConstraint("decision_id", "issue_id", name="uq_pm_decision_issue"),)
 
 

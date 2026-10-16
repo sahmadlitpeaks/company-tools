@@ -11,7 +11,7 @@ function draft(): DecisionDetailData {
     effective_date: null, status: "draft", version: 1, revision_number: 0, approved_revision_number: null, approved_at: null,
     superseded_by_id: null, created_at: now, updated_at: now, evidence: [{ type: "meeting", label: "Meeting notes", url: "https://example.test/meeting", added_by_name: "Sara Admin", added_at: now }],
     issues: [{ id: "s1", key: "LIMS-2", summary: "Analyse uploaded PDFs", issue_type: "story", status: "todo", reporter_name: "Dr T", assignee_name: "Ali Dev" }],
-    can_edit: true, can_submit: true, can_revise: false, can_decide: false, can_archive: false, can_supersede: false,
+    can_edit: true, can_submit: true, can_revise: false, can_decide: false, can_archive: false, can_supersede: false, can_manage_links: true, superseded_by_revision_number: null,
     revisions: [], events: [{ id: "event1", action: "created", actor_name: "Sara Admin", note: "", revision_number: null, created_at: now }], related_decisions: [],
   };
 }
@@ -21,7 +21,7 @@ async function decisions(page: Page, role: "admin" | "viewer" = "admin", initial
   const requests: { path: string; body: Record<string, unknown> }[] = [];
   function rights() {
     const edit = role === "admin";
-    return { ...row, can_edit: edit && row.status === "draft", can_submit: edit && row.status === "draft", can_decide: !edit && row.status === "pending_approval",
+    return { ...row, can_manage_links: edit && !["archived", "superseded"].includes(row.status), can_edit: edit && row.status === "draft", can_submit: edit && row.status === "draft", can_decide: !edit && row.status === "pending_approval",
       can_revise: edit && ["approved", "rejected", "pending_approval"].includes(row.status), can_archive: edit && ["approved", "rejected", "superseded"].includes(row.status), can_supersede: edit && row.status === "approved" };
   }
   function snapshot() { const { title, category, context, approach, rationale, alternatives, owner_id, approver_id, effective_date, key, owner_name, approver_name, proposed_by_name, evidence, issues } = row; return structuredClone({ title, category, context, approach, rationale, alternatives, owner_id, approver_id, effective_date, key, owner_name, approver_name, proposed_by_name, evidence, issues }); }
@@ -45,11 +45,16 @@ async function decisions(page: Page, role: "admin" | "viewer" = "admin", initial
       json = { items: failure === "empty" ? [] : [listed], total: failure === "empty" ? 0 : 1 };
     } else if (req.method() === "GET" && path.endsWith("/issues/s1/decisions")) json = [rights()];
     else if (req.method() !== "GET") {
-      const body = req.postDataJSON(); requests.push({ path, body });
+      const body = req.method() === "DELETE" ? { version: Number(url.searchParams.get("version")) } : req.postDataJSON(); requests.push({ path, body });
       if (failure === "stale") return route.fulfill({ status: 409, json: { detail: "This decision changed. Reload it before trying again." } });
       if (req.method() === "PATCH" || path.endsWith("/projects/p1/decisions")) {
         row = { ...row, ...body, evidence: body.evidence, issues: body.issue_ids.includes("s1") ? draft().issues : [] };
-      } else if (path.endsWith("/submit")) {
+      } else if (path.endsWith("/issues")) {
+        const existing = row.issues.find((issue) => issue.id === body.issue_id);
+        const issue = { ...(existing ?? { id: "t1", key: "LIMS-5", summary: "Set up storage bucket", issue_type: "task", status: "todo", reporter_name: "Dr T", assignee_name: "Ali Dev" }), relationship: body.relationship, added_by_name: "Sara Admin", added_at: now };
+        row.issues = [...row.issues.filter((issue) => issue.id !== body.issue_id), issue];
+      } else if (req.method() === "DELETE") row.issues = row.issues.filter((issue) => !path.endsWith(`/${issue.id}`));
+      else if (path.endsWith("/submit")) {
         row.status = "pending_approval"; row.revision_number += 1;
         row.revisions.unshift({ number: row.revision_number, snapshot: snapshot(), change_summary: body.change_summary, submitted_by_name: "Sara Admin", created_at: now });
       } else if (path.endsWith("/approval")) {
@@ -58,8 +63,8 @@ async function decisions(page: Page, role: "admin" | "viewer" = "admin", initial
       } else if (path.endsWith("/revise")) row.status = "draft";
       else if (path.endsWith("/archive")) row.status = "archived";
       else if (path.endsWith("/supersede")) {
-        row.status = "superseded"; row.superseded_by_id = body.replacement_id;
-        row.related_decisions = [{ id: "d2", key: "LIMS-DEC-2", title: "Updated finance policy", relationship: "replaced_by" }];
+        row.status = "superseded"; row.superseded_by_id = body.replacement_id; row.superseded_by_revision_number = 1;
+        row.related_decisions = [{ id: "d2", key: "LIMS-DEC-2", title: "Updated finance policy", relationship: "replaced_by", revision_number: 1, status: "draft" }];
       }
       row.version += 1;
       row.events.push({ id: `event${row.version}`, action: body.outcome ?? (path.endsWith("/revise") ? "returned_to_draft" : path.endsWith("/submit") ? "submitted" : "draft_updated"), actor_name: role === "viewer" ? "Dr T" : "Sara Admin", revision_number: row.revision_number || null, note: body.note ?? body.reason ?? body.change_summary ?? "", created_at: now });
@@ -185,6 +190,7 @@ for (const outcome of ["Approve", "Reject"] as const) test(`assigned project vie
   await page.goto("/projects/LIMS?tab=decisions&decision=d1");
   const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
   await expect(detail.getByRole("button", { name: "Edit draft" })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Manage issue links", exact: true })).toHaveCount(0);
   await detail.getByRole("button", { name: `${outcome} revision 1`, exact: true }).click();
   const dialog = page.getByRole("dialog", { name: `${outcome} revision`, exact: true });
   if (outcome === "Reject") {
@@ -257,7 +263,11 @@ test("replace an approved decision and archive it while retaining its history", 
   await replace.getByLabel("Reason", { exact: true }).fill("An approved policy replaces this threshold.");
   await replace.getByRole("button", { name: "Replace decision", exact: true }).click();
   await expect(detail.getByText("Superseded", { exact: true })).toBeVisible();
-  await expect(detail.getByRole("link", { name: "Replaced by LIMS-DEC-2 · Updated finance policy", exact: true })).toBeVisible();
+  const replacementLink = detail.getByRole("link", { name: "Replaced by LIMS-DEC-2 · approved revision 1 · Updated finance policy", exact: true });
+  await expect(replacementLink).toBeVisible();
+  await expect(replacementLink).toHaveAttribute("href", /decision=d2&decision_revision=1/);
+  await expect(detail.getByText(/Replacement currently draft/)).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Manage issue links", exact: true })).toHaveCount(0);
   expect(requests[0].body).toMatchObject({ version: 2, replacement_id: "d2" });
   await detail.getByRole("button", { name: "More actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Archive decision", exact: true }).click();
@@ -294,6 +304,82 @@ test("stale submission keeps the error actionable", async ({ page }) => {
   await submit.getByRole("button", { name: "Submit for approval", exact: true }).click();
   await expect(submit.getByRole("alert")).toContainText("This decision changed");
   await expect(submit.getByLabel("Summary of this submission")).toHaveValue("Initial agreement");
+});
+
+test("approved issue links can be managed without revising the approved decision", async ({ page }) => {
+  const requests = await decisions(page, "admin", "approved");
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1");
+  const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
+  await detail.getByRole("button", { name: "Manage issue links", exact: true }).click();
+  const manage = page.getByRole("dialog", { name: "Manage issue links", exact: true });
+  await manage.getByLabel("Find project issues").fill("storage");
+  await manage.getByRole("combobox", { name: "Issue", exact: true }).click();
+  await page.getByRole("option", { name: "LIMS-5 · Set up storage bucket", exact: true }).click();
+  await manage.getByRole("combobox", { name: "Relationship", exact: true }).click();
+  await page.getByRole("option", { name: "Implements", exact: true }).click();
+  await expect(manage.getByRole("button", { name: "Link issue", exact: true })).toBeInViewport();
+  await manage.getByRole("button", { name: "Link issue", exact: true }).click();
+  await expect(manage.getByText("Linked issues (2/100)", { exact: true })).toBeVisible();
+  expect(requests[0]).toMatchObject({ path: "/api/pm/decisions/d1/issues", body: { version: 2, issue_id: "t1", relationship: "implements" } });
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await noOverflow(page);
+  await page.screenshot({ path: `test-results/decisions-manage-links-${page.viewportSize()!.width}.png`, fullPage: true });
+  await manage.getByRole("combobox", { name: "Issue", exact: true }).click();
+  await page.getByRole("option", { name: "LIMS-5 · Set up storage bucket", exact: true }).click();
+  await manage.getByRole("combobox", { name: "Relationship", exact: true }).click();
+  await page.getByRole("option", { name: "Affects", exact: true }).click();
+  await manage.getByRole("button", { name: "Update relationship", exact: true }).click();
+  expect(requests[1].body).toMatchObject({ version: 3, issue_id: "t1", relationship: "affects" });
+  await manage.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(detail.getByText("Approved", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Approved revision 1", { exact: true })).toBeVisible();
+  await detail.getByRole("button", { name: "Show current links", exact: true }).click();
+  await expect(detail.getByRole("region", { name: "Current issue links", exact: true }).getByRole("link", { name: /LIMS-5/ })).toBeVisible();
+  await expect(detail.getByRole("region", { name: "Issues at submission", exact: true }).getByRole("link", { name: /LIMS-5/ })).toHaveCount(0);
+  await page.reload();
+  await detail.getByRole("button", { name: "Manage issue links", exact: true }).click();
+  await manage.getByRole("button", { name: "Unlink LIMS-5", exact: true }).click();
+  await expect(manage.getByText("Linked issues (1/100)", { exact: true })).toBeVisible();
+  expect(requests[2]).toMatchObject({ path: "/api/pm/decisions/d1/issues/t1", body: { version: 4 } });
+  await manage.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(detail.getByText("Approved", { exact: true })).toBeVisible();
+});
+
+test("stale link changes preserve selection and expose recovery", async ({ page }) => {
+  await decisions(page, "admin", "approved", "stale");
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1");
+  await page.getByRole("button", { name: "Manage issue links", exact: true }).click();
+  const manage = page.getByRole("dialog", { name: "Manage issue links", exact: true });
+  await manage.getByRole("combobox", { name: "Issue", exact: true }).click();
+  await page.getByRole("option", { name: "LIMS-5 · Set up storage bucket", exact: true }).click();
+  await manage.getByRole("button", { name: "Link issue", exact: true }).click();
+  await expect(manage.getByRole("alert")).toContainText("This decision changed");
+  await expect(manage.getByRole("combobox", { name: "Issue", exact: true })).toContainText("LIMS-5");
+  await expect(manage.getByRole("alert")).toBeInViewport();
+  await expect(manage.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
+  await noOverflow(page);
+});
+
+test("replacement URLs open the recorded approval when the replacement has a draft", async ({ page }) => {
+  await decisions(page, "admin", "approved");
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1");
+  const detail = page.getByRole("dialog", { name: "Finance approval threshold", exact: true });
+  await detail.getByRole("button", { name: "Propose a revision", exact: true }).click();
+  const revise = page.getByRole("dialog", { name: "Return to draft", exact: true });
+  await revise.getByLabel("Reason", { exact: true }).fill("Explore another policy");
+  await revise.getByRole("button", { name: "Return to draft", exact: true }).click();
+  await detail.getByRole("button", { name: "Edit draft", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit LIMS-DEC-1", exact: true });
+  await edit.getByLabel("Title", { exact: true }).fill("Future policy draft");
+  await edit.getByLabel("Chosen approach").fill("Unapproved future approach");
+  await edit.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.goto("/projects/LIMS?tab=decisions&decision=d1&decision_revision=1");
+  await expect(detail.getByText("Finance approves above 5000", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Unapproved future approach", { exact: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Manage issue links", exact: true })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Edit draft", exact: true })).toHaveCount(0);
+  await detail.getByRole("button", { name: "View current draft", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Future policy draft", exact: true }).getByText("Unapproved future approach", { exact: true })).toBeVisible();
 });
 
 for (const mode of ["empty", "list", "denied"]) test(`decision ${mode} state is clear`, async ({ page }) => {

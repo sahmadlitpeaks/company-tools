@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime, time, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, delete, func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -16,7 +16,7 @@ from app.models.pm import PmIssue, PmProject, PmProjectMember
 from app.models.pm_decision import PmDecision, PmDecisionEvent, PmDecisionIssueLink, PmDecisionRevision
 from app.models.user import User
 from app.schemas.pm_decision import (
-    ApprovalInput, Category, DecisionContent, DecisionUpdate, ReasonInput, Status, SubmitInput, SupersedeInput,
+    ApprovalInput, Category, DecisionContent, DecisionUpdate, IssueLinkInput, ReasonInput, Status, SubmitInput, SupersedeInput,
 )
 from app.services.notify import notify_user
 from app.services.people import user_names
@@ -89,18 +89,31 @@ async def _apply_content(db, row, payload, user):
         evidence.append(old.get(key) or {**item, "added_by_id": str(user.id), "added_by_name": _name(user),
                                          "added_at": datetime.now(timezone.utc).isoformat()})
     row.evidence = evidence
-    await db.execute(delete(PmDecisionIssueLink).where(PmDecisionIssueLink.decision_id == row.id))
-    db.add_all(PmDecisionIssueLink(decision_id=row.id, issue_id=issue_id) for issue_id in set(payload.issue_ids))
+    # Keep attribution and relationship types for retained links during draft edits.
+    links = (await db.scalars(select(PmDecisionIssueLink).where(PmDecisionIssueLink.decision_id == row.id))).all()
+    selected = set(payload.issue_ids)
+    for link in links:
+        if link.issue_id not in selected:
+            await db.delete(link)
+    db.add_all(_new_link(row, issue_id, user) for issue_id in selected - {link.issue_id for link in links})
     await db.flush()
 
 
+def _new_link(row, issue_id, user, relationship="relates_to"):
+    return PmDecisionIssueLink(decision_id=row.id, issue_id=issue_id, relationship=relationship,
+                               added_by_id=user.id, added_by_name=_name(user), added_at=datetime.now(timezone.utc))
+
+
 async def _issues(db, row, project):
-    issues = (await db.scalars(select(PmIssue).join(PmDecisionIssueLink, PmDecisionIssueLink.issue_id == PmIssue.id)
+    pairs = (await db.execute(select(PmIssue, PmDecisionIssueLink).join(PmDecisionIssueLink, PmDecisionIssueLink.issue_id == PmIssue.id)
                               .where(PmDecisionIssueLink.decision_id == row.id).order_by(PmIssue.number))).all()
+    issues = [issue for issue, _ in pairs]
     names = await user_names(db, {i.reporter_id for i in issues} | {i.assignee_id for i in issues})
     return [{"id": str(i.id), "key": f"{project.key}-{i.number}", "summary": i.summary,
              "issue_type": i.issue_type, "status": i.status, "reporter_name": names.get(i.reporter_id),
-             "assignee_name": names.get(i.assignee_id)} for i in issues]
+             "assignee_name": names.get(i.assignee_id), "relationship": link.relationship,
+             "added_by_id": str(link.added_by_id) if link.added_by_id else None, "added_by_name": link.added_by_name,
+             "added_at": link.added_at.isoformat() if link.added_at else None} for i, link in pairs]
 
 
 async def _snapshot(db, row, project):
@@ -125,7 +138,9 @@ async def _out(db, row, project, role, user, *, detail=False, names=None):
                   proposed_by_name=names.get(row.proposed_by_id), version=row.version, revision_number=row.revision_number,
                   approved_revision_number=row.approved_revision_number, approved_at=row.approved_at,
                   created_at=row.created_at, updated_at=row.updated_at, superseded_by_id=row.superseded_by_id,
+                  superseded_by_revision_number=row.superseded_by_revision_number,
                   can_edit=editable and row.status == "draft", can_revise=editable and row.status in {"approved", "rejected", "pending_approval"},
+                  can_manage_links=editable and row.status not in {"archived", "superseded"},
                   can_submit=editable and row.status == "draft", can_decide=assigned,
                   can_archive=role == "admin" and project.status != "archived" and row.status in {"approved", "rejected", "superseded"},
                   can_supersede=editable and row.status == "approved")
@@ -141,8 +156,16 @@ async def _out(db, row, project, role, user, *, detail=False, names=None):
                              "revision_number": e.revision_number, "created_at": e.created_at} for e in events]
         related = (await db.scalars(select(PmDecision).where(or_(PmDecision.superseded_by_id == row.id,
                                                                                PmDecision.id == row.superseded_by_id)))).all()
-        result["related_decisions"] = [{"id": r.id, "key": _key(project, r), "title": r.title,
-                                         "relationship": "replaced_by" if r.id == row.superseded_by_id else "replaces"} for r in related]
+        result["related_decisions"] = []
+        for related_row in related:
+            replaced_by = related_row.id == row.superseded_by_id
+            number = row.superseded_by_revision_number if replaced_by else related_row.approved_revision_number
+            revision = await db.scalar(select(PmDecisionRevision).where(PmDecisionRevision.decision_id == related_row.id,
+                                                                        PmDecisionRevision.number == number)) if number else None
+            result["related_decisions"].append({"id": related_row.id, "key": _key(project, related_row),
+                "title": revision.snapshot["title"] if revision else related_row.title,
+                "revision_number": number, "status": related_row.status,
+                "relationship": "replaced_by" if replaced_by else "replaces"})
     return result
 
 
@@ -249,6 +272,60 @@ async def submit_decision(decision_id: uuid.UUID, payload: SubmitInput, db: Asyn
     return await _out(db, row, project, role, user, detail=True)
 
 
+def _links_writable(row, version):
+    _version(row, version)
+    if row.status in {"archived", "superseded"}:
+        raise HTTPException(409, "Issue links on archived or superseded decisions are read-only")
+
+
+@router.post("/decisions/{decision_id}/issues")
+async def link_issue(decision_id: uuid.UUID, payload: IssueLinkInput, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    row, project, role = await _load(db, user, decision_id, write=True)
+    _links_writable(row, payload.version)
+    issue = await db.get(PmIssue, payload.issue_id)
+    if not issue or issue.project_id != project.id:
+        raise HTTPException(422, "Linked issues must belong to this project")
+    link = await db.scalar(select(PmDecisionIssueLink).where(PmDecisionIssueLink.decision_id == row.id,
+                                                           PmDecisionIssueLink.issue_id == issue.id))
+    if not link or link.relationship != payload.relationship:
+        before = link.relationship if link else None
+        if link:
+            link.relationship = payload.relationship
+        else:
+            count = await db.scalar(select(func.count()).select_from(PmDecisionIssueLink).where(PmDecisionIssueLink.decision_id == row.id))
+            if count >= 100:
+                raise HTTPException(422, "A decision can link up to 100 issues")
+            db.add(_new_link(row, issue.id, user, payload.relationship))
+        row.version += 1
+        _event(db, row, user, "issue_link_updated" if before else "issue_linked",
+               f"{project.key}-{issue.number}: {payload.relationship.replace('_', ' ')}",
+               {"issue_id": str(issue.id), "issue_key": f"{project.key}-{issue.number}", "summary": issue.summary,
+                "previous_relationship": before, "relationship": payload.relationship})
+    await db.commit()
+    await db.refresh(row)
+    return await _out(db, row, project, role, user, detail=True)
+
+
+@router.delete("/decisions/{decision_id}/issues/{issue_id}")
+async def unlink_issue(decision_id: uuid.UUID, issue_id: uuid.UUID, version: int = Query(ge=1),
+                       db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    row, project, role = await _load(db, user, decision_id, write=True)
+    _links_writable(row, version)
+    link = await db.scalar(select(PmDecisionIssueLink).where(PmDecisionIssueLink.decision_id == row.id,
+                                                           PmDecisionIssueLink.issue_id == issue_id))
+    if link:
+        issue = await db.get(PmIssue, issue_id)
+        row.version += 1
+        _event(db, row, user, "issue_unlinked", f"{project.key}-{issue.number}: {link.relationship.replace('_', ' ')}",
+               {"issue_id": str(issue_id), "issue_key": f"{project.key}-{issue.number}", "summary": issue.summary,
+                "relationship": link.relationship, "added_by_name": link.added_by_name,
+                "added_at": link.added_at.isoformat() if link.added_at else None})
+        await db.delete(link)
+    await db.commit()
+    await db.refresh(row)
+    return await _out(db, row, project, role, user, detail=True)
+
+
 @router.post("/decisions/{decision_id}/approval")
 async def approve_decision(decision_id: uuid.UUID, payload: ApprovalInput, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     row, project, role = await _load(db, user, decision_id, write=True, minimum="viewer")
@@ -304,8 +381,10 @@ async def supersede_decision(decision_id: uuid.UUID, payload: SupersedeInput, db
         raise HTTPException(422, "Choose a different approved decision in this project as the replacement")
     row.status = "superseded"
     row.superseded_by_id = replacement.id
+    row.superseded_by_revision_number = replacement.approved_revision_number
     row.version += 1
-    _event(db, row, user, "superseded", payload.reason, {"replacement_id": str(replacement.id), "replacement_key": _key(project, replacement)})
+    _event(db, row, user, "superseded", payload.reason, {"replacement_id": str(replacement.id), "replacement_key": _key(project, replacement),
+                                                       "replacement_revision_number": replacement.approved_revision_number})
     _event(db, replacement, user, "replaces_decision", payload.reason, {"previous_id": str(row.id), "previous_key": _key(project, row)})
     await db.commit()
     await db.refresh(row)

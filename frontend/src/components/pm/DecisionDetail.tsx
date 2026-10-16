@@ -17,22 +17,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { useFetch } from "@/hooks/useApi";
 import { DecisionForm } from "./DecisionForm";
 import { DecisionStatus } from "./DecisionRegister";
+import { DecisionIssueList, DecisionLinks } from "./DecisionLinks";
 
 const EVENT_LABELS: Record<string, string> = {
   created: "created the draft", draft_updated: "updated the draft", submitted: "submitted for approval",
   approved: "approved", rejected: "rejected", returned_to_draft: "returned to draft",
   superseded: "replaced this decision", replaces_decision: "linked a previous decision", archived: "archived",
+  issue_linked: "linked an issue", issue_unlinked: "unlinked an issue", issue_link_updated: "changed an issue relationship",
 };
 type Action = "submit" | "approve" | "reject" | "revise" | "supersede" | "archive";
 const ACTION_LABELS: Record<Action, string> = { submit: "Submit for approval", approve: "Approve revision", reject: "Reject revision", revise: "Return to draft", supersede: "Replace decision", archive: "Archive decision" };
 
-export function DecisionDetail({ id, project, members, issues, onClose, onChanged }: {
-  id: string; project: PmProject; members: PmMember[]; issues: PmIssue[]; onClose: () => void; onChanged: () => void;
+export function DecisionDetail({ id, initialRevision = "", project, members, issues, onClose, onChanged }: {
+  id: string; initialRevision?: string; project: PmProject; members: PmMember[]; issues: PmIssue[]; onClose: () => void; onChanged: () => void;
 }) {
   const detail = useFetch<DecisionDetailData>(`/api/pm/decisions/${id}`, true);
   const [editing, setEditing] = useState(false);
   const [action, setAction] = useState<Action | null>(null);
-  const [revision, setRevision] = useState("");
+  const [revision, setRevision] = useState(initialRevision);
   const row = detail.data;
   const historical = row?.revisions.find((r) => String(r.number) === revision);
   const viewedRevision = historical ?? (row?.status !== "draft" ? row?.revisions.find((r) => r.number === row.revision_number) : undefined);
@@ -41,7 +43,7 @@ export function DecisionDetail({ id, project, members, issues, onClose, onChange
   function saved(savedRow: DecisionDetailData) { detail.setData(savedRow); setEditing(false); setAction(null); setRevision(""); onChanged(); }
   return <>
     <Sheet open onOpenChange={(open) => !open && onClose()}><SheetContent className="gap-0 overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
-      <SheetHeader className="shrink-0 border-b border-border pr-12 sm:px-6 sm:pr-12"><SheetTitle className="break-words text-base">{row?.title ?? "Decision"}</SheetTitle><SheetDescription>{row?.key ?? "Loading decision"}</SheetDescription></SheetHeader>
+      <SheetHeader className="shrink-0 border-b border-border pr-12 sm:px-6 sm:pr-12"><SheetTitle className="break-words text-base">{snapshot?.title ?? row?.title ?? "Decision"}</SheetTitle><SheetDescription>{row?.key ?? "Loading decision"}</SheetDescription></SheetHeader>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6">
         {detail.error ? <ErrorState message={detail.error} onRetry={detail.reload} /> : !row || !snapshot ? <Loading /> : <>
           <div className="flex flex-wrap items-center justify-between gap-2"><DecisionStatus status={row.status} /><Button variant="ghost" size="sm" onClick={() => void detail.reload()}>Reload decision</Button></div>
@@ -76,7 +78,11 @@ export function DecisionDetail({ id, project, members, issues, onClose, onChange
           ]} onChange={setRevision} />}
           {viewedRevision && <p className="text-sm text-muted-foreground">Submitted by {viewedRevision.submitted_by_name} · {new Date(viewedRevision.created_at).toLocaleString()}<br />{viewedRevision.change_summary}</p>}
           <DecisionBody snapshot={snapshot} projectKey={project.key} submitted={Boolean(viewedRevision)} showTitle={Boolean(historical)} />
-          {row.related_decisions.length > 0 && <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Decision relationships</h3>{row.related_decisions.map((related) => <Link key={related.id} to={`/projects/${project.key}?tab=decisions&decision=${related.id}`} className="break-words text-sm underline">{related.relationship === "replaced_by" ? "Replaced by" : "Replaces"} {related.key} · {related.title}</Link>)}</section>}
+          <DecisionLinks row={row} issues={issues} projectKey={project.key} historical={viewingPrevious} onSaved={(savedRow) => { detail.setData(savedRow); onChanged(); }} />
+          {row.related_decisions.length > 0 && <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Decision relationships</h3>{row.related_decisions.map((related) => <div key={related.id}>
+            <Link to={`/projects/${project.key}?tab=decisions&decision=${related.id}${related.revision_number ? `&decision_revision=${related.revision_number}` : ""}`} className="break-words text-sm underline">{related.relationship === "replaced_by" ? "Replaced by" : "Replaces"} {related.key}{related.revision_number ? ` · approved revision ${related.revision_number}` : ""} · {related.title}</Link>
+            {related.relationship === "replaced_by" && related.status !== "approved" && <p className="mt-1 text-xs text-muted-foreground">Replacement currently {related.status.split("_").join(" ")}. This relationship refers to the approved version recorded at replacement.</p>}
+          </div>)}</section>}
           <section className="flex flex-col gap-3 border-t border-border pt-5" aria-label="Decision history"><h3 className="text-sm font-semibold">Decision and approval history</h3>
             <ol className="flex flex-col gap-3">{row.events.map((event) => <li key={event.id} className="border-l-2 border-border pl-3 text-sm">
               <p><span className="font-medium">{event.actor_name}</span> {EVENT_LABELS[event.action] ?? event.action}{event.revision_number ? ` · revision ${event.revision_number}` : ""}</p>
@@ -101,13 +107,10 @@ function DecisionBody({ snapshot, projectKey, submitted, showTitle }: { snapshot
     {showTitle && <h3 className="break-words text-base font-semibold">{snapshot.title}</h3>}
     {[["Context / problem", snapshot.context], ["Chosen approach", snapshot.approach], ["Rationale", snapshot.rationale], ["Alternatives considered", snapshot.alternatives]].filter(([, text]) => text).map(([title, text]) =>
       <section key={title} className="flex flex-col gap-2"><h3 className="text-sm font-semibold">{title}</h3><p className="whitespace-pre-wrap break-words text-sm">{text}</p></section>)}
-    <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Linked issues{submitted ? " at submission" : ""}</h3>
-      {!snapshot.issues.length ? <p className="text-sm text-muted-foreground">No linked issues.</p> : <ul className="flex flex-col gap-2">{snapshot.issues.map((issue) => <li key={issue.id} className="border border-border p-3 text-sm">
-        <Link to={`/projects/${projectKey}?tab=issues&issue=${encodeURIComponent(issue.key)}`} className="break-words font-medium underline-offset-4 hover:underline">{issue.key} · {issue.summary}</Link>
-        <p className="mt-1 text-xs text-muted-foreground">{issue.issue_type} · {issue.status.split("_").join(" ")} · Assignee: {issue.assignee_name ?? "Unassigned"} · Reporter: {issue.reporter_name ?? "Former employee"}</p>
-      </li>)}</ul>}
-      {submitted && snapshot.issues.length > 0 && <p className="text-xs text-muted-foreground">These details were captured at submission. An issue may have changed or been removed since then.</p>}
-    </section>
+    {submitted && <section className="flex flex-col gap-2" aria-label="Issues at submission"><h3 className="text-sm font-semibold">Linked issues at submission</h3>
+      <DecisionIssueList issues={snapshot.issues} projectKey={projectKey} />
+      {snapshot.issues.length > 0 && <p className="text-xs text-muted-foreground">These details were captured at submission. An issue may have changed or been removed since then.</p>}
+    </section>}
     <section className="flex flex-col gap-2"><h3 className="text-sm font-semibold">Evidence references</h3>
       {!snapshot.evidence.length ? <p className="text-sm text-muted-foreground">No evidence references.</p> : <ul className="flex flex-col gap-2">{snapshot.evidence.map((item) => <li key={`${item.type}-${item.label}-${item.url}`} className="break-words text-sm">
         <a href={item.url} target="_blank" rel="noopener noreferrer" className="underline">{item.label}</a>

@@ -207,8 +207,8 @@ export default function ProjectPage() {
       onClose={() => setCreating(false)}
       onSaved={(saved) => { setCreating(false); changed(); setParams((p) => { const next = new URLSearchParams(p); next.set("issue", saved.key); return next; }); }}
     />}
-    {params.get("decision") && members.data && issues.data && <DecisionDetail key={params.get("decision")} id={params.get("decision")!} project={current} members={members.data} issues={issues.data}
-      onClose={() => setParams((old) => { const next = new URLSearchParams(old); next.delete("decision"); return next; })} onChanged={() => { changed(); setDecisionRefresh((value) => value + 1); }} />}
+    {params.get("decision") && members.data && issues.data && <DecisionDetail key={`${params.get("decision")}:${params.get("decision_revision") ?? ""}`} id={params.get("decision")!} initialRevision={params.get("decision_revision") ?? ""} project={current} members={members.data} issues={issues.data}
+      onClose={() => setParams((old) => { const next = new URLSearchParams(old); next.delete("decision"); next.delete("decision_revision"); return next; })} onChanged={() => { changed(); setDecisionRefresh((value) => value + 1); }} />}
     {openKey && !params.get("decision") && members.data && issues.data && <IssueDetail
       key={openKey} issueKey={openKey} project={current} members={members.data} issues={issues.data} sprints={openSprints}
       onClose={closeIssue} onChanged={changed}
