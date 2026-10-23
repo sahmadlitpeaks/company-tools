@@ -61,6 +61,7 @@ class PmProject(UUIDMixin, TimestampMixin, Base):
     # Last issue number handed out; incremented under a row lock.
     issue_seq: Mapped[int] = mapped_column(Integer, default=0)
     decision_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    requirement_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Scrum (sprints + backlog) when true; plain Kanban board when false.
     sprints_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sprint_seq: Mapped[int] = mapped_column(Integer, default=0)

@@ -751,6 +751,8 @@ async def create_issue(
     )
     await _check_parent(db, project_id, payload.issue_type, payload.parent_id)
     await _check_sprint(db, project, payload.issue_type, payload.sprint_id)
+    from app.services.pm_requirements import link_requirement, writable_requirement
+    requirement = await writable_requirement(db, payload.requirement_id, project.id) if payload.requirement_id else None
     project.issue_seq = (project.issue_seq or 0) + 1
     top = await db.scalar(
         select(func.coalesce(func.max(PmIssue.rank), 0)).where(PmIssue.project_id == project_id)
@@ -780,6 +782,8 @@ async def create_issue(
     )
     db.add(issue)
     await db.flush()
+    if requirement:
+        await link_requirement(db, requirement, issue, "issue", user)
     await _watch(db, issue.id, {user.id, reporter_id, payload.assignee_id})
     await _notify_assignee(db, issue, project, user)
     record(

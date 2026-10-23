@@ -5,7 +5,7 @@ import { Camera, Download, Paperclip, X } from "lucide-react";
 import { api, apiUrl, downloadFile } from "../api/client";
 import type { Attachment } from "../api/types";
 import { useFetch } from "../hooks/useApi";
-import { bytes, ConfirmDialog, useToast } from "./ui";
+import { bytes, ConfirmDialog, ErrorState, Loading, useToast } from "./ui";
 import CameraCapture, { canUseLiveCamera } from "./CameraCapture";
 
 /** Reusable file attachments list + uploader for any office-ops entity. */
@@ -28,7 +28,8 @@ export default function Attachments({
     | "task_item"
     | "idea"
     | "lost_found"
-    | "pm_issue";
+    | "pm_issue"
+    | "pm_requirement";
   entityId: string;
   compact?: boolean;
   /** Restrict the picker, e.g. "image/*" for photo evidence. */
@@ -44,7 +45,7 @@ export default function Attachments({
   onChanged?: () => void;
 }) {
   const { notify } = useToast();
-  const { data, reload } = useFetch<Attachment[]>(
+  const { data, error, reload } = useFetch<Attachment[]>(
     `/api/attachments/by/${entityType}/${entityId}`,
   );
   const fileRef = useRef<HTMLInputElement>(null);
@@ -122,7 +123,7 @@ export default function Attachments({
           onChange={upload}
         />
       </div>
-      {!data || data.length === 0 ? (
+      {error ? <ErrorState message={error} onRetry={reload} /> : !data ? <Loading /> : data.length === 0 ? (
         !compact && <p className="text-sm text-muted-foreground">No files attached.</p>
       ) : (
         <div className="flex flex-col gap-1">

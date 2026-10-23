@@ -72,6 +72,7 @@ export async function mount(page: Page, role: "admin" | "viewer", options: { arc
     else if (path === "/api/settings/public") json = { platform_name: "AG Holding" };
     else if (path === "/api/notifications/unread-count") json = { count: 0 };
     else if (path === "/api/pm/projects") json = [{ ...visibleProject, my_role: role }];
+    else if (path === "/api/pm/requirements") json = { items: [], total: 0 };
     else if (path === "/api/pm/projects/LIMS") json = { ...visibleProject, my_role: role };
     else if (path === "/api/pm/projects/p1/configuration") {
       if (method === "PUT") workspace = body;
@@ -175,4 +176,17 @@ export async function selectProjectTab(page: Page, name: string) {
     await page.getByRole("combobox", { name: "Project view", exact: true }).click();
     await page.getByRole("option", { name, exact: true }).click();
   } else await page.getByRole("tab", { name, exact: true }).click();
+}
+
+/** Nested color transitions can start after their parent's transition finishes. */
+export async function waitForTransitions(page: Page) {
+  await page.evaluate(async () => {
+    for (let pass = 0; pass < 10; pass++) {
+      await new Promise(requestAnimationFrame);
+      const animations = document.getAnimations().filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().iterations));
+      if (!animations.length) return;
+      await Promise.all(animations.map((animation) => animation.finished.catch(() => {})));
+    }
+    throw new Error("Theme transitions did not settle");
+  });
 }

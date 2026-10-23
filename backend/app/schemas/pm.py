@@ -74,6 +74,7 @@ class PmPersonOut(BaseModel):
 
 # ---- Issues ----
 class PmIssueCreate(BaseModel):
+    requirement_id: uuid.UUID | None = None
     workflow_state: str | None = Field(default=None, max_length=64)
     component: str | None = Field(default=None, max_length=64)
     custom_fields: dict = Field(default_factory=dict)

@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.permissions import active_permissions
 from app.models.operations import Idea, LostFoundReport
 from app.models.pm import PmIssue
+from app.models.pm_requirement import PmRequirement
 from app.models.user import User
 from app.models.workplace import ApprovalRequest, Attachment, Task, TaskItem, Ticket
 from app.schemas.workplace import AttachmentOut
@@ -33,6 +34,7 @@ ENTITY: dict[str, tuple[type, tuple[str, ...]]] = {
     "idea": (Idea, ("ideas",)),
     "lost_found": (LostFoundReport, ("lost_found",)),
     "pm_issue": (PmIssue, ("projects",)),
+    "pm_requirement": (PmRequirement, ("projects",)),
 }
 
 
@@ -78,7 +80,7 @@ async def _authorize_entity(
     """
     if entity_type in _SHARED_ENTITY_TYPES:
         return
-    if entity_type == "pm_issue":
+    if entity_type in ("pm_issue", "pm_requirement"):
         # Project tracker issues follow project membership only — being a
         # manager elsewhere grants nothing. Viewers read; members upload.
         from app.services.pm_access import ensure_writable, require_project
@@ -86,6 +88,9 @@ async def _authorize_entity(
         project, _ = await require_project(db, user, obj.project_id, "member" if write else "viewer", for_update=write)
         if write:
             ensure_writable(project)
+            if entity_type == "pm_requirement":
+                from app.services.pm_requirements import writable_requirement
+                await writable_requirement(db, obj.id, project.id)
         return
     if entity_type in ("task", "task_item"):
         task = obj if entity_type == "task" else await db.get(Task, obj.task_id)
@@ -169,6 +174,9 @@ async def upload_attachment(
         uploaded_by_id=user.id,
     )
     db.add(att)
+    if entity_type == "pm_requirement":
+        from app.services.pm_requirements import requirement_event
+        requirement_event(db, obj, user, "attachment_added", {"name": att.name})
     await db.commit()
     await db.refresh(att)
     return att
@@ -203,12 +211,16 @@ async def delete_attachment(
     if not att:
         return
     await _require(db, user, att.entity_type)
-    if att.entity_type == "pm_issue":
+    if att.entity_type in ("pm_issue", "pm_requirement"):
         from app.services.pm_access import ensure_writable, require_project
 
         obj = await _ensure_entity(db, att.entity_type, att.entity_id)
         project, role = await require_project(db, user, obj.project_id, "member", for_update=True)
         ensure_writable(project)
+        if att.entity_type == "pm_requirement":
+            from app.services.pm_requirements import requirement_event, writable_requirement
+            obj = await writable_requirement(db, obj.id, project.id)
+            requirement_event(db, obj, user, "attachment_removed", {"name": att.name})
         if att.uploaded_by_id != user.id and role != "admin":
             raise HTTPException(status_code=403, detail="Not allowed")
     elif att.uploaded_by_id != user.id and not (
