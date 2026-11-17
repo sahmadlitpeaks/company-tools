@@ -52,7 +52,7 @@ async def project_links(
     user: User = Depends(get_current_user),
 ):
     """Every issue link in the project, for drawing timeline dependencies."""
-    await require_project(db, user, project_id)
+    await require_project(db, user, project_id, "reports.view")
     issue_ids = select(PmIssue.id).where(PmIssue.project_id == project_id)
     rows = (
         await db.scalars(
@@ -108,7 +108,7 @@ async def burndown(
     Scope is the sprint's issues (including unfinished work moved out at
     completion); an issue counts as burned on the day it was resolved.
     """
-    await require_project(db, user, project_id)
+    await require_project(db, user, project_id, "reports.view")
     return await burndown_data(db, project_id, sprint_id)
 
 
@@ -174,7 +174,7 @@ async def velocity(
     user: User = Depends(get_current_user),
 ):
     """Committed vs completed points for the most recent closed sprints."""
-    await require_project(db, user, project_id)
+    await require_project(db, user, project_id, "reports.view")
     return await velocity_data(db, project_id, limit)
 
 
@@ -223,7 +223,7 @@ async def workload(
     to its sprint's dates. Its points are spread evenly over the weeks the
     window touches. Issues with no dates at all are reported as unscheduled.
     """
-    await require_project(db, user, project_id)
+    await require_project(db, user, project_id, "reports.view")
     columns = _weeks(start, weeks)
     issues = (
         await db.scalars(
@@ -284,7 +284,7 @@ async def activity(
     user: User = Depends(get_current_user),
 ):
     """Issues created, fields changed and comments written, per person per week."""
-    await require_project(db, user, project_id)
+    await require_project(db, user, project_id, "reports.view")
     last = _monday(date.today())
     if not 1 <= weeks <= MAX_WEEKS:
         raise HTTPException(422, f"Choose between 1 and {MAX_WEEKS} weeks.")

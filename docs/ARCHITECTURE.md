@@ -82,6 +82,29 @@ ownership checks in their handlers. The frontend uses matching module keys for
 module-scoped route and navigation visibility, but hidden UI is never the
 authorization boundary.
 
+### Roles and named permissions
+
+`backend/app/core/access_catalog.py` is the code-defined permission catalogue
+(BRD section 7). Each permission has a scope: **platform** (held system-wide;
+the legacy module keys are platform permissions too) or **project** (held in one
+project). Roles (`roles` table) bundle permissions of one scope and are edited
+under **Admin → Roles & Permissions** (`/api/access/*`, `roles.manage`).
+
+- Platform: `User.platform_permissions` = the person's platform roles plus their
+  department's roles, plus allows, minus denies (`user_permission_overrides`).
+  Module keys granted through a role are merged into `effective_permissions`.
+  `require_permission("projects.create")` in `app/services/access.py` guards
+  routes. Platform administrators still hold every permission until the admin
+  flag is retired (BRD PRM-13).
+- Project: `pm_project_members.role` stores a project role key, plus
+  `allow_permissions`/`deny_permissions`. `require_project(db, user, id,
+  "sprint.manage")` in `app/services/pm_access.py` returns a `ProjectAccess`.
+- Nobody can grant a permission they do not hold. Every role, grant and override
+  change is written to the audit log.
+- The SPA reads `platform_permissions` from `/api/auth/me` through
+  `hasPermission()` in `AuthContext`, `<Protected permission=…>` and the
+  navigation item `permission` field; project screens read `my_permissions`.
+
 ### Two independent layers
 
 Access answers two separate questions, and they are deliberately kept apart:

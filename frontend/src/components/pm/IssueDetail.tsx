@@ -4,7 +4,7 @@ import { Copy, Eye, EyeOff, Link2, Pencil, Plus, Trash2, X } from "lucide-react"
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
-  canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, labelOf, LINK_RELATIONS, pmError,
+  canEdit, hasProjectPermission, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, labelOf, LINK_RELATIONS, pmError,
   type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
@@ -164,7 +164,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 <TabsTrigger value="comments">Comments</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
-              <TabsContent value="comments"><IssueComments issueId={issue.id} members={members} isAdmin={issue.my_role === "admin"} readOnly={!writable} onChanged={onChanged} /></TabsContent>
+              <TabsContent value="comments"><IssueComments issueId={issue.id} members={members} isAdmin={hasProjectPermission(issue, "comment.delete_any")} readOnly={!writable} onChanged={onChanged} /></TabsContent>
               <TabsContent value="history"><IssueHistory issueId={issue.id} updatedAt={issue.updated_at} /></TabsContent>
             </Tabs>
 

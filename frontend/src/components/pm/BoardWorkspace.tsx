@@ -3,7 +3,7 @@ import { differenceInCalendarDays, parseISO } from "date-fns";
 import { Copy, Filter, Plus, Settings2, SquareCheckBig, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
-import { BOARD_TYPES, ISSUE_PRIORITIES, pmError, rankBetween, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
+import { BOARD_TYPES, hasProjectPermission, ISSUE_PRIORITIES, pmError, rankBetween, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
 import { defaultSettings, EMPTY_FILTERS, filterIssues, resolvedColumns, stateKey, type PmView, type ViewFilters } from "@/api/pm-workspace";
 import { useAuth } from "@/auth/AuthContext";
 import { FilterSelect } from "@/components/ListControls";
@@ -101,7 +101,7 @@ export function BoardWorkspace({ project, issues, members, sprints, activeSprint
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="w-full min-w-0 sm:w-72"><FilterSelect id="pm-current-board" label="Board or saved view" value={current?.id ?? ""} options={views.data.length ? views.data.map((view) => ({ value: view.id, label: view.name })) : [{ value: "", label: "Team board" }]} onChange={selectView} /></div>
       <div className="flex gap-2">
-        {project.my_role === "admin" && editable && <Button variant="outline" onClick={() => setDialog("new")}><Plus data-icon="inline-start" />Create board</Button>}
+        {hasProjectPermission(project, "sprint.manage") && editable && <Button variant="outline" onClick={() => setDialog("new")}><Plus data-icon="inline-start" />Create board</Button>}
         {current && <DropdownMenu><DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="View actions" />}><Settings2 /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup>
           {current.can_manage && project.status === "active" && <DropdownMenuItem onClick={() => setDialog("edit")}><Settings2 />Configure view</DropdownMenuItem>}
           {project.status === "active" && <DropdownMenuItem onClick={() => setDialog("copy")}><Copy />Duplicate view</DropdownMenuItem>}
@@ -116,7 +116,7 @@ export function BoardWorkspace({ project, issues, members, sprints, activeSprint
     </div> : <>
       {scrum && activeSprint && <div className="flex flex-col gap-2 border border-border bg-card p-3 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1"><p className="font-semibold">{activeSprint.name}</p><p className="text-xs text-muted-foreground">{activeSprint.start_date} – {activeSprint.end_date} · {daysLeft !== null ? `${daysLeft >= 0 ? daysLeft : -daysLeft} days ${daysLeft >= 0 ? "left" : "overdue"} · ` : ""}{activeSprint.done_points} of {activeSprint.points} points done</p>{activeSprint.goal && <p className="text-sm">Goal: {activeSprint.goal}</p>}</div>
-        {project.my_role === "admin" && editable && <Button variant="outline" onClick={() => onComplete(activeSprint)}><SquareCheckBig data-icon="inline-start" />Complete sprint</Button>}
+        {hasProjectPermission(project, "sprint.manage") && editable && <Button variant="outline" onClick={() => onComplete(activeSprint)}><SquareCheckBig data-icon="inline-start" />Complete sprint</Button>}
       </div>}
       <div className="flex flex-wrap items-end gap-3">
         <Field className="w-full min-w-0 sm:max-w-xs"><FieldLabel htmlFor="pm-board-search">Search board</FieldLabel><Input id="pm-board-search" value={filters.q} placeholder="Summary or issue key" onChange={(event) => setFilters({ ...filters, q: event.target.value })} /></Field>

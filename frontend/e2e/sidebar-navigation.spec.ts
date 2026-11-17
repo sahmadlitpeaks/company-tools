@@ -68,15 +68,24 @@ test("sidebar categories and command search scale across viewports", async ({ pa
   const navigation = testInfo.project.name === "mobile"
     ? page.locator('[data-slot="sidebar"][data-mobile="true"]')
     : page.locator('[data-slot="sidebar-inner"]');
-  await expect(navigation.getByRole("button", { name: /Overview/ })).toBeVisible();
-  await expect(navigation.getByRole("button", { name: /My Work/ })).toBeVisible();
-  await expect(navigation.getByRole("button", { name: /Workplace/ })).toBeVisible();
-  await expect(navigation.getByRole("button", { name: /Publishing Tools/ })).toBeVisible();
-  await expect(navigation.getByRole("button", { name: /Platform Administration/ })).toBeVisible();
+  // Six categories plus the collapsed list of modules being retired (BRD 9C).
+  for (const category of ["Home", "Projects", "Documents", "Leads", "Marketing", "Admin", "Other tools"]) {
+    await expect(navigation.getByRole("button", { name: category, exact: true })).toBeVisible();
+  }
   await expect(navigation.getByRole("button", { name: /Search people or tools/ })).toHaveCount(0);
 
+  // Only the current page's category starts open.
+  await expect(navigation.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Digital Cards" })).toBeHidden();
+  // Profile and security live in the account menu, not the sidebar.
+  await expect(navigation.getByRole("link", { name: "My Profile" })).toHaveCount(0);
+  await navigation.getByRole("button", { name: "Marketing", exact: true }).click();
   await expect(navigation.getByRole("link", { name: "Digital Cards" })).toBeVisible();
+  await navigation.getByRole("button", { name: "Other tools", exact: true }).click();
   await expect(navigation.getByRole("link", { name: "Campaign Studio" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Roles & Permissions" })).toBeHidden();
+  await navigation.getByRole("button", { name: "Admin", exact: true }).click();
+  await expect(navigation.getByRole("link", { name: "Roles & Permissions" })).toBeVisible();
 
   if (testInfo.project.name === "mobile") {
     await page.locator('button[aria-label="Open navigation menu"]').evaluate((button: HTMLButtonElement) => button.click());
@@ -88,7 +97,7 @@ test("sidebar categories and command search scale across viewports", async ({ pa
   await input.fill("payslip");
   await expect(command.getByText("Payroll", { exact: true })).toBeVisible();
   expect(assets.some((url) => /\/CommandPalette-[^/]+\.js/.test(url))).toBe(true);
-  await expect(command.getByText("Time & Pay", { exact: true })).toBeVisible();
+  await expect(command.getByText("Other tools", { exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await page.keyboard.press("Control+k");
@@ -106,6 +115,8 @@ test("sidebar categories and command search scale across viewports", async ({ pa
 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(page.getByRole("menuitem", { name: "My profile" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Security & 2FA" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Change password" }).click();
   const passwordDialog = page.getByRole("dialog", { name: "Change password" });
   await expect(passwordDialog.getByLabel("Current password")).toBeVisible();

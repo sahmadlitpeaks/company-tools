@@ -79,8 +79,12 @@ class PmProjectMember(UUIDMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    # admin | member | viewer
-    role: Mapped[str] = mapped_column(String(16), default="member")
+    # Key of a project role (roles.key). Starter roles: admin (Project Admin),
+    # member (Contributor) and viewer (Viewer).
+    role: Mapped[str] = mapped_column(String(64), default="member")
+    # Per-member permission overrides on top of the role; a deny always wins.
+    allow_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    deny_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("project_id", "user_id", name="uq_pm_project_member"),

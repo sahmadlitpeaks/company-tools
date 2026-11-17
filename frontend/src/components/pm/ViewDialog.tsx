@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { pmError, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
+import { hasProjectPermission, pmError, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
 import { defaultSettings, resolvedColumns, type BoardColumn, type PmView, type ViewSettings } from "@/api/pm-workspace";
 import { FilterSelect } from "@/components/ListControls";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,7 +29,7 @@ export function ViewDialog({ project, view, initial, duplicate = false, members 
   const config = useWorkspace();
   const [form, setForm] = useState(() => ({
     name: duplicate ? `Copy of ${view?.name ?? "view"}` : view?.name ?? "",
-    visibility: (duplicate && project?.my_role !== "admin" ? "private" : view?.visibility ?? (project?.my_role === "admin" ? "team" : "private")) as "team" | "private",
+    visibility: (duplicate && !hasProjectPermission(project, "project.settings") ? "private" : view?.visibility ?? (hasProjectPermission(project, "project.settings") ? "team" : "private")) as "team" | "private",
     settings: structuredClone(initial ?? view?.settings ?? { ...defaultSettings(Boolean(project?.sprints_enabled)), ...(!project ? { layout: "table" as const } : {}) }),
   }));
   const [state, setState] = useState({ busy: false, error: "" });
@@ -62,7 +62,7 @@ export function ViewDialog({ project, view, initial, duplicate = false, members 
             ...(project ? [{ value: "board", label: "Board" }] : []), { value: "list", label: "List" }, { value: "table", label: "Table" }, { value: "calendar", label: "Calendar" },
           ]} onChange={(value) => set("layout", value as ViewSettings["layout"])} />
           <FilterSelect id="pm-view-visibility" label="Access" value={form.visibility} disabled={Boolean(view && !duplicate)} options={[
-            { value: "private", label: "Only me" }, ...(project?.my_role === "admin" ? [{ value: "team", label: "Project team" }] : []),
+            { value: "private", label: "Only me" }, ...(hasProjectPermission(project, "project.settings") ? [{ value: "team", label: "Project team" }] : []),
           ]} onChange={(value) => setForm({ ...form, visibility: value as "team" | "private" })} />
           {form.settings.layout === "board" && <FilterSelect id="pm-view-mode" label="Board type" value={form.settings.board_type} options={[
             ...(project?.sprints_enabled ? [{ value: "scrum", label: "Scrum · active sprint" }] : []), { value: "kanban", label: "Kanban · continuous work" },

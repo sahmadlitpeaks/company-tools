@@ -337,17 +337,35 @@ connectors) can't use personal tokens yet.
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
-project is then visible only to its members and platform administrators.
+project is then visible only to its members, platform administrators and holders
+of the `projects.view_all` platform permission (read-only).
 
-| Project role | Can |
+Inside a project, every route checks a **named permission** such as
+`issue.delete`, `sprint.manage` or `members.manage` (catalogue:
+`backend/app/core/access_catalog.py`, served at `GET /api/access/catalog`). A
+member holds one **project role** plus optional per-person **allow/deny
+overrides**; a deny always wins. Roles are edited in **Admin → Roles &
+Permissions**. The starter roles keep the old role keys, so existing
+memberships kept exactly their previous access:
+
+| Starter role (key) | Can |
 | --- | --- |
-| Administrator | Edit the project, add/remove people and change roles, delete any issue, plus everything below |
-| Member | Create, edit, move, link and delete their own issues; upload attachments |
-| Viewer | Read everything and comment; watch issues. Intended for requesters and stakeholders |
+| Project Admin (`admin`) | Every project permission |
+| Contributor (`member`) | View, create, edit, assign and transition issues; comment; reports; decisions and requirements. Delete their own issues |
+| Viewer (`viewer`) | View, comment and see reports. Intended for requesters and stakeholders |
 
-- Only platform administrators create projects. The lead becomes a project
-  administrator. A project always keeps at least one administrator.
-- Assignees must be members or administrators; reporters and watchers may be
+- Creating a project needs the `projects.create` platform permission (the
+  starter **Project Creator** platform role grants it). The creator and the
+  lead both become Project Admins.
+- Changing an issue's status needs `issue.transition` and its assignee
+  `issue.assign`; other fields need `issue.edit` (or `issue.edit_own` on issues
+  the person reported, created or is assigned to).
+- Whoever manages members can only hand out permissions they hold on that
+  project, and a project always keeps at least one person with
+  `members.manage`.
+- Responses keep `my_role` (`admin`/`member`/`viewer`, a summary for older
+  clients) and add `my_permissions`; new UI checks should use the latter.
+- Assignees must hold `issue.edit` or `issue.edit_own`; reporters and watchers may be
   any project role.
 - Projects and issues a person cannot see return 404, not 403, so ids of other
   teams' work are not confirmed.

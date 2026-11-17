@@ -5,7 +5,9 @@ import {
   KeyRound,
   Moon,
   Search,
+  ShieldCheck,
   Sun,
+  UserRound,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
@@ -201,6 +203,14 @@ export default function Layout() {
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
+                    <DropdownMenuItem render={<Link to="/profile" />}>
+                      <UserRound />
+                      My profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link to="/security" />}>
+                      <ShieldCheck />
+                      Security &amp; 2FA
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
                       <KeyRound />
                       Change password

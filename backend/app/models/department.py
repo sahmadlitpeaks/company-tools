@@ -1,5 +1,5 @@
 from sqlalchemy import JSON, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
@@ -18,3 +18,7 @@ class Department(UUIDMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     # Module keys (see app.core.permissions.MODULES) this department grants.
     permissions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Platform roles every member of the department holds.
+    roles: Mapped[list["object"]] = relationship(
+        "Role", secondary="department_roles", lazy="selectin"
+    )

@@ -79,6 +79,29 @@ async def ensure_default_departments(db: AsyncSession) -> int:
     return created
 
 
+async def ensure_default_roles(db: AsyncSession) -> int:
+    """Create any missing starter role. Existing roles, edited or not, are left alone.
+
+    Alembic seeds these in production; this keeps freshly created databases
+    (tests, local SQLite) in line with it.
+    """
+    from app.core.access_catalog import STARTER_ROLES
+    from app.models.role import Role
+
+    existing = set((await db.scalars(select(Role.key))).all())
+    created = 0
+    for spec in STARTER_ROLES:
+        if spec["key"] in existing:
+            continue
+        db.add(Role(key=spec["key"], scope=spec["scope"], name=spec["name"],
+                    description=spec["description"], permissions=list(spec["permissions"]),
+                    is_system=True))
+        created += 1
+    if created:
+        await db.commit()
+    return created
+
+
 # (name, color, paid, default_days, carryover_max)
 DEFAULT_LEAVE_TYPES: list[tuple[str, str, bool, int, int]] = [
     ("Annual", "#6366f1", True, 25, 5),

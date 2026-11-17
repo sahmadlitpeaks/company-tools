@@ -37,6 +37,7 @@ async def client():
         ensure_default_admin,
         ensure_default_departments,
         ensure_default_leave_types,
+        ensure_default_roles,
     )
 
     from app.services import feature_flags
@@ -52,6 +53,7 @@ async def client():
         await ensure_default_admin(db)
         await ensure_default_departments(db)
         await ensure_default_leave_types(db)
+        await ensure_default_roles(db)
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

@@ -29,7 +29,7 @@ async def _read(file: UploadFile) -> bytes:
 
 
 async def _admin_project(db: AsyncSession, user: User, project_id: uuid.UUID) -> PmProject:
-    project, _ = await require_project(db, user, project_id, "admin")
+    project, _ = await require_project(db, user, project_id, "import.run")
     if project.status == "archived":
         raise HTTPException(409, "This project is archived. Restore it to import issues.")
     return project
@@ -71,7 +71,7 @@ async def import_jira(
         raise HTTPException(422, f"Unknown status: {', '.join(bad)}")
     raw = await _read(file)
     # Lock the project so issue numbers stay unique while importing.
-    project, _ = await require_project(db, user, project_id, "admin", for_update=True)
+    project, _ = await require_project(db, user, project_id, "import.run", for_update=True)
     if project.status == "archived":
         raise HTTPException(409, "This project is archived. Restore it to import issues.")
     try:

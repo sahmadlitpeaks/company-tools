@@ -36,7 +36,7 @@ async def _issue(client, headers, project_id, **body):
     return r.json()
 
 
-async def test_only_admins_create_projects_and_keys_are_validated(client, auth):
+async def test_project_creation_needs_permission_and_keys_are_validated(client, auth):
     member, _ = await make_member(client, auth, "dev@agholding.net")
     r = await client.post("/api/pm/projects", headers=member, json={"key": "ABC", "name": "Nope"})
     assert r.status_code == 403
@@ -49,9 +49,11 @@ async def test_only_admins_create_projects_and_keys_are_validated(client, auth):
     assert r.status_code == 409
     me = await _me(client, auth)
     members = (await client.get(f"/api/pm/projects/{project['id']}/members", headers=auth)).json()
-    assert members == [
-        {"user_id": me["id"], "name": members[0]["name"], "email": me["email"], "role": "admin"}
-    ]
+    assert [
+        {k: m[k] for k in ("user_id", "email", "role", "role_name", "allow", "deny")} for m in members
+    ] == [{"user_id": me["id"], "email": me["email"], "role": "admin", "role_name": "Project Admin",
+           "allow": [], "deny": []}]
+    assert "members.manage" in members[0]["permissions"]
 
 
 async def test_projects_are_visible_only_to_their_members(client, auth):

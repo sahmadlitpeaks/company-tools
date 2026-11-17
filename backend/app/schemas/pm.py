@@ -42,6 +42,7 @@ class PmProjectOut(BaseModel):
     created_at: datetime
     # The caller's role on this project; "admin" for platform admins.
     my_role: str | None = None
+    my_permissions: list[str] = []
     issue_count: int = 0
     done_count: int = 0
     member_count: int = 0
@@ -53,17 +54,27 @@ class PmProjectOut(BaseModel):
 class PmMemberIn(BaseModel):
     user_id: uuid.UUID
     role: str = "member"
+    allow: list[str] = []
+    deny: list[str] = []
 
 
 class PmMemberUpdate(BaseModel):
-    role: str
+    role: str | None = None
+    allow: list[str] | None = None
+    deny: list[str] | None = None
 
 
 class PmMemberOut(BaseModel):
     user_id: uuid.UUID
     name: str
     email: str | None = None
+    # Project role key; the starter roles are admin, member and viewer.
     role: str
+    role_name: str = ""
+    allow: list[str] = []
+    deny: list[str] = []
+    # Effective permissions: role + allow - deny.
+    permissions: list[str] = []
 
 
 class PmPersonOut(BaseModel):
@@ -176,6 +187,7 @@ class PmIssueDetail(PmIssueOut):
     project_key: str = ""
     project_name: str = ""
     my_role: str | None = None
+    my_permissions: list[str] = []
     watching: bool = False
     children: list[PmIssueOut] = Field(default_factory=list)
     links: list[PmLinkOut] = Field(default_factory=list)

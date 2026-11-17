@@ -20,7 +20,7 @@ from app.schemas.pm_decision import (
 )
 from app.services.notify import notify_user
 from app.services.people import user_names
-from app.services.pm_access import ensure_writable, project_role, require_project, role_at_least
+from app.services.pm_access import ensure_writable, project_role, require_project
 from app.services.pm_requirements import link_requirement, writable_requirement
 
 router = APIRouter(prefix="/pm", tags=["project decisions"])
@@ -35,11 +35,11 @@ def _key(project: PmProject, row: PmDecision) -> str:
     return f"{project.key}-DEC-{row.number}"
 
 
-async def _load(db, user, decision_id, *, write=False, minimum="member"):
+async def _load(db, user, decision_id, *, write=False, permission="decisions.create"):
     row = await db.get(PmDecision, decision_id)
     if not row:
         raise HTTPException(404, "Decision not found")
-    project, role = await require_project(db, user, row.project_id, minimum if write else "viewer", for_update=write)
+    project, role = await require_project(db, user, row.project_id, permission if write else "project.view", for_update=write)
     if write:
         ensure_writable(project)
         row = await db.scalar(select(PmDecision).where(PmDecision.id == decision_id).with_for_update().execution_options(populate_existing=True))
@@ -59,7 +59,7 @@ def _event(db, row, user, action, note="", details=None):
 
 async def _validate_content(db, user, project, payload):
     owner = await db.get(User, payload.owner_id)
-    if not owner or owner.status != "active" or not role_at_least(await project_role(db, owner, project.id), "member"):
+    if not owner or owner.status != "active" or not ((access := await project_role(db, owner, project.id)) and access.assignable):
         raise HTTPException(422, "Owner must be an active project member or administrator")
     if payload.approver_id:
         approver = await db.get(User, payload.approver_id)
@@ -128,7 +128,7 @@ async def _snapshot(db, row, project):
 async def _out(db, row, project, role, user, *, detail=False, names=None):
     if names is None:
         names = await user_names(db, {row.owner_id, row.approver_id, row.proposed_by_id})
-    editable = role_at_least(role, "member") and project.status != "archived"
+    editable = role.can("decisions.create") and project.status != "archived"
     assigned = project.status != "archived" and row.status == "pending_approval" and row.approver_id == user.id
     if assigned:
         assigned = bool(await db.scalar(select(PmProjectMember.id).where(PmProjectMember.project_id == project.id,
@@ -143,7 +143,7 @@ async def _out(db, row, project, role, user, *, detail=False, names=None):
                   can_edit=editable and row.status == "draft", can_revise=editable and row.status in {"approved", "rejected", "pending_approval"},
                   can_manage_links=editable and row.status not in {"archived", "superseded"},
                   can_submit=editable and row.status == "draft", can_decide=assigned,
-                  can_archive=role == "admin" and project.status != "archived" and row.status in {"approved", "rejected", "superseded"},
+                  can_archive=role.can("decisions.approve") and project.status != "archived" and row.status in {"approved", "rejected", "superseded"},
                   can_supersede=editable and row.status == "approved")
     if detail:
         result["evidence"] = row.evidence
@@ -213,7 +213,7 @@ async def list_decisions(project_id: uuid.UUID, q: str = Query("", max_length=25
 
 @router.post("/projects/{project_id}/decisions", status_code=201)
 async def create_decision(project_id: uuid.UUID, payload: DecisionCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    project, role = await require_project(db, user, project_id, "member", for_update=True)
+    project, role = await require_project(db, user, project_id, "decisions.create", for_update=True)
     ensure_writable(project)
     await _validate_content(db, user, project, payload)
     requirement_id = getattr(payload, "requirement_id", None)
@@ -333,7 +333,7 @@ async def unlink_issue(decision_id: uuid.UUID, issue_id: uuid.UUID, version: int
 
 @router.post("/decisions/{decision_id}/approval")
 async def approve_decision(decision_id: uuid.UUID, payload: ApprovalInput, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    row, project, role = await _load(db, user, decision_id, write=True, minimum="viewer")
+    row, project, role = await _load(db, user, decision_id, write=True, permission="project.view")
     _version(row, payload.version)
     if row.status != "pending_approval" or row.revision_number != payload.revision_number:
         raise HTTPException(409, "This revision is no longer pending approval")
@@ -398,7 +398,7 @@ async def supersede_decision(decision_id: uuid.UUID, payload: SupersedeInput, db
 
 @router.post("/decisions/{decision_id}/archive")
 async def archive_decision(decision_id: uuid.UUID, payload: ReasonInput, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    row, project, role = await _load(db, user, decision_id, write=True, minimum="admin")
+    row, project, role = await _load(db, user, decision_id, write=True, permission="decisions.approve")
     _version(row, payload.version)
     if row.status not in {"approved", "rejected", "superseded"}:
         raise HTTPException(409, "Only approved, rejected or superseded decisions can be archived")

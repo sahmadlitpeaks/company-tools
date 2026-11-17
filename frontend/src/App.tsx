@@ -57,6 +57,7 @@ const WebhooksPage = lazy(() => import("./pages/WebhooksPage"));
 const ApprovalWorkflowsPage = lazy(() => import("./pages/ApprovalWorkflowsPage"));
 const ApiTokensPage = lazy(() => import("./pages/ApiTokensPage"));
 const DepartmentsPage = lazy(() => import("./pages/DepartmentsPage"));
+const RolesPage = lazy(() => import("./pages/RolesPage"));
 const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
@@ -298,6 +299,10 @@ export default function App() {
           <Route
             path="/departments"
             element={<Protected adminOnly><DepartmentsPage /></Protected>}
+          />
+          <Route
+            path="/roles"
+            element={<Protected permission="roles.manage"><RolesPage /></Protected>}
           />
           <Route
             path="/audit"
