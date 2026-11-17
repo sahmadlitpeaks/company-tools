@@ -221,7 +221,13 @@ async def _reverse(db, user, target_id, kind):
     column = link.issue_id if kind == "issue" else link.decision_id
     rows = (await db.scalars(select(PmRequirement).join(link, link.requirement_id == PmRequirement.id)
                             .where(column == target_id).order_by(PmRequirement.number))).all()
-    return await _summaries(db, [(row, project) for row in rows], user, known_role=role)
+    # A roadmap feature can own an epic in another project: key each requirement
+    # by its own project, and leave out ones in projects the caller can't see.
+    if all(row.project_id == project.id for row in rows):
+        return await _summaries(db, [(row, project) for row in rows], user, known_role=role)
+    projects = {p.id: p for p in (await db.scalars(
+        select(PmProject).where(PmProject.id.in_({row.project_id for row in rows})))).all()}
+    return await _summaries(db, [(row, projects[row.project_id]) for row in rows], user)
 
 
 @router.get("/issues/{issue_id}/requirements")

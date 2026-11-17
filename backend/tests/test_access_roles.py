@@ -31,7 +31,7 @@ async def test_catalog_lists_both_scopes_and_starter_roles(client, auth):
     roles = {r["key"]: r for r in (await client.get("/api/access/roles", headers=auth)).json()}
     assert roles["admin"]["name"] == "Project Admin" and roles["admin"]["is_system"]
     assert roles["member"]["name"] == "Contributor" and "sprint.manage" not in roles["member"]["permissions"]
-    assert roles["viewer"]["permissions"] == ["project.view", "issue.comment", "reports.view"]
+    assert roles["viewer"]["permissions"] == ["project.view", "issue.comment", "reports.view", "roadmap.view"]
 
 
 async def test_project_creator_role_lets_a_member_create_a_project_and_nothing_more(client, auth):

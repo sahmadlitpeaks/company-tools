@@ -336,6 +336,37 @@ organisation has approved; the AI Access page says so, and administrators can
 review and revoke tokens. Clients that only support OAuth sign-in (some web
 connectors) can't use personal tokens yet.
 
+## Product roadmap
+
+**Projects → Roadmap** (`/roadmap`) shows every feature across the products the
+person can see, grouped by product and module, with priority (how important),
+horizon (Now, Next, Later, Future: when), status, owner, progress and the linked
+epic. The **Meeting board** tab lays features out in horizon columns: drag a
+card by its handle, or use its Horizon and Priority menus (keyboard friendly).
+
+- A feature is a requirement with roadmap fields: `module_id`, `priority`,
+  `horizon`, `roadmap_status` (proposed, approved, in progress, done, parked) and
+  `target_quarter` (`2027-Q1`). Existing requirements kept their briefs and got
+  a mapped status (draft → proposed, ready → approved, delivered → done,
+  archived → parked).
+- Modules are an editable, ordered list per project (`pm_modules`); a module
+  with features can be archived but not deleted.
+- **Start** on an approved feature creates an epic (title, scope, functional
+  requirements and acceptance criteria) on the chosen team board, links it both
+  ways and sets the feature to In progress. Progress = done child issues ÷ all
+  child issues of the linked epics; the feature shows Done when every linked epic
+  is done.
+- Permissions: `roadmap.view` (all starter roles), `roadmap.edit` (module,
+  priority, quarter, modules; Project Admin), `roadmap.decide` (horizon, status,
+  start; Project Admin); `roadmap.view_all` (platform) reads every roadmap for
+  management review. Starting also needs `issue.create` on the target project.
+- Every roadmap change is written to the requirement history and the audit log.
+- API: `GET /api/pm/roadmap`, `PATCH /api/pm/requirements/{id}/roadmap`,
+  `POST /api/pm/requirements/{id}/start`, and module CRUD under
+  `/api/pm/projects/{id}/modules` and `/api/pm/modules/{id}`.
+- Not yet built (BRD "Should"/"Could"): Excel/PDF export, read-only share link,
+  per-project summary strip, MCP roadmap tools, Excel import.
+
 ## Moving issues between projects
 
 People with `issue.move_out` on the source project and `issue.move_in` on the

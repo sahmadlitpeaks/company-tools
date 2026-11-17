@@ -9,7 +9,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import active_owner_ids, ensure_another_owner, is_owner, require_permission
+from app.services.access import (
+    active_owner_ids, ensure_another_owner, has_permission, is_owner, missing_detail, require_permission,
+)
 from app.auth.azure import fetch_graph_users, get_app_token
 from app.api.sharepoint import same_origin
 from sqlalchemy.exc import IntegrityError
@@ -48,8 +50,10 @@ router = APIRouter(prefix="/users", tags=["directory"])
 
 
 @router.get("/modules")
-async def list_modules(_: User = Depends(get_current_user)) -> dict:
-    """Module catalogue (labels only) for the people and department editors."""
+async def list_modules(user: User = Depends(get_current_user)) -> dict:
+    """Module catalogue and role defaults for the people and department editors."""
+    if not (has_permission(user, "users.manage") or has_permission(user, "departments.manage")):
+        raise HTTPException(403, missing_detail("users.manage"))
     """Catalogue of permission modules + role defaults, for the admin matrix."""
     return {
         "modules": [{"key": k, "label": label} for k, label in MODULES],

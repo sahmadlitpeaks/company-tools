@@ -58,6 +58,7 @@ const ApprovalWorkflowsPage = lazy(() => import("./pages/ApprovalWorkflowsPage")
 const ApiTokensPage = lazy(() => import("./pages/ApiTokensPage"));
 const DepartmentsPage = lazy(() => import("./pages/DepartmentsPage"));
 const RolesPage = lazy(() => import("./pages/RolesPage"));
+const RoadmapPage = lazy(() => import("./pages/RoadmapPage"));
 const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
@@ -193,6 +194,7 @@ export default function App() {
           />
           <Route path="/projects" element={<Protected module="projects"><ProjectsPage /></Protected>} />
           <Route path="/requirements" element={<Protected module="projects"><RequirementsPage /></Protected>} />
+          <Route path="/roadmap" element={<Protected module="projects"><RoadmapPage /></Protected>} />
           <Route path="/projects/:projectKey" element={<Protected module="projects"><ProjectPage /></Protected>} />
           <Route path="/ai-access" element={<Protected module="projects"><AiAccessPage /></Protected>} />
           <Route

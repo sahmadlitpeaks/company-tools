@@ -30,6 +30,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
+  Map as MapIcon,
   LifeBuoy,
   Lightbulb,
   Link2,
@@ -111,7 +112,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: FolderKanban,
     items: [
       { to: "/projects", label: "Projects", icon: FolderKanban, module: "projects", keywords: ["jira", "epics", "stories", "issues", "bugs", "requirements", "backlog"] },
-      { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", keywords: ["requests", "scope", "acceptance", "specifications"] },
+      { to: "/roadmap", label: "Roadmap", icon: MapIcon, module: "projects", keywords: ["features", "now next later", "priorities", "modules", "planning", "requirements"] },
+      { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", sidebar: false, keywords: ["requests", "scope", "acceptance", "specifications"] },
       { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", keywords: ["rounds", "recurring", "inspections"] },
       { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", keywords: ["templates", "routine checks", "recurring"] },
       { to: "/ai-access", label: "AI Access", icon: Bot, module: "projects", keywords: ["mcp", "chatgpt", "claude", "assistant", "token", "ai"] },

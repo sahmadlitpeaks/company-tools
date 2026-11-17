@@ -23,7 +23,7 @@ from app.models.user import User
 from app.services.access import is_owner, platform_actions
 
 _STARTER = {r["key"]: frozenset(r["permissions"]) for r in STARTER_ROLES if r["scope"] == "project"}
-VIEW_ALL_PERMISSIONS = frozenset({"project.view", "reports.view"})
+VIEW_ALL_PERMISSIONS = frozenset({"project.view", "reports.view", "roadmap.view"})
 
 
 @dataclass(frozen=True)

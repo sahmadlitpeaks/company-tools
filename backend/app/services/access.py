@@ -9,6 +9,7 @@ Module keys held through a role open that module exactly like a legacy module
 grant; they are merged into ``User.effective_permissions``.
 """
 from fastapi import Depends, HTTPException, status
+from sqlalchemy import inspect as sa_inspect
 
 from app.auth.deps import get_current_user
 from app.core.access_catalog import (
@@ -21,20 +22,33 @@ from app.core.access_catalog import (
 from app.models.user import User
 
 
+def _loaded(obj, attr: str, default=None):
+    """An eagerly loaded relationship, or ``default`` when it isn't loaded.
+
+    A User detached from its session (e.g. handed between sessions) can't lazy
+    load; treating unloaded grants as absent fails closed rather than erroring.
+    """
+    if obj is None:
+        return default
+    if attr in sa_inspect(obj).unloaded:
+        return default
+    return getattr(obj, attr)
+
+
 def _role_permissions(user: User) -> set[str]:
     perms: set[str] = set()
-    for role in user.platform_roles or []:
+    for role in _loaded(user, "platform_roles", []) or []:
         perms |= set(role.permissions or [])
-    dept = user.access_department
-    if dept is not None:
-        for role in dept.roles or []:
-            perms |= set(role.permissions or [])
+    dept = _loaded(user, "access_department")
+    for role in _loaded(dept, "roles", []) or []:
+        perms |= set(role.permissions or [])
     return perms & PLATFORM_KEYS
 
 
 def _overrides(user: User) -> tuple[set[str], set[str]]:
-    allow = {o.permission for o in user.permission_overrides or [] if o.allow}
-    deny = {o.permission for o in user.permission_overrides or [] if not o.allow}
+    overrides = _loaded(user, "permission_overrides", []) or []
+    allow = {o.permission for o in overrides if o.allow}
+    deny = {o.permission for o in overrides if not o.allow}
     return allow & PLATFORM_KEYS, deny & PLATFORM_KEYS
 
 
@@ -48,7 +62,9 @@ def role_module_grants(user: User, kind: str) -> list[str]:
 
 def is_owner(user: User) -> bool:
     """Owners hold every permission: the protected Owner role, or the legacy admin flag."""
-    return bool(user.is_admin) or any(getattr(r, "is_protected", False) for r in user.platform_roles or [])
+    return bool(user.is_admin) or any(
+        getattr(r, "is_protected", False) for r in _loaded(user, "platform_roles", []) or []
+    )
 
 
 def platform_actions(user: User) -> list[str]:

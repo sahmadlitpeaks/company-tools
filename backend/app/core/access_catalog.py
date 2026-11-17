@@ -49,6 +49,8 @@ PLATFORM_ACTIONS: list[PermissionDef] = [
                   "Create a new project. The creator becomes its Project Admin."),
     PermissionDef("projects.view_all", "platform", "Projects", "View all projects",
                   "See every project and its issues read-only, without being a member."),
+    PermissionDef("roadmap.view_all", "platform", "Projects", "View the whole roadmap",
+                  "See every project's roadmap features read-only, for management review."),
 ]
 
 PROJECT_PERMISSIONS: list[PermissionDef] = [
@@ -92,6 +94,12 @@ PROJECT_PERMISSIONS: list[PermissionDef] = [
                   "Archive closed decisions."),
     PermissionDef("requirements.manage", "project", "Decisions & requirements", "Manage requirements",
                   "Create and edit requirements and their links."),
+    PermissionDef("roadmap.view", "project", "Roadmap", "View roadmap",
+                  "See the project's modules and roadmap features."),
+    PermissionDef("roadmap.edit", "project", "Roadmap", "Edit roadmap",
+                  "Add and edit modules and feature details (module, priority, target quarter)."),
+    PermissionDef("roadmap.decide", "project", "Roadmap", "Decide roadmap",
+                  "Change a feature's horizon and status, and start approved features as epics."),
     PermissionDef("share_links.manage", "project", "Sharing", "Manage share links",
                   "Create and revoke read-only share links for the project."),
     PermissionDef("import.run", "project", "Sharing", "Import from Jira",
@@ -130,9 +138,9 @@ def ordered(keys, scope: str) -> list[str]:
 CONTRIBUTOR_PERMISSIONS = [
     "project.view", "issue.create", "issue.edit", "issue.assign", "issue.transition",
     "issue.comment", "reports.view", "decisions.create", "requirements.manage",
-    "issue.move_out", "issue.move_in",
+    "issue.move_out", "issue.move_in", "roadmap.view",
 ]
-VIEWER_PERMISSIONS = ["project.view", "issue.comment", "reports.view"]
+VIEWER_PERMISSIONS = ["project.view", "issue.comment", "reports.view", "roadmap.view"]
 
 STARTER_ROLES: list[dict] = [
     {"key": "admin", "scope": "project", "name": "Project Admin",
