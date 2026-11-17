@@ -6,7 +6,7 @@ from app.models.role import Role, UserPermissionOverride, department_roles, user
 from app.models.company import Company  # noqa: F401
 from app.models.brand_document import BrandDocument, BrandDocumentVersion  # noqa: F401
 from app.models.app_setting import AppSetting  # noqa: F401
-from app.models.crm import CrmActivity, CrmLead  # noqa: F401
+from app.models.crm import CrmActivity, CrmLead, CrmLeadSource  # noqa: F401
 from app.models.campaign import Campaign, CampaignMetric  # noqa: F401
 from app.models.card import DigitalCard, CardScan, Lead  # noqa: F401
 from app.models.asset import Folder, Asset  # noqa: F401

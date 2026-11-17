@@ -141,7 +141,18 @@ async def lead_is_valid(
         return False
     from app.models.crm import CrmLead
 
+    from sqlalchemy import select
+
+    from app.models.crm import CrmLeadSource
+
+    # A repeat visitor merges into their existing lead, so check the lead's
+    # sources rather than where the lead first came from.
     lead = await db.get(CrmLead, lead_id)
-    return bool(
-        lead and lead.origin_type == origin_type and lead.origin_id == origin_id
-    )
+    if not lead:
+        return False
+    if lead.origin_type == origin_type and lead.origin_id == origin_id:
+        return True
+    return bool(await db.scalar(select(CrmLeadSource.id).where(
+        CrmLeadSource.lead_id == lead.id, CrmLeadSource.origin_type == origin_type,
+        CrmLeadSource.origin_id == origin_id,
+    ).limit(1)))

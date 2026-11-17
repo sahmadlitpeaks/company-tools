@@ -17,6 +17,7 @@ import { ConfirmDialog, Loading } from "./ui";
 import ErrorBoundary from "./ErrorBoundary";
 import { useTheme } from "../theme/ThemeContext";
 import { AppSidebar } from "./app-sidebar";
+import { SectionTabs } from "./SectionTabs";
 import { currentNavSection, currentNavTitle } from "./navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -237,6 +238,7 @@ export default function Layout() {
             className="min-w-0 flex-1 overflow-auto p-4 outline-none sm:p-6"
           >
             <span id="route-title" className="sr-only">{title}</span>
+            <SectionTabs />
             <ErrorBoundary key={location.pathname} variant="route">
               <Suspense fallback={<Loading />}>
                 <Outlet />

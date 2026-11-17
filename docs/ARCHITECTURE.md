@@ -247,6 +247,18 @@ Full payload contract, mapping model and plugin notes: `docs/INTAKE_CF7.md`.
 `api/crm.py` serves leads (`CrmLead`) and their timeline (`CrmActivity`); every
 route sits behind the `crm` module gate.
 
+The CRM is the hub every lead lands in (BRD 9B). Website forms (Web Inbox),
+digital cards, landing pages and gated brochure/asset downloads all call
+`capture_lead()` in `services/crm_ingest.py`. When the same person is already an
+open lead (same email, or same phone by its last 9 digits in `phone_key`), the
+submission is added to that lead with a timeline note instead of creating a
+duplicate; won or lost leads start a new one. Every submission is a
+`CrmLeadSource` row, shown on the lead page and summarised per source at
+`/crm/sources` (`GET /api/crm/sources`). Download gates check a lead's sources,
+so a merged lead still unlocks the file it was captured for. New features that
+capture a person's details must go through `capture_lead()`; no module keeps its
+own lead table (LHB-07).
+
 - Stages, in order: `new`, `contacted`, `qualified`, `proposal`, `negotiation`,
   `won`, `lost` (`LEAD_STATUSES` in `models/crm.py`; the first five are open).
   Moving a lead into `lost` requires `lost_reason`; leads lost before reasons

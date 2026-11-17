@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { currentNavSection, isNavItemActive, visibleNavGroups } from "./navigation";
+import { currentNavSection, findNavItem, sidebarItems, visibleNavGroups } from "./navigation";
 
 /** Which categories a person left open, remembered per person in this browser. */
 function readOpenSections(key: string): Set<string> | null {
@@ -59,11 +59,12 @@ export function AppSidebar({
   const groups = React.useMemo(
     () =>
       visibleNavGroups(isAdmin, can, isManager, hasPermission)
-        .map((group) => ({ ...group, items: group.items.filter((item) => item.sidebar !== false) }))
+        .map((group) => ({ ...group, items: sidebarItems(group.items) }))
         .filter((group) => group.items.length > 0),
     [isAdmin, can, isManager, hasPermission],
   );
   const activeSection = currentNavSection(location.pathname);
+  const activeTo = findNavItem(location.pathname)?.to;
   const storageKey = `nav-open-sections:${user?.id ?? "anonymous"}`;
   // Only the current page's category starts open, unless the person chose otherwise.
   const [openSections, setOpenSections] = React.useState<Set<string>>(
@@ -144,8 +145,8 @@ export function AppSidebar({
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {group.items.map((item) => {
-                        const active = isNavItemActive(location.pathname, item);
+                      {group.items.map((item: ReturnType<typeof sidebarItems>[number]) => {
+                        const active = activeTo !== undefined && (item.matches ?? [item.to]).includes(activeTo);
                         const isAlertsItem = item.to === "/sharepoint/alerts";
                         return (
                           <SidebarMenuItem key={item.to}>

@@ -43,6 +43,7 @@ import {
   Palette,
   Plane,
   QrCode,
+  Radio,
   ReceiptText,
   ScrollText,
   SearchX,
@@ -84,6 +85,11 @@ export type NavItem = {
   permission?: string;
   /** false: reachable from search and the account menu, not listed in the sidebar. */
   sidebar?: boolean;
+  /**
+   * Pages sharing a merge key appear as one sidebar entry and as tabs on each
+   * page (BRD 9C, NAV-03). Every page keeps its own URL and stays searchable.
+   */
+  merge?: { key: string; label: string; icon: LucideIcon };
   keywords?: string[];
 };
 
@@ -114,8 +120,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/projects", label: "Projects", icon: FolderKanban, module: "projects", keywords: ["jira", "epics", "stories", "issues", "bugs", "requirements", "backlog"] },
       { to: "/roadmap", label: "Roadmap", icon: MapIcon, module: "projects", keywords: ["features", "now next later", "priorities", "modules", "planning", "requirements"] },
       { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", sidebar: false, keywords: ["requests", "scope", "acceptance", "specifications"] },
-      { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", keywords: ["rounds", "recurring", "inspections"] },
-      { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", keywords: ["templates", "routine checks", "recurring"] },
+      { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", merge: { key: "checks", label: "Routine Checks", icon: ClipboardCheck }, keywords: ["rounds", "recurring", "inspections"] },
+      { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", merge: { key: "checks", label: "Routine Checks", icon: ClipboardCheck }, keywords: ["templates", "routine checks", "recurring"] },
       { to: "/ai-access", label: "AI Access", icon: Bot, module: "projects", keywords: ["mcp", "chatgpt", "claude", "assistant", "token", "ai"] },
     ],
   },
@@ -128,8 +134,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/sharepoint/documents", label: "My documents", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "files", "library", "contracts", "licences"] },
       { to: "/sharepoint/assistant", label: "Assistant", icon: Bot, module: "sharepoint_intelligence", keywords: ["sharepoint", "assistant", "ai", "ask", "chat", "questions"] },
       { to: "/sharepoint/alerts", label: "Alerts", icon: Calendar, module: "sharepoint_intelligence", keywords: ["sharepoint", "alerts", "reminders", "deadlines", "tasks", "overdue"] },
-      { to: "/shared", label: "Shared Links", icon: Share2, module: "shared", keywords: ["public", "published", "downloads"] },
-      { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers", keywords: ["files", "password", "download"] },
+      { to: "/shared", label: "Shared Links", icon: Share2, module: "shared", merge: { key: "sharing", label: "Sharing", icon: Share2 }, keywords: ["public", "published", "downloads"] },
+      { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers", merge: { key: "sharing", label: "Sharing", icon: Share2 }, keywords: ["files", "password", "download"] },
       { to: "/sharepoint/admin", label: "Document sources", icon: Settings2, adminOnly: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "admin", "sources", "sync", "health", "privacy", "settings"] },
     ],
   },
@@ -138,8 +144,9 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Magnet,
     items: [
       { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm", keywords: ["customers", "pipeline", "sales"] },
-      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", feature: "crm.web_inbox", keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
-      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", feature: "crm.web_inbox", keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
+      { to: "/crm/sources", label: "Sources", icon: Radio, module: "crm", keywords: ["lead sources", "channels", "forms", "downloads", "where leads come from"] },
+      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", feature: "crm.web_inbox", merge: { key: "inbox", label: "Inbox", icon: Inbox }, keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
+      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", feature: "crm.web_inbox", merge: { key: "inbox", label: "Inbox", icon: Inbox }, keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
     ],
   },
   {
@@ -151,8 +158,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/products", label: "Products & Brochures", icon: Package, module: "products", keywords: ["catalogue", "sales material"] },
       { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards", keywords: ["business cards", "profiles"] },
       { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures", keywords: ["templates", "email"] },
-      { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes", keywords: ["scan", "links"] },
-      { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener", keywords: ["short links", "clicks"] },
+      { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes", merge: { key: "links", label: "Links & QR", icon: QrCode }, keywords: ["scan", "links"] },
+      { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener", merge: { key: "links", label: "Links & QR", icon: QrCode }, keywords: ["short links", "clicks"] },
     ],
   },
   {
@@ -163,8 +170,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/roles", label: "Roles & Permissions", icon: UserCog, permission: "roles.manage", keywords: ["roles", "permissions", "access", "grants", "overrides"] },
       { to: "/companies", label: "Companies", icon: Building2, permission: "settings.manage", keywords: ["organizations", "brands"] },
       { to: "/audit", label: "Audit Log", icon: ScrollText, permission: "audit.view", keywords: ["history", "activity"] },
-      { to: "/webhooks", label: "Webhooks", icon: Webhook, permission: "settings.manage", keywords: ["integrations", "events"] },
-      { to: "/api-tokens", label: "API Tokens", icon: KeyRound, permission: "api_tokens.manage", keywords: ["integrations", "credentials", "keys"] },
+      { to: "/webhooks", label: "Webhooks", icon: Webhook, permission: "settings.manage", merge: { key: "integrations", label: "Integrations", icon: Webhook }, keywords: ["integrations", "events"] },
+      { to: "/api-tokens", label: "API Tokens", icon: KeyRound, permission: "api_tokens.manage", merge: { key: "integrations", label: "Integrations", icon: Webhook }, keywords: ["integrations", "credentials", "keys"] },
       { to: "/settings", label: "Settings", icon: SettingsIcon, permission: "settings.manage", keywords: ["configuration", "platform"] },
     ],
   },
@@ -256,4 +263,28 @@ export function visibleNavGroups(
       }).map((item) => item.to === "/sharepoint/documents" ? { ...item, label: documentLibraryLabel(isAdmin, isManager) } : item),
     }))
     .filter((group) => group.items.length > 0);
+}
+
+/** Visible pages that share the current page's merge key, shown as tabs. */
+export function sectionTabs(pathname: string, groups: NavGroup[]): NavItem[] {
+  const current = findNavItem(pathname);
+  if (!current?.merge) return [];
+  const siblings = groups.flatMap((group) => group.items).filter((item) => item.merge?.key === current.merge?.key);
+  return siblings.length > 1 ? siblings : [];
+}
+
+/** Sidebar entries: merged pages collapse into one entry pointing at the first visible page. */
+export function sidebarItems(items: NavItem[]): Array<NavItem & { matches?: string[] }> {
+  const out: Array<NavItem & { matches?: string[] }> = [];
+  for (const item of items) {
+    if (item.sidebar === false) continue;
+    const key = item.merge?.key;
+    const existing = key ? out.find((entry) => entry.merge?.key === key) : undefined;
+    if (existing) {
+      existing.matches = [...(existing.matches ?? [existing.to]), item.to];
+      continue;
+    }
+    out.push(item.merge ? { ...item, label: item.merge.label, icon: item.merge.icon, matches: [item.to] } : item);
+  }
+  return out;
 }

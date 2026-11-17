@@ -59,6 +59,7 @@ const ApiTokensPage = lazy(() => import("./pages/ApiTokensPage"));
 const DepartmentsPage = lazy(() => import("./pages/DepartmentsPage"));
 const RolesPage = lazy(() => import("./pages/RolesPage"));
 const RoadmapPage = lazy(() => import("./pages/RoadmapPage"));
+const LeadSourcesPage = lazy(() => import("./pages/LeadSourcesPage"));
 const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
@@ -256,6 +257,7 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
+          <Route path="/crm/sources" element={<Protected module="crm"><LeadSourcesPage /></Protected>} />
           <Route path="/crm/:id" element={<Protected module="crm"><CrmLeadPage /></Protected>} />
           <Route path="/inbox" element={<Protected feature="crm.web_inbox"><InboxPage /></Protected>} />
           <Route

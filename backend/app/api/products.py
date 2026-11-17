@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.crm import CrmLead
+from app.services.crm_ingest import capture_lead
 from app.models.product import Brochure, Product
 from app.models.user import User
 from app.schemas.common import (
@@ -317,17 +318,11 @@ async def capture_brochure_lead(
     brochure = await db.get(Brochure, brochure_id)
     if not brochure or not brochure.is_public:
         raise HTTPException(status_code=404, detail="Brochure not found")
-    lead = CrmLead(
-        name=payload.name,
-        email=payload.email,
-        phone=payload.phone,
+    lead, _ = await capture_lead(
+        db, source="brochure", source_detail=brochure.title, origin_type="brochure_share",
+        origin_id=str(brochure.id), name=payload.name, email=payload.email, phone=payload.phone,
         company=payload.company,
-        source="brochure",
-        source_detail=brochure.title,
-        origin_type="brochure_share",
-        origin_id=str(brochure.id),
     )
-    db.add(lead)
     if brochure.created_by_id:
         await notify_user(
             db,

@@ -16,7 +16,7 @@ export const PRIORITIES: CrmPriority[] = ["high", "medium", "low"];
 export const PRIORITY_LABELS: Record<string, string> = { high: "High", medium: "Medium", low: "Low" };
 export const PRIORITY_BADGES: Record<string, "destructive" | "warning" | "secondary"> = { high: "destructive", medium: "warning", low: "secondary" };
 
-export const SOURCE_LABELS: Record<string, string> = { web: "website", card: "card", landing: "landing", manual: "manual", import: "import" };
+export const SOURCE_LABELS: Record<string, string> = { web: "website", card: "card", landing: "landing", manual: "manual", import: "import", brochure: "brochure download", asset: "asset download" };
 
 export const ACTIVITY_LABELS: Record<string, string> = {
   note: "Note", call: "Call", email: "Email", meeting: "Meeting", created: "Created", change: "Updated", import: "Import",

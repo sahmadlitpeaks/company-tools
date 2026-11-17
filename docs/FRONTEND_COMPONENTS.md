@@ -197,7 +197,10 @@ section 9C). Only the current page's category opens by default; each person's
 open categories are remembered in the browser. Put a new page in an existing
 category; a seventh category needs business owner approval. Items with
 `sidebar: false` stay searchable and titled but are not listed (Profile and
-Security live in the account menu).
+Security live in the account menu). Related pages that share a `merge` key
+(Links & QR, Sharing, Inbox, Integrations, Routine Checks) appear as one sidebar
+entry and get tabs from `SectionTabs.tsx` above the page; each tab keeps its own
+URL and stays in search.
 
 Gate UI on access with the matching helper, and always enforce the same check
 in the backend:

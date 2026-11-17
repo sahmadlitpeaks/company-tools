@@ -51,6 +51,11 @@ test("roadmap groups features by module, plans horizons and starts approved feat
   await expect(unassigned.getByText("Loyalty points").filter({ visible: true })).toBeVisible();
   await expect(unassigned.getByRole("link", { name: "WIMS-12" }).filter({ visible: true })).toHaveAttribute("href", "/projects/WIMS?issue=WIMS-12");
 
+  // Scan before any toast appears: a fading toast stack is caught mid-animation.
+  const serious = async () => (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
+    .violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  expect(await serious()).toEqual([]);
+
   await booking.getByRole("button", { name: "Start" }).filter({ visible: true }).click();
   const start = page.getByRole("dialog", { name: "Start Group bookings" });
   await start.getByRole("button", { name: "Create epic" }).click();
@@ -61,12 +66,12 @@ test("roadmap groups features by module, plans horizons and starts approved feat
   const notPlanned = page.getByRole("region", { name: "Not planned column" });
   await expect(notPlanned.getByRole("article", { name: "WIMS-REQ-2 Loyalty points" })).toBeVisible();
   const card = page.getByRole("article", { name: "WIMS-REQ-1 Group bookings" });
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 10_000 });
+  expect(await serious()).toEqual([]);
   await card.getByRole("combobox", { name: "Horizon" }).click();
   await page.getByRole("option", { name: "Later" }).click();
   await expect.poll(() => calls.find((c) => c.method === "PATCH")?.body).toEqual({ horizon: "later" });
 
-  const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-  expect(accessibility.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });

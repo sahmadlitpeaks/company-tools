@@ -254,23 +254,13 @@ async def submit_lead(
     lead = Lead(card_id=card.id, **payload.model_dump())
     db.add(lead)
     await db.flush()
-    # Mirror into the unified CRM inbox.
-    from app.models.crm import CrmLead
+    # Into the CRM hub, merged with an open lead for the same person.
+    from app.services.crm_ingest import capture_lead
 
-    db.add(
-        CrmLead(
-            company_id=card.company_id,
-            name=lead.name,
-            email=lead.email,
-            phone=lead.phone,
-            company=lead.company,
-            notes=lead.message,
-            source="card",
-            source_detail=card.slug,
-            status="new",
-            origin_type="card_lead",
-            origin_id=str(lead.id),
-        )
+    await capture_lead(
+        db, source="card", source_detail=card.slug, origin_type="card_lead", origin_id=str(lead.id),
+        name=lead.name, email=lead.email, phone=lead.phone, company=lead.company, notes=lead.message,
+        company_id=card.company_id,
     )
     await db.commit()
     await db.refresh(lead)

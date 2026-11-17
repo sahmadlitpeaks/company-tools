@@ -616,8 +616,21 @@ export interface BrandDocumentVersion {
   created_at: string;
 }
 
+export interface CrmLeadSource {
+  id: string;
+  source: string;
+  source_detail: string | null;
+  origin_type: string | null;
+  origin_id: string | null;
+  created_at: string;
+  /** Page in the platform where the submission can be seen, if any. */
+  link: string | null;
+}
+
 export interface CrmLead {
   id: string;
+  /** Every way this lead reached the CRM (lead detail only). */
+  sources?: CrmLeadSource[];
   company_id?: string | null;
   name?: string | null;
   email?: string | null;

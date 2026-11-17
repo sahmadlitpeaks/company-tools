@@ -158,6 +158,14 @@ export default function CrmLeadPage() {
               <Detail label="Added">{new Date(current.created_at).toLocaleDateString()}</Detail>
               <Detail label="Tags">{current.tags?.length ? <span className="flex flex-wrap gap-1">{current.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}</span> : "—"}</Detail>
             </dl>
+            {(current.sources?.length ?? 0) > 1 && <><Separator /><div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Came in {current.sources!.length} times</p>
+              <ul className="flex flex-col gap-1">{current.sources!.map((item) => <li key={item.id} className="flex flex-wrap gap-x-2">
+                <span className="capitalize">{SOURCE_LABELS[item.source] ?? item.source}</span>
+                {item.source_detail && (item.link ? <Link className="underline underline-offset-4" to={item.link}>{item.source_detail}</Link> : <span>{item.source_detail}</span>)}
+                <span className="text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</span>
+              </li>)}</ul>
+            </div></>}
             {current.page_url && /^https?:\/\//i.test(current.page_url) && <a className="underline underline-offset-4" href={current.page_url} target="_blank" rel="noreferrer">View source page</a>}
             {Boolean(current.fields?.length) && <><Separator /><dl className="grid gap-2">{current.fields?.map((field) => <Detail key={field.key} label={field.label}><span className="whitespace-pre-wrap">{field.value}</span></Detail>)}</dl></>}
             {current.notes && <><Separator /><dl><Detail label="Notes"><span className="whitespace-pre-wrap">{current.notes}</span></Detail></dl></>}
