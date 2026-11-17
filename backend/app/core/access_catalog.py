@@ -31,8 +31,20 @@ class PermissionDef:
 
 
 PLATFORM_ACTIONS: list[PermissionDef] = [
+    PermissionDef("users.manage", "platform", "System", "Manage people",
+                  "Add, edit, import, disable and delete accounts, and reset passwords. Owner accounts stay with Owners."),
     PermissionDef("roles.manage", "platform", "System", "Manage roles",
                   "Create, edit and delete roles, and grant platform roles to people and departments."),
+    PermissionDef("departments.manage", "platform", "System", "Manage departments",
+                  "Create departments, change their module access and members."),
+    PermissionDef("settings.manage", "platform", "System", "Manage settings",
+                  "Change platform settings, module switches, companies and webhooks."),
+    PermissionDef("audit.view", "platform", "System", "View audit log",
+                  "Read the audit log of every change."),
+    PermissionDef("backups.manage", "platform", "System", "Manage backups",
+                  "Create, download and delete backups."),
+    PermissionDef("api_tokens.manage", "platform", "System", "Manage API tokens",
+                  "Create and revoke API tokens and see every AI access token."),
     PermissionDef("projects.create", "platform", "Projects", "Create projects",
                   "Create a new project. The creator becomes its Project Admin."),
     PermissionDef("projects.view_all", "platform", "Projects", "View all projects",
@@ -137,3 +149,18 @@ STARTER_ROLES: list[dict] = [
      "permissions": ["projects.create"]},
 ]
 STARTER_PROJECT_ROLE_KEYS = ("admin", "member", "viewer")
+
+SYSTEM_PERMISSIONS = ["users.manage", "roles.manage", "departments.manage", "settings.manage",
+                      "audit.view", "backups.manage", "api_tokens.manage"]
+
+# Owner: protected break-glass role holding every platform permission, including
+# any added later. Every platform administrator holds it after the migration.
+OWNER_ROLE_KEY = "owner"
+STARTER_ROLES += [
+    {"key": OWNER_ROLE_KEY, "scope": "platform", "name": "Owner", "protected": True,
+     "description": "Every permission, always. The platform keeps at least one active Owner.",
+     "permissions": []},
+    {"key": "administrator", "scope": "platform", "name": "Administrator",
+     "description": "Runs the system: people, roles, departments, settings, audit, backups and tokens; sees every project.",
+     "permissions": SYSTEM_PERMISSIONS + ["projects.view_all", "projects.create"]},
+]

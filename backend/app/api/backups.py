@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin
+
+from app.services.access import require_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.operations import BackupRecord
@@ -38,7 +39,7 @@ def out(record):
 @router.get("")
 async def listing(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("backups.manage")),
 ):
     rows = (
         await db.execute(
@@ -51,7 +52,7 @@ async def listing(
 @router.get("/status")
 async def status(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("backups.manage")),
 ):
     record = (
         await db.execute(
@@ -67,7 +68,7 @@ async def status(
 async def create(
     tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_admin),
+    user: User = Depends(require_permission("backups.manage")),
 ):
     running = (
         await db.execute(
@@ -94,7 +95,7 @@ async def create(
 async def import_archive(
     archive: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_admin),
+    user: User = Depends(require_permission("backups.manage")),
 ):
     """Register a previously exported platform archive without restoring it."""
     if not archive.filename or not archive.filename.lower().endswith(".zip"):
@@ -159,7 +160,7 @@ async def import_archive(
 async def download(
     backup_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("backups.manage")),
 ):
     record = await db.get(BackupRecord, backup_id)
     if (

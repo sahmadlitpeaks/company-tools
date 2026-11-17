@@ -20,7 +20,7 @@ from app.core.access_catalog import BY_KEY, PROJECT_KEYS, STARTER_ROLES
 from app.models.pm import PmProject, PmProjectMember
 from app.models.role import Role
 from app.models.user import User
-from app.services.access import platform_actions
+from app.services.access import is_owner, platform_actions
 
 _STARTER = {r["key"]: frozenset(r["permissions"]) for r in STARTER_ROLES if r["scope"] == "project"}
 VIEW_ALL_PERMISSIONS = frozenset({"project.view", "reports.view"})
@@ -81,7 +81,7 @@ async def _membership_access(db: AsyncSession, members: list[PmProjectMember]) -
 
 async def project_access(db: AsyncSession, user: User, project_id: uuid.UUID) -> ProjectAccess | None:
     """The caller's access to one project, or None when they cannot see it."""
-    if user.is_admin:
+    if is_owner(user):
         return ADMIN_ACCESS
     membership = await db.scalar(
         select(PmProjectMember).where(
@@ -102,7 +102,7 @@ async def project_access_map(db: AsyncSession, user: User, project_ids) -> dict[
     ids = list(project_ids)
     if not ids:
         return {}
-    if user.is_admin:
+    if is_owner(user):
         return {pid: ADMIN_ACCESS for pid in ids}
     members = list((await db.scalars(select(PmProjectMember).where(
         PmProjectMember.project_id.in_(ids), PmProjectMember.user_id == user.id
@@ -120,7 +120,7 @@ async def project_access_map(db: AsyncSession, user: User, project_ids) -> dict[
 
 async def visible_project_ids(db: AsyncSession, user: User) -> set[uuid.UUID] | None:
     """Project ids the user may see; None means every project."""
-    if user.is_admin or "projects.view_all" in platform_actions(user):
+    if is_owner(user) or "projects.view_all" in platform_actions(user):
         return None
     members = list((await db.scalars(
         select(PmProjectMember).where(PmProjectMember.user_id == user.id)

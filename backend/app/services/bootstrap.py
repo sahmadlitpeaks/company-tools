@@ -95,7 +95,7 @@ async def ensure_default_roles(db: AsyncSession) -> int:
             continue
         db.add(Role(key=spec["key"], scope=spec["scope"], name=spec["name"],
                     description=spec["description"], permissions=list(spec["permissions"]),
-                    is_system=True))
+                    is_system=True, is_protected=spec.get("protected", False)))
         created += 1
     if created:
         await db.commit()

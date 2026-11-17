@@ -125,10 +125,12 @@ class User(UUIDMixin, TimestampMixin, Base):
         """Modules this person can open (legacy grants plus role-granted ones)."""
         from app.core.permissions import resolve_permissions
 
+        from app.services.access import is_owner
+
         dept = self.access_department
         return resolve_permissions(
             role=self.role,
-            is_admin=self.is_admin,
+            is_admin=is_owner(self),
             permissions=self.permissions,
             department_perms=dept.permissions if dept else None,
             extra=list(self.extra_permissions or []) + self._role_grants("allow"),

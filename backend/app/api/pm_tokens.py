@@ -13,7 +13,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin, get_current_user
+from app.services.access import has_permission, require_permission
+from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.permissions import active_permissions
 from app.models.pm import PmAccessToken
@@ -107,7 +108,7 @@ async def revoke_token(
     token_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
     token = await db.get(PmAccessToken, token_id)
-    if not token or (token.user_id != user.id and not user.is_admin):
+    if not token or (token.user_id != user.id and not has_permission(user, "api_tokens.manage")):
         raise HTTPException(404, "Token not found")
     if not token.revoked_at:
         token.revoked_at = _now()
@@ -119,7 +120,7 @@ async def revoke_token(
 
 
 @router.get("/tokens/all")
-async def all_tokens(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
+async def all_tokens(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("api_tokens.manage"))):
     """Every token in the organisation, for administrators' oversight."""
     rows = (await db.scalars(select(PmAccessToken).order_by(PmAccessToken.created_at.desc()))).all()
     names = await user_names(db, {row.user_id for row in rows})

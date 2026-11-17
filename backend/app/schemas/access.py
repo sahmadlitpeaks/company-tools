@@ -38,6 +38,7 @@ class RoleOut(BaseModel):
     scope: str
     permissions: list[str] = []
     is_system: bool = False
+    is_protected: bool = False
     # Project roles: members holding it. Platform roles: people + departments.
     usage: int = 0
 

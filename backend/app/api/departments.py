@@ -6,7 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin
+
+from app.services.access import require_permission
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES
 from app.models.department import Department
@@ -59,7 +60,7 @@ async def _lock_member(db: AsyncSession, user_id: uuid.UUID) -> User | None:
 
 @router.get("", response_model=list[DepartmentOut])
 async def list_departments(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("departments.manage"))
 ):
     depts = (await db.execute(select(Department).order_by(Department.name))).scalars().all()
     counts = await _counts(db, {d.id for d in depts})
@@ -70,7 +71,7 @@ async def list_departments(
 async def list_members(
     department_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("departments.manage")),
 ):
     if not await db.get(Department, department_id):
         raise HTTPException(status_code=404, detail="Department not found")
@@ -84,7 +85,7 @@ async def add_member(
     department_id: uuid.UUID,
     payload: DepartmentMemberAdd,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("departments.manage")),
 ):
     dept = await db.get(Department, department_id)
     if not dept:
@@ -112,7 +113,7 @@ async def remove_member(
     department_id: uuid.UUID,
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("departments.manage")),
 ):
     dept = await db.get(Department, department_id)
     if not dept:
@@ -135,7 +136,7 @@ async def remove_member(
 async def create_department(
     payload: DepartmentCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("departments.manage")),
 ):
     name = payload.name.strip()
     if not name:
@@ -161,7 +162,7 @@ async def update_department(
     department_id: uuid.UUID,
     payload: DepartmentUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("departments.manage")),
 ):
     dept = await db.get(Department, department_id)
     if not dept:
@@ -191,7 +192,7 @@ async def update_department(
 async def delete_department(
     department_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("departments.manage")),
 ):
     dept = await db.get(Department, department_id)
     if dept:

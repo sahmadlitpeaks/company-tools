@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import can_manage_company, get_current_admin, get_current_user
+from app.services.access import require_permission
+from app.auth.deps import can_manage_company, get_current_user
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.company import Company
@@ -53,7 +54,7 @@ async def list_brands(
 async def create_brand(
     payload: CompanyCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_admin),
+    user: User = Depends(require_permission("settings.manage")),
 ):
     data = payload.model_dump()
     data["slug"] = await _unique_slug(db, payload.slug or payload.name)
@@ -156,7 +157,7 @@ async def download_logo(
 async def delete_brand(
     company_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     brand = await db.get(Company, company_id)
     if not brand:

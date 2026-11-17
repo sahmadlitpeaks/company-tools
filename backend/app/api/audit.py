@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin
+
+from app.services.access import require_permission
 from app.core.database import get_db
 from app.models.activity import ActivityLog
 from app.models.user import User
@@ -41,7 +42,7 @@ async def list_audit(
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("audit.view")),
 ):
     stmt = select(ActivityLog).order_by(ActivityLog.created_at.desc())
     if action:

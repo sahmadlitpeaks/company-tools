@@ -94,8 +94,21 @@ under **Admin → Roles & Permissions** (`/api/access/*`, `roles.manage`).
   department's roles, plus allows, minus denies (`user_permission_overrides`).
   Module keys granted through a role are merged into `effective_permissions`.
   `require_permission("projects.create")` in `app/services/access.py` guards
-  routes. Platform administrators still hold every permission until the admin
-  flag is retired (BRD PRM-13).
+  routes.
+- **Owner** is a protected platform role that always holds every permission
+  (including modules added later). It can't be edited, copied, deleted or given
+  to a department, only an Owner can grant or remove it, and the platform always
+  keeps at least one active Owner. The legacy `is_admin` flag still counts as
+  Owner until it is retired (BRD PRM-13); the migration gave every admin the
+  Owner role. The **Administrator** starter role holds the system permissions
+  (`users.manage`, `roles.manage`, `departments.manage`, `settings.manage`,
+  `audit.view`, `backups.manage`, `api_tokens.manage`) plus `projects.view_all`
+  and `projects.create`.
+- The admin screens (people, departments, settings, companies, webhooks, audit,
+  backups, API tokens) check those named permissions instead of the admin flag.
+  Holders of `users.manage` who aren't Owners can't make platform
+  administrators, change Owner accounts or grant modules they don't hold.
+  Modules being retired still use the admin flag until they are removed.
 - Project: `pm_project_members.role` stores a project role key, plus
   `allow_permissions`/`deny_permissions`. `require_project(db, user, id,
   "sprint.manage")` in `app/services/pm_access.py` returns a `ProjectAccess`.

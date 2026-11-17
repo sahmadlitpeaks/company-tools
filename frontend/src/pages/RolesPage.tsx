@@ -24,7 +24,8 @@ function errorText(cause: unknown) {
 
 /** Roles, platform grants and department roles (roles.manage). */
 export default function RolesPage() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
+  const departmentsAllowed = hasPermission("departments.manage");
   const catalog = useFetch<PermissionCatalog>("/api/access/catalog");
   const roles = useFetch<AccessRole[]>("/api/access/roles");
 
@@ -38,7 +39,7 @@ export default function RolesPage() {
             <TabsTrigger value="platform">Platform roles</TabsTrigger>
             <TabsTrigger value="project">Project roles</TabsTrigger>
             <TabsTrigger value="people">People</TabsTrigger>
-            {user?.is_admin && <TabsTrigger value="departments">Departments</TabsTrigger>}
+            {departmentsAllowed && <TabsTrigger value="departments">Departments</TabsTrigger>}
           </TabsList>
           {(["platform", "project"] as const).map((scope) => <TabsContent key={scope} value={scope} className="pt-4">
             <RoleList scope={scope} roles={roles.data!.filter((role) => role.scope === scope)}
@@ -47,7 +48,7 @@ export default function RolesPage() {
           <TabsContent value="people" className="pt-4">
             <PeopleAccess roles={roles.data.filter((role) => role.scope === "platform")} catalog={catalog.data} />
           </TabsContent>
-          {user?.is_admin && <TabsContent value="departments" className="pt-4">
+          {departmentsAllowed && <TabsContent value="departments" className="pt-4">
             <DepartmentRoles roles={roles.data.filter((role) => role.scope === "platform")} onChanged={roles.reload} />
           </TabsContent>}
         </Tabs>}
@@ -73,10 +74,10 @@ function RoleList({ scope, roles, permissions, onChanged }: {
     notify(`Deleted ${role.name}.`);
     onChanged();
   }
-  const summary = (role: AccessRole) => role.permissions.length === permissions.length ? "Every permission"
+  const summary = (role: AccessRole) => role.is_protected || role.permissions.length === permissions.length ? "Every permission"
     : role.permissions.slice(0, 4).map((key) => labels.get(key) ?? key).join(", ") + (role.permissions.length > 4 ? ` and ${role.permissions.length - 4} more` : "");
   const usage = (role: AccessRole) => scope === "project" ? `${role.usage} member${role.usage === 1 ? "" : "s"}` : `${role.usage} grant${role.usage === 1 ? "" : "s"}`;
-  const actions = (role: AccessRole) => <div className="flex justify-end gap-1">
+  const actions = (role: AccessRole) => role.is_protected ? <Badge variant="outline">Protected</Badge> : <div className="flex justify-end gap-1">
     <Button variant="ghost" size="icon" aria-label={`Edit ${role.name}`} onClick={() => setEditing(role)}><Pencil /></Button>
     <Button variant="ghost" size="icon" aria-label={`Copy ${role.name}`} onClick={() => void clone(role)}><Copy /></Button>
     {!role.is_system && <Button variant="ghost" size="icon" aria-label={`Delete ${role.name}`} onClick={() => setDeleting(role)}><Trash2 /></Button>}
@@ -259,7 +260,7 @@ function PersonAccessDialog({ person, roles, catalog, onClose }: {
     {access.error ? <ErrorState message={access.error} onRetry={access.reload} /> : !access.data || !current ? <Loading /> :
       <div className="flex flex-col gap-5">
         {state.error && <Alert variant="destructive" role="alert"><AlertDescription>{state.error}</AlertDescription></Alert>}
-        {access.data.is_admin && <Alert><AlertDescription>{name} is a platform administrator and holds every permission.</AlertDescription></Alert>}
+        {access.data.is_admin && <Alert><AlertDescription>{name} is an Owner and holds every permission.</AlertDescription></Alert>}
         <FieldSet>
           <FieldLegend variant="label">Platform roles</FieldLegend>
           {access.data.department_name && <FieldDescription>Roles from the {access.data.department_name} department apply as well.</FieldDescription>}

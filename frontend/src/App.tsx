@@ -294,11 +294,11 @@ export default function App() {
           />
           <Route
             path="/companies"
-            element={<Protected adminOnly><CompaniesPage /></Protected>}
+            element={<Protected permission="settings.manage"><CompaniesPage /></Protected>}
           />
           <Route
             path="/departments"
-            element={<Protected adminOnly><DepartmentsPage /></Protected>}
+            element={<Protected permission="departments.manage"><DepartmentsPage /></Protected>}
           />
           <Route
             path="/roles"
@@ -306,15 +306,15 @@ export default function App() {
           />
           <Route
             path="/audit"
-            element={<Protected adminOnly><AuditPage /></Protected>}
+            element={<Protected permission="audit.view"><AuditPage /></Protected>}
           />
           <Route
             path="/settings"
-            element={<Protected adminOnly><SettingsPage /></Protected>}
+            element={<Protected permission="settings.manage"><SettingsPage /></Protected>}
           />
           <Route
             path="/webhooks"
-            element={<Protected adminOnly><WebhooksPage /></Protected>}
+            element={<Protected permission="settings.manage"><WebhooksPage /></Protected>}
           />
           <Route
             path="/approval-workflows"
@@ -322,7 +322,7 @@ export default function App() {
           />
           <Route
             path="/api-tokens"
-            element={<Protected adminOnly><ApiTokensPage /></Protected>}
+            element={<Protected permission="api_tokens.manage"><ApiTokensPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

@@ -2355,6 +2355,8 @@ export interface AccessRole {
   scope: PermissionScope;
   permissions: string[];
   is_system: boolean;
+  /** Owner: every permission; can't be edited, copied, deleted or given to a department. */
+  is_protected: boolean;
   /** Project roles: members holding it. Platform roles: people plus departments. */
   usage: number;
 }

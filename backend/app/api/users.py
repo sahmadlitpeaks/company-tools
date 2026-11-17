@@ -9,11 +9,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.access import active_owner_ids, ensure_another_owner, is_owner, require_permission
 from app.auth.azure import fetch_graph_users, get_app_token
 from app.api.sharepoint import same_origin
 from sqlalchemy.exc import IntegrityError
 from app.services.employee_deletion import ActiveComplianceWorkError, deletion_blockers, remove_personal_data
-from app.auth.deps import get_current_admin, get_current_user
+from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.permissions import ALL_MODULES, MODULES, ROLE_DEFAULTS
 from app.core.security import hash_password, password_policy_error
@@ -47,7 +48,8 @@ router = APIRouter(prefix="/users", tags=["directory"])
 
 
 @router.get("/modules")
-async def list_modules(_: User = Depends(get_current_admin)) -> dict:
+async def list_modules(_: User = Depends(get_current_user)) -> dict:
+    """Module catalogue (labels only) for the people and department editors."""
     """Catalogue of permission modules + role defaults, for the admin matrix."""
     return {
         "modules": [{"key": k, "label": label} for k, label in MODULES],
@@ -76,11 +78,30 @@ async def list_users(
     return result.scalars().all()
 
 
+def _guard_owner_powers(actor: User, target: User | None = None, data: dict | None = None) -> None:
+    """users.manage never reaches beyond the actor's own access (PRM-10).
+
+    Only Owners make platform administrators, change Owner accounts or hand out
+    modules they don't hold themselves.
+    """
+    if is_owner(actor):
+        return
+    if target is not None and is_owner(target):
+        raise HTTPException(403, "Only an Owner can change an Owner's account.")
+    data = data or {}
+    if data.get("role") == "admin":
+        raise HTTPException(403, "Only an Owner can make someone a platform administrator.")
+    granted = set(data.get("permissions") or []) | set(data.get("extra_permissions") or [])
+    beyond = granted - set(actor.effective_permissions)
+    if beyond:
+        raise HTTPException(403, f"You can't grant modules you don't hold yourself: {', '.join(sorted(beyond))}")
+
+
 @router.post("", response_model=UserCreated, status_code=201)
 async def create_user(
     payload: UserCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Manually add an employee not yet synced from Azure (e.g. a new joiner)."""
     official = (payload.email or "").strip().lower() or None
@@ -100,6 +121,7 @@ async def create_user(
         raise HTTPException(status_code=422, detail="Official email is invalid")
     if personal and not _valid_email(personal):
         raise HTTPException(status_code=422, detail="Personal email is invalid")
+    _guard_owner_powers(admin, data=payload.model_dump())
     if payload.role not in ROLES:
         raise HTTPException(status_code=422, detail="Invalid role")
     if payload.status not in STATUSES:
@@ -207,13 +229,13 @@ def _parse_date(v: str | None):
 
 
 @router.get("/template.csv")
-async def employees_template(_: User = Depends(get_current_admin)):
+async def employees_template(_: User = Depends(require_permission("users.manage"))):
     return _csv_response([CSV_SAMPLE], "employees-template.csv")
 
 
 @router.get("/export.csv")
 async def export_employees(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("users.manage"))
 ):
     users = (await db.execute(select(User).order_by(User.display_name))).scalars().all()
     emails = {u.id: u.email for u in users}
@@ -244,7 +266,7 @@ async def export_employees(
 async def import_employees(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Bulk create/update employees from CSV (matched by email). Manager links
     are resolved by manager_email in a second pass so order doesn't matter."""
@@ -265,6 +287,9 @@ async def import_employees(
         role = (row.get("role") or "member").strip().lower()
         if role not in ROLES:
             role = "member"
+        if role == "admin" and not is_owner(admin):
+            errors.append(f"Row {i}: only an Owner can import platform administrators")
+            continue
         status = (row.get("status") or "active").strip().lower()
         if status not in STATUSES:
             status = "active"
@@ -291,6 +316,9 @@ async def import_employees(
             await db.execute(select(User).where(User.email == email))
         ).scalar_one_or_none()
         if existing:
+            if is_owner(existing) and not is_owner(admin):
+                errors.append(f"Row {i}: only an Owner can change an Owner's account")
+                continue
             for k, v in values.items():
                 setattr(existing, k, v)
             updated += 1
@@ -311,6 +339,9 @@ async def import_employees(
         elif u and mgr.id != u.id:
             u.manager_id = mgr.id
 
+    if not await active_owner_ids(db):
+        await db.rollback()
+        raise HTTPException(409, "This import would leave no active Owner. Keep at least one platform administrator.")
     record(
         db, user=admin, action="created", entity_type="user",
         summary=f"Imported employees via CSV ({created} new, {updated} updated)",
@@ -324,12 +355,13 @@ async def set_password(
     user_id: uuid.UUID,
     payload: SetPasswordIn,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Set or reset a user's local password (they must change it on next login)."""
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_owner_powers(admin, user)
     err = password_policy_error(payload.password or "")
     if err:
         raise HTTPException(status_code=422, detail=err)
@@ -347,7 +379,7 @@ async def set_password(
 async def reset_password(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Issue a fresh temporary password and email it to the user.
 
@@ -358,6 +390,7 @@ async def reset_password(
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_owner_powers(admin, user)
     if not (user.email or user.personal_email):
         raise HTTPException(
             status_code=422, detail="This person has no email address to send to"
@@ -380,7 +413,7 @@ async def reset_password(
 async def sync_azure(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Provision this employee in Azure Entra ID (requires Azure configured)."""
     user = await db.get(User, user_id)
@@ -405,7 +438,7 @@ async def sync_azure(
 async def sync_bamboo(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     """Push this employee to BambooHR (requires BambooHR configured)."""
     user = await db.get(User, user_id)
@@ -441,7 +474,7 @@ async def _deletion_status(db, target, admin):
 @router.get("/{user_id}/deletion")
 async def employee_deletion_status(
     user_id: uuid.UUID, db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     target = await db.get(User, user_id)
     if not target:
@@ -452,11 +485,14 @@ async def employee_deletion_status(
 @router.delete("/{user_id}", status_code=204, dependencies=[Depends(same_origin)])
 async def delete_employee(
     user_id: uuid.UUID, db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     target = await db.scalar(select(User).where(User.id == user_id).with_for_update(of=User))
     if not target:
         raise HTTPException(404, "Employee not found")
+    _guard_owner_powers(admin, target)
+    if is_owner(target):
+        await ensure_another_owner(db, target.id)
     status = await _deletion_status(db, target, admin)
     if not status["can_delete"]:
         raise HTTPException(409, {"message": status["reason"], "blockers": status["blockers"]})
@@ -488,12 +524,19 @@ async def update_user(
     user_id: uuid.UUID,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("users.manage")),
 ):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     data = payload.model_dump(exclude_unset=True)
+    _guard_owner_powers(admin, user, data)
+    losing_owner = is_owner(user) and (
+        ("role" in data and data["role"] != "admin" and user.is_admin)
+        or data.get("status") in ("disabled", "pending") or data.get("is_active") is False
+    )
+    if losing_owner:
+        await ensure_another_owner(db, user.id)
     for field in ("email", "personal_email"):
         if field in data:
             data[field] = (data[field] or "").strip().lower() or None
@@ -555,7 +598,7 @@ async def set_managed_companies(
     user_id: uuid.UUID,
     payload: ManagedBrandsUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("users.manage")),
 ):
     """Set which brands a manager can manage."""
     user = await db.get(User, user_id)
@@ -573,7 +616,7 @@ async def set_managed_companies(
 @router.post("/sync", response_model=dict)
 async def sync_directory(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("users.manage")),
 ):
     """Feature #1 — pull every user from Entra ID into the local DB."""
     cfg = await get_azure_config(db)

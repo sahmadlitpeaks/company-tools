@@ -31,6 +31,8 @@ const catalog = {
 const roles = [
   { id: "r-admin", key: "admin", name: "Project Admin", description: "Runs the project.", scope: "project",
     permissions: ["project.view", "sprint.manage"], is_system: true, usage: 3 },
+  { id: "r-owner", key: "owner", name: "Owner", description: "Every permission.", scope: "platform",
+    permissions: [], is_system: true, is_protected: true, usage: 1 },
   { id: "r-creator", key: "project_creator", name: "Project Creator", description: "Creates projects.", scope: "platform",
     permissions: ["projects.create"], is_system: true, usage: 1 },
 ];
@@ -61,6 +63,9 @@ test("roles page lets a roles manager create a role with chosen permissions", as
   // Not an admin: the Departments tab (admin-only list) stays hidden.
   await expect(page.getByRole("tab", { name: "Departments" })).toHaveCount(0);
   await expect(page.getByText("Project Creator").filter({ visible: true }).first()).toBeVisible();
+  // The Owner role is protected: no edit, copy or delete.
+  await expect(page.getByText("Protected").filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Owner" })).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Project roles" }).click();
   await expect(page.getByText("Project Admin").filter({ visible: true }).first()).toBeVisible();

@@ -39,7 +39,14 @@ from app.schemas.access import (
     UserAccessIn,
     UserAccessOut,
 )
-from app.services.access import has_permission, missing_detail, platform_actions, require_permission
+from app.services.access import (
+    ensure_another_owner,
+    has_permission,
+    is_owner,
+    missing_detail,
+    platform_actions,
+    require_permission,
+)
 from app.services.activity import record
 
 router = APIRouter(prefix="/access", tags=["access"])
@@ -87,7 +94,7 @@ def _check_permissions(user: User, scope: str, permissions: list[str]) -> list[s
     unknown = set(permissions) - keys_for_scope(scope)
     if unknown:
         raise HTTPException(422, f"Unknown {scope} permissions: {', '.join(sorted(unknown))}")
-    if scope == "platform" and not user.is_admin:
+    if scope == "platform" and not is_owner(user):
         beyond = set(permissions) - _held(user)
         if beyond:
             raise HTTPException(
@@ -159,6 +166,8 @@ async def update_role(
     user: User = Depends(require_permission("roles.manage")),
 ):
     role = await _get_role(db, role_id)
+    if role.is_protected:
+        raise HTTPException(409, "The Owner role always holds every permission and can't be edited.")
     before = (role.name, list(role.permissions or []))
     data = payload.model_dump(exclude_unset=True)
     if "name" in data:
@@ -188,6 +197,8 @@ async def clone_role(
     user: User = Depends(require_permission("roles.manage")),
 ):
     source = await _get_role(db, role_id)
+    if source.is_protected:
+        raise HTTPException(409, "The Owner role can't be copied.")
     name = f"{source.name} (copy)"
     role = Role(key=await _unique_key(db, name), name=name, description=source.description,
                 scope=source.scope, permissions=_check_permissions(user, source.scope, source.permissions or []),
@@ -208,7 +219,7 @@ async def delete_role(
     user: User = Depends(require_permission("roles.manage")),
 ):
     role = await _get_role(db, role_id)
-    if role.is_system:
+    if role.is_system or role.is_protected:
         raise HTTPException(409, "Starter roles can be edited but not deleted.")
     usage = await _usage(db, role)
     if usage:
@@ -237,6 +248,9 @@ def _sources(target: User) -> dict[str, list[str]]:
     if target.is_admin:
         for key in PLATFORM_ACTION_KEYS:
             add(key, "Platform administrator")
+    elif is_owner(target):
+        for key in PLATFORM_ACTION_KEYS:
+            add(key, "Role: Owner")
     for role in target.platform_roles or []:
         for key in role.permissions or []:
             add(key, f"Role: {role.name}")
@@ -254,7 +268,7 @@ async def _user_access(db: AsyncSession, target: User) -> UserAccessOut:
     dept = target.access_department
     return UserAccessOut(
         user_id=target.id,
-        is_admin=target.is_admin,
+        is_admin=is_owner(target),
         role_ids=[r.id for r in target.platform_roles or []],
         department_id=dept.id if dept else None,
         department_name=dept.name if dept else None,
@@ -307,13 +321,22 @@ async def set_user_access(
                  "Module access is changed in the person's module list."
         )
     granted = {p for r in roles for p in r.permissions or []} | allow
+    had_owner = any(r.is_protected for r in target.platform_roles or [])
+    gets_owner = any(r.is_protected for r in roles)
+    if had_owner != gets_owner:
+        if not is_owner(user):
+            raise HTTPException(403, "Only an Owner can grant or remove the Owner role.")
+        if had_owner and not target.is_admin:
+            await ensure_another_owner(db, target.id)
     added_roles = {r.id for r in roles} - {r.id for r in target.platform_roles or []}
     newly = {p for r in roles if r.id in added_roles for p in r.permissions or []} | (
         allow - {o.permission for o in target.permission_overrides or [] if o.allow})
-    if not user.is_admin and newly - _held(user):
+    if not is_owner(user) and newly - _held(user):
         raise HTTPException(
             403, f"You can't grant permissions you don't hold yourself: {', '.join(sorted(newly - _held(user)))}"
         )
+    if is_owner(target) and not is_owner(user):
+        raise HTTPException(403, "Only an Owner can change an Owner's access.")
     before = await _user_access(db, target)
     target.platform_roles = roles
     await db.execute(delete(UserPermissionOverride).where(UserPermissionOverride.user_id == target.id))
@@ -354,9 +377,11 @@ async def set_department_roles(
     if not dept:
         raise HTTPException(404, "Department not found")
     roles = await _platform_roles(db, payload.role_ids)
+    if any(r.is_protected for r in roles):
+        raise HTTPException(422, "The Owner role is granted to named people, not departments.")
     added = [r for r in roles if r.id not in {x.id for x in dept.roles or []}]
     newly = {p for r in added for p in r.permissions or []}
-    if not user.is_admin and newly - _held(user):
+    if not is_owner(user) and newly - _held(user):
         raise HTTPException(
             403, f"You can't grant permissions you don't hold yourself: {', '.join(sorted(newly - _held(user)))}"
         )

@@ -46,8 +46,13 @@ def role_module_grants(user: User, kind: str) -> list[str]:
     return sorted(deny & PLATFORM_MODULE_KEYS)
 
 
+def is_owner(user: User) -> bool:
+    """Owners hold every permission: the protected Owner role, or the legacy admin flag."""
+    return bool(user.is_admin) or any(getattr(r, "is_protected", False) for r in user.platform_roles or [])
+
+
 def platform_actions(user: User) -> list[str]:
-    if user.is_admin:
+    if is_owner(user):
         return ordered(PLATFORM_ACTION_KEYS, "platform")
     allow, deny = _overrides(user)
     return ordered(((_role_permissions(user) | allow) - deny) & PLATFORM_ACTION_KEYS, "platform")
@@ -75,3 +80,23 @@ def require_permission(key: str):
         return user
 
     return _guard
+
+
+async def active_owner_ids(db) -> set:
+    """Active accounts that are Owners (PRM-10: there is always at least one)."""
+    from sqlalchemy import or_, select
+
+    from app.models.role import Role, user_platform_roles
+
+    owner_role = select(user_platform_roles.c.user_id).join(
+        Role, Role.id == user_platform_roles.c.role_id).where(Role.is_protected.is_(True))
+    rows = await db.scalars(select(User.id).where(
+        User.is_active.is_(True), User.status == "active",
+        or_(User.is_admin.is_(True), User.id.in_(owner_role)),
+    ))
+    return set(rows.all())
+
+
+async def ensure_another_owner(db, user_id) -> None:
+    if not (await active_owner_ids(db)) - {user_id}:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The platform must keep at least one active Owner.")

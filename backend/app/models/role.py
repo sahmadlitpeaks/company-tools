@@ -40,6 +40,8 @@ class Role(UUIDMixin, TimestampMixin, Base):
     permissions: Mapped[list[str]] = mapped_column(JSON, default=list)
     # Starter roles can be edited but not deleted.
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Owner: holds every permission, can't be edited, deleted or given to a department.
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class UserPermissionOverride(UUIDMixin, TimestampMixin, Base):
