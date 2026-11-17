@@ -102,6 +102,8 @@ export interface PmIssueDetail extends PmIssue {
   project_name: string;
   my_role: ProjectRole | null;
   my_permissions: string[];
+  /** Keys the issue had before it moved project; they keep resolving. */
+  previous_keys: string[];
   watching: boolean;
   children: PmIssue[];
   links: PmLink[];

@@ -22,6 +22,7 @@ from app.models.pm import (
     PmComment,
     PmIssue,
     PmIssueHistory,
+    PmIssueKeyAlias,
     PmIssueLink,
     PmIssueWatcher,
     PmProject,
@@ -65,6 +66,7 @@ from app.services.access import has_permission, missing_detail as platform_missi
 from app.services.pm_access import (
     ProjectAccess,
     compose,
+    project_access,
     ensure_writable as _ensure_writable,
     manager_count,
     member_access,
@@ -514,15 +516,35 @@ async def people(
 async def _issue_by_ref(db: AsyncSession, ref: str) -> PmIssue | None:
     match = ISSUE_KEY_RE.match(ref.upper())
     if match:
-        return await db.scalar(
+        issue = await db.scalar(
             select(PmIssue)
             .join(PmProject, PmProject.id == PmIssue.project_id)
             .where(PmProject.key == match.group(1), PmIssue.number == int(match.group(2)))
         )
+        if issue is None:
+            # A key the issue had before it moved project keeps working (MOV-04).
+            issue = await db.scalar(
+                select(PmIssue).join(PmIssueKeyAlias, PmIssueKeyAlias.issue_id == PmIssue.id)
+                .where(PmIssueKeyAlias.key == ref.upper())
+            )
+        return issue
     try:
         return await db.get(PmIssue, uuid.UUID(ref))
     except ValueError:
         return None
+
+
+async def previous_keys(db: AsyncSession, issue_id: uuid.UUID) -> list[str]:
+    return list((await db.scalars(
+        select(PmIssueKeyAlias.key).where(PmIssueKeyAlias.issue_id == issue_id).order_by(PmIssueKeyAlias.created_at)
+    )).all())
+
+
+async def issue_keys(db: AsyncSession, issues) -> dict[uuid.UUID, str]:
+    """Each issue's current key, from its own project (linked issues may have moved)."""
+    project_ids = {i.project_id for i in issues}
+    keys = dict((await db.execute(select(PmProject.id, PmProject.key).where(PmProject.id.in_(project_ids)))).all()) if project_ids else {}
+    return {i.id: f"{keys[i.project_id]}-{i.number}" for i in issues}
 
 
 async def _load_issue(
@@ -878,7 +900,9 @@ async def create_issue(
     return (await _issue_outs(db, project, [issue]))[0]
 
 
-async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> list[PmLinkOut]:
+async def _links_for(
+    db: AsyncSession, issue: PmIssue, project: PmProject, viewer: User | None = None,
+) -> list[PmLinkOut]:
     rows = (
         await db.scalars(
             select(PmIssueLink).where(
@@ -890,6 +914,7 @@ async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> li
     others = {
         i.id: i for i in (await db.scalars(select(PmIssue).where(PmIssue.id.in_(other_ids)))).all()
     } if other_ids else {}
+    keys = await issue_keys(db, others.values())
     links = []
     for row in rows:
         outgoing = row.source_id == issue.id
@@ -900,7 +925,13 @@ async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> li
             relation = "relates"
         else:
             relation = "blocks" if outgoing else "is_blocked_by"
-        links.append(PmLinkOut(id=row.id, relation=relation, issue=_ref(other, project)))
+        ref = PmIssueRef(id=other.id, key=keys[other.id], summary=other.summary,
+                         issue_type=other.issue_type, status=other.status)
+        if other.project_id != project.id and viewer is not None and \
+                await project_access(db, viewer, other.project_id) is None:
+            # Moved to a project the viewer can't see: show the key only.
+            ref.summary = "In a project you can't see"
+        links.append(PmLinkOut(id=row.id, relation=relation, issue=ref))
     return links
 
 
@@ -915,6 +946,7 @@ async def get_issue(
     detail.project_name = project.name
     detail.my_role = access.legacy_role
     detail.my_permissions = sorted(access.permissions)
+    detail.previous_keys = await previous_keys(db, issue.id)
     children = list(
         (
             await db.scalars(
@@ -923,7 +955,7 @@ async def get_issue(
         ).all()
     )
     detail.children = await _issue_outs(db, project, children)
-    detail.links = await _links_for(db, issue, project)
+    detail.links = await _links_for(db, issue, project, user)
     watcher_ids = set(
         (await db.scalars(select(PmIssueWatcher.user_id).where(PmIssueWatcher.issue_id == issue.id))).all()
     )

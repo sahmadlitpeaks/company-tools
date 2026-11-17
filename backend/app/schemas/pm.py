@@ -188,6 +188,8 @@ class PmIssueDetail(PmIssueOut):
     project_name: str = ""
     my_role: str | None = None
     my_permissions: list[str] = []
+    # Keys the issue had before it moved project; they keep resolving.
+    previous_keys: list[str] = []
     watching: bool = False
     children: list[PmIssueOut] = Field(default_factory=list)
     links: list[PmLinkOut] = Field(default_factory=list)

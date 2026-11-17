@@ -135,6 +135,7 @@ from app.models.pm import (  # noqa: F401
     PmIssue,
     PmIssueHistory,
     PmIssueLink,
+    PmIssueKeyAlias,
     PmIssueWatcher,
     PmProject,
     PmProjectMember,

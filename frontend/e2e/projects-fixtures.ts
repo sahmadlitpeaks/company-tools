@@ -60,7 +60,7 @@ export async function mount(page: Page, role: "admin" | "viewer", options: { arc
   const requests: Array<{ method: string; path: string; body: unknown }> = [];
   // Mirrors the starter project roles in backend/app/core/access_catalog.py.
   const adminPermissions = ["project.view", "project.settings", "project.archive", "members.manage", "issue.create",
-    "issue.edit", "issue.edit_own", "issue.delete", "issue.assign", "issue.transition", "issue.comment",
+    "issue.edit", "issue.edit_own", "issue.delete", "issue.assign", "issue.transition", "issue.comment", "issue.move_out", "issue.move_in",
     "comment.delete_any", "sprint.manage", "workflow.configure", "reports.view", "decisions.create",
     "decisions.approve", "requirements.manage", "share_links.manage", "import.run"];
   const viewerPermissions = ["project.view", "issue.comment", "reports.view"];

@@ -65,7 +65,10 @@ async def _out(db, row, project, role, *, detail=False):
                                      .where(PmRequirementDecisionLink.requirement_id == row.id).order_by(PmDecision.number))).all()
         events = (await db.scalars(select(PmRequirementEvent).where(PmRequirementEvent.requirement_id == row.id)
                                   .order_by(PmRequirementEvent.created_at, PmRequirementEvent.id))).all()
-        result["issues"] = [{"id": issue.id, "key": f"{project.key}-{issue.number}", "summary": issue.summary,
+        from app.api.pm import issue_keys
+
+        keys = await issue_keys(db, issues)
+        result["issues"] = [{"id": issue.id, "key": keys[issue.id], "summary": issue.summary,
                              "issue_type": issue.issue_type, "status": issue.status} for issue in issues]
         result["decisions"] = [{"id": decision.id, "key": f"{project.key}-DEC-{decision.number}", "title": decision.title,
                                 "status": decision.status} for decision in decisions]

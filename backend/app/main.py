@@ -66,6 +66,7 @@ from app.api import (
     pm_requirements,
     pm_import,
     pm_mcp,
+    pm_move,
     pm_reports,
     pm_share,
     pm_tokens,
@@ -327,6 +328,7 @@ app.include_router(
 app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(pm_workspace.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
+app.include_router(pm_move.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_decisions.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_requirements.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_reports.router, prefix=api_prefix, dependencies=_mod("projects"))

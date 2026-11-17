@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import pm
 from app.core.database import Base
-from app.models.pm import PmProject, PmProjectMember
+from app.models.pm import PmIssue, PmProject, PmProjectMember
 from app.models.user import User
 from app.schemas.pm import PmMemberUpdate
 
@@ -119,3 +119,54 @@ def test_concurrent_changes_preserve_one_project_administrator(monkeypatch, oper
             runner.run(scenario())
     else:
         asyncio.run(scenario())
+
+
+@pytest.mark.skipif(not os.environ.get("PM_TEST_DATABASE_URL"), reason="Requires disposable local PostgreSQL")
+def test_concurrent_moves_into_one_project_never_share_a_key():
+    """MOV-03: the target's key sequence is locked, so parallel moves get distinct keys."""
+    from app.api import pm_move
+
+    url = make_url(os.environ["PM_TEST_DATABASE_URL"])
+    assert url.drivername == "postgresql+psycopg" and url.host in {"localhost", "127.0.0.1"}
+    assert url.database == "pm_regression_test"
+
+    async def scenario():
+        engine = create_async_engine(url)
+        schema = f"pm_move_{uuid.uuid4().hex}"
+        scoped = engine.execution_options(schema_translate_map={None: schema})
+        sessions = async_sessionmaker(scoped, expire_on_commit=False)
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+            async with scoped.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            async with sessions() as db:
+                admin = User(email="mover@example.test", display_name="Mover", is_admin=True, status="active")
+                db.add(admin)
+                await db.flush()
+                projects = [PmProject(key=key, name=key, issue_seq=1) for key in ("SRCA", "SRCB", "DEST")]
+                db.add_all(projects)
+                await db.flush()
+                issues = [PmIssue(project_id=p.id, number=1, summary=f"From {p.key}", issue_type="task", status="todo")
+                          for p in projects[:2]]
+                db.add_all(issues)
+                await db.commit()
+                target, ids = projects[2].id, [i.id for i in issues]
+
+            async def move(issue_id):
+                async with sessions() as db:
+                    result = await pm_move.apply_move(
+                        db, admin, pm_move.MoveRequest(issue_ids=[issue_id], target_project_id=target))
+                    await db.commit()
+                    return result["moved"][0]["new_key"]
+
+            keys = await asyncio.wait_for(asyncio.gather(move(ids[0]), move(ids[1])), 20)
+            assert sorted(keys) == ["DEST-2", "DEST-3"]
+            async with sessions() as db:
+                assert await db.scalar(select(PmProject.issue_seq).where(PmProject.id == target)) == 3
+        finally:
+            async with engine.begin() as connection:
+                await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            await engine.dispose()
+
+    asyncio.run(scenario())

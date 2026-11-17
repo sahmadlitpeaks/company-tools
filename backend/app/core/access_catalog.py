@@ -62,6 +62,10 @@ PROJECT_PERMISSIONS: list[PermissionDef] = [
                   "Move issues between workflow states."),
     PermissionDef("issue.comment", "project", "Issues", "Comment",
                   "Comment on issues."),
+    PermissionDef("issue.move_out", "project", "Issues", "Move issues out",
+                  "Move issues from this project to another project."),
+    PermissionDef("issue.move_in", "project", "Issues", "Move issues in",
+                  "Receive issues moved here from another project."),
     PermissionDef("comment.delete_any", "project", "Issues", "Delete others' comments and attachments",
                   "Remove comments and attachments added by other people."),
     PermissionDef("sprint.manage", "project", "Planning", "Manage sprints",
@@ -114,6 +118,7 @@ def ordered(keys, scope: str) -> list[str]:
 CONTRIBUTOR_PERMISSIONS = [
     "project.view", "issue.create", "issue.edit", "issue.assign", "issue.transition",
     "issue.comment", "reports.view", "decisions.create", "requirements.manage",
+    "issue.move_out", "issue.move_in",
 ]
 VIEWER_PERMISSIONS = ["project.view", "issue.comment", "reports.view"]
 

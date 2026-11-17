@@ -313,11 +313,13 @@ app, so validation, history, notifications and watchers behave identically.
 | --- | --- | --- |
 | `tracker_list_projects` | read | Visible projects with role, health and progress |
 | `tracker_get_project_summary` | read | Status counts, active sprint, overdue issues, epic progress and workspace configuration |
-| `tracker_search_issues` | read | Search by text/key, status, type, assignee (`me`, `none`, email) or sprint; paged |
-| `tracker_get_issue` | read | Description, people, labels, children, links and the last 20 comments |
+| `tracker_search_issues` | read | Search by text/key (old keys of moved issues too), status, type, assignee (`me`, `none`, email) or sprint; paged |
+| `tracker_get_issue` | read | Description, people, labels, children, links, `previous_keys` and the last 20 comments; accepts old keys |
 | `tracker_create_issue` | write | Create an issue (parent/epic, assignee by email, points, dates, active sprint) |
 | `tracker_update_issue` | write | Change only the fields given |
-| `tracker_move_issue` | write | Change status |
+| `tracker_transition_issue` | write | Change status |
+| `tracker_move_issue` | write | Deprecated alias of `tracker_transition_issue`; kept for one release |
+| `tracker_move_issue_to_project` | read (dry run) / write | Move an issue to another project. `dry_run` (default) returns the preview; the real move needs a write token |
 | `tracker_add_comment` | write | Comment as the token's owner |
 
 Read tools are annotated `readOnlyHint`; nothing deletes. Errors explain what to
@@ -333,6 +335,31 @@ including descriptions and comments. Only grant tokens for assistants the
 organisation has approved; the AI Access page says so, and administrators can
 review and revoke tokens. Clients that only support OAuth sign-in (some web
 connectors) can't use personal tokens yet.
+
+## Moving issues between projects
+
+People with `issue.move_out` on the source project and `issue.move_in` on the
+target can move one issue (**Move** on the issue panel) or a selection of up to
+100 (**Move to project** in the issue list). A preview lists every change before
+anything happens; the move then runs in one transaction, all or nothing.
+
+| Item | On move |
+| --- | --- |
+| Key | Next number in the target (`TEAM-7` → `LIMS-1648`); the old key keeps resolving in URLs, search, the API and MCP |
+| Sub-tasks | Always move with their parent and get new keys |
+| Epic's issues | Move with the epic when chosen; otherwise they stay and lose the epic link |
+| Epic link of a moved issue | Cleared, unless an epic in the target is chosen (API `epic_id`) |
+| Sprint | Cleared; the issue lands in the target backlog. Closed sprints keep their recorded points |
+| Workflow state | Kept if the target has the same state key; otherwise the first target state in the same category |
+| Component, custom fields | Kept when the target has the same key; otherwise dropped and written to history |
+| Assignee | Kept if they can be assigned in the target; otherwise unassigned, or added as a member when chosen |
+| Reporter, watchers | Kept; people who can't see the target are listed in the preview and stop watching |
+| Comments, attachments, history, links, labels, points, dates | Kept |
+
+API: `POST /api/pm/issues/move/preview` and `POST /api/pm/issues/move` with
+`issue_ids`, `target_project_id` and options. Old keys are stored in
+`pm_issue_key_aliases`. The move writes a `project` history entry, an audit log
+entry, and one notification per affected person.
 
 ## Access
 

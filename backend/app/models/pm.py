@@ -175,6 +175,20 @@ class PmIssue(UUIDMixin, TimestampMixin, Base):
     )
 
 
+class PmIssueKeyAlias(UUIDMixin, Base):
+    """A key an issue had before it moved project; it keeps resolving (MOV-04)."""
+
+    __tablename__ = "pm_issue_key_aliases"
+
+    key: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    issue_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pm_issues.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class PmIssueWatcher(UUIDMixin, Base):
     __tablename__ = "pm_issue_watchers"
 

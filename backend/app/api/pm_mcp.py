@@ -229,6 +229,13 @@ async def tracker_search_issues(
     """Find issues in a project, in backlog order, with paging."""
     async with _Session() as s:
         project = await _project(s, project_key)
+        if query and pm_api.ISSUE_KEY_RE.match(query.strip().upper()):
+            # An exact key, including one the issue had before it moved (MCP-02).
+            found = await pm_api._issue_by_ref(s.db, query.strip())
+            if found and found.project_id == project.id:
+                detail = await _call(pm_api.get_issue, str(found.id), db=s.db, user=s.user)
+                return _jsonable({"total": 1, "count": 1, "offset": 0, "has_more": False, "next_offset": None,
+                                  "issues": [{**_brief(detail), "previous_keys": detail.previous_keys}]})
         # The web API takes "me", "none" or a user id.
         who = assignee.strip().lower() if assignee else None
         if who and who not in ("me", "none"):
@@ -259,6 +266,7 @@ async def tracker_get_issue(
             "project": detail.project_key, "description": detail.description, "labels": detail.labels or [],
             "reporter": detail.reporter_name, "created_at": detail.created_at, "resolved_at": detail.resolved_at,
             "jira_key": detail.external_key, "your_role": detail.my_role,
+            "previous_keys": detail.previous_keys,
             "children": [_brief(c) for c in detail.children],
             "links": [{"relation": l.relation, "key": l.issue.key, "summary": l.issue.summary, "status": l.issue.status} for l in detail.links],
             "watchers": [w.name for w in detail.watchers],
@@ -343,17 +351,61 @@ async def tracker_update_issue(
         return _jsonable({"updated": _brief(updated), "changed": sorted(changes)})
 
 
-@mcp.tool(annotations=IDEMPOTENT_WRITE)
-async def tracker_move_issue(
-    issue_key: Annotated[str, Field(description="Issue key, e.g. LIMS-12")],
-    status: Status,
-) -> dict[str, Any]:
-    """Move an issue to another workflow status (todo, in_progress, in_review, done)."""
+async def _transition(issue_key: str, status: str) -> dict[str, Any]:
     async with _Session() as s:
         await s.require_write()
         issue_id = await _issue_id(s, issue_key)
         moved = await _call(pm_api.update_issue, issue_id, PmIssueUpdate(status=status), db=s.db, user=s.user)
         return _jsonable({"moved": _brief(moved)})
+
+
+@mcp.tool(annotations=IDEMPOTENT_WRITE)
+async def tracker_transition_issue(
+    issue_key: Annotated[str, Field(description="Issue key, e.g. LIMS-12")],
+    status: Status,
+) -> dict[str, Any]:
+    """Change an issue's workflow status (todo, in_progress, in_review, done). To move an issue to another project, use tracker_move_issue_to_project."""
+    return await _transition(issue_key, status)
+
+
+@mcp.tool(annotations=IDEMPOTENT_WRITE)
+async def tracker_move_issue(
+    issue_key: Annotated[str, Field(description="Issue key, e.g. LIMS-12")],
+    status: Status,
+) -> dict[str, Any]:
+    """Deprecated name of tracker_transition_issue: changes the issue's status, it does not change project."""
+    return await _transition(issue_key, status)
+
+
+@mcp.tool(annotations=WRITE)
+async def tracker_move_issue_to_project(
+    issue_key: Annotated[str, Field(description="Issue key, e.g. TEAM-7")],
+    target_project_key: Annotated[str, Field(description="Key of the project to move it to, e.g. LIMS")],
+    dry_run: Annotated[bool, Field(description="True: only return what would change. Run this first and show the user.")] = True,
+    move_children: Annotated[bool, Field(description="When moving an epic: also move its issues")] = True,
+    workflow_state: Annotated[str | None, Field(description="Target workflow state when the current one doesn't exist there")] = None,
+    assignee_action: Annotated[Literal["unassign", "add_member"], Field(description="Assignee not on the target project: unassign, or add them")] = "unassign",
+) -> dict[str, Any]:
+    """Move an issue (with its sub-tasks) to another project. It gets a new key there; the old key keeps working. Needs issue.move_out on the source and issue.move_in on the target."""
+    from app.api.pm_move import MoveRequest, _preview, _plan, apply_move
+
+    async with _Session() as s:
+        issue_id = await _issue_id(s, issue_key)
+        target = await pm_api._project_by_ref(s.db, target_project_key.strip())
+        if not target:
+            raise ToolFailure(f"Project {target_project_key} not found. Call tracker_list_projects to see project keys.")
+        request = MoveRequest(issue_ids=[issue_id], target_project_id=target.id, move_children=move_children,
+                              workflow_state=workflow_state, assignee_action=assignee_action)
+        if dry_run:
+            return _jsonable({"dry_run": True, **_preview(await _call(_plan, s.db, s.user, request, lock=False))})
+        await s.require_write()
+        try:
+            result = await apply_move(s.db, s.user, request)
+            await s.db.commit()
+        except HTTPException as exc:
+            await s.db.rollback()
+            raise _fail(exc)
+        return _jsonable({"dry_run": False, **result})
 
 
 @mcp.tool(annotations=WRITE)

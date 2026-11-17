@@ -110,7 +110,10 @@ async def _issues(db, row, project):
                               .where(PmDecisionIssueLink.decision_id == row.id).order_by(PmIssue.number))).all()
     issues = [issue for issue, _ in pairs]
     names = await user_names(db, {i.reporter_id for i in issues} | {i.assignee_id for i in issues})
-    return [{"id": str(i.id), "key": f"{project.key}-{i.number}", "summary": i.summary,
+    from app.api.pm import issue_keys
+
+    keys = await issue_keys(db, issues)
+    return [{"id": str(i.id), "key": keys[i.id], "summary": i.summary,
              "issue_type": i.issue_type, "status": i.status, "reporter_name": names.get(i.reporter_id),
              "assignee_name": names.get(i.assignee_id), "relationship": link.relationship,
              "added_by_id": str(link.added_by_id) if link.added_by_id else None, "added_by_name": link.added_by_name,
