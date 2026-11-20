@@ -19,7 +19,8 @@ import { FilterSelect } from "@/components/ListControls";
 import { type PmView } from "@/api/pm-workspace";
 
 export default function ProjectsPage() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("projects.create");
   const [creating, setCreating] = useState(false);
   const [params, setParams] = useSearchParams();
   const status = params.get("status") === "archived" ? "archived" : "active";
@@ -38,7 +39,7 @@ export default function ProjectsPage() {
       subtitle="Requirements, implementation tasks and supporting decisions for each project."
       action={<div className="flex flex-wrap gap-2">
         <Button variant="outline" nativeButton={false} render={<Link to="/ai-access" />}><Bot data-icon="inline-start" />AI access</Button>
-        {user?.is_admin && <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button>}
+        {canCreate && <Button onClick={() => setCreating(true)}><Plus data-icon="inline-start" />New project</Button>}
       </div>}
     />
     <Tabs value={view === "issues" ? "issues" : "projects"} onValueChange={(value) => setView(value === "issues" ? "issues" : "cards")} className="gap-5">
@@ -76,7 +77,7 @@ export default function ProjectsPage() {
       projects.loading && !projects.data ? <Loading /> :
       !projects.data?.length ? <Empty
         message={status === "archived" ? "No archived projects" : "No projects yet"}
-        hint={status === "archived" ? "Archived projects you can see will appear here." : user?.is_admin ? "Create a project and add its team." : "Ask a project administrator to add you to a project."}
+        hint={status === "archived" ? "Archived projects you can see will appear here." : canCreate ? "Create a project and add its team." : "Ask a project administrator to add you to a project."}
       /> :
       view === "timeline" ? <ProjectsTimeline projects={projects.data} /> :
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

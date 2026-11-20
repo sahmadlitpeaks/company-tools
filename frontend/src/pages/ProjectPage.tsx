@@ -3,7 +3,7 @@ import { Archive, ArchiveRestore, ArrowLeft, Plus } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
 import {
-  canEdit, pmError,
+  canEdit, hasProjectPermission, pmError,
   type PmIssue, type PmLinkRow, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
@@ -117,7 +117,9 @@ export default function ProjectPage() {
   if (!project.data) return <Loading />;
   const current = project.data;
   const editable = canEdit(current.my_role) && current.status === "active" && Boolean(workspace.data);
-  const manageSprints = current.my_role === "admin" && current.status === "active";
+  const manageSprints = hasProjectPermission(current, "sprint.manage") && current.status === "active";
+  const can = (permission: string) => hasProjectPermission(current, permission);
+  const showSettings = ["project.settings", "project.archive", "workflow.configure", "share_links.manage", "import.run"].some(can);
   const openSprints = sprints.data ?? [];
   const activeSprint = openSprints.find((sprint) => sprint.status === "active") ?? null;
   const ready = issues.data && workspace.data && members.data && (!usesSprints || sprints.data);
@@ -128,7 +130,7 @@ export default function ProjectPage() {
   }
   const tabs = [{ value: "requirements", label: "Requirements" }, { value: "board", label: "Boards & views" }, ...(usesSprints ? [{ value: "backlog", label: "Backlog" }] : []),
     { value: "timeline", label: "Timeline" }, { value: "issues", label: "Issues" }, { value: "decisions", label: "Decisions" }, { value: "reports", label: "Reports" },
-    { value: "people", label: "People" }, ...(current.my_role === "admin" ? [{ value: "settings", label: "Settings" }] : [])];
+    { value: "people", label: "People" }, ...(showSettings ? [{ value: "settings", label: "Settings" }] : [])];
   const tab = tabs.some((item) => item.value === requestedTab) ? requestedTab : "requirements";
 
   return <WorkspaceContext value={workspace.data ?? DEFAULT_CONFIG}><div className="flex flex-col gap-5">
@@ -144,7 +146,7 @@ export default function ProjectPage() {
       <CardHeader><CardTitle>Set up your project</CardTitle><CardDescription>Start with the team and a few issues, then choose the views that suit your work.</CardDescription></CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         {editable && <Button variant="outline" onClick={() => { setCreateDefaults({}); setCreating(true); }}>Create the first issue</Button>}
-        {current.my_role === "admin" && <><Button variant="outline" onClick={() => setTab("people")}>Add the team</Button><Button variant="outline" onClick={() => setTab("settings")}>Configure workflow or import Jira</Button></>}
+        {can("members.manage") && <Button variant="outline" onClick={() => setTab("people")}>Add the team</Button>}{(can("workflow.configure") || can("import.run")) && <Button variant="outline" onClick={() => setTab("settings")}>Configure workflow or import Jira</Button>}
         {usesSprints && <Button variant="outline" onClick={() => setTab("backlog")}>Plan the first sprint</Button>}
       </CardContent>
     </Card>}
@@ -160,7 +162,7 @@ export default function ProjectPage() {
         <TabsTrigger value="decisions">Decisions</TabsTrigger>
         <TabsTrigger value="reports">Reports</TabsTrigger>
         <TabsTrigger value="people">People</TabsTrigger>
-        {current.my_role === "admin" && <TabsTrigger value="settings">Settings</TabsTrigger>}
+        {showSettings && <TabsTrigger value="settings">Settings</TabsTrigger>}
       </TabsList>
       <TabsContent value="requirements" className="pt-4"><RequirementRegister project={current} refreshKey={requirementRefresh} /></TabsContent>
       <TabsContent value="board" className="pt-4">
@@ -199,12 +201,12 @@ export default function ProjectPage() {
         {members.error ? <ErrorState message={members.error} onRetry={members.reload} /> :
           !members.data ? <Loading /> : <ProjectMembers project={current} members={members.data} onChanged={() => { void members.refresh(); void project.refresh(); }} />}
       </TabsContent>
-      {current.my_role === "admin" && <TabsContent value="settings" className="pt-4">
+      {showSettings && <TabsContent value="settings" className="pt-4">
         <div className="flex flex-col gap-4">
-          <ProjectSettings project={current} members={members.data ?? []} onSaved={(saved) => project.setData(saved)} />
-          {workspace.data && <WorkspaceSettings key={current.id + workspace.data.states.map((state) => state.key).join(",")} project={current} members={members.data ?? []} config={workspace.data} onSaved={(config) => { workspace.setData(config); changed(); }} />}
-          <ShareLinks project={current} />
-          {current.status === "active" && <JiraImport project={current} onImported={() => { changed(); void members.refresh(); }} />}
+          {(can("project.settings") || can("project.archive")) && <ProjectSettings project={current} members={members.data ?? []} onSaved={(saved) => project.setData(saved)} />}
+          {can("workflow.configure") && workspace.data && <WorkspaceSettings key={current.id + workspace.data.states.map((state) => state.key).join(",")} project={current} members={members.data ?? []} config={workspace.data} onSaved={(config) => { workspace.setData(config); changed(); }} />}
+          {can("share_links.manage") && <ShareLinks project={current} />}
+          {can("import.run") && current.status === "active" && <JiraImport project={current} onImported={() => { changed(); void members.refresh(); }} />}
         </div>
       </TabsContent>}
     </Tabs>

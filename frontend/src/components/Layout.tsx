@@ -5,7 +5,9 @@ import {
   KeyRound,
   Moon,
   Search,
+  ShieldCheck,
   Sun,
+  UserRound,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { BrandProvider } from "../brand/BrandContext";
@@ -15,6 +17,7 @@ import { ConfirmDialog, Loading } from "./ui";
 import ErrorBoundary from "./ErrorBoundary";
 import { useTheme } from "../theme/ThemeContext";
 import { AppSidebar } from "./app-sidebar";
+import { SectionTabs } from "./SectionTabs";
 import { currentNavSection, currentNavTitle } from "./navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -201,6 +204,14 @@ export default function Layout() {
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
+                    <DropdownMenuItem render={<Link to="/profile" />}>
+                      <UserRound />
+                      My profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link to="/security" />}>
+                      <ShieldCheck />
+                      Security &amp; 2FA
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setPasswordOpen(true)}>
                       <KeyRound />
                       Change password
@@ -227,6 +238,7 @@ export default function Layout() {
             className="min-w-0 flex-1 overflow-auto p-4 outline-none sm:p-6"
           >
             <span id="route-title" className="sr-only">{title}</span>
+            <SectionTabs />
             <ErrorBoundary key={location.pathname} variant="route">
               <Suspense fallback={<Loading />}>
                 <Outlet />

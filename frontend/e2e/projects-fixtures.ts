@@ -15,9 +15,9 @@ function sprints() {
   ];
 }
 const members = [
-  { user_id: "admin", name: "Sara Admin", email: "sara@example.com", role: "admin" },
-  { user_id: "dev", name: "Ali Dev", email: "ali@example.com", role: "member" },
-  { user_id: "drt", name: "Dr T", email: "drt@example.com", role: "viewer" },
+  { user_id: "admin", name: "Sara Admin", email: "sara@example.com", role: "admin", role_name: "Project Admin", allow: [], deny: [], permissions: [] },
+  { user_id: "dev", name: "Ali Dev", email: "ali@example.com", role: "member", role_name: "Contributor", allow: [], deny: [], permissions: [] },
+  { user_id: "drt", name: "Dr T", email: "drt@example.com", role: "viewer", role_name: "Viewer", allow: [], deny: [], permissions: [] },
 ];
 const base = {
   project_id: "p1", description: null, priority: "medium", story_points: null, labels: [], reporter_id: "drt", reporter_name: "Dr T",
@@ -58,6 +58,19 @@ export async function mount(page: Page, role: "admin" | "viewer", options: { arc
   }
   let savedViews = options.workspace ? [{ id: "v1", project_id: "p1", owner_id: "admin", name: "Team board", visibility: "team", settings: defaultSettings(true), can_manage: role === "admin" }] : [];
   const requests: Array<{ method: string; path: string; body: unknown }> = [];
+  // Mirrors the starter project roles in backend/app/core/access_catalog.py.
+  const adminPermissions = ["project.view", "project.settings", "project.archive", "members.manage", "issue.create",
+    "issue.edit", "issue.edit_own", "issue.delete", "issue.assign", "issue.transition", "issue.comment", "issue.move_out", "issue.move_in",
+    "comment.delete_any", "sprint.manage", "workflow.configure", "reports.view", "decisions.create",
+    "decisions.approve", "requirements.manage", "share_links.manage", "import.run"];
+  const viewerPermissions = ["project.view", "issue.comment", "reports.view"];
+  const myPermissions = role === "admin" ? adminPermissions : viewerPermissions;
+  const projectRoles = [
+    { id: "r1", key: "admin", name: "Project Admin", description: "Runs the project.", scope: "project", permissions: adminPermissions, is_system: true, usage: 1 },
+    { id: "r2", key: "member", name: "Contributor", description: "Creates and edits issues.", scope: "project",
+      permissions: ["project.view", "issue.create", "issue.edit", "issue.assign", "issue.transition", "issue.comment", "reports.view"], is_system: true, usage: 1 },
+    { id: "r3", key: "viewer", name: "Viewer", description: "Reads and comments.", scope: "project", permissions: viewerPermissions, is_system: true, usage: 1 },
+  ];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -70,10 +83,11 @@ export async function mount(page: Page, role: "admin" | "viewer", options: { arc
     if (path === "/api/auth/me") json = { id: userId, email: `${userId}@example.com`, display_name: role === "admin" ? "Sara Admin" : "Dr T", role: role === "admin" ? "admin" : "member",
       is_admin: role === "admin", is_active: true, status: "active", effective_permissions: ["projects"], managed_company_ids: [] };
     else if (path === "/api/settings/public") json = { platform_name: "AG Holding" };
+    else if (path === "/api/access/roles") json = projectRoles;
     else if (path === "/api/notifications/unread-count") json = { count: 0 };
-    else if (path === "/api/pm/projects") json = [{ ...visibleProject, my_role: role }];
+    else if (path === "/api/pm/projects") json = [{ ...visibleProject, my_role: role, my_permissions: myPermissions }];
     else if (path === "/api/pm/requirements") json = { items: [], total: 0 };
-    else if (path === "/api/pm/projects/LIMS") json = { ...visibleProject, my_role: role };
+    else if (path === "/api/pm/projects/LIMS") json = { ...visibleProject, my_role: role, my_permissions: myPermissions };
     else if (path === "/api/pm/projects/p1/configuration") {
       if (method === "PUT") workspace = body;
       json = workspace;
@@ -139,7 +153,7 @@ export async function mount(page: Page, role: "admin" | "viewer", options: { arc
       json = created;
     } else if (path === "/api/pm/issues/LIMS-2" || path === "/api/pm/issues/LIMS-4") {
       const issue = list.find((item) => item.key === path.split("/").pop())!;
-      json = { ...issue, project_key: "LIMS", project_name: "LIMS v3", my_role: role, watching: role === "viewer", children: [], links: [],
+      json = { ...issue, project_key: "LIMS", project_name: "LIMS v3", my_role: role, my_permissions: myPermissions, watching: role === "viewer", children: [], links: [],
         watchers: [{ user_id: "drt", name: "Dr T" }, { user_id: "dev", name: "Ali Dev" }] };
     } else if (path.startsWith("/api/pm/issues/") && method === "PATCH") {
       const id = path.split("/").pop();

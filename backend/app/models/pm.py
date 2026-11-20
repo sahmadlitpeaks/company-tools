@@ -79,8 +79,12 @@ class PmProjectMember(UUIDMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    # admin | member | viewer
-    role: Mapped[str] = mapped_column(String(16), default="member")
+    # Key of a project role (roles.key). Starter roles: admin (Project Admin),
+    # member (Contributor) and viewer (Viewer).
+    role: Mapped[str] = mapped_column(String(64), default="member")
+    # Per-member permission overrides on top of the role; a deny always wins.
+    allow_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    deny_permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("project_id", "user_id", name="uq_pm_project_member"),
@@ -168,6 +172,20 @@ class PmIssue(UUIDMixin, TimestampMixin, Base):
         UniqueConstraint("project_id", "number", name="uq_pm_issue_number"),
         # Re-running an import skips what is already there.
         UniqueConstraint("project_id", "external_key", name="uq_pm_issue_external_key"),
+    )
+
+
+class PmIssueKeyAlias(UUIDMixin, Base):
+    """A key an issue had before it moved project; it keeps resolving (MOV-04)."""
+
+    __tablename__ = "pm_issue_key_aliases"
+
+    key: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    issue_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pm_issues.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

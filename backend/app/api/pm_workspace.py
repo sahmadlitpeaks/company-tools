@@ -16,7 +16,7 @@ from app.models.user import User
 from app.schemas.pm import PmIssueCreate
 from app.schemas.pm_workspace import BulkUpdate, ViewCreate, ViewFilters, ViewIn, ViewOut, WorkspaceConfig
 from app.services.activity import record
-from app.services.pm_access import ensure_writable, member_ids, require_project, visible_project_ids
+from app.services.pm_access import ensure_writable, member_access, require_project, visible_project_ids
 from app.services.pm_workspace import apply_workspace_fields, configuration
 
 router = APIRouter(prefix="/pm", tags=["project-workspace"])
@@ -89,10 +89,11 @@ async def get_configuration(project_id: uuid.UUID, db: AsyncSession = Depends(ge
 
 @router.put("/projects/{project_id}/configuration", response_model=WorkspaceConfig)
 async def save_configuration(project_id: uuid.UUID, payload: WorkspaceConfig, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    project, _ = await require_project(db, user, project_id, "admin", for_update=True)
+    project, _ = await require_project(db, user, project_id, "workflow.configure", for_update=True)
     ensure_writable(project)
-    roles = await member_ids(db, project_id)
-    if any(component.lead_id and roles.get(component.lead_id) not in ("admin", "member") for component in payload.components):
+    roles = await member_access(db, project_id)
+    if any(component.lead_id and not (component.lead_id in roles and roles[component.lead_id].assignable)
+           for component in payload.components):
         raise HTTPException(422, "Component owners must be project members or administrators.")
     issues = (await db.scalars(select(PmIssue).where(PmIssue.project_id == project_id))).all()
     proposed = PmProject(workspace_config=payload.model_dump(mode="json"))
@@ -150,14 +151,14 @@ async def view_access(db, user, view_id, *, write=False):
     if write:
         if project:
             ensure_writable(project)
-        if (view.visibility == "team" and role != "admin") or (view.visibility == "private" and view.owner_id != user.id):
+        if (view.visibility == "team" and not (role and role.can("project.settings"))) or (view.visibility == "private" and view.owner_id != user.id):
             raise HTTPException(403, "You cannot manage this view.")
     return view, project, role
 
 
 def view_out(view, user, role=None):
     out = ViewOut.model_validate(view)
-    out.can_manage = view.owner_id == user.id if view.visibility == "private" else role == "admin"
+    out.can_manage = view.owner_id == user.id if view.visibility == "private" else bool(role and role.can("project.settings"))
     return out
 
 
@@ -181,7 +182,7 @@ async def create_view(payload: ViewCreate, db: AsyncSession = Depends(get_db), u
     project, role = (None, None)
     if payload.project_id:
         project, role = await require_project(db, user, payload.project_id,
-                                             "admin" if payload.visibility == "team" else "viewer", for_update=True)
+                                             "project.settings" if payload.visibility == "team" else "project.view", for_update=True)
         ensure_writable(project)
     await validate_view(db, user, project, payload)
     view = PmView(project_id=payload.project_id, owner_id=user.id, name=payload.name,
@@ -266,7 +267,8 @@ async def bulk_update(payload: BulkUpdate, db: AsyncSession = Depends(get_db), u
     if len(rows) != len(payload.issue_ids):
         raise HTTPException(404, "Issue not found")
     for project_id in sorted({row.project_id for row in rows}, key=str):
-        project, _ = await require_project(db, user, project_id, "member", for_update=True)
+        # Field-level permissions are checked per issue by apply_issue_update.
+        project, _ = await require_project(db, user, project_id, for_update=True)
         ensure_writable(project)
     items = [await apply_issue_update(issue_id, payload.changes, db, user) for issue_id in payload.issue_ids]
     await db.commit()
@@ -276,7 +278,7 @@ async def bulk_update(payload: BulkUpdate, db: AsyncSession = Depends(get_db), u
 @router.post("/issues/{issue_id}/duplicate", status_code=201)
 async def duplicate_issue(issue_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     from app.api.pm import _load_issue, create_issue
-    issue, project, _ = await _load_issue(db, user, str(issue_id), "member")
+    issue, project, _ = await _load_issue(db, user, str(issue_id), "issue.create")
     ensure_writable(project)
     payload = PmIssueCreate(
         summary=f"Copy of {issue.summary}"[:255], description=issue.description, issue_type=issue.issue_type,

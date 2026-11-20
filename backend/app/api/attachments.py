@@ -68,6 +68,18 @@ async def _ensure_entity(db: AsyncSession, entity_type: str, entity_id: uuid.UUI
 _SHARED_ENTITY_TYPES = {"idea", "lost_found"}
 
 
+def _require_attach(access, entity_type: str, obj, user: User) -> None:
+    """Uploading to an issue needs issue edit rights; to a requirement, requirements.manage."""
+    from app.services.pm_access import require
+
+    if entity_type == "pm_requirement":
+        require(access, "requirements.manage")
+        return
+    own = user.id in {obj.reporter_id, obj.assignee_id, obj.created_by_id}
+    if not (access.can("issue.edit") or (own and access.can("issue.edit_own"))):
+        require(access, "issue.edit")
+
+
 async def _authorize_entity(
     db: AsyncSession, user: User, entity_type: str, obj, *, write: bool = False
 ) -> None:
@@ -85,9 +97,10 @@ async def _authorize_entity(
         # manager elsewhere grants nothing. Viewers read; members upload.
         from app.services.pm_access import ensure_writable, require_project
 
-        project, _ = await require_project(db, user, obj.project_id, "member" if write else "viewer", for_update=write)
+        project, access = await require_project(db, user, obj.project_id, for_update=write)
         if write:
             ensure_writable(project)
+            _require_attach(access, entity_type, obj, user)
             if entity_type == "pm_requirement":
                 from app.services.pm_requirements import writable_requirement
                 await writable_requirement(db, obj.id, project.id)
@@ -215,13 +228,14 @@ async def delete_attachment(
         from app.services.pm_access import ensure_writable, require_project
 
         obj = await _ensure_entity(db, att.entity_type, att.entity_id)
-        project, role = await require_project(db, user, obj.project_id, "member", for_update=True)
+        project, role = await require_project(db, user, obj.project_id, for_update=True)
         ensure_writable(project)
+        _require_attach(role, att.entity_type, obj, user)
         if att.entity_type == "pm_requirement":
             from app.services.pm_requirements import requirement_event, writable_requirement
             obj = await writable_requirement(db, obj.id, project.id)
             requirement_event(db, obj, user, "attachment_removed", {"name": att.name})
-        if att.uploaded_by_id != user.id and role != "admin":
+        if att.uploaded_by_id != user.id and not role.can("comment.delete_any"):
             raise HTTPException(status_code=403, detail="Not allowed")
     elif att.uploaded_by_id != user.id and not (
         user.is_admin or user.role == "manager"

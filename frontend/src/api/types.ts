@@ -35,6 +35,8 @@ export interface User {
   extra_permissions?: string[] | null;
   revoked_permissions?: string[] | null;
   effective_permissions: string[];
+  /** Platform action permissions such as "projects.create" (see /api/access/catalog). */
+  platform_permissions?: string[];
   /**
    * Modules switched off org-wide by an administrator. Present only on the
    * signed-in user's own record (`/api/auth/me`); the API subtracts nothing
@@ -614,8 +616,21 @@ export interface BrandDocumentVersion {
   created_at: string;
 }
 
+export interface CrmLeadSource {
+  id: string;
+  source: string;
+  source_detail: string | null;
+  origin_type: string | null;
+  origin_id: string | null;
+  created_at: string;
+  /** Page in the platform where the submission can be seen, if any. */
+  link: string | null;
+}
+
 export interface CrmLead {
   id: string;
+  /** Every way this lead reached the CRM (lead detail only). */
+  sources?: CrmLeadSource[];
   company_id?: string | null;
   name?: string | null;
   email?: string | null;
@@ -2328,4 +2343,48 @@ export interface ApiToken {
   active: boolean;
   last_used_at?: string | null;
   created_at: string;
+}
+
+// ---- Roles and permissions (/api/access) ----
+export type PermissionScope = "platform" | "project";
+
+export interface PermissionDef {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+}
+
+export interface PermissionCatalog {
+  platform: PermissionDef[];
+  project: PermissionDef[];
+}
+
+export interface AccessRole {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  scope: PermissionScope;
+  permissions: string[];
+  is_system: boolean;
+  /** Owner: every permission; can't be edited, copied, deleted or given to a department. */
+  is_protected: boolean;
+  /** Project roles: members holding it. Platform roles: people plus departments. */
+  usage: number;
+}
+
+export interface UserAccess {
+  user_id: string;
+  is_admin: boolean;
+  role_ids: string[];
+  department_id: string | null;
+  department_name: string | null;
+  department_role_ids: string[];
+  allow: string[];
+  deny: string[];
+  platform_permissions: string[];
+  modules: string[];
+  /** Where each permission comes from, e.g. "Role: Project Creator". */
+  sources: Record<string, string[]>;
 }

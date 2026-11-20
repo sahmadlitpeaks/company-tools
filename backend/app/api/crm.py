@@ -13,16 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.card import Lead
+from app.services.crm_ingest import add_source, capture_lead, phone_key
 from app.models.crm import (
     CONTACT_ACTIVITY_KINDS,
     MANUAL_ACTIVITY_KINDS,
     OPEN_STATUSES,
     CrmActivity,
     CrmLead,
+    CrmLeadSource,
 )
 from app.models.landing import LandingLead, LandingPage
 from app.models.user import User
 from app.schemas.crm import (
+    CrmLeadSourceOut,
     CrmActivityCreate,
     CrmActivityOut,
     CrmBulkAction,
@@ -321,8 +324,11 @@ async def create_lead(
     _require_lost_reason(payload.status, payload.lost_reason)
     await _check_owner(db, payload.owner_id)
     lead = CrmLead(**payload.model_dump())
+    lead.phone_key = phone_key(lead.phone)
     db.add(lead)
     await db.flush()
+    add_source(db, lead, source=lead.source or "manual", source_detail=lead.source_detail,
+               origin_type="manual", origin_id=None)
     _log(db, lead, "created", "Lead added", user)
     await _notify_owner(db, lead.owner_id, user, f"Lead assigned to you: {lead.name or lead.email or 'new lead'}", f"/crm/{lead.id}")
     await db.commit()
@@ -339,7 +345,36 @@ async def get_lead(
 ):
     lead = await _get_lead(db, lead_id)
     names = await _owner_names(db, {lead.owner_id})
-    return _serialize(lead, names, user)
+    out = _serialize(lead, names, user)
+    rows = (await db.scalars(select(CrmLeadSource).where(CrmLeadSource.lead_id == lead.id)
+                             .order_by(CrmLeadSource.created_at))).all()
+    out.sources = [CrmLeadSourceOut(id=r.id, source=r.source, source_detail=r.source_detail, origin_type=r.origin_type,
+                                    origin_id=r.origin_id, created_at=r.created_at, link=_source_link(r))
+                   for r in rows]
+    return out
+
+
+_SOURCE_PAGES = {"card_lead": "/cards", "landing_lead": "/landing-pages", "brochure_share": "/products",
+                 "asset_share": "/marketing-assets"}
+
+
+def _source_link(row) -> str | None:
+    if row.origin_type == "submission" and row.origin_id:
+        return f"/inbox?submission={row.origin_id}"
+    return _SOURCE_PAGES.get(row.origin_type or "")
+
+
+@router.get("/sources")
+async def lead_sources(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Each source with its lead count and latest submission (LHB-04)."""
+    rows = (await db.execute(
+        select(CrmLeadSource.source, CrmLeadSource.source_detail, func.count(CrmLeadSource.id),
+               func.count(func.distinct(CrmLeadSource.lead_id)), func.max(CrmLeadSource.created_at))
+        .group_by(CrmLeadSource.source, CrmLeadSource.source_detail)
+        .order_by(func.max(CrmLeadSource.created_at).desc())
+    )).all()
+    return [{"source": source, "source_detail": detail, "submissions": int(submissions), "leads": int(leads),
+             "last_at": last.isoformat() if last else None} for source, detail, submissions, leads, last in rows]
 
 
 def _apply_changes(lead: CrmLead, data: dict, names: dict[uuid.UUID, str]) -> list[str]:
@@ -363,6 +398,8 @@ def _apply_changes(lead: CrmLead, data: dict, names: dict[uuid.UUID, str]) -> li
         changes.append(f"Lost reason: {data.get('lost_reason', lead.lost_reason)}")
     for field, value in data.items():
         setattr(lead, field, value)
+    if "phone" in data:
+        lead.phone_key = phone_key(lead.phone)
     return changes
 
 
@@ -515,60 +552,35 @@ async def delete_activity(
 async def sync_existing(
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)
 ):
-    """Ingest existing digital-card and landing-form leads into the CRM (de-duped)."""
-    existing = (
-        await db.execute(select(CrmLead.origin_type, CrmLead.origin_id))
-    ).all()
-    seen = {(t, i) for t, i in existing if i}
-    created = 0
+    """Catch-up import of card and landing-page leads not yet in the CRM.
 
-    # Card leads
-    card_leads = (await db.execute(select(Lead))).scalars().all()
-    for lead in card_leads:
-        if ("card_lead", str(lead.id)) in seen:
-            continue
-        db.add(
-            CrmLead(
-                name=lead.name,
-                email=lead.email,
-                phone=lead.phone,
-                company=lead.company,
-                notes=lead.message,
-                source="card",
-                status="new",
-                origin_type="card_lead",
-                origin_id=str(lead.id),
-                created_at=lead.created_at,
-            )
-        )
-        created += 1
+    New submissions arrive on their own; this covers records from before that,
+    and is the final import of landing-page leads before that module is
+    retired (BRD LHB-05). Repeat people merge into their open lead.
+    """
+    seen = {(t, i) for t, i in (await db.execute(select(CrmLeadSource.origin_type, CrmLeadSource.origin_id))).all() if i}
+    seen |= {(t, i) for t, i in (await db.execute(select(CrmLead.origin_type, CrmLead.origin_id))).all() if i}
+    created = merged = 0
 
-    # Landing-page leads
     page_titles = {
         p.id: p.title for p in (await db.execute(select(LandingPage))).scalars().all()
     }
-    landing_leads = (await db.execute(select(LandingLead))).scalars().all()
-    for lead in landing_leads:
-        if ("landing_lead", str(lead.id)) in seen:
+    candidates = [("card_lead", "card", lead, None) for lead in (await db.execute(select(Lead))).scalars().all()]
+    candidates += [("landing_lead", "landing", lead, page_titles.get(lead.page_id))
+                   for lead in (await db.execute(select(LandingLead))).scalars().all()]
+    for origin_type, source, lead, detail in candidates:
+        if (origin_type, str(lead.id)) in seen:
             continue
-        db.add(
-            CrmLead(
-                name=lead.name,
-                email=lead.email,
-                phone=lead.phone,
-                notes=lead.message,
-                source="landing",
-                source_detail=page_titles.get(lead.page_id),
-                status="new",
-                origin_type="landing_lead",
-                origin_id=str(lead.id),
-                created_at=lead.created_at,
-            )
+        _, was_merged = await capture_lead(
+            db, source=source, source_detail=detail, origin_type=origin_type, origin_id=str(lead.id),
+            name=lead.name, email=lead.email, phone=lead.phone, company=getattr(lead, "company", None),
+            notes=lead.message, created_at=lead.created_at,
         )
-        created += 1
+        merged += was_merged
+        created += not was_merged
 
     await db.commit()
-    return {"created": created}
+    return {"created": created, "merged": merged}
 
 
 # ---------- Import ----------
@@ -683,7 +695,9 @@ async def import_leads(
         if target is None:
             # Set the id here so the timeline entry needs no flush per row.
             lead = CrmLead(id=uuid.uuid4(), **data, source="import", source_detail=label[:255])
+            lead.phone_key = phone_key(lead.phone)
             db.add(lead)
+            add_source(db, lead, source="import", source_detail=label, origin_type="import", origin_id=None)
             entries.append(_new_activity(lead, "import", f"Imported from {label} (row {row.row})", user))
             if row.key:
                 targets[row.key] = lead
@@ -696,6 +710,8 @@ async def import_leads(
                     setattr(target, key, data[key])
             if data.get("tags"):
                 target.tags = normalize_tags([*(target.tags or []), *data["tags"]])
+            target.phone_key = phone_key(target.phone)
+            add_source(db, target, source="import", source_detail=label, origin_type="import", origin_id=None)
             body = f"Merged from {label} (row {row.row})"
             if data.get("notes"):
                 body += f"\n\n{data['notes']}"

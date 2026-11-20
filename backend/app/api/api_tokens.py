@@ -10,7 +10,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin
+
+from app.services.access import require_permission
 from app.core.database import get_db
 from app.models.api_token import API_SCOPES, ApiToken
 from app.models.crm import CrmLead
@@ -48,12 +49,12 @@ def _out(t: ApiToken) -> TokenOut:
 
 
 @router.get("/scopes")
-async def list_scopes(_: User = Depends(get_current_admin)):
+async def list_scopes(_: User = Depends(require_permission("api_tokens.manage"))):
     return {"scopes": API_SCOPES}
 
 
 @router.get("", response_model=list[TokenOut])
-async def list_tokens(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
+async def list_tokens(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("api_tokens.manage"))):
     rows = (await db.execute(select(ApiToken).order_by(ApiToken.created_at.desc()))).scalars().all()
     return [_out(t) for t in rows]
 
@@ -62,7 +63,7 @@ async def list_tokens(db: AsyncSession = Depends(get_db), _: User = Depends(get_
 async def create_token(
     body: TokenCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("api_tokens.manage")),
 ):
     bad = [s for s in body.scopes if s not in API_SCOPES]
     if bad:
@@ -83,7 +84,7 @@ async def create_token(
 async def revoke_token(
     token_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("api_tokens.manage")),
 ):
     t = await db.get(ApiToken, token_id)
     if t:

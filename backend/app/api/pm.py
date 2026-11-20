@@ -1,7 +1,7 @@
 """Project tracker API (Jira-style projects, issues, comments and history).
 
 Mounted under ``/api/pm`` behind the ``projects`` module. Every route also
-checks the caller's role on the specific project (see services/pm_access.py).
+checks a named permission on the specific project (see services/pm_access.py).
 """
 import re
 import uuid
@@ -22,12 +22,15 @@ from app.models.pm import (
     PmComment,
     PmIssue,
     PmIssueHistory,
+    PmIssueKeyAlias,
     PmIssueLink,
     PmIssueWatcher,
     PmProject,
     PmProjectMember,
     PmSprint,
 )
+from app.core.access_catalog import PROJECT_KEYS
+from app.models.role import Role
 from app.models.user import User
 from app.models.workplace import Attachment
 from app.schemas.pm import (
@@ -59,11 +62,19 @@ from app.schemas.pm import (
 from app.services.activity import record
 from app.services.notify import notify_user
 from app.services.people import user_names
+from app.services.access import has_permission, missing_detail as platform_missing
 from app.services.pm_access import (
+    ProjectAccess,
+    compose,
+    project_access,
     ensure_writable as _ensure_writable,
+    manager_count,
+    member_access,
     member_ids,
+    project_access_map,
+    require,
     require_project,
-    role_at_least,
+    role_permissions,
     visible_project_ids,
 )
 from app.services.storage import absolute_path
@@ -149,21 +160,15 @@ async def _project_outs(
             )
         ).all()
     }
-    roles = dict(
-        (
-            await db.execute(
-                select(PmProjectMember.project_id, PmProjectMember.role).where(
-                    PmProjectMember.project_id.in_(ids), PmProjectMember.user_id == user.id
-                )
-            )
-        ).all()
-    )
+    access = await project_access_map(db, user, ids)
     names = await user_names(db, {p.lead_id for p in projects})
     outs = []
     for project in projects:
         out = PmProjectOut.model_validate(project)
         out.lead_name = names.get(project.lead_id) if project.lead_id else None
-        out.my_role = "admin" if user.is_admin else roles.get(project.id)
+        mine = access.get(project.id)
+        out.my_role = mine.legacy_role if mine else None
+        out.my_permissions = sorted(mine.permissions) if mine else []
         out.issue_count, out.done_count = counts.get(project.id, (0, 0))
         out.member_count = members.get(project.id, 0)
         out.overdue_count = overdue.get(project.id, 0)
@@ -216,8 +221,8 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not user.is_admin:
-        raise HTTPException(403, "Only administrators can create projects")
+    if not has_permission(user, "projects.create"):
+        raise HTTPException(403, platform_missing("projects.create"))
     key = payload.key.strip().upper()
     if not KEY_RE.match(key):
         raise HTTPException(
@@ -244,7 +249,9 @@ async def create_project(
     # The lead administers the project; platform admins already see it.
     db.add(PmView(project_id=project.id, owner_id=lead_id, name="Team board",
                   visibility="team", settings=default_board_settings(payload.sprints_enabled)))
-    db.add(PmProjectMember(project_id=project.id, user_id=lead_id, role="admin"))
+    # The lead and the creator administer the project (PRM-06).
+    for admin_id in {lead_id, user.id}:
+        db.add(PmProjectMember(project_id=project.id, user_id=admin_id, role="admin"))
     record(
         db, user=user, action="created", entity_type="pm_project", entity_id=project.id,
         summary=f"{user.display_name or user.email} created project {key} '{project.name}'",
@@ -272,8 +279,12 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    project, _ = await require_project(db, user, project_id, "admin", for_update=True)
+    project, access = await require_project(db, user, project_id, for_update=True)
     data = payload.model_dump(exclude_unset=True)
+    if "status" in data and data["status"] != project.status:
+        require(access, "project.archive")
+    if set(data) - {"status"}:
+        require(access, "project.settings")
     if "name" in data and not (data["name"] or "").strip():
         raise HTTPException(422, "Enter a project name.")
     if "status" in data and data["status"] not in ("active", "archived"):
@@ -309,6 +320,30 @@ async def update_project(
 
 
 # ----------------------------------------------------------------- members
+async def _member_outs(db: AsyncSession, project_id: uuid.UUID, user_ids=None) -> list[PmMemberOut]:
+    stmt = (
+        select(PmProjectMember, User.display_name, User.email)
+        .join(User, User.id == PmProjectMember.user_id)
+        .where(PmProjectMember.project_id == project_id)
+        .order_by(User.display_name, User.email)
+    )
+    if user_ids is not None:
+        stmt = stmt.where(PmProjectMember.user_id.in_(user_ids))
+    rows = (await db.execute(stmt)).all()
+    keys = {m.role for m, _, _ in rows}
+    perms = await role_permissions(db, keys)
+    names = dict((await db.execute(select(Role.key, Role.name).where(Role.key.in_(keys)))).all()) if keys else {}
+    return [
+        PmMemberOut(
+            user_id=m.user_id, name=name or email, email=email, role=m.role,
+            role_name=names.get(m.role, m.role),
+            allow=sorted(m.allow_permissions or []), deny=sorted(m.deny_permissions or []),
+            permissions=sorted(compose(perms[m.role], m.allow_permissions, m.deny_permissions)),
+        )
+        for m, name, email in rows
+    ]
+
+
 @router.get("/projects/{project_id}/members", response_model=list[PmMemberOut])
 async def list_members(
     project_id: uuid.UUID,
@@ -316,32 +351,42 @@ async def list_members(
     user: User = Depends(get_current_user),
 ):
     await require_project(db, user, project_id)
-    rows = (
-        await db.execute(
-            select(PmProjectMember.user_id, PmProjectMember.role, User.display_name, User.email)
-            .join(User, User.id == PmProjectMember.user_id)
-            .where(PmProjectMember.project_id == project_id)
-            .order_by(User.display_name, User.email)
+    return await _member_outs(db, project_id)
+
+
+async def _check_grant(db: AsyncSession, granter: ProjectAccess, role: str, allow, deny) -> frozenset[str]:
+    """Validate a member's role and overrides; return their effective permissions.
+
+    Nobody can hand out a project permission they do not hold themselves (PRM-10).
+    """
+    exists = await db.scalar(select(Role.id).where(Role.key == role, Role.scope == "project"))
+    if not exists and role not in PROJECT_ROLES:
+        raise HTTPException(422, "Choose one of the project roles.")
+    unknown = (set(allow or []) | set(deny or [])) - PROJECT_KEYS
+    if unknown:
+        raise HTTPException(422, f"Unknown project permissions: {', '.join(sorted(unknown))}")
+    effective = compose((await role_permissions(db, {role}))[role], allow, deny)
+    beyond = effective - granter.permissions
+    if beyond:
+        raise HTTPException(
+            403, f"You can't grant permissions you don't hold yourself: {', '.join(sorted(beyond))}"
         )
-    ).all()
-    return [
-        PmMemberOut(user_id=r[0], role=r[1], name=r[2] or r[3], email=r[3]) for r in rows
-    ]
-
-
-def _check_role(role: str) -> None:
-    if role not in PROJECT_ROLES:
-        raise HTTPException(422, "Role must be admin, member or viewer.")
+    return effective
 
 
 async def _admin_count(db: AsyncSession, project_id: uuid.UUID) -> int:
-    return int(
-        await db.scalar(
-            select(func.count()).where(
-                PmProjectMember.project_id == project_id, PmProjectMember.role == "admin"
-            )
-        )
-    )
+    """Members who can manage members. Callers hold the project row lock."""
+    return await manager_count(db, project_id)
+
+
+async def _keep_a_manager(db: AsyncSession, project_id: uuid.UUID) -> None:
+    """A project always keeps someone with members.manage (PRM-10)."""
+    if await _admin_count(db, project_id) <= 1:
+        raise HTTPException(409, "A project needs at least one person who can manage members.")
+
+
+def _clean_overrides(values) -> list[str] | None:
+    return sorted(set(values)) or None if values is not None else None
 
 
 @router.post("/projects/{project_id}/members", response_model=PmMemberOut, status_code=201)
@@ -351,8 +396,8 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin", for_update=True)
-    _check_role(payload.role)
+    _, access = await require_project(db, user, project_id, "members.manage", for_update=True)
+    await _check_grant(db, access, payload.role, payload.allow, payload.deny)
     person = await _active_user(db, payload.user_id)
     existing = await db.scalar(
         select(PmProjectMember).where(
@@ -361,12 +406,15 @@ async def add_member(
     )
     if existing:
         raise HTTPException(409, "This person is already on the project.")
-    db.add(PmProjectMember(project_id=project_id, user_id=person.id, role=payload.role))
+    db.add(PmProjectMember(
+        project_id=project_id, user_id=person.id, role=payload.role,
+        allow_permissions=_clean_overrides(payload.allow), deny_permissions=_clean_overrides(payload.deny),
+    ))
+    record(db, user=user, action="updated", entity_type="pm_project", entity_id=project_id,
+           summary=f"Added {person.display_name or person.email} to the project as {payload.role}"
+                   f" (allow: {', '.join(payload.allow) or 'none'}; deny: {', '.join(payload.deny) or 'none'})")
     await db.commit()
-    return PmMemberOut(
-        user_id=person.id, role=payload.role,
-        name=person.display_name or person.email, email=person.email,
-    )
+    return (await _member_outs(db, project_id, [person.id]))[0]
 
 
 @router.patch("/projects/{project_id}/members/{user_id}", response_model=PmMemberOut)
@@ -377,8 +425,7 @@ async def update_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin", for_update=True)
-    _check_role(payload.role)
+    _, access = await require_project(db, user, project_id, "members.manage", for_update=True)
     membership = await db.scalar(
         select(PmProjectMember).where(
             PmProjectMember.project_id == project_id, PmProjectMember.user_id == user_id
@@ -386,15 +433,26 @@ async def update_member(
     )
     if not membership:
         raise HTTPException(404, "This person is not on the project.")
-    if membership.role == "admin" and payload.role != "admin" and await _admin_count(db, project_id) <= 1:
-        raise HTTPException(409, "A project needs at least one administrator.")
-    membership.role = payload.role
+    before = (membership.role, sorted(membership.allow_permissions or []), sorted(membership.deny_permissions or []))
+    role = payload.role if payload.role is not None else membership.role
+    allow = payload.allow if payload.allow is not None else membership.allow_permissions
+    deny = payload.deny if payload.deny is not None else membership.deny_permissions
+    effective = await _check_grant(db, access, role, allow, deny)
+    currently = (await member_access(db, project_id))[user_id]
+    if currently.can("members.manage") and "members.manage" not in effective:
+        await _keep_a_manager(db, project_id)
+    membership.role = role
+    membership.allow_permissions = _clean_overrides(allow)
+    membership.deny_permissions = _clean_overrides(deny)
+    after = (membership.role, sorted(membership.allow_permissions or []), sorted(membership.deny_permissions or []))
+    if after != before:
+        person = await db.get(User, user_id)
+        record(db, user=user, action="updated", entity_type="pm_project", entity_id=project_id,
+               summary=f"Changed {person.display_name or person.email}'s project access "
+                       f"from role {before[0]} (allow {before[1]}, deny {before[2]}) "
+                       f"to role {after[0]} (allow {after[1]}, deny {after[2]})")
     await db.commit()
-    person = await db.get(User, user_id)
-    return PmMemberOut(
-        user_id=user_id, role=membership.role,
-        name=person.display_name or person.email, email=person.email,
-    )
+    return (await _member_outs(db, project_id, [user_id]))[0]
 
 
 @router.delete("/projects/{project_id}/members/{user_id}", status_code=204)
@@ -404,7 +462,7 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin", for_update=True)
+    await require_project(db, user, project_id, "members.manage", for_update=True)
     membership = await db.scalar(
         select(PmProjectMember).where(
             PmProjectMember.project_id == project_id, PmProjectMember.user_id == user_id
@@ -412,9 +470,12 @@ async def remove_member(
     )
     if not membership:
         return
-    if membership.role == "admin" and await _admin_count(db, project_id) <= 1:
-        raise HTTPException(409, "A project needs at least one administrator.")
+    if (await member_access(db, project_id))[user_id].can("members.manage"):
+        await _keep_a_manager(db, project_id)
     await db.delete(membership)
+    person = await db.get(User, user_id)
+    record(db, user=user, action="updated", entity_type="pm_project", entity_id=project_id,
+           summary=f"Removed {person.display_name or person.email if person else user_id} from the project")
     # Watching an issue requires seeing the project.
     issue_ids = select(PmIssue.id).where(PmIssue.project_id == project_id)
     await db.execute(
@@ -431,15 +492,14 @@ async def people(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Active people a project administrator can add to a project."""
+    """Active people someone who manages a project's members can add to it."""
     if not user.is_admin:
-        administers = await db.scalar(
-            select(PmProjectMember.id).where(
-                PmProjectMember.user_id == user.id, PmProjectMember.role == "admin"
-            ).limit(1)
-        )
-        if not administers:
-            raise HTTPException(403, "Only project administrators can browse people")
+        mine = (await db.scalars(
+            select(PmProjectMember.project_id).where(PmProjectMember.user_id == user.id)
+        )).all()
+        access = await project_access_map(db, user, mine)
+        if not any(a.can("members.manage") for a in access.values()):
+            raise HTTPException(403, "Only people who manage a project's members can browse people")
     stmt = (
         select(User)
         .where(User.is_active.is_(True), User.status == "active")
@@ -456,32 +516,77 @@ async def people(
 async def _issue_by_ref(db: AsyncSession, ref: str) -> PmIssue | None:
     match = ISSUE_KEY_RE.match(ref.upper())
     if match:
-        return await db.scalar(
+        issue = await db.scalar(
             select(PmIssue)
             .join(PmProject, PmProject.id == PmIssue.project_id)
             .where(PmProject.key == match.group(1), PmIssue.number == int(match.group(2)))
         )
+        if issue is None:
+            # A key the issue had before it moved project keeps working (MOV-04).
+            issue = await db.scalar(
+                select(PmIssue).join(PmIssueKeyAlias, PmIssueKeyAlias.issue_id == PmIssue.id)
+                .where(PmIssueKeyAlias.key == ref.upper())
+            )
+        return issue
     try:
         return await db.get(PmIssue, uuid.UUID(ref))
     except ValueError:
         return None
 
 
+async def previous_keys(db: AsyncSession, issue_id: uuid.UUID) -> list[str]:
+    return list((await db.scalars(
+        select(PmIssueKeyAlias.key).where(PmIssueKeyAlias.issue_id == issue_id).order_by(PmIssueKeyAlias.created_at)
+    )).all())
+
+
+async def issue_keys(db: AsyncSession, issues) -> dict[uuid.UUID, str]:
+    """Each issue's current key, from its own project (linked issues may have moved)."""
+    project_ids = {i.project_id for i in issues}
+    keys = dict((await db.execute(select(PmProject.id, PmProject.key).where(PmProject.id.in_(project_ids)))).all()) if project_ids else {}
+    return {i.id: f"{keys[i.project_id]}-{i.number}" for i in issues}
+
+
 async def _load_issue(
-    db: AsyncSession, user: User, ref: str, minimum: str = "viewer", *, for_update: bool = False
-) -> tuple[PmIssue, PmProject, str]:
+    db: AsyncSession, user: User, ref: str, permission: str = "project.view", *, for_update: bool = False
+) -> tuple[PmIssue, PmProject, ProjectAccess]:
     issue = await _issue_by_ref(db, ref)
     if not issue:
         raise HTTPException(404, "Issue not found")
-    project, role = await require_project(db, user, issue.project_id, minimum, for_update=for_update or minimum != "viewer")
-    if for_update or minimum != "viewer":
+    for_update = for_update or permission != "project.view"
+    project, access = await require_project(db, user, issue.project_id, permission, for_update=for_update)
+    if for_update:
         # Another issue/sprint mutation may have committed while we waited.
         issue = await db.scalar(
             select(PmIssue).where(PmIssue.id == issue.id).execution_options(populate_existing=True)
         )
         if not issue:
             raise HTTPException(404, "Issue not found")
-    return issue, project, role
+    return issue, project, access
+
+
+def _can_edit(access: ProjectAccess, issue: PmIssue, user: User) -> bool:
+    own = user.id in {issue.reporter_id, issue.assignee_id, issue.created_by_id}
+    return access.can("issue.edit") or (own and access.can("issue.edit_own"))
+
+
+def _require_edit(access: ProjectAccess, issue: PmIssue, user: User) -> None:
+    if not _can_edit(access, issue, user):
+        require(access, "issue.edit")
+
+
+def _require_change(access: ProjectAccess, issue: PmIssue, user: User, fields) -> None:
+    """Field-level checks: status needs issue.transition, assignee needs issue.assign."""
+    for field in fields:
+        if field in ("status", "workflow_state"):
+            require(access, "issue.transition")
+        elif field == "assignee_id":
+            require(access, "issue.assign")
+        elif field == "rank":
+            if not (access.can("issue.transition") or _can_edit(access, issue, user)):
+                require(access, "issue.edit")
+        else:
+            _require_edit(access, issue, user)
 
 
 async def _issue_outs(
@@ -564,10 +669,10 @@ def _check_choice(value: str, allowed: tuple[str, ...], label: str) -> None:
 async def _check_people(
     db: AsyncSession, project_id: uuid.UUID, reporter_id=None, assignee_id=None
 ) -> None:
-    members = await member_ids(db, project_id)
+    members = await member_access(db, project_id)
     if reporter_id and reporter_id not in members:
         raise HTTPException(422, "The reporter must be on the project.")
-    if assignee_id and members.get(assignee_id) not in ("admin", "member"):
+    if assignee_id and (assignee_id not in members or not members[assignee_id].assignable):
         raise HTTPException(422, "Assign the issue to a project member or administrator.")
 
 
@@ -728,7 +833,7 @@ async def create_issue(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    project, _ = await require_project(db, user, project_id, "member", for_update=True)
+    project, _ = await require_project(db, user, project_id, "issue.create", for_update=True)
     _ensure_writable(project)
     _check_choice(payload.issue_type, ISSUE_TYPES, "issue type")
     _check_choice(payload.status, ISSUE_STATUSES, "status")
@@ -795,7 +900,9 @@ async def create_issue(
     return (await _issue_outs(db, project, [issue]))[0]
 
 
-async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> list[PmLinkOut]:
+async def _links_for(
+    db: AsyncSession, issue: PmIssue, project: PmProject, viewer: User | None = None,
+) -> list[PmLinkOut]:
     rows = (
         await db.scalars(
             select(PmIssueLink).where(
@@ -807,6 +914,7 @@ async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> li
     others = {
         i.id: i for i in (await db.scalars(select(PmIssue).where(PmIssue.id.in_(other_ids)))).all()
     } if other_ids else {}
+    keys = await issue_keys(db, others.values())
     links = []
     for row in rows:
         outgoing = row.source_id == issue.id
@@ -817,7 +925,13 @@ async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> li
             relation = "relates"
         else:
             relation = "blocks" if outgoing else "is_blocked_by"
-        links.append(PmLinkOut(id=row.id, relation=relation, issue=_ref(other, project)))
+        ref = PmIssueRef(id=other.id, key=keys[other.id], summary=other.summary,
+                         issue_type=other.issue_type, status=other.status)
+        if other.project_id != project.id and viewer is not None and \
+                await project_access(db, viewer, other.project_id) is None:
+            # Moved to a project the viewer can't see: show the key only.
+            ref.summary = "In a project you can't see"
+        links.append(PmLinkOut(id=row.id, relation=relation, issue=ref))
     return links
 
 
@@ -825,12 +939,14 @@ async def _links_for(db: AsyncSession, issue: PmIssue, project: PmProject) -> li
 async def get_issue(
     ref: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    issue, project, role = await _load_issue(db, user, ref)
+    issue, project, access = await _load_issue(db, user, ref)
     base = (await _issue_outs(db, project, [issue]))[0]
     detail = PmIssueDetail(**base.model_dump())
     detail.project_key = project.key
     detail.project_name = project.name
-    detail.my_role = role
+    detail.my_role = access.legacy_role
+    detail.my_permissions = sorted(access.permissions)
+    detail.previous_keys = await previous_keys(db, issue.id)
     children = list(
         (
             await db.scalars(
@@ -839,7 +955,7 @@ async def get_issue(
         ).all()
     )
     detail.children = await _issue_outs(db, project, children)
-    detail.links = await _links_for(db, issue, project)
+    detail.links = await _links_for(db, issue, project, user)
     watcher_ids = set(
         (await db.scalars(select(PmIssueWatcher.user_id).where(PmIssueWatcher.issue_id == issue.id))).all()
     )
@@ -891,10 +1007,11 @@ async def update_issue(
 
 
 async def apply_issue_update(issue_id, payload, db, user, *, commit=False):
-    issue, project, _ = await _load_issue(db, user, str(issue_id), "member")
+    issue, project, access = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
     data = payload.model_dump(exclude_unset=True)
     apply_workspace_fields(project, data, issue)
+    _require_change(access, issue, user, [f for f, v in data.items() if getattr(issue, f, None) != v])
     for field in ("issue_type", "status", "priority", "summary", "rank"):
         if field in data and data[field] is None:
             raise HTTPException(422, f"{HISTORY_FIELDS.get(field, field).capitalize()} is required.")
@@ -986,10 +1103,11 @@ async def delete_issue(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, role = await _load_issue(db, user, str(issue_id), "member")
+    issue, project, access = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
-    if role != "admin" and issue.created_by_id != user.id:
-        raise HTTPException(403, "Only a project administrator or the issue's creator can delete it.")
+    own = issue.created_by_id == user.id and access.can("issue.create")
+    if not (own or access.can("issue.delete")):
+        require(access, "issue.delete")
     # Sub-tasks go with their parent (as in Jira); an epic's issues stay and
     # simply lose their epic.
     doomed = [issue.id]
@@ -1043,7 +1161,8 @@ async def add_link(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, _ = await _load_issue(db, user, str(issue_id), "member")
+    issue, project, access = await _load_issue(db, user, str(issue_id), for_update=True)
+    _require_edit(access, issue, user)
     _ensure_writable(project)
     if payload.relation not in ("blocks", "is_blocked_by", "relates"):
         raise HTTPException(422, "Invalid link type.")
@@ -1080,7 +1199,8 @@ async def delete_link(
     link = await db.get(PmIssueLink, link_id)
     if not link:
         return
-    _, project, _ = await _load_issue(db, user, str(link.source_id), "member")
+    source, project, access = await _load_issue(db, user, str(link.source_id), for_update=True)
+    _require_edit(access, source, user)
     _ensure_writable(project)
     await db.delete(link)
     await db.commit()
@@ -1093,11 +1213,11 @@ async def add_watcher(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, role = await _load_issue(db, user, str(issue_id), for_update=True)
+    issue, project, access = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
     if payload.user_id != user.id:
-        if not role_at_least(role, "member"):
-            raise HTTPException(403, "Viewers can only watch issues themselves.")
+        if not _can_edit(access, issue, user):
+            raise HTTPException(403, "You can only watch issues yourself.")
         if payload.user_id not in await member_ids(db, project.id):
             raise HTTPException(422, "Watchers must be on the project.")
     await _watch(db, issue.id, {payload.user_id})
@@ -1111,10 +1231,10 @@ async def remove_watcher(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    issue, project, role = await _load_issue(db, user, str(issue_id), for_update=True)
+    issue, project, access = await _load_issue(db, user, str(issue_id), for_update=True)
     _ensure_writable(project)
-    if user_id != user.id and not role_at_least(role, "member"):
-        raise HTTPException(403, "Viewers can only stop watching issues themselves.")
+    if user_id != user.id and not _can_edit(access, issue, user):
+        raise HTTPException(403, "You can only stop watching issues yourself.")
     await db.execute(
         delete(PmIssueWatcher).where(
             PmIssueWatcher.issue_id == issue.id, PmIssueWatcher.user_id == user_id
@@ -1153,7 +1273,7 @@ async def add_comment(
     user: User = Depends(get_current_user),
 ):
     # Viewers (stakeholders) may comment; that is how requesters give feedback.
-    issue, project, _ = await _load_issue(db, user, str(issue_id), for_update=True)
+    issue, project, _ = await _load_issue(db, user, str(issue_id), "issue.comment")
     _ensure_writable(project)
     body = payload.body.strip()
     if not body:
@@ -1213,9 +1333,9 @@ async def delete_comment(
     comment = await db.get(PmComment, comment_id)
     if not comment:
         return
-    _, project, role = await _load_issue(db, user, str(comment.issue_id), for_update=True)
+    _, project, access = await _load_issue(db, user, str(comment.issue_id), for_update=True)
     _ensure_writable(project)
-    if comment.author_id != user.id and role != "admin":
+    if comment.author_id != user.id and not access.can("comment.delete_any"):
         raise HTTPException(403, "You can only delete your own comments.")
     await db.delete(comment)
     await db.commit()
@@ -1246,13 +1366,14 @@ async def issue_history(
 
 # ------------------------------------------------------------------ sprints
 async def _load_sprint(
-    db: AsyncSession, user: User, sprint_id: uuid.UUID, minimum: str = "viewer"
+    db: AsyncSession, user: User, sprint_id: uuid.UUID, permission: str = "project.view"
 ) -> tuple[PmSprint, PmProject]:
     sprint = await db.get(PmSprint, sprint_id)
     if not sprint:
         raise HTTPException(404, "Sprint not found")
-    project, _ = await require_project(db, user, sprint.project_id, minimum, for_update=minimum != "viewer")
-    if minimum != "viewer":
+    writing = permission != "project.view"
+    project, _ = await require_project(db, user, sprint.project_id, permission, for_update=writing)
+    if writing:
         sprint = await db.scalar(
             select(PmSprint).where(PmSprint.id == sprint_id).execution_options(populate_existing=True)
         )
@@ -1357,7 +1478,7 @@ async def create_sprint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin")
+    await require_project(db, user, project_id, "sprint.manage")
     project = await db.scalar(
         select(PmProject)
         .where(PmProject.id == project_id)
@@ -1385,7 +1506,7 @@ async def update_sprint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    sprint, project = await _load_sprint(db, user, sprint_id, "sprint.manage")
     _require_sprints(project)
     if sprint.status == "closed":
         raise HTTPException(409, "Closed sprints can't be changed.")
@@ -1411,7 +1532,7 @@ async def delete_sprint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    sprint, project = await _load_sprint(db, user, sprint_id, "sprint.manage")
     _ensure_writable(project)
     if sprint.status != "future":
         raise HTTPException(409, "Only sprints that haven't started can be deleted.")
@@ -1429,7 +1550,7 @@ async def start_sprint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    sprint, project = await _load_sprint(db, user, sprint_id, "sprint.manage")
     _require_sprints(project)
     if sprint.status != "future":
         raise HTTPException(409, "This sprint has already started.")
@@ -1459,7 +1580,7 @@ async def complete_sprint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    sprint, project = await _load_sprint(db, user, sprint_id, "admin")
+    sprint, project = await _load_sprint(db, user, sprint_id, "sprint.manage")
     _ensure_writable(project)
     if sprint.status != "active":
         raise HTTPException(409, "Only the active sprint can be completed.")

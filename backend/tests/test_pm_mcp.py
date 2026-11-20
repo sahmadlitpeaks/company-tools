@@ -190,6 +190,7 @@ async def test_handshake_and_tool_catalogue(client, auth):
     assert set(tools) == {
         "tracker_list_projects", "tracker_get_project_summary", "tracker_search_issues", "tracker_get_issue",
         "tracker_create_issue", "tracker_update_issue", "tracker_move_issue", "tracker_add_comment",
+        "tracker_transition_issue", "tracker_move_issue_to_project",
     }
     assert tools["tracker_get_issue"]["annotations"]["readOnlyHint"] is True
     assert tools["tracker_create_issue"]["annotations"]["readOnlyHint"] is False
@@ -267,3 +268,29 @@ async def test_write_tools_need_a_write_token_permission_and_member_role(client,
     assert failed and "role" in message
     failed, _ = await call(client, viewer_token, "tracker_add_comment", issue_key=key, body="Thanks")
     assert not failed
+
+
+@with_mcp
+async def test_move_issue_to_project_dry_run_then_move_and_old_key_lookup(client, auth):
+    team = (await client.post("/api/pm/projects", headers=auth, json={"key": "TEAM", "name": "Team"})).json()
+    await client.post("/api/pm/projects", headers=auth, json={"key": "LIMS", "name": "LIMS v3"})
+    await client.post(f"/api/pm/projects/{team['id']}/issues", headers=auth, json={"summary": "Triaged request"})
+    token = (await _token(client, auth, can_write=True))["token"]
+    read_token = (await _token(client, auth))["token"]
+
+    failed, preview = await call(client, read_token, "tracker_move_issue_to_project",
+                                 issue_key="TEAM-1", target_project_key="LIMS")
+    assert not failed and preview["dry_run"] and preview["issues"][0]["new_key"] == "LIMS-1"
+    failed, message = await call(client, read_token, "tracker_move_issue_to_project",
+                                 issue_key="TEAM-1", target_project_key="LIMS", dry_run=False)
+    assert failed and "read-only" in message
+    failed, moved = await call(client, token, "tracker_move_issue_to_project",
+                               issue_key="TEAM-1", target_project_key="LIMS", dry_run=False)
+    assert not failed and moved["moved"][0]["new_key"] == "LIMS-1"
+
+    failed, issue = await call(client, read_token, "tracker_get_issue", issue_key="TEAM-1")
+    assert not failed and issue["key"] == "LIMS-1" and issue["previous_keys"] == ["TEAM-1"]
+    failed, found = await call(client, read_token, "tracker_search_issues", project_key="LIMS", query="TEAM-1")
+    assert not failed and [i["key"] for i in found["issues"]] == ["LIMS-1"]
+    failed, renamed = await call(client, token, "tracker_transition_issue", issue_key="LIMS-1", status="in_progress")
+    assert not failed and renamed["moved"]["status"] == "in_progress"

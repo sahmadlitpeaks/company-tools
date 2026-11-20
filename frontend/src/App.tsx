@@ -57,6 +57,9 @@ const WebhooksPage = lazy(() => import("./pages/WebhooksPage"));
 const ApprovalWorkflowsPage = lazy(() => import("./pages/ApprovalWorkflowsPage"));
 const ApiTokensPage = lazy(() => import("./pages/ApiTokensPage"));
 const DepartmentsPage = lazy(() => import("./pages/DepartmentsPage"));
+const RolesPage = lazy(() => import("./pages/RolesPage"));
+const RoadmapPage = lazy(() => import("./pages/RoadmapPage"));
+const LeadSourcesPage = lazy(() => import("./pages/LeadSourcesPage"));
 const CompaniesPage = lazy(() => import("./pages/CompaniesPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
@@ -192,6 +195,7 @@ export default function App() {
           />
           <Route path="/projects" element={<Protected module="projects"><ProjectsPage /></Protected>} />
           <Route path="/requirements" element={<Protected module="projects"><RequirementsPage /></Protected>} />
+          <Route path="/roadmap" element={<Protected module="projects"><RoadmapPage /></Protected>} />
           <Route path="/projects/:projectKey" element={<Protected module="projects"><ProjectPage /></Protected>} />
           <Route path="/ai-access" element={<Protected module="projects"><AiAccessPage /></Protected>} />
           <Route
@@ -253,6 +257,7 @@ export default function App() {
             path="/crm"
             element={<Protected module="crm"><CrmPage /></Protected>}
           />
+          <Route path="/crm/sources" element={<Protected module="crm"><LeadSourcesPage /></Protected>} />
           <Route path="/crm/:id" element={<Protected module="crm"><CrmLeadPage /></Protected>} />
           <Route path="/inbox" element={<Protected feature="crm.web_inbox"><InboxPage /></Protected>} />
           <Route
@@ -293,23 +298,27 @@ export default function App() {
           />
           <Route
             path="/companies"
-            element={<Protected adminOnly><CompaniesPage /></Protected>}
+            element={<Protected permission="settings.manage"><CompaniesPage /></Protected>}
           />
           <Route
             path="/departments"
-            element={<Protected adminOnly><DepartmentsPage /></Protected>}
+            element={<Protected permission="departments.manage"><DepartmentsPage /></Protected>}
+          />
+          <Route
+            path="/roles"
+            element={<Protected permission="roles.manage"><RolesPage /></Protected>}
           />
           <Route
             path="/audit"
-            element={<Protected adminOnly><AuditPage /></Protected>}
+            element={<Protected permission="audit.view"><AuditPage /></Protected>}
           />
           <Route
             path="/settings"
-            element={<Protected adminOnly><SettingsPage /></Protected>}
+            element={<Protected permission="settings.manage"><SettingsPage /></Protected>}
           />
           <Route
             path="/webhooks"
-            element={<Protected adminOnly><WebhooksPage /></Protected>}
+            element={<Protected permission="settings.manage"><WebhooksPage /></Protected>}
           />
           <Route
             path="/approval-workflows"
@@ -317,7 +326,7 @@ export default function App() {
           />
           <Route
             path="/api-tokens"
-            element={<Protected adminOnly><ApiTokensPage /></Protected>}
+            element={<Protected permission="api_tokens.manage"><ApiTokensPage /></Protected>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

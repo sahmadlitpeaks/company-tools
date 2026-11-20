@@ -9,28 +9,33 @@ import { useAuth } from "./AuthContext";
  * `module` gates on a permission module, `feature` on one named part of a
  * module ("hr.payroll"). Both run through `can`, which also subtracts whatever
  * an administrator has switched off org-wide — so unlike `adminOnly`, being an
- * admin does not see through them.
+ * admin does not see through them. `permission` gates on a platform action
+ * permission ("roles.manage"); the backend enforces the same check.
  */
 export default function Protected({
   module,
   feature,
   adminOnly,
   managerOnly,
+  permission,
   children,
 }: {
   module?: string;
+  /** Platform action permission such as "roles.manage". */
+  permission?: string;
   feature?: string;
   adminOnly?: boolean;
   managerOnly?: boolean;
   children: ReactNode;
 }) {
-  const { user, can } = useAuth();
+  const { user, can, hasPermission } = useAuth();
   const key = feature ?? module;
   const ok =
     !!user &&
     (!adminOnly || user.is_admin) &&
     (!managerOnly || user.is_admin || user.role === "manager") &&
-    (!key || can(key));
+    (!key || can(key)) &&
+    (!permission || hasPermission(permission));
 
   if (!ok)
     return (

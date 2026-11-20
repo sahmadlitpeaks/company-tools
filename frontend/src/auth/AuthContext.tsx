@@ -24,6 +24,8 @@ interface AuthState {
    * off org-wide, including for administrators themselves.
    */
   can: (key: string) => boolean;
+  /** Platform action permission such as "projects.create" or "roles.manage". */
+  hasPermission: (key: string) => boolean;
 }
 
 const AuthCtx = createContext<AuthState | undefined>(undefined);
@@ -103,9 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, switchedOff],
   );
 
+  const hasPermission = useCallback(
+    (key: string) => Boolean(user && (user.is_admin || user.platform_permissions?.includes(key))),
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, passwordLogin, changePassword, logout, refresh, can }),
-    [user, loading, login, passwordLogin, changePassword, logout, refresh, can],
+    () => ({ user, loading, login, passwordLogin, changePassword, logout, refresh, can, hasPermission }),
+    [user, loading, login, passwordLogin, changePassword, logout, refresh, can, hasPermission],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

@@ -189,6 +189,31 @@ For a select:
 | `dashboard/DashboardCards.tsx` | Existing dashboard card compositions and reorderable widget examples. |
 | `org-chart/OrgChartFlow.tsx` | React Flow organization chart; use only for the organization graph. |
 
+## Navigation categories and permissions
+
+The sidebar has six categories (Home, Projects, Documents, Leads, Marketing,
+Admin) plus a collapsed **Other tools** group for modules being retired (BRD
+section 9C). Only the current page's category opens by default; each person's
+open categories are remembered in the browser. Put a new page in an existing
+category; a seventh category needs business owner approval. Items with
+`sidebar: false` stay searchable and titled but are not listed (Profile and
+Security live in the account menu). Related pages that share a `merge` key
+(Links & QR, Sharing, Inbox, Integrations, Routine Checks) appear as one sidebar
+entry and get tabs from `SectionTabs.tsx` above the page; each tab keeps its own
+URL and stays in search.
+
+Gate UI on access with the matching helper, and always enforce the same check
+in the backend:
+
+- Module: `can("crm")`, `<Protected module="crm">`, nav `module`.
+- Platform action: `hasPermission("roles.manage")`,
+  `<Protected permission="roles.manage">`, nav `permission`.
+- Project action: `hasProjectPermission(project, "sprint.manage")` from
+  `@/api/pm`, which reads the server's `my_permissions`.
+
+`components/access/PermissionOverrides.tsx` is the shared allow/deny editor for
+per-person overrides (project members and platform access).
+
 ## Compatibility Compositions
 
 `frontend/src/components/ui.tsx` contains shadcn-backed compatibility and

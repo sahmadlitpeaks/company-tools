@@ -12,7 +12,7 @@ from app.models.pm_decision import PmDecision
 from app.models.pm_requirement import PmRequirement, PmRequirementDecisionLink, PmRequirementEvent, PmRequirementIssueLink
 from app.models.user import User
 from app.schemas.pm_requirement import RequirementContent, RequirementLinkInput, RequirementStatus, RequirementUpdate
-from app.services.pm_access import ensure_writable, project_role, require_project, role_at_least, visible_project_ids
+from app.services.pm_access import ensure_writable, project_access_map, project_role, require_project, visible_project_ids
 from app.services.pm_requirements import CONTENT_FIELDS, link_requirement, requirement_event
 from app.services.people import user_names
 
@@ -26,7 +26,8 @@ def _snapshot(row):
 def _summary(row, project, role, owner_name, task_count, task_done, decision_count):
     return {"id": row.id, "project_id": row.project_id, "project_key": project.key, "project_name": project.name,
             "project_status": project.status, "key": f"{project.key}-REQ-{row.number}", "title": row.title,
-            "status": row.status, "owner_id": row.owner_id, "owner_name": owner_name, "my_role": role,
+            "status": row.status, "owner_id": row.owner_id, "owner_name": owner_name, "my_role": role.legacy_role,
+            "my_permissions": sorted(role.permissions),
             "version": row.version, "created_at": row.created_at, "updated_at": row.updated_at,
             "task_count": task_count, "task_done": task_done, "decision_count": decision_count}
 
@@ -44,12 +45,10 @@ async def _summaries(db, rows, user, known_role=None):
     decisions = dict((await db.execute(select(PmRequirementDecisionLink.requirement_id, func.count())
                                       .where(PmRequirementDecisionLink.requirement_id.in_(ids))
                                       .group_by(PmRequirementDecisionLink.requirement_id))).all())
-    roles = {} if user.is_admin or known_role else dict((await db.execute(
-        select(PmProjectMember.project_id, PmProjectMember.role).where(PmProjectMember.user_id == user.id,
-            PmProjectMember.project_id.in_({project.id for _, project in rows})))).all())
-    return [_summary(row, project, "admin" if user.is_admin else known_role or roles[project.id], names.get(row.owner_id),
+    roles = {} if known_role else await project_access_map(db, user, {project.id for _, project in rows})
+    return [_summary(row, project, known_role or roles[project.id], names.get(row.owner_id),
                      *counts.get(row.id, (0, 0)), decisions.get(row.id, 0)) for row, project in rows
-            if user.is_admin or known_role or project.id in roles]
+            if known_role or project.id in roles]
 
 
 async def _out(db, row, project, role, *, detail=False):
@@ -66,7 +65,10 @@ async def _out(db, row, project, role, *, detail=False):
                                      .where(PmRequirementDecisionLink.requirement_id == row.id).order_by(PmDecision.number))).all()
         events = (await db.scalars(select(PmRequirementEvent).where(PmRequirementEvent.requirement_id == row.id)
                                   .order_by(PmRequirementEvent.created_at, PmRequirementEvent.id))).all()
-        result["issues"] = [{"id": issue.id, "key": f"{project.key}-{issue.number}", "summary": issue.summary,
+        from app.api.pm import issue_keys
+
+        keys = await issue_keys(db, issues)
+        result["issues"] = [{"id": issue.id, "key": keys[issue.id], "summary": issue.summary,
                              "issue_type": issue.issue_type, "status": issue.status} for issue in issues]
         result["decisions"] = [{"id": decision.id, "key": f"{project.key}-DEC-{decision.number}", "title": decision.title,
                                 "status": decision.status} for decision in decisions]
@@ -79,7 +81,7 @@ async def _load(db, user, requirement_id, *, write=False, restore=False):
     row = await db.get(PmRequirement, requirement_id)
     if not row:
         raise HTTPException(404, "Requirement not found")
-    project, role = await require_project(db, user, row.project_id, "member" if write else "viewer", for_update=write)
+    project, role = await require_project(db, user, row.project_id, "requirements.manage" if write else "project.view", for_update=write)
     if write:
         ensure_writable(project)
         row = await db.scalar(select(PmRequirement).where(PmRequirement.id == requirement_id)
@@ -92,7 +94,7 @@ async def _load(db, user, requirement_id, *, write=False, restore=False):
 async def _validate(db, project, payload):
     if payload.owner_id:
         owner = await db.get(User, payload.owner_id)
-        if not owner or owner.status != "active" or not role_at_least(await project_role(db, owner, project.id), "member"):
+        if not owner or owner.status != "active" or not ((access := await project_role(db, owner, project.id)) and access.assignable):
             raise HTTPException(422, "Owner must be an active project member or administrator")
     if payload.status in ("ready", "in_progress", "delivered"):
         missing = [field.replace("_", " ") for field in ("original_request", "context", "functional_requirements", "scope", "expected_outcome", "acceptance_criteria")
@@ -131,7 +133,7 @@ async def list_requirements(project_id: uuid.UUID | None = None, status: Require
 
 @router.post("/projects/{project_id}/requirements", status_code=201)
 async def create_requirement(project_id: uuid.UUID, payload: RequirementContent, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    project, role = await require_project(db, user, project_id, "member", for_update=True)
+    project, role = await require_project(db, user, project_id, "requirements.manage", for_update=True)
     ensure_writable(project)
     await _validate(db, project, payload)
     project.requirement_seq = (project.requirement_seq or 0) + 1
@@ -219,7 +221,13 @@ async def _reverse(db, user, target_id, kind):
     column = link.issue_id if kind == "issue" else link.decision_id
     rows = (await db.scalars(select(PmRequirement).join(link, link.requirement_id == PmRequirement.id)
                             .where(column == target_id).order_by(PmRequirement.number))).all()
-    return await _summaries(db, [(row, project) for row in rows], user, known_role=role)
+    # A roadmap feature can own an epic in another project: key each requirement
+    # by its own project, and leave out ones in projects the caller can't see.
+    if all(row.project_id == project.id for row in rows):
+        return await _summaries(db, [(row, project) for row in rows], user, known_role=role)
+    projects = {p.id: p for p in (await db.scalars(
+        select(PmProject).where(PmProject.id.in_({row.project_id for row in rows})))).all()}
+    return await _summaries(db, [(row, projects[row.project_id]) for row in rows], user)
 
 
 @router.get("/issues/{issue_id}/requirements")

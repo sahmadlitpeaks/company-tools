@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.routing import Route
 
 from app.api import (
+    access as access_api,
     activity,
     announcements,
     approvals,
@@ -65,6 +66,8 @@ from app.api import (
     pm_requirements,
     pm_import,
     pm_mcp,
+    pm_move,
+    pm_roadmap,
     pm_reports,
     pm_share,
     pm_tokens,
@@ -105,6 +108,7 @@ async def lifespan(app: FastAPI):
         ensure_default_admin,
         ensure_default_departments,
         ensure_default_leave_types,
+        ensure_default_roles,
     )
 
     # Fail fast rather than boot production with a forgeable default SECRET_KEY.
@@ -114,6 +118,7 @@ async def lifespan(app: FastAPI):
         # Production starts with only the bootstrap admin; sample departments and
         # leave types remain development/test conveniences.
         await ensure_default_admin(db)
+        await ensure_default_roles(db)
         if settings.ENVIRONMENT != "production":
             await ensure_default_departments(db)
             await ensure_default_leave_types(db)
@@ -250,6 +255,7 @@ def _on(key: str):
 # Open to any active, authenticated user (foundational/shared surfaces).
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
+app.include_router(access_api.router, prefix=api_prefix)
 app.include_router(analytics.router, prefix=api_prefix)
 app.include_router(companies.router, prefix=api_prefix)
 app.include_router(settings_api.router, prefix=api_prefix)
@@ -323,6 +329,8 @@ app.include_router(
 app.include_router(tasks.projects_router, prefix=api_prefix, dependencies=_mod("tasks"))
 app.include_router(pm_workspace.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm.router, prefix=api_prefix, dependencies=_mod("projects"))
+app.include_router(pm_move.router, prefix=api_prefix, dependencies=_mod("projects"))
+app.include_router(pm_roadmap.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_decisions.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_requirements.router, prefix=api_prefix, dependencies=_mod("projects"))
 app.include_router(pm_reports.router, prefix=api_prefix, dependencies=_mod("projects"))

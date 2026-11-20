@@ -54,6 +54,19 @@ class CrmLeadUpdate(_LeadFields):
     status: LeadStatus | None = None
 
 
+class CrmLeadSourceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source: str
+    source_detail: str | None = None
+    origin_type: str | None = None
+    origin_id: str | None = None
+    created_at: datetime
+    # Where the submission can be seen in the platform, when there is a page for it.
+    link: str | None = None
+
+
 class CrmLeadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,7 +99,8 @@ class CrmLeadOut(BaseModel):
     updated_at: datetime | None = None
     # Whether the requesting user may delete this lead (admins and its owner).
     can_delete: bool = False
-
+    # Every way this lead reached the CRM (detail view only).
+    sources: list[CrmLeadSourceOut] = []
 
 class CrmSummary(BaseModel):
     total: int

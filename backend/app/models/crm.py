@@ -11,7 +11,7 @@ from app.models.base import TimestampMixin, UUIDMixin
 # intake pipeline (website forms). Kept here so the API can validate writes and
 # the UI can build its filter from one place rather than a hardcoded array.
 LEAD_SOURCES = {
-    "card", "landing", "web", "manual", "import",
+    "card", "landing", "web", "manual", "import", "brochure", "asset",
     "facebook", "google", "instagram", "tiktok", "other",
 }
 
@@ -68,6 +68,8 @@ class CrmLead(UUIDMixin, TimestampMixin, Base):
     last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Provenance for de-duped ingestion from card/landing leads.
+    # Last 9 digits of the phone number, for matching repeat submissions.
+    phone_key: Mapped[str | None] = mapped_column(String(16), index=True)
     origin_type: Mapped[str | None] = mapped_column(String(32))
     origin_id: Mapped[str | None] = mapped_column(String(64), index=True)
 
@@ -102,4 +104,25 @@ class CrmActivity(UUIDMixin, TimestampMixin, Base):
     body: Mapped[str] = mapped_column(Text)
     author_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class CrmLeadSource(UUIDMixin, Base):
+    """One way a lead reached the CRM (BRD 9B, LHB-02/03).
+
+    A person who submits several forms, downloads or cards is one lead with one
+    row here per submission, so the lead shows everywhere they came from.
+    """
+
+    __tablename__ = "crm_lead_sources"
+
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("crm_leads.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    source_detail: Mapped[str | None] = mapped_column(String(255))
+    origin_type: Mapped[str | None] = mapped_column(String(32))
+    origin_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )

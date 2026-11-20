@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.access import require_permission
 from app.auth.azure import get_app_token
-from app.auth.deps import get_current_admin, get_current_user
+from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.core.permissions import (
     ALWAYS_ENABLED,
@@ -54,7 +55,7 @@ async def get_appearance_settings(
 async def put_appearance_settings(
     payload: AppearanceIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     if payload.mode and payload.mode not in VALID_MODES:
         raise HTTPException(status_code=422, detail="Invalid mode")
@@ -83,7 +84,7 @@ class BambooConfigIn(BaseModel):
 
 @router.get("/bamboo")
 async def get_bamboo(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     cfg = await get_bamboo_config(db)
     return {"subdomain": cfg["subdomain"], "key_set": bool(cfg["api_key"]), "configured": cfg["configured"]}
@@ -93,7 +94,7 @@ async def get_bamboo(
 async def put_bamboo(
     payload: BambooConfigIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     values: dict[str, str | None] = {
         "bamboo_subdomain": (payload.subdomain or "").strip() or None,
@@ -113,7 +114,7 @@ class CaptchaConfigIn(BaseModel):
 
 @router.get("/captcha")
 async def get_captcha(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     cfg = await get_captcha_config(db)
     # The secret itself is never returned — only whether one is stored.
@@ -130,7 +131,7 @@ async def get_captcha(
 async def put_captcha(
     payload: CaptchaConfigIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     provider = (payload.provider or "").strip().lower()
     if provider and provider not in CAPTCHA_PROVIDERS:
@@ -152,7 +153,7 @@ class IntegrationIn(BaseModel):
 
 @router.get("/integrations")
 async def get_integrations(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     """Catalogue + status of third-party integrations (secrets never returned)."""
     return await integrations_status(db)
@@ -163,7 +164,7 @@ async def put_integration(
     provider: str,
     payload: IntegrationIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     try:
         await set_integration(db, provider, payload.values)
@@ -174,7 +175,7 @@ async def put_integration(
 
 @router.get("/security")
 async def get_security(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     return {"allowed_email_domains": await get_allowed_domains(db)}
 
@@ -183,7 +184,7 @@ async def get_security(
 async def put_security(
     payload: SecurityConfigIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     raw = (payload.allowed_email_domains or "").strip()
     await set_many(db, {"allowed_email_domains": raw or None})
@@ -211,7 +212,7 @@ def _sla_payload(cfg) -> dict:
 
 
 @router.get("/sla")
-async def get_sla(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)):
+async def get_sla(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))):
     from app.services.sla import get_sla_config
 
     return _sla_payload(await get_sla_config(db))
@@ -221,7 +222,7 @@ async def get_sla(db: AsyncSession = Depends(get_db), _: User = Depends(get_curr
 async def put_sla(
     payload: SLAConfigIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     from app.services.sla import get_sla_config
 
@@ -254,7 +255,7 @@ class AzureConfigIn(BaseModel):
 
 @router.get("/azure")
 async def get_azure(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     cfg = await get_azure_config(db)
     return {
@@ -271,7 +272,7 @@ async def get_azure(
 async def put_azure(
     payload: AzureConfigIn,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     values: dict[str, str | None] = {
         "azure_tenant_id": (payload.tenant_id or "").strip() or None,
@@ -288,7 +289,7 @@ async def put_azure(
 
 @router.post("/azure/test")
 async def test_azure(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     """Validate the saved config by requesting an app-only token."""
     cfg = await get_azure_config(db)
@@ -341,7 +342,7 @@ async def _modules_payload(db: AsyncSession) -> dict:
 
 @router.get("/modules")
 async def get_module_toggles(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     """Catalogue of every module and its features, with current on/off state."""
     return await _modules_payload(db)
@@ -351,7 +352,7 @@ async def get_module_toggles(
 async def put_module_toggles(
     payload: ModuleTogglesIn,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("settings.manage")),
 ):
     """Replace the disabled set. Turning a module off hides it from everyone."""
     requested = set(payload.disabled)

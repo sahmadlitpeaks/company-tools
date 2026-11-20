@@ -86,7 +86,7 @@ function OpenCommandPalette({
   onOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const { user, can } = useAuth();
+  const { user, can, hasPermission } = useAuth();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const isManager = user?.is_admin || user?.role === "manager";
@@ -136,7 +136,7 @@ function OpenCommandPalette({
   );
 
   const navGroups = useMemo(() => {
-    const groups = visibleNavGroups(!!user?.is_admin, can, user?.role === "manager");
+    const groups = visibleNavGroups(!!user?.is_admin, can, user?.role === "manager", hasPermission);
     const needle = q.trim().toLowerCase();
     if (!needle) return groups;
     return groups
@@ -150,7 +150,7 @@ function OpenCommandPalette({
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [q, user?.is_admin, user?.role, can]);
+  }, [q, user?.is_admin, user?.role, can, hasPermission]);
 
   const navCount = navGroups.reduce((total, group) => total + group.items.length, 0);
 

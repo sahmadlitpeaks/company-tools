@@ -313,11 +313,13 @@ app, so validation, history, notifications and watchers behave identically.
 | --- | --- | --- |
 | `tracker_list_projects` | read | Visible projects with role, health and progress |
 | `tracker_get_project_summary` | read | Status counts, active sprint, overdue issues, epic progress and workspace configuration |
-| `tracker_search_issues` | read | Search by text/key, status, type, assignee (`me`, `none`, email) or sprint; paged |
-| `tracker_get_issue` | read | Description, people, labels, children, links and the last 20 comments |
+| `tracker_search_issues` | read | Search by text/key (old keys of moved issues too), status, type, assignee (`me`, `none`, email) or sprint; paged |
+| `tracker_get_issue` | read | Description, people, labels, children, links, `previous_keys` and the last 20 comments; accepts old keys |
 | `tracker_create_issue` | write | Create an issue (parent/epic, assignee by email, points, dates, active sprint) |
 | `tracker_update_issue` | write | Change only the fields given |
-| `tracker_move_issue` | write | Change status |
+| `tracker_transition_issue` | write | Change status |
+| `tracker_move_issue` | write | Deprecated alias of `tracker_transition_issue`; kept for one release |
+| `tracker_move_issue_to_project` | read (dry run) / write | Move an issue to another project. `dry_run` (default) returns the preview; the real move needs a write token |
 | `tracker_add_comment` | write | Comment as the token's owner |
 
 Read tools are annotated `readOnlyHint`; nothing deletes. Errors explain what to
@@ -334,20 +336,94 @@ organisation has approved; the AI Access page says so, and administrators can
 review and revoke tokens. Clients that only support OAuth sign-in (some web
 connectors) can't use personal tokens yet.
 
+## Product roadmap
+
+**Projects → Roadmap** (`/roadmap`) shows every feature across the products the
+person can see, grouped by product and module, with priority (how important),
+horizon (Now, Next, Later, Future: when), status, owner, progress and the linked
+epic. The **Meeting board** tab lays features out in horizon columns: drag a
+card by its handle, or use its Horizon and Priority menus (keyboard friendly).
+
+- A feature is a requirement with roadmap fields: `module_id`, `priority`,
+  `horizon`, `roadmap_status` (proposed, approved, in progress, done, parked) and
+  `target_quarter` (`2027-Q1`). Existing requirements kept their briefs and got
+  a mapped status (draft → proposed, ready → approved, delivered → done,
+  archived → parked).
+- Modules are an editable, ordered list per project (`pm_modules`); a module
+  with features can be archived but not deleted.
+- **Start** on an approved feature creates an epic (title, scope, functional
+  requirements and acceptance criteria) on the chosen team board, links it both
+  ways and sets the feature to In progress. Progress = done child issues ÷ all
+  child issues of the linked epics; the feature shows Done when every linked epic
+  is done.
+- Permissions: `roadmap.view` (all starter roles), `roadmap.edit` (module,
+  priority, quarter, modules; Project Admin), `roadmap.decide` (horizon, status,
+  start; Project Admin); `roadmap.view_all` (platform) reads every roadmap for
+  management review. Starting also needs `issue.create` on the target project.
+- Every roadmap change is written to the requirement history and the audit log.
+- API: `GET /api/pm/roadmap`, `PATCH /api/pm/requirements/{id}/roadmap`,
+  `POST /api/pm/requirements/{id}/start`, and module CRUD under
+  `/api/pm/projects/{id}/modules` and `/api/pm/modules/{id}`.
+- Not yet built (BRD "Should"/"Could"): Excel/PDF export, read-only share link,
+  per-project summary strip, MCP roadmap tools, Excel import.
+
+## Moving issues between projects
+
+People with `issue.move_out` on the source project and `issue.move_in` on the
+target can move one issue (**Move** on the issue panel) or a selection of up to
+100 (**Move to project** in the issue list). A preview lists every change before
+anything happens; the move then runs in one transaction, all or nothing.
+
+| Item | On move |
+| --- | --- |
+| Key | Next number in the target (`TEAM-7` → `LIMS-1648`); the old key keeps resolving in URLs, search, the API and MCP |
+| Sub-tasks | Always move with their parent and get new keys |
+| Epic's issues | Move with the epic when chosen; otherwise they stay and lose the epic link |
+| Epic link of a moved issue | Cleared, unless an epic in the target is chosen (API `epic_id`) |
+| Sprint | Cleared; the issue lands in the target backlog. Closed sprints keep their recorded points |
+| Workflow state | Kept if the target has the same state key; otherwise the first target state in the same category |
+| Component, custom fields | Kept when the target has the same key; otherwise dropped and written to history |
+| Assignee | Kept if they can be assigned in the target; otherwise unassigned, or added as a member when chosen |
+| Reporter, watchers | Kept; people who can't see the target are listed in the preview and stop watching |
+| Comments, attachments, history, links, labels, points, dates | Kept |
+
+API: `POST /api/pm/issues/move/preview` and `POST /api/pm/issues/move` with
+`issue_ids`, `target_project_id` and options. Old keys are stored in
+`pm_issue_key_aliases`. The move writes a `project` history entry, an audit log
+entry, and one notification per affected person.
+
 ## Access
 
 The `projects` module opens the area (it is in the member defaults). Each
-project is then visible only to its members and platform administrators.
+project is then visible only to its members, platform administrators and holders
+of the `projects.view_all` platform permission (read-only).
 
-| Project role | Can |
+Inside a project, every route checks a **named permission** such as
+`issue.delete`, `sprint.manage` or `members.manage` (catalogue:
+`backend/app/core/access_catalog.py`, served at `GET /api/access/catalog`). A
+member holds one **project role** plus optional per-person **allow/deny
+overrides**; a deny always wins. Roles are edited in **Admin → Roles &
+Permissions**. The starter roles keep the old role keys, so existing
+memberships kept exactly their previous access:
+
+| Starter role (key) | Can |
 | --- | --- |
-| Administrator | Edit the project, add/remove people and change roles, delete any issue, plus everything below |
-| Member | Create, edit, move, link and delete their own issues; upload attachments |
-| Viewer | Read everything and comment; watch issues. Intended for requesters and stakeholders |
+| Project Admin (`admin`) | Every project permission |
+| Contributor (`member`) | View, create, edit, assign and transition issues; comment; reports; decisions and requirements. Delete their own issues |
+| Viewer (`viewer`) | View, comment and see reports. Intended for requesters and stakeholders |
 
-- Only platform administrators create projects. The lead becomes a project
-  administrator. A project always keeps at least one administrator.
-- Assignees must be members or administrators; reporters and watchers may be
+- Creating a project needs the `projects.create` platform permission (the
+  starter **Project Creator** platform role grants it). The creator and the
+  lead both become Project Admins.
+- Changing an issue's status needs `issue.transition` and its assignee
+  `issue.assign`; other fields need `issue.edit` (or `issue.edit_own` on issues
+  the person reported, created or is assigned to).
+- Whoever manages members can only hand out permissions they hold on that
+  project, and a project always keeps at least one person with
+  `members.manage`.
+- Responses keep `my_role` (`admin`/`member`/`viewer`, a summary for older
+  clients) and add `my_permissions`; new UI checks should use the latter.
+- Assignees must hold `issue.edit` or `issue.edit_own`; reporters and watchers may be
   any project role.
 - Projects and issues a person cannot see return 404, not 403, so ids of other
   teams' work are not confirmed.

@@ -98,6 +98,12 @@ class User(UUIDMixin, TimestampMixin, Base):
     access_department: Mapped["object"] = relationship(
         "Department", lazy="selectin"
     )
+    platform_roles: Mapped[list["object"]] = relationship(
+        "Role", secondary="user_platform_roles", lazy="selectin"
+    )
+    permission_overrides: Mapped[list["object"]] = relationship(
+        "UserPermissionOverride", lazy="selectin", cascade="all, delete-orphan"
+    )
     manager: Mapped["object"] = relationship(
         "User", remote_side="User.id", foreign_keys=[manager_id], lazy="joined", join_depth=1
     )
@@ -116,14 +122,29 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     @property
     def effective_permissions(self) -> list[str]:
+        """Modules this person can open (legacy grants plus role-granted ones)."""
         from app.core.permissions import resolve_permissions
+
+        from app.services.access import is_owner
 
         dept = self.access_department
         return resolve_permissions(
             role=self.role,
-            is_admin=self.is_admin,
+            is_admin=is_owner(self),
             permissions=self.permissions,
             department_perms=dept.permissions if dept else None,
-            extra=self.extra_permissions,
-            revoked=self.revoked_permissions,
+            extra=list(self.extra_permissions or []) + self._role_grants("allow"),
+            revoked=list(self.revoked_permissions or []) + self._role_grants("deny"),
         )
+
+    @property
+    def platform_permissions(self) -> list[str]:
+        """Platform action permissions (see app.core.access_catalog)."""
+        from app.services.access import platform_actions
+
+        return platform_actions(self)
+
+    def _role_grants(self, kind: str) -> list[str]:
+        from app.services.access import role_module_grants
+
+        return role_module_grants(self, kind)

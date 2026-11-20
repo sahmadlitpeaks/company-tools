@@ -57,24 +57,17 @@ async def make_lead(db: AsyncSession, sub, source=None, form=None) -> CrmLead:
         f["name"]: f.get("label") or f["name"]
         for f in labels if isinstance(f, dict) and f.get("name")
     }
-    lead = CrmLead(
-        name=sub.name,
-        email=sub.email,
-        phone=sub.phone,
-        company=sub.company,
-        source="web",
-        source_detail=source_detail(source, form),
+    from app.services.crm_ingest import capture_lead
+
+    lead, _ = await capture_lead(
+        db, source="web", source_detail=source_detail(source, form),
+        origin_type="submission", origin_id=str(sub.id),
+        name=sub.name, email=sub.email, phone=sub.phone, company=sub.company,
         notes=_notes_block(sub, extras, label_map),
-        page_url=sub.page_url,
-        intake_form_id=getattr(form, "id", None),
-        fields=_labelled_fields(extras, label_map),
-        origin_type="submission",
-        origin_id=str(sub.id),
-        status="new",
+        page_url=sub.page_url, intake_form_id=getattr(form, "id", None),
+        fields=_labelled_fields(extras, label_map), status="new",
         owner_id=getattr(form, "notify_user_id", None) or getattr(source, "notify_user_id", None),
     )
-    db.add(lead)
-    await db.flush()
     sub.converted_lead_id = lead.id
     return lead
 

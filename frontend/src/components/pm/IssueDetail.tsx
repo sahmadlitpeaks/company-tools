@@ -1,10 +1,11 @@
 import { useIssueHref } from "./useIssueHref";
-import { useState, type FormEvent, type ReactNode } from "react";
-import { Copy, Eye, EyeOff, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Copy, Eye, EyeOff, FolderInput, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { MoveIssuesDialog } from "./MoveIssuesDialog";
 import { api } from "@/api/client";
 import {
-  canEdit, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, labelOf, LINK_RELATIONS, pmError,
+  canEdit, hasProjectPermission, ISSUE_PRIORITIES, ISSUE_STATUSES, ISSUE_TYPES, labelOf, LINK_RELATIONS, pmError,
   type IssueStatus, type PmComment, type PmHistory, type PmIssue, type PmIssueDetail, type PmLink, type PmMember, type PmProject, type PmSprint,
 } from "@/api/pm";
 import { dateLabel } from "@/api/tasks";
@@ -48,7 +49,16 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
   const config = useWorkspace();
   const [, setParams] = useSearchParams();
   const detail = useFetch<PmIssueDetail>(`/api/pm/issues/${issueKey}`, true);
-  const [mode, setMode] = useState<null | "edit" | "child" | "delete" | "decision">(null);
+  const [mode, setMode] = useState<null | "edit" | "child" | "delete" | "decision" | "move">(null);
+  const navigate = useNavigate();
+  const loadedKey = detail.data?.key;
+  const loadedProject = detail.data?.project_key;
+  // An old key (from before a move) resolves to the issue; show its current URL (MOV-04).
+  useEffect(() => {
+    if (!loadedKey || !loadedProject || loadedKey === issueKey.toUpperCase()) return;
+    if (loadedProject !== project.key) navigate(`/projects/${loadedProject}?issue=${loadedKey}`, { replace: true });
+    else setParams((old) => { const next = new URLSearchParams(old); next.set("issue", loadedKey); return next; }, { replace: true });
+  }, [loadedKey, loadedProject, issueKey, project.key, navigate, setParams]);
   const [decisionRefresh, setDecisionRefresh] = useState(0);
   const [state, setState] = useState({ busy: false, error: "" });
   const issue = detail.data;
@@ -109,6 +119,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 const copy = await api<PmIssue>(`/api/pm/issues/${issue.id}/duplicate`, { method: "POST" });
                 setParams((old) => { const next = new URLSearchParams(old); next.set("issue", copy.key); return next; });
               })}><Copy data-icon="inline-start" />Duplicate</Button>}
+              {writable && hasProjectPermission(issue, "issue.move_out") && <Button variant="outline" onClick={() => setMode("move")} disabled={state.busy}><FolderInput data-icon="inline-start" />Move</Button>}
               {editable && <Button variant="ghost" size="icon" aria-label={`Delete ${issue.key}`} onClick={() => setMode("delete")} disabled={state.busy}><Trash2 /></Button>}
             </div>
 
@@ -164,7 +175,7 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
                 <TabsTrigger value="comments">Comments</TabsTrigger>
                 <TabsTrigger value="history">History</TabsTrigger>
               </TabsList>
-              <TabsContent value="comments"><IssueComments issueId={issue.id} members={members} isAdmin={issue.my_role === "admin"} readOnly={!writable} onChanged={onChanged} /></TabsContent>
+              <TabsContent value="comments"><IssueComments issueId={issue.id} members={members} isAdmin={hasProjectPermission(issue, "comment.delete_any")} readOnly={!writable} onChanged={onChanged} /></TabsContent>
               <TabsContent value="history"><IssueHistory issueId={issue.id} updatedAt={issue.updated_at} /></TabsContent>
             </Tabs>
 
@@ -180,6 +191,9 @@ export function IssueDetail({ issueKey, project, members, issues, sprints, onClo
     {editable && issue && mode === "edit" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} issue={issue} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
     {editable && issue && mode === "child" && <IssueForm project={project} members={members} issues={issues} sprints={sprints} defaults={{ issue_type: childType, parent_id: issue.id }} onClose={() => setMode(null)} onSaved={() => { setMode(null); void detail.refresh(); onChanged(); }} />}
     {editable && issue && mode === "decision" && <DecisionForm project={project} members={members} issues={issues} initialIssueIds={[issue.id]} onClose={() => setMode(null)} onSaved={() => { setMode(null); setDecisionRefresh((value) => value + 1); onChanged(); }} />}
+    {mode === "move" && issue && <MoveIssuesDialog issueIds={[issue.id]} source={project} includesEpic={issue.issue_type === "epic"}
+      onClose={() => setMode(null)}
+      onMoved={(result) => { setMode(null); onChanged(); const moved = result.moved.find((m) => m.id === issue.id); navigate(`/projects/${result.target}?issue=${moved?.new_key ?? result.moved[0]?.new_key ?? ""}`); }} />}
     <AlertDialog open={editable && mode === "delete"} onOpenChange={(open) => !open && !state.busy && setMode(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>

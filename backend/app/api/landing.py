@@ -223,21 +223,11 @@ async def submit_landing_lead(
     lead = LandingLead(page_id=page.id, **payload.model_dump())
     db.add(lead)
     await db.flush()
-    from app.models.crm import CrmLead
+    from app.services.crm_ingest import capture_lead
 
-    db.add(
-        CrmLead(
-            company_id=page.company_id,
-            name=lead.name,
-            email=lead.email,
-            phone=lead.phone,
-            notes=lead.message,
-            source="landing",
-            source_detail=page.title,
-            status="new",
-            origin_type="landing_lead",
-            origin_id=str(lead.id),
-        )
+    await capture_lead(
+        db, source="landing", source_detail=page.title, origin_type="landing_lead", origin_id=str(lead.id),
+        name=lead.name, email=lead.email, phone=lead.phone, notes=lead.message, company_id=page.company_id,
     )
     await db.commit()
     await db.refresh(lead)

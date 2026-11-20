@@ -1,10 +1,11 @@
+import { MoveIssuesDialog } from "./MoveIssuesDialog";
 import { useIssueHref } from "./useIssueHref";
 import { useState } from "react";
 import { endOfMonth, format, startOfMonth } from "date-fns";
 import { Copy, Filter, Save, Settings2, Trash2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/api/client";
-import { canEdit, ISSUE_PRIORITIES, labelOf, pmError, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
+import { canEdit, hasProjectPermission, ISSUE_PRIORITIES, labelOf, pmError, type PmIssue, type PmMember, type PmProject, type PmSprint } from "@/api/pm";
 import { EMPTY_FILTERS, defaultSettings, issueParams, type IssuePage, type PmView, type ViewFilters, type ViewSettings } from "@/api/pm-workspace";
 import { FilterSelect, ListPagination } from "@/components/ListControls";
 import { Empty, ErrorState, Loading } from "@/components/ui";
@@ -57,6 +58,7 @@ export function IssueExplorer({ project, members = EMPTY_MEMBERS, issues = EMPTY
   const [quickEdit, setQuickEdit] = useState<PmIssue | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [bulk, setBulk] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [saving, setSaving] = useState<"save" | "edit" | "copy" | null>(null);
   const [mutation, setMutation] = useState({ busy: "", error: "" });
   const limit = [10, 25, 50, 100].includes(Number(params.get("page_size"))) ? Number(params.get("page_size")) : 50;
@@ -139,7 +141,7 @@ export function IssueExplorer({ project, members = EMPTY_MEMBERS, issues = EMPTY
       </CollapsibleContent>
     </Collapsible>
     {mutation.error && <Alert variant="destructive" role="alert"><AlertDescription>{mutation.error}</AlertDescription></Alert>}
-    {selected.length > 0 && <div className="flex flex-wrap items-center gap-3 border border-border bg-muted/30 p-3"><span className="text-sm font-medium">{selected.length} selected</span><Button variant="outline" onClick={() => setBulk(true)}>Bulk edit</Button><Button variant="ghost" onClick={() => setSelected([])}>Clear selection</Button></div>}
+    {selected.length > 0 && <div className="flex flex-wrap items-center gap-3 border border-border bg-muted/30 p-3"><span className="text-sm font-medium">{selected.length} selected</span><Button variant="outline" onClick={() => setBulk(true)}>Bulk edit</Button>{project && hasProjectPermission(project, "issue.move_out") && <Button variant="outline" onClick={() => setMoving(true)}>Move to project</Button>}<Button variant="ghost" onClick={() => setSelected([])}>Clear selection</Button></div>}
     {page.error ? <ErrorState message={page.error} onRetry={page.reload} /> : !page.data ? <Loading /> : layout === "calendar" ? <IssueCalendar issues={rows} projectKey={project?.key} month={month} onMonth={(next) => { display("month", format(next, "yyyy-MM")); }} /> : !rows.length ? <Empty message="No issues match these filters" hint="Clear the filters or create an issue." /> :
       groups.map((groupRow) => <section key={groupRow.id} className="flex flex-col gap-2" aria-label={groupRow.epic ? `Epic ${groupRow.epic.key}` : groupRow.label || "Issues"}>
         {groupRow.label && <h2 className="border-b border-border pb-2 text-sm font-semibold">{groupRow.label} · {groupRow.items.length}</h2>}
@@ -153,6 +155,10 @@ export function IssueExplorer({ project, members = EMPTY_MEMBERS, issues = EMPTY
       </section>)}
     {page.data && <ListPagination id="pm-issues" total={page.data.total} offset={page.data.offset} limit={page.data.limit} loading={page.loading} onPage={paginate} onPageSize={(size) => paginate(0, size)} />}
     {quickEdit && <QuickEditDialog issue={quickEdit} members={members} onClose={() => setQuickEdit(null)} onSaved={() => { setQuickEdit(null); void page.refresh(); onChanged?.(); }} />}
+    {moving && project && <MoveIssuesDialog issueIds={selected} source={project}
+      includesEpic={rows.some((issue) => selected.includes(issue.id) && issue.issue_type === "epic")}
+      onClose={() => setMoving(false)}
+      onMoved={() => { setMoving(false); setSelected([]); void page.refresh(); onChanged?.(); }} />}
     {bulk && <BulkDialog ids={selected} members={members} sprints={sprints} onClose={() => setBulk(false)} onSaved={() => { setBulk(false); setSelected([]); void page.refresh(); onChanged?.(); }} />}
     {saving && <ViewDialog project={project} view={saving === "save" ? undefined : view} duplicate={saving === "copy"} initial={settings} projects={projects} members={members} issues={issues} sprints={sprints} onClose={() => setSaving(null)} onSaved={(saved) => { setSaving(null); onViewSaved?.(saved); }} />}
     <AlertDialog open={deleting} onOpenChange={(open) => !open && !mutation.busy && setDeleting(false)}><AlertDialogContent>

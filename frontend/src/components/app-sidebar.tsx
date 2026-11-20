@@ -23,7 +23,26 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { api } from "@/api/client";
-import { currentNavSection, isNavItemActive, visibleNavGroups } from "./navigation";
+import { useAuth } from "@/auth/AuthContext";
+import { currentNavSection, findNavItem, sidebarItems, visibleNavGroups } from "./navigation";
+
+/** Which categories a person left open, remembered per person in this browser. */
+function readOpenSections(key: string): Set<string> | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? new Set(JSON.parse(raw) as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeOpenSections(key: string, sections: Set<string>) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...sections]));
+  } catch {
+    /* storage unavailable: the menu still works, it just won't remember */
+  }
+}
 
 export function AppSidebar({
   isAdmin,
@@ -36,13 +55,20 @@ export function AppSidebar({
   can: (key: string) => boolean;
 }) {
   const location = useLocation();
+  const { user, hasPermission } = useAuth();
   const groups = React.useMemo(
-    () => visibleNavGroups(isAdmin, can, isManager),
-    [isAdmin, can, isManager],
+    () =>
+      visibleNavGroups(isAdmin, can, isManager, hasPermission)
+        .map((group) => ({ ...group, items: sidebarItems(group.items) }))
+        .filter((group) => group.items.length > 0),
+    [isAdmin, can, isManager, hasPermission],
   );
   const activeSection = currentNavSection(location.pathname);
+  const activeTo = findNavItem(location.pathname)?.to;
+  const storageKey = `nav-open-sections:${user?.id ?? "anonymous"}`;
+  // Only the current page's category starts open, unless the person chose otherwise.
   const [openSections, setOpenSections] = React.useState<Set<string>>(
-    () => new Set(groups.map((group) => group.section)),
+    () => readOpenSections(storageKey) ?? new Set(activeSection ? [activeSection] : ["Home"]),
   );
   const [urgentAlertsCount, setUrgentAlertsCount] = React.useState<number>(0);
 
@@ -83,14 +109,11 @@ export function AppSidebar({
   }, [activeSection]);
 
   function setSectionOpen(section: string, open: boolean) {
-    setOpenSections((previous) => {
-      if (!open) {
-        const next = new Set(previous);
-        next.delete(section);
-        return next;
-      }
-      return new Set(previous).add(section);
-    });
+    const next = new Set(openSections);
+    if (open) next.add(section);
+    else next.delete(section);
+    setOpenSections(next);
+    writeOpenSections(storageKey, next);
   }
 
   return (
@@ -122,8 +145,8 @@ export function AppSidebar({
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {group.items.map((item) => {
-                        const active = isNavItemActive(location.pathname, item);
+                      {group.items.map((item: ReturnType<typeof sidebarItems>[number]) => {
+                        const active = activeTo !== undefined && (item.matches ?? [item.to]).includes(activeTo);
                         const isAlertsItem = item.to === "/sharepoint/alerts";
                         return (
                           <SidebarMenuItem key={item.to}>

@@ -1,4 +1,5 @@
 import {
+  Archive,
   Award,
   Banknote,
   BarChart3,
@@ -23,11 +24,13 @@ import {
   GraduationCap,
   HeartHandshake,
   HeartPulse,
+  House,
   Inbox,
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
+  Map as MapIcon,
   LifeBuoy,
   Lightbulb,
   Link2,
@@ -40,6 +43,7 @@ import {
   Palette,
   Plane,
   QrCode,
+  Radio,
   ReceiptText,
   ScrollText,
   SearchX,
@@ -77,6 +81,15 @@ export type NavItem = {
    * feature off while the rest of its module stays.
    */
   feature?: string;
+  /** Platform action permission ("roles.manage") required to see the item. */
+  permission?: string;
+  /** false: reachable from search and the account menu, not listed in the sidebar. */
+  sidebar?: boolean;
+  /**
+   * Pages sharing a merge key appear as one sidebar entry and as tabs on each
+   * page (BRD 9C, NAV-03). Every page keeps its own URL and stays searchable.
+   */
+  merge?: { key: string; label: string; icon: LucideIcon };
   keywords?: string[];
 };
 
@@ -89,155 +102,120 @@ export type NavGroup = {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    section: "Overview",
+    section: "Home",
+    icon: House,
     items: [
+      { to: "/profile", label: "My Profile", icon: UserRound, sidebar: false, keywords: ["account", "personal"] },
+      { to: "/security", label: "Security & 2FA", icon: ShieldCheck, sidebar: false, keywords: ["password", "authentication", "mfa"] },
       { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, module: "dashboard", keywords: ["home", "overview"] },
       { to: "/hub", label: "My Workspace", icon: LayoutGrid, keywords: ["home", "hub", "work"] },
-    ],
-  },
-  {
-    section: "My Account",
-    items: [
-      { to: "/profile", label: "My Profile", icon: UserRound, keywords: ["account", "personal"] },
-      { to: "/security", label: "Security & 2FA", icon: ShieldCheck, keywords: ["password", "authentication", "mfa"] },
-    ],
-  },
-  {
-    section: "My Work",
-    items: [
-      { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks", keywords: ["assignments", "to do"] },
-      { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", keywords: ["requests", "scope", "acceptance", "specifications"] },
-      { to: "/projects", label: "Projects", icon: FolderKanban, module: "projects", keywords: ["jira", "epics", "stories", "issues", "bugs", "requirements", "backlog"] },
-      { to: "/ai-access", label: "AI Access", icon: Bot, module: "projects", keywords: ["mcp", "chatgpt", "claude", "assistant", "token", "ai"] },
-      { to: "/work-log", label: "Work Log", icon: ScrollText, module: "worklog", keywords: ["effort", "activity"] },
       { to: "/my-docs", label: "My Documents", icon: FileText, module: "workspace", keywords: ["notes", "files", "workspace"] },
+      { to: "/directory", label: "Employee Directory", icon: Users, module: "directory", keywords: ["people", "employees", "colleagues"] },
+    ],
+  },
+  {
+    section: "Projects",
+    icon: FolderKanban,
+    items: [
+      { to: "/projects", label: "Projects", icon: FolderKanban, module: "projects", keywords: ["jira", "epics", "stories", "issues", "bugs", "requirements", "backlog"] },
+      { to: "/roadmap", label: "Roadmap", icon: MapIcon, module: "projects", keywords: ["features", "now next later", "priorities", "modules", "planning", "requirements"] },
+      { to: "/requirements", label: "Requirements", icon: FileText, module: "projects", sidebar: false, keywords: ["requests", "scope", "acceptance", "specifications"] },
+      { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", merge: { key: "checks", label: "Routine Checks", icon: ClipboardCheck }, keywords: ["rounds", "recurring", "inspections"] },
+      { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", merge: { key: "checks", label: "Routine Checks", icon: ClipboardCheck }, keywords: ["templates", "routine checks", "recurring"] },
+      { to: "/ai-access", label: "AI Access", icon: Bot, module: "projects", keywords: ["mcp", "chatgpt", "claude", "assistant", "token", "ai"] },
     ],
   },
   {
     section: "Documents",
-    icon: FolderOpen,
+    icon: FileText,
     items: [
       { to: "/sharepoint", label: "Home", icon: LayoutDashboard, end: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "home", "recent", "greeting"] },
       { to: "/sharepoint/compliance", label: "Compliance", icon: ShieldCheck, managerOnly: true, module: "sharepoint_intelligence", keywords: ["documents", "compliance", "review", "tasks", "renewal", "ownership"] },
       { to: "/sharepoint/documents", label: "My documents", icon: FolderOpen, module: "sharepoint_intelligence", keywords: ["sharepoint", "documents", "files", "library", "contracts", "licences"] },
       { to: "/sharepoint/assistant", label: "Assistant", icon: Bot, module: "sharepoint_intelligence", keywords: ["sharepoint", "assistant", "ai", "ask", "chat", "questions"] },
       { to: "/sharepoint/alerts", label: "Alerts", icon: Calendar, module: "sharepoint_intelligence", keywords: ["sharepoint", "alerts", "reminders", "deadlines", "tasks", "overdue"] },
+      { to: "/shared", label: "Shared Links", icon: Share2, module: "shared", merge: { key: "sharing", label: "Sharing", icon: Share2 }, keywords: ["public", "published", "downloads"] },
+      { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers", merge: { key: "sharing", label: "Sharing", icon: Share2 }, keywords: ["files", "password", "download"] },
       { to: "/sharepoint/admin", label: "Document sources", icon: Settings2, adminOnly: true, module: "sharepoint_intelligence", keywords: ["sharepoint", "admin", "sources", "sync", "health", "privacy", "settings"] },
     ],
   },
   {
-    section: "People",
+    section: "Leads",
+    icon: Magnet,
     items: [
-      { to: "/hr", label: "HR Dashboard", icon: HeartHandshake, module: "hr", keywords: ["people analytics", "headcount"] },
-      { to: "/directory", label: "Employee Directory", icon: Users, module: "directory", keywords: ["people", "employees", "colleagues"] },
-      { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops", keywords: ["organization", "reporting lines"] },
-      { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops", keywords: ["people operations", "onboarding", "offboarding"] },
+      { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm", keywords: ["customers", "pipeline", "sales"] },
+      { to: "/crm/sources", label: "Sources", icon: Radio, module: "crm", keywords: ["lead sources", "channels", "forms", "downloads", "where leads come from"] },
+      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", feature: "crm.web_inbox", merge: { key: "inbox", label: "Inbox", icon: Inbox }, keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
+      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", feature: "crm.web_inbox", merge: { key: "inbox", label: "Inbox", icon: Inbox }, keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
     ],
   },
   {
-    section: "Talent",
+    section: "Marketing",
+    icon: Palette,
     items: [
+      { to: "/branding", label: "Brand Center", icon: Palette, module: "branding", keywords: ["company", "logo", "colors"] },
+      { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets", keywords: ["files", "media", "library"] },
+      { to: "/products", label: "Products & Brochures", icon: Package, module: "products", keywords: ["catalogue", "sales material"] },
+      { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards", keywords: ["business cards", "profiles"] },
+      { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures", keywords: ["templates", "email"] },
+      { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes", merge: { key: "links", label: "Links & QR", icon: QrCode }, keywords: ["scan", "links"] },
+      { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener", merge: { key: "links", label: "Links & QR", icon: QrCode }, keywords: ["short links", "clicks"] },
+    ],
+  },
+  {
+    section: "Admin",
+    icon: ShieldCheck,
+    items: [
+      { to: "/departments", label: "Departments & Access", icon: ShieldCheck, permission: "departments.manage", keywords: ["permissions", "groups"] },
+      { to: "/roles", label: "Roles & Permissions", icon: UserCog, permission: "roles.manage", keywords: ["roles", "permissions", "access", "grants", "overrides"] },
+      { to: "/companies", label: "Companies", icon: Building2, permission: "settings.manage", keywords: ["organizations", "brands"] },
+      { to: "/audit", label: "Audit Log", icon: ScrollText, permission: "audit.view", keywords: ["history", "activity"] },
+      { to: "/webhooks", label: "Webhooks", icon: Webhook, permission: "settings.manage", merge: { key: "integrations", label: "Integrations", icon: Webhook }, keywords: ["integrations", "events"] },
+      { to: "/api-tokens", label: "API Tokens", icon: KeyRound, permission: "api_tokens.manage", merge: { key: "integrations", label: "Integrations", icon: Webhook }, keywords: ["integrations", "credentials", "keys"] },
+      { to: "/settings", label: "Settings", icon: SettingsIcon, permission: "settings.manage", keywords: ["configuration", "platform"] },
+    ],
+  },
+  // Modules scheduled for removal in the platform consolidation (BRD section
+  // 3.2). They stay reachable, collapsed at the bottom, until switched off.
+  {
+    section: "Other tools",
+    icon: Archive,
+    items: [
+      { to: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks", keywords: ["assignments", "to do"] },
+      { to: "/work-log", label: "Work Log", icon: ScrollText, module: "worklog", keywords: ["effort", "activity"] },
+      { to: "/hr", label: "HR Dashboard", icon: HeartHandshake, module: "hr", keywords: ["people analytics", "headcount"] },
+      { to: "/org-chart", label: "Org Chart", icon: Network, module: "people_ops", keywords: ["organization", "reporting lines"] },
+      { to: "/people-ops", label: "On / Offboarding", icon: UserCog, module: "people_ops", keywords: ["people operations", "onboarding", "offboarding"] },
       { to: "/recruiting", label: "Recruiting", icon: Briefcase, module: "recruiting", keywords: ["candidates", "jobs", "hiring"] },
       { to: "/performance", label: "Performance", icon: Target, keywords: ["reviews", "goals", "feedback"] },
       { to: "/training", label: "Training", icon: GraduationCap, keywords: ["learning", "courses", "certifications"] },
       { to: "/engagement", label: "Engagement", icon: Award, keywords: ["surveys", "kudos", "recognition"] },
-    ],
-  },
-  {
-    section: "Time & Pay",
-    items: [
       { to: "/time", label: "Time Tracking", icon: Clock, module: "attendance", keywords: ["attendance", "clock", "timesheet"] },
       { to: "/leave", label: "Leave", icon: Plane, module: "approvals", feature: "approvals.leave", keywords: ["holiday", "vacation", "time off"] },
       { to: "/expenses", label: "Expenses", icon: ReceiptText, keywords: ["claims", "receipts", "reimbursement"] },
       { to: "/payroll", label: "Payroll", icon: Banknote, module: "hr", feature: "hr.payroll", keywords: ["salary", "payslip"] },
       { to: "/benefits", label: "Benefits", icon: HeartPulse, module: "hr", feature: "hr.benefits", keywords: ["plans", "enrollment"] },
-    ],
-  },
-  {
-    section: "Requests & Support",
-    items: [
       { to: "/approvals", label: "Approvals", icon: Stamp, module: "approvals", keywords: ["requests", "decisions"] },
-      { to: "/routine-checks", label: "Routine Checks", icon: ClipboardCheck, module: "routine_checks", keywords: ["rounds", "recurring", "inspections"] },
-      { to: "/checklists", label: "Checklists", icon: ClipboardList, module: "routine_checks", feature: "routine_checks.templates", keywords: ["templates", "routine checks", "recurring"] },
       { to: "/purchases", label: "Purchase Requests", icon: ShoppingCart, module: "purchases", keywords: ["buy", "procurement", "spend"] },
       { to: "/service-desk", label: "Service Desk", icon: LifeBuoy, module: "service_desk", keywords: ["tickets", "help", "support", "it"] },
-    ],
-  },
-  {
-    section: "Knowledge & Communication",
-    items: [
       { to: "/knowledge", label: "Knowledge Base", icon: BookText, module: "knowledge", keywords: ["articles", "guides", "help"] },
       { to: "/announcements", label: "Announcements", icon: Megaphone, module: "announcements", keywords: ["news", "updates"] },
       { to: "/ai-help", label: "AI Help", icon: Bot, module: "ai_help", keywords: ["assistant", "ask", "chat"] },
       { to: "/ideas", label: "Feedback & Ideas", icon: Lightbulb, module: "ideas", keywords: ["suggestions", "issues", "voting"] },
-    ],
-  },
-  {
-    section: "Workplace",
-    items: [
       { to: "/cafe", label: "Café", icon: Coffee, module: "cafe", keywords: ["food", "orders", "menu"] },
       { to: "/bookings", label: "Rooms & Desks", icon: DoorOpen, module: "bookings", keywords: ["reservations", "spaces", "meeting room"] },
       { to: "/visitors", label: "Visitors", icon: UserPlus, module: "visitors", keywords: ["guests", "reception", "check in"] },
       { to: "/calendar", label: "Company Calendar", icon: CalendarDays, module: "calendar", keywords: ["events", "schedule"] },
       { to: "/lost-found", label: "Lost & Found", icon: SearchX, module: "lost_found", keywords: ["missing", "items", "claims"] },
-    ],
-  },
-  {
-    section: "Assets & Spend",
-    items: [
       { to: "/asset-tracker", label: "Asset Tracker", icon: Boxes, module: "asset_tracker", keywords: ["equipment", "inventory", "devices"] },
       { to: "/phone-lines", label: "Phone Lines", icon: Smartphone, module: "asset_tracker", feature: "asset_tracker.phone_lines", keywords: ["sim", "mobile", "numbers"] },
       { to: "/subscriptions", label: "Subscriptions", icon: Wallet, module: "subscriptions", keywords: ["vendors", "renewals", "recurring costs"] },
-    ],
-  },
-  {
-    section: "Sales",
-    items: [
-      { to: "/crm", label: "Leads (CRM)", icon: Magnet, module: "crm", keywords: ["customers", "pipeline", "sales"] },
-      { to: "/inbox", label: "Web Inbox", icon: Inbox, module: "crm", feature: "crm.web_inbox", keywords: ["submissions", "forms", "leads", "wordpress", "contact form"] },
-      { to: "/inbox/rules", label: "Routing & Filtering", icon: Signpost, module: "crm", feature: "crm.web_inbox", keywords: ["routing", "rules", "blocklist", "spam", "careers", "mapping"] },
-    ],
-  },
-  {
-    section: "Marketing",
-    items: [
-      { to: "/cards", label: "Digital Cards", icon: CreditCard, module: "cards", keywords: ["business cards", "profiles"] },
-      { to: "/marketing-assets", label: "Marketing Assets", icon: FolderOpen, module: "marketing_assets", keywords: ["files", "media", "library"] },
-      { to: "/branding", label: "Brand Center", icon: Palette, module: "branding", keywords: ["company", "logo", "colors"] },
-      { to: "/products", label: "Products & Brochures", icon: Package, module: "products", keywords: ["catalogue", "sales material"] },
       { to: "/campaigns", label: "Campaign Studio", icon: Megaphone, module: "campaigns", keywords: ["marketing", "analytics", "channels"] },
-      { to: "/shared", label: "Shared Links", icon: Share2, module: "shared", keywords: ["public", "published", "downloads"] },
-    ],
-  },
-  {
-    section: "Publishing Tools",
-    items: [
-      { to: "/qrcodes", label: "QR Codes", icon: QrCode, module: "qrcodes", keywords: ["scan", "links"] },
       { to: "/landing-pages", label: "Landing Pages", icon: LayoutTemplate, module: "landing_pages", keywords: ["web pages", "builder", "publish"] },
-      { to: "/signatures", label: "Email Signatures", icon: Mail, module: "signatures", keywords: ["templates", "email"] },
-      { to: "/shortener", label: "URL Shortener", icon: Link2, module: "shortener", keywords: ["short links", "clicks"] },
-      { to: "/transfers", label: "Secure Transfers", icon: Lock, module: "transfers", keywords: ["files", "password", "download"] },
-    ],
-  },
-  {
-    section: "HR Administration",
-    items: [
       { to: "/reports", label: "HR Reports", icon: BarChart3, module: "hr", feature: "hr.reports", keywords: ["analytics", "export"] },
       { to: "/hr/custom-fields", label: "Custom Fields", icon: Sliders, module: "hr", keywords: ["employee schema", "attributes"] },
       { to: "/hr/automations", label: "HR Automations", icon: Zap, module: "hr", feature: "hr.automations", keywords: ["reminders", "rules"] },
-    ],
-  },
-  {
-    section: "Platform Administration",
-    adminOnly: true,
-    items: [
-      { to: "/companies", label: "Companies", icon: Building2, adminOnly: true, keywords: ["organizations", "brands"] },
-      { to: "/departments", label: "Departments & Access", icon: ShieldCheck, adminOnly: true, keywords: ["permissions", "groups"] },
       { to: "/approval-workflows", label: "Approval Workflows", icon: GitBranch, adminOnly: true, keywords: ["routing", "approvers"] },
-      { to: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true, keywords: ["history", "activity"] },
-      { to: "/webhooks", label: "Webhooks", icon: Webhook, adminOnly: true, keywords: ["integrations", "events"] },
-      { to: "/api-tokens", label: "API Tokens", icon: KeyRound, adminOnly: true, keywords: ["integrations", "credentials", "keys"] },
-      { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true, keywords: ["configuration", "platform"] },
     ],
   },
 ];
@@ -269,6 +247,7 @@ export function visibleNavGroups(
   isAdmin: boolean,
   can: (key: string) => boolean,
   isManager = false,
+  hasPermission: (key: string) => boolean = () => isAdmin,
 ): NavGroup[] {
   return NAV_GROUPS.filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
@@ -276,6 +255,7 @@ export function visibleNavGroups(
       items: group.items.filter((item) => {
         if ((item.adminOnly || group.adminOnly) && !isAdmin) return false;
         if (item.managerOnly && !isAdmin && !isManager) return false;
+        if (item.permission && !hasPermission(item.permission)) return false;
         // `can` also subtracts modules and features switched off org-wide, so
         // a disabled area leaves the navigation for everyone, admins included.
         const key = item.feature ?? item.module;
@@ -283,4 +263,28 @@ export function visibleNavGroups(
       }).map((item) => item.to === "/sharepoint/documents" ? { ...item, label: documentLibraryLabel(isAdmin, isManager) } : item),
     }))
     .filter((group) => group.items.length > 0);
+}
+
+/** Visible pages that share the current page's merge key, shown as tabs. */
+export function sectionTabs(pathname: string, groups: NavGroup[]): NavItem[] {
+  const current = findNavItem(pathname);
+  if (!current?.merge) return [];
+  const siblings = groups.flatMap((group) => group.items).filter((item) => item.merge?.key === current.merge?.key);
+  return siblings.length > 1 ? siblings : [];
+}
+
+/** Sidebar entries: merged pages collapse into one entry pointing at the first visible page. */
+export function sidebarItems(items: NavItem[]): Array<NavItem & { matches?: string[] }> {
+  const out: Array<NavItem & { matches?: string[] }> = [];
+  for (const item of items) {
+    if (item.sidebar === false) continue;
+    const key = item.merge?.key;
+    const existing = key ? out.find((entry) => entry.merge?.key === key) : undefined;
+    if (existing) {
+      existing.matches = [...(existing.matches ?? [existing.to]), item.to];
+      continue;
+    }
+    out.push(item.merge ? { ...item, label: item.merge.label, icon: item.merge.icon, matches: [item.to] } : item);
+  }
+  return out;
 }

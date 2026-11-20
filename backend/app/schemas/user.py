@@ -43,6 +43,8 @@ class UserOut(BaseModel):
     extra_permissions: list[str] | None = None
     revoked_permissions: list[str] | None = None
     effective_permissions: list[str] = []
+    # Platform action permissions (see app.core.access_catalog).
+    platform_permissions: list[str] = []
     managed_company_ids: list[uuid.UUID] = []
     created_at: datetime
 

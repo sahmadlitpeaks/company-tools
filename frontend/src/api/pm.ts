@@ -17,7 +17,10 @@ export interface PmProject {
   start_date: string | null;
   target_date: string | null;
   created_at: string;
+  /** Legacy summary of my access; prefer `my_permissions` for new checks. */
   my_role: ProjectRole | null;
+  /** Project permissions I hold here (role + allow - deny). */
+  my_permissions: string[];
   issue_count: number;
   done_count: number;
   member_count: number;
@@ -29,7 +32,13 @@ export interface PmMember {
   user_id: string;
   name: string;
   email: string | null;
-  role: ProjectRole;
+  /** Project role key: admin, member, viewer or a custom role. */
+  role: string;
+  role_name: string;
+  allow: string[];
+  deny: string[];
+  /** Effective permissions: role + allow - deny. */
+  permissions: string[];
 }
 
 export interface PmPerson {
@@ -92,6 +101,9 @@ export interface PmIssueDetail extends PmIssue {
   project_key: string;
   project_name: string;
   my_role: ProjectRole | null;
+  my_permissions: string[];
+  /** Keys the issue had before it moved project; they keep resolving. */
+  previous_keys: string[];
   watching: boolean;
   children: PmIssue[];
   links: PmLink[];
@@ -275,8 +287,8 @@ export const ISSUE_PRIORITIES: Array<{ value: IssuePriority; label: string }> = 
 ];
 
 export const PROJECT_ROLES: Array<{ value: ProjectRole; label: string; hint: string }> = [
-  { value: "admin", label: "Administrator", hint: "Manages the project, its people and every issue" },
-  { value: "member", label: "Member", hint: "Creates, edits and moves issues" },
+  { value: "admin", label: "Project Admin", hint: "Manages the project, its people and every issue" },
+  { value: "member", label: "Contributor", hint: "Creates, edits and moves issues" },
   { value: "viewer", label: "Viewer", hint: "Reads and comments, for requesters and stakeholders" },
 ];
 
@@ -293,6 +305,11 @@ export function labelOf<T extends string>(items: Array<{ value: T; label: string
 /** Badge variant for a workflow status. */
 export function statusVariant(status: IssueStatus): "outline" | "info" | "warning" | "success" {
   return status === "done" ? "success" : status === "in_review" ? "warning" : status === "in_progress" ? "info" : "outline";
+}
+
+/** Whether I hold a named project permission (see /api/access/catalog). */
+export function hasProjectPermission(target: { my_permissions?: string[] } | null | undefined, permission: string) {
+  return Boolean(target?.my_permissions?.includes(permission));
 }
 
 export function canEdit(role: ProjectRole | null | undefined) {

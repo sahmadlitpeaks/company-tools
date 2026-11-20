@@ -82,6 +82,42 @@ ownership checks in their handlers. The frontend uses matching module keys for
 module-scoped route and navigation visibility, but hidden UI is never the
 authorization boundary.
 
+### Roles and named permissions
+
+`backend/app/core/access_catalog.py` is the code-defined permission catalogue
+(BRD section 7). Each permission has a scope: **platform** (held system-wide;
+the legacy module keys are platform permissions too) or **project** (held in one
+project). Roles (`roles` table) bundle permissions of one scope and are edited
+under **Admin → Roles & Permissions** (`/api/access/*`, `roles.manage`).
+
+- Platform: `User.platform_permissions` = the person's platform roles plus their
+  department's roles, plus allows, minus denies (`user_permission_overrides`).
+  Module keys granted through a role are merged into `effective_permissions`.
+  `require_permission("projects.create")` in `app/services/access.py` guards
+  routes.
+- **Owner** is a protected platform role that always holds every permission
+  (including modules added later). It can't be edited, copied, deleted or given
+  to a department, only an Owner can grant or remove it, and the platform always
+  keeps at least one active Owner. The legacy `is_admin` flag still counts as
+  Owner until it is retired (BRD PRM-13); the migration gave every admin the
+  Owner role. The **Administrator** starter role holds the system permissions
+  (`users.manage`, `roles.manage`, `departments.manage`, `settings.manage`,
+  `audit.view`, `backups.manage`, `api_tokens.manage`) plus `projects.view_all`
+  and `projects.create`.
+- The admin screens (people, departments, settings, companies, webhooks, audit,
+  backups, API tokens) check those named permissions instead of the admin flag.
+  Holders of `users.manage` who aren't Owners can't make platform
+  administrators, change Owner accounts or grant modules they don't hold.
+  Modules being retired still use the admin flag until they are removed.
+- Project: `pm_project_members.role` stores a project role key, plus
+  `allow_permissions`/`deny_permissions`. `require_project(db, user, id,
+  "sprint.manage")` in `app/services/pm_access.py` returns a `ProjectAccess`.
+- Nobody can grant a permission they do not hold. Every role, grant and override
+  change is written to the audit log.
+- The SPA reads `platform_permissions` from `/api/auth/me` through
+  `hasPermission()` in `AuthContext`, `<Protected permission=…>` and the
+  navigation item `permission` field; project screens read `my_permissions`.
+
 ### Two independent layers
 
 Access answers two separate questions, and they are deliberately kept apart:
@@ -210,6 +246,18 @@ Full payload contract, mapping model and plugin notes: `docs/INTAKE_CF7.md`.
 
 `api/crm.py` serves leads (`CrmLead`) and their timeline (`CrmActivity`); every
 route sits behind the `crm` module gate.
+
+The CRM is the hub every lead lands in (BRD 9B). Website forms (Web Inbox),
+digital cards, landing pages and gated brochure/asset downloads all call
+`capture_lead()` in `services/crm_ingest.py`. When the same person is already an
+open lead (same email, or same phone by its last 9 digits in `phone_key`), the
+submission is added to that lead with a timeline note instead of creating a
+duplicate; won or lost leads start a new one. Every submission is a
+`CrmLeadSource` row, shown on the lead page and summarised per source at
+`/crm/sources` (`GET /api/crm/sources`). Download gates check a lead's sources,
+so a merged lead still unlocks the file it was captured for. New features that
+capture a person's details must go through `capture_lead()`; no module keeps its
+own lead table (LHB-07).
 
 - Stages, in order: `new`, `contacted`, `qualified`, `proposal`, `negotiation`,
   `won`, `lost` (`LEAD_STATUSES` in `models/crm.py`; the first five are open).

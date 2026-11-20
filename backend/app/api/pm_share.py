@@ -71,7 +71,7 @@ async def list_shares(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    await require_project(db, user, project_id, "admin")
+    await require_project(db, user, project_id, "share_links.manage")
     links = (
         await db.scalars(
             select(PmShareLink).where(PmShareLink.project_id == project_id).order_by(PmShareLink.created_at.desc())
@@ -88,7 +88,7 @@ async def create_share(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    project, _ = await require_project(db, user, project_id, "admin")
+    project, _ = await require_project(db, user, project_id, "share_links.manage")
     if payload.view not in SHARE_VIEWS:
         raise HTTPException(422, "Choose the board, timeline or progress view.")
     token = crypto.new_token()
@@ -120,7 +120,7 @@ async def revoke_share(
     link = await db.get(PmShareLink, share_id)
     if not link:
         return
-    project, _ = await require_project(db, user, link.project_id, "admin")
+    project, _ = await require_project(db, user, link.project_id, "share_links.manage")
     if not link.revoked_at:
         link.revoked_at = _now()
         record(

@@ -18,6 +18,7 @@ from app.auth.deps import get_current_user
 from app.core.database import get_db
 from app.models.asset import Asset, Folder
 from app.models.crm import CrmLead
+from app.services.crm_ingest import capture_lead
 from app.models.user import User
 from app.schemas.common import (
     AssetOut,
@@ -407,17 +408,11 @@ async def capture_asset_lead(
     asset = await db.get(Asset, asset_id)
     if not asset or not asset.is_public:
         raise HTTPException(status_code=404, detail="Asset not found")
-    lead = CrmLead(
-        name=payload.name,
-        email=payload.email,
-        phone=payload.phone,
+    lead, _ = await capture_lead(
+        db, source="asset", source_detail=asset.name, origin_type="asset_share",
+        origin_id=str(asset.id), name=payload.name, email=payload.email, phone=payload.phone,
         company=payload.company,
-        source="asset",
-        source_detail=asset.name,
-        origin_type="asset_share",
-        origin_id=str(asset.id),
     )
-    db.add(lead)
     if asset.uploaded_by_id:
         await notify_user(
             db,

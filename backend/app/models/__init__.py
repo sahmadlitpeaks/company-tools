@@ -2,10 +2,11 @@
 from app.models.sharepoint import SharePointSource, SharePointConnection, SharePointDocument, SharePointRun, SharePointReminder, SharePointOwnerRule, SharePointComplianceTask, SharePointDocumentVersion, SharePointComplianceEvent  # noqa: F401
 from app.models.user import User  # noqa: F401
 from app.models.department import Department  # noqa: F401
+from app.models.role import Role, UserPermissionOverride, department_roles, user_platform_roles  # noqa: F401
 from app.models.company import Company  # noqa: F401
 from app.models.brand_document import BrandDocument, BrandDocumentVersion  # noqa: F401
 from app.models.app_setting import AppSetting  # noqa: F401
-from app.models.crm import CrmActivity, CrmLead  # noqa: F401
+from app.models.crm import CrmActivity, CrmLead, CrmLeadSource  # noqa: F401
 from app.models.campaign import Campaign, CampaignMetric  # noqa: F401
 from app.models.card import DigitalCard, CardScan, Lead  # noqa: F401
 from app.models.asset import Folder, Asset  # noqa: F401
@@ -134,6 +135,7 @@ from app.models.pm import (  # noqa: F401
     PmIssue,
     PmIssueHistory,
     PmIssueLink,
+    PmIssueKeyAlias,
     PmIssueWatcher,
     PmProject,
     PmProjectMember,
@@ -142,4 +144,4 @@ from app.models.pm import (  # noqa: F401
 )
 from app.models.pm_view import PmView  # noqa: F401
 from app.models.pm_decision import PmDecision, PmDecisionRevision, PmDecisionIssueLink, PmDecisionEvent  # noqa: F401
-from app.models.pm_requirement import PmRequirement, PmRequirementIssueLink, PmRequirementDecisionLink, PmRequirementEvent  # noqa: F401
+from app.models.pm_requirement import PmModule, PmRequirement, PmRequirementIssueLink, PmRequirementDecisionLink, PmRequirementEvent  # noqa: F401

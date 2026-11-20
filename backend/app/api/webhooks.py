@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import get_current_admin
+
+from app.services.access import require_permission
 from app.core.database import get_db
 from app.models.user import User
 from app.models.webhook import WEBHOOK_EVENTS, Webhook, WebhookDelivery
@@ -36,13 +37,13 @@ def _validate_events(events: list[str]) -> None:
 
 
 @router.get("/events")
-async def list_events(_: User = Depends(get_current_admin)):
+async def list_events(_: User = Depends(require_permission("settings.manage"))):
     return {"events": WEBHOOK_EVENTS}
 
 
 @router.get("", response_model=list[WebhookOut])
 async def list_webhooks(
-    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_permission("settings.manage"))
 ):
     rows = (await db.execute(select(Webhook).order_by(Webhook.created_at.desc()))).scalars().all()
     return [_out(w) for w in rows]
@@ -52,7 +53,7 @@ async def list_webhooks(
 async def create_webhook(
     body: WebhookCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     _validate_events(body.events)
     secret = secrets.token_urlsafe(24)
@@ -72,7 +73,7 @@ async def update_webhook(
     webhook_id: uuid.UUID,
     body: WebhookUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     w = await db.get(Webhook, webhook_id)
     if not w:
@@ -92,7 +93,7 @@ async def update_webhook(
 async def delete_webhook(
     webhook_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     w = await db.get(Webhook, webhook_id)
     if w:
@@ -104,7 +105,7 @@ async def delete_webhook(
 async def list_deliveries(
     webhook_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(require_permission("settings.manage")),
 ):
     rows = (
         await db.execute(
@@ -121,7 +122,7 @@ async def list_deliveries(
 async def test_webhook(
     webhook_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(require_permission("settings.manage")),
 ):
     w = await db.get(Webhook, webhook_id)
     if not w:
